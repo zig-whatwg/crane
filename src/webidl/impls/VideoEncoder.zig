@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const VideoEncoder = interfaces.VideoEncoder;
 
 pub const State = VideoEncoder.State;
@@ -53,39 +54,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.CodecState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.CodecState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for encodeQueueSize
-pub fn get_encodeQueueSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_encodeQueueSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondequeue
-pub fn get_ondequeue(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondequeue(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ondequeue
-pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: isConfigSupported
-pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) ImplError!*const anyopaque {
+pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) anyerror!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: encode
-pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: dictionaries.VideoEncoderEncodeOptions) ImplError!void {
+pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(dictionaries.VideoEncoderEncodeOptions)) anyerror!void {
     _ = instance;
     _ = frame;
     _ = options;
@@ -93,26 +94,26 @@ pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, option
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: configure
-pub fn call_configure(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) ImplError!void {
+pub fn call_configure(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) anyerror!void {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: flush
-pub fn call_flush(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

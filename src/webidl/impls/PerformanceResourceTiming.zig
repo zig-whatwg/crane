@@ -40,157 +40,157 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for initiatorType
-pub fn get_initiatorType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_initiatorType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for deliveryType
-pub fn get_deliveryType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_deliveryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nextHopProtocol
-pub fn get_nextHopProtocol(instance: *runtime.Instance) ImplError!runtime.ByteString {
+pub fn get_nextHopProtocol(instance: *runtime.Instance) anyerror!runtime.ByteString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for workerStart
-pub fn get_workerStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_workerStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for redirectStart
-pub fn get_redirectStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_redirectStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for redirectEnd
-pub fn get_redirectEnd(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_redirectEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fetchStart
-pub fn get_fetchStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_fetchStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domainLookupStart
-pub fn get_domainLookupStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_domainLookupStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domainLookupEnd
-pub fn get_domainLookupEnd(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_domainLookupEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connectStart
-pub fn get_connectStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_connectStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connectEnd
-pub fn get_connectEnd(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_connectEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for secureConnectionStart
-pub fn get_secureConnectionStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_secureConnectionStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for requestStart
-pub fn get_requestStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_requestStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finalResponseHeadersStart
-pub fn get_finalResponseHeadersStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_finalResponseHeadersStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstInterimResponseStart
-pub fn get_firstInterimResponseStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_firstInterimResponseStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseStart
-pub fn get_responseStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_responseStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseEnd
-pub fn get_responseEnd(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_responseEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transferSize
-pub fn get_transferSize(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_transferSize(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for encodedBodySize
-pub fn get_encodedBodySize(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_encodedBodySize(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for decodedBodySize
-pub fn get_decodedBodySize(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_decodedBodySize(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseStatus
-pub fn get_responseStatus(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_responseStatus(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for renderBlockingStatus
-pub fn get_renderBlockingStatus(instance: *runtime.Instance) ImplError!enums.RenderBlockingStatusType {
+pub fn get_renderBlockingStatus(instance: *runtime.Instance) anyerror!enums.RenderBlockingStatusType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contentType
-pub fn get_contentType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contentEncoding
-pub fn get_contentEncoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_contentEncoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serverTiming
-pub fn get_serverTiming(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_serverTiming(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

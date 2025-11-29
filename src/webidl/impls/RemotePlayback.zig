@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RemotePlayback = interfaces.RemotePlayback;
 
 pub const State = RemotePlayback.State;
@@ -40,66 +41,66 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.RemotePlaybackState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.RemotePlaybackState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onconnecting
-pub fn get_onconnecting(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnecting(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onconnect
-pub fn get_onconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondisconnect
-pub fn get_ondisconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondisconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onconnecting
-pub fn set_onconnecting(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnecting(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onconnect
-pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ondisconnect
-pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: watchAvailability
-pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.RemotePlaybackAvailabilityCallback) ImplError!*const anyopaque {
+pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: cancelWatchAvailability
-pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: i32) ImplError!*const anyopaque {
+pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: prompt
-pub fn call_prompt(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

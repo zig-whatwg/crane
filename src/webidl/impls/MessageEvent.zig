@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MessageEvent = interfaces.MessageEvent;
 
 pub const State = MessageEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.MessageEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MessageEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,37 +55,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for origin
-pub fn get_origin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastEventId
-pub fn get_lastEventId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!?typedefs.MessageEventSource {
+pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSource {
     _ = instance;
     return null;
 }
 
 /// Getter for ports
-pub fn get_ports(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initMessageEvent
-pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, data: *const anyopaque, origin: runtime.USVString, lastEventId: runtime.DOMString, source: typedefs.MessageEventSource, ports: *const anyopaque) ImplError!void {
+pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(*const anyopaque), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

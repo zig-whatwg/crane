@@ -131,14 +131,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
 /// Getter for port1
 /// Spec: The port1 getter steps are to return this's port 1.
-pub fn get_port1(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     return state.own.port1;
 }
 
 /// Getter for port2
 /// Spec: The port2 getter steps are to return this's port 2.
-pub fn get_port2(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_port2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     return state.own.port2;
 }

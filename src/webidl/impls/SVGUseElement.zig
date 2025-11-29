@@ -40,43 +40,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for instanceRoot
-pub fn get_instanceRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_instanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for animatedInstanceRoot
-pub fn get_animatedInstanceRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_animatedInstanceRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

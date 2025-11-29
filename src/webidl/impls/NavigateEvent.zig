@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const NavigateEvent = interfaces.NavigateEvent;
 
 pub const State = NavigateEvent.State;
@@ -54,79 +55,79 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for navigationType
-pub fn get_navigationType(instance: *runtime.Instance) ImplError!enums.NavigationType {
+pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.NavigationType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for destination
-pub fn get_destination(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_destination(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for canIntercept
-pub fn get_canIntercept(instance: *runtime.Instance) ImplError!bool {
+pub fn get_canIntercept(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for userInitiated
-pub fn get_userInitiated(instance: *runtime.Instance) ImplError!bool {
+pub fn get_userInitiated(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hashChange
-pub fn get_hashChange(instance: *runtime.Instance) ImplError!bool {
+pub fn get_hashChange(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for signal
-pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for formData
-pub fn get_formData(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_formData(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for downloadRequest
-pub fn get_downloadRequest(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for info
-pub fn get_info(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_info(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hasUAVisualTransition
-pub fn get_hasUAVisualTransition(instance: *runtime.Instance) ImplError!bool {
+pub fn get_hasUAVisualTransition(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceElement
-pub fn get_sourceElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_sourceElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: scroll
-pub fn call_scroll(instance: *runtime.Instance) ImplError!void {
+pub fn call_scroll(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: intercept
-pub fn call_intercept(instance: *runtime.Instance, options: dictionaries.NavigationInterceptOptions) ImplError!void {
+pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationInterceptOptions)) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

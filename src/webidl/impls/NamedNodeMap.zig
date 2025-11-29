@@ -88,21 +88,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for length
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-length
-pub fn get_length(instance: *runtime.Instance) !u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     return @intCast(internal.attrs.size());
 }
 
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-item
-pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     return internal.attrs.get(index) orelse return error.NotImplemented;
 }
 
 /// Operation: getNamedItem(qualifiedName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
-pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
+pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const name = qualifiedName.asSlice();
 
@@ -122,7 +122,7 @@ pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
 /// Operation: getNamedItemNS(namespace, localName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
-pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
+pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const ns = namespace.asSlice();
     const name = localName.asSlice();
@@ -158,19 +158,19 @@ pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 
 /// Operation: setNamedItem(attr)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditem
-pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
+pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     return setAttr(instance, attr);
 }
 
 /// Operation: setNamedItemNS(attr)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditemns
-pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) !*runtime.Instance {
+pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     return setAttr(instance, attr);
 }
 
 /// Operation: removeNamedItem(qualifiedName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditem
-pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) !*runtime.Instance {
+pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const name = qualifiedName.asSlice();
 
@@ -198,7 +198,7 @@ pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.
 
 /// Operation: removeNamedItemNS(namespace, localName)
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
-pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) !*runtime.Instance {
+pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const ns = namespace.asSlice();
     const name = localName.asSlice();

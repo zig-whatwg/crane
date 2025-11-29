@@ -40,21 +40,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: insertDebugMarker
-pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) ImplError!void {
+pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = markerLabel;
     return error.NotImplemented;
 }
 
 /// Operation: pushDebugGroup
-pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) ImplError!void {
+pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = groupLabel;
     return error.NotImplemented;
 }
 
 /// Operation: popDebugGroup
-pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
+pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

@@ -52,156 +52,156 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for behavior
-pub fn get_behavior(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_behavior(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bgColor
-pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hspace
-pub fn get_hspace(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_hspace(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for loop
-pub fn get_loop(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_loop(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollAmount
-pub fn get_scrollAmount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_scrollAmount(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollDelay
-pub fn get_scrollDelay(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_scrollDelay(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trueSpeed
-pub fn get_trueSpeed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_trueSpeed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vspace
-pub fn get_vspace(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_vspace(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for behavior
-pub fn set_behavior(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_behavior(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for bgColor
-pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for direction
-pub fn set_direction(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_direction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for hspace
-pub fn set_hspace(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for loop
-pub fn set_loop(instance: *runtime.Instance, value: i32) ImplError!void {
+pub fn set_loop(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for scrollAmount
-pub fn set_scrollAmount(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_scrollAmount(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for scrollDelay
-pub fn set_scrollDelay(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_scrollDelay(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for trueSpeed
-pub fn set_trueSpeed(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_trueSpeed(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for vspace
-pub fn set_vspace(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance) ImplError!void {
+pub fn call_start(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

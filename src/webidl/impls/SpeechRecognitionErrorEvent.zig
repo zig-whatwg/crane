@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!enums.SpeechRecognitionErrorCode {
+pub fn get_error(instance: *runtime.Instance) anyerror!enums.SpeechRecognitionErrorCode {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

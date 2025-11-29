@@ -40,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: reportAdAuctionLoss
-pub fn call_reportAdAuctionLoss(instance: *runtime.Instance, url: runtime.USVString) ImplError!void {
+pub fn call_reportAdAuctionLoss(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     _ = instance;
     _ = url;
     return error.NotImplemented;
 }
 
 /// Operation: reportAdAuctionWin
-pub fn call_reportAdAuctionWin(instance: *runtime.Instance, url: runtime.USVString) ImplError!void {
+pub fn call_reportAdAuctionWin(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     _ = instance;
     _ = url;
     return error.NotImplemented;

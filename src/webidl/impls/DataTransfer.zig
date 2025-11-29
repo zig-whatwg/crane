@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DataTransfer = interfaces.DataTransfer;
 
 pub const State = DataTransfer.State;
@@ -52,65 +53,65 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for dropEffect
-pub fn get_dropEffect(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_dropEffect(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for effectAllowed
-pub fn get_effectAllowed(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_effectAllowed(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for items
-pub fn get_items(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_items(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for files
-pub fn get_files(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_files(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for dropEffect
-pub fn set_dropEffect(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_dropEffect(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for effectAllowed
-pub fn set_effectAllowed(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_effectAllowed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getData
-pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) anyerror!runtime.DOMString {
     _ = instance;
     _ = format;
     return error.NotImplemented;
 }
 
 /// Operation: clearData
-pub fn call_clearData(instance: *runtime.Instance, format: runtime.DOMString) ImplError!void {
+pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = format;
     return error.NotImplemented;
 }
 
 /// Operation: setDragImage
-pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) ImplError!void {
+pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
     _ = instance;
     _ = image;
     _ = x;
@@ -119,7 +120,7 @@ pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, 
 }
 
 /// Operation: setData
-pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data: runtime.DOMString) ImplError!void {
+pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = format;
     _ = data;

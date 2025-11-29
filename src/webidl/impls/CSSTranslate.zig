@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSTranslate = interfaces.CSSTranslate;
 
 pub const State = CSSTranslate.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: *runtime.Instance, y: *runtime.Instance, z: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: *runtime.Instance, y: *runtime.Instance, z: webidl.Opt(*runtime.Instance)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSTranslate.vtable, ctx);
     errdefer deinit(instance);
@@ -55,39 +56,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: *
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for z
-pub fn get_z(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_z(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for x
-pub fn set_x(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_x(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for y
-pub fn set_y(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_y(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for z
-pub fn set_z(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_z(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

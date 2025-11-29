@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for frame
-pub fn get_frame(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_frame(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inputSource
-pub fn get_inputSource(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_inputSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

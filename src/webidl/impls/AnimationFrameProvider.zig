@@ -40,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: requestAnimationFrame
-pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) ImplError!u32 {
+pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: cancelAnimationFrame
-pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) ImplError!void {
+pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
     _ = instance;
     _ = handle;
     return error.NotImplemented;

@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for styleSheet
-pub fn get_styleSheet(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_styleSheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for layerName
-pub fn get_layerName(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_layerName(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for supportsText
-pub fn get_supportsText(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_supportsText(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }

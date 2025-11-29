@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getDepthInMeters
-pub fn call_getDepthInMeters(instance: *runtime.Instance, x: f32, y: f32) ImplError!f32 {
+pub fn call_getDepthInMeters(instance: *runtime.Instance, x: f32, y: f32) anyerror!f32 {
     _ = instance;
     _ = x;
     _ = y;

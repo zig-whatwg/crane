@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const LanguageDetector = interfaces.LanguageDetector;
 
 pub const State = LanguageDetector.State;
@@ -40,26 +41,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for expectedInputLanguages
-pub fn get_expectedInputLanguages(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for inputQuota
-pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inputQuota(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.LanguageDetectorCreateCoreOptions) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.LanguageDetectorDetectOptions) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -67,13 +68,13 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: detect
-pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.LanguageDetectorDetectOptions) ImplError!*const anyopaque {
+pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -81,7 +82,7 @@ pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, option
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.LanguageDetectorCreateOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

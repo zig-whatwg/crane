@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for animated
-pub fn get_animated(instance: *runtime.Instance) ImplError!bool {
+pub fn get_animated(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for frameCount
-pub fn get_frameCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_frameCount(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for repetitionCount
-pub fn get_repetitionCount(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_repetitionCount(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selected
-pub fn get_selected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_selected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for selected
-pub fn set_selected(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

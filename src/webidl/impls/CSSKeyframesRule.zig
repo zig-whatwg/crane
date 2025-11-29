@@ -40,46 +40,46 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cssRules
-pub fn get_cssRules(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: deleteRule
-pub fn call_deleteRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!void {
+pub fn call_deleteRule(instance: *runtime.Instance, select: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = select;
     return error.NotImplemented;
 }
 
 /// Operation: findRule
-pub fn call_findRule(instance: *runtime.Instance, select: typedefs.CSSOMString) ImplError!?*runtime.Instance {
+pub fn call_findRule(instance: *runtime.Instance, select: typedefs.CSSOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = select;
     return null;
 }
 
 /// Operation: appendRule
-pub fn call_appendRule(instance: *runtime.Instance, rule: typedefs.CSSOMString) ImplError!void {
+pub fn call_appendRule(instance: *runtime.Instance, rule: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = rule;
     return error.NotImplemented;

@@ -40,43 +40,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for src
-pub fn get_src(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_src(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for reasons
-pub fn get_reasons(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_reasons(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_children(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

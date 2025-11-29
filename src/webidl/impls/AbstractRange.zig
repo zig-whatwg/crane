@@ -72,7 +72,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for startContainer
 /// Spec: https://dom.spec.whatwg.org/#dom-range-startcontainer
 /// Returns the node at the start of the range
-pub fn get_startContainer(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_startContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     return state.own.startContainer;
 }
@@ -80,7 +80,7 @@ pub fn get_startContainer(instance: *runtime.Instance) !*runtime.Instance {
 /// Getter for startOffset
 /// Spec: https://dom.spec.whatwg.org/#dom-range-startoffset
 /// Returns the offset within the start node
-pub fn get_startOffset(instance: *runtime.Instance) !u32 {
+pub fn get_startOffset(instance: *runtime.Instance) anyerror!u32 {
     const state = instance.getState(State);
     return state.own.startOffset;
 }
@@ -88,7 +88,7 @@ pub fn get_startOffset(instance: *runtime.Instance) !u32 {
 /// Getter for endContainer
 /// Spec: https://dom.spec.whatwg.org/#dom-range-endcontainer
 /// Returns the node at the end of the range
-pub fn get_endContainer(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_endContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     return state.own.endContainer;
 }
@@ -96,7 +96,7 @@ pub fn get_endContainer(instance: *runtime.Instance) !*runtime.Instance {
 /// Getter for endOffset
 /// Spec: https://dom.spec.whatwg.org/#dom-range-endoffset
 /// Returns the offset within the end node
-pub fn get_endOffset(instance: *runtime.Instance) !u32 {
+pub fn get_endOffset(instance: *runtime.Instance) anyerror!u32 {
     const state = instance.getState(State);
     return state.own.endOffset;
 }
@@ -104,7 +104,7 @@ pub fn get_endOffset(instance: *runtime.Instance) !u32 {
 /// Getter for collapsed
 /// Spec: https://dom.spec.whatwg.org/#dom-range-collapsed
 /// Returns true if the range's start and end are the same position
-pub fn get_collapsed(instance: *runtime.Instance) !bool {
+pub fn get_collapsed(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.startContainer == state.own.endContainer and
         state.own.startOffset == state.own.endOffset;

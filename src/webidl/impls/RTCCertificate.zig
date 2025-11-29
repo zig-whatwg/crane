@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for expires
-pub fn get_expires(instance: *runtime.Instance) ImplError!typedefs.EpochTimeStamp {
+pub fn get_expires(instance: *runtime.Instance) anyerror!typedefs.EpochTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getFingerprints
-pub fn call_getFingerprints(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getFingerprints(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

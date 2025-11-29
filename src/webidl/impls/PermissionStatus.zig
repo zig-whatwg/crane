@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.PermissionState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.PermissionState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

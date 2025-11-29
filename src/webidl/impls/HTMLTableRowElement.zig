@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLTableRowElement = interfaces.HTMLTableRowElement;
 
 pub const State = HTMLTableRowElement.State;
@@ -52,97 +53,97 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for rowIndex
-pub fn get_rowIndex(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_rowIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sectionRowIndex
-pub fn get_sectionRowIndex(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_sectionRowIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cells
-pub fn get_cells(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cells(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ch
-pub fn get_ch(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ch(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for chOff
-pub fn get_chOff(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_chOff(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vAlign
-pub fn get_vAlign(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_vAlign(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bgColor
-pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ch
-pub fn set_ch(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ch(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for chOff
-pub fn set_chOff(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_chOff(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for vAlign
-pub fn set_vAlign(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_vAlign(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for bgColor
-pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: insertCell
-pub fn call_insertCell(instance: *runtime.Instance, index: i32) ImplError!*runtime.Instance {
+pub fn call_insertCell(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: deleteCell
-pub fn call_deleteCell(instance: *runtime.Instance, index: i32) ImplError!void {
+pub fn call_deleteCell(instance: *runtime.Instance, index: i32) anyerror!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;

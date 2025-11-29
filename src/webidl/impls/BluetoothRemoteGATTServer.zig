@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BluetoothRemoteGATTServer = interfaces.BluetoothRemoteGATTServer;
 
 pub const State = BluetoothRemoteGATTServer.State;
@@ -40,38 +41,38 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for device
-pub fn get_device(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_device(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connected
-pub fn get_connected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_connected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPrimaryServices
-pub fn call_getPrimaryServices(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) ImplError!*const anyopaque {
+pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) anyerror!*const anyopaque {
     _ = instance;
     _ = service;
     return error.NotImplemented;
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPrimaryService
-pub fn call_getPrimaryService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) ImplError!*const anyopaque {
+pub fn call_getPrimaryService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) anyerror!*const anyopaque {
     _ = instance;
     _ = service;
     return error.NotImplemented;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CanvasText = interfaces.CanvasText;
 
 pub const State = CanvasText.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: strokeText
-pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: f64) ImplError!void {
+pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
     _ = instance;
     _ = text;
     _ = x;
@@ -50,7 +51,7 @@ pub fn call_strokeText(instance: *runtime.Instance, text: runtime.DOMString, x: 
 }
 
 /// Operation: fillText
-pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: f64) ImplError!void {
+pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
     _ = instance;
     _ = text;
     _ = x;
@@ -60,7 +61,7 @@ pub fn call_fillText(instance: *runtime.Instance, text: runtime.DOMString, x: f6
 }
 
 /// Operation: measureText
-pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = text;
     return error.NotImplemented;

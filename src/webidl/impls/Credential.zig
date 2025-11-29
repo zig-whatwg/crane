@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: willRequestConditionalCreation
-pub fn call_willRequestConditionalCreation(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isConditionalMediationAvailable
-pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

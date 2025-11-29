@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: registerAnimator
-pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMString, animatorCtor: callbacks.AnimatorInstanceConstructor) ImplError!void {
+pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMString, animatorCtor: callbacks.AnimatorInstanceConstructor) anyerror!void {
     _ = instance;
     _ = name;
     _ = animatorCtor;

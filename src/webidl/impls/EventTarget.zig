@@ -10,6 +10,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const EventTarget = interfaces.EventTarget;
 
@@ -25,7 +26,7 @@ pub const ImplError = error{
 /// An event listener can be used to observe a specific event and consists of:
 pub const EventListenerRecord = struct {
     /// type (a string)
-    event_type: runtime.DOMString,
+    @"type": runtime.DOMString,
 
     /// callback (null or an EventListener callback)
     callback: ?*runtime.Instance,
@@ -80,8 +81,8 @@ pub const InternalState = struct {
             // Free any owned DOMStrings in event listeners
             const slice = list.toSliceMut();
             for (slice) |*listener| {
-                var event_type = listener.event_type;
-                event_type.deinit(self.allocator);
+                var @"type" = listener.@"type";
+                @"type".deinit(self.allocator);
             }
             list.deinit();
             self.allocator.destroy(list);
@@ -197,15 +198,15 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
 
 /// DOM §2.7 - default passive value
 /// The default passive value, given an event type type and an EventTarget eventTarget
-fn defaultPassiveValue(event_type: []const u8, event_target: *runtime.Instance) bool {
+fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) bool {
     _ = event_target;
     // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
     // AND eventTarget is Window or specific node conditions
     // For now, simplified: return true for touch/wheel events
-    if (std.mem.eql(u8, event_type, "touchstart") or
-        std.mem.eql(u8, event_type, "touchmove") or
-        std.mem.eql(u8, event_type, "wheel") or
-        std.mem.eql(u8, event_type, "mousewheel"))
+    if (std.mem.eql(u8, @"type", "touchstart") or
+        std.mem.eql(u8, @"type", "touchmove") or
+        std.mem.eql(u8, @"type", "wheel") or
+        std.mem.eql(u8, @"type", "mousewheel"))
     {
         // TODO: Check eventTarget conditions per spec
         return true;
@@ -239,7 +240,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
     // Step 4: If listener's passive is null, set it to default passive value
     var updated_listener = listener;
     if (updated_listener.passive == null) {
-        updated_listener.passive = defaultPassiveValue(listener.event_type.asSlice(), instance);
+        updated_listener.passive = defaultPassiveValue(listener.@"type".asSlice(), instance);
     }
 
     // Step 5: If event listener list does not contain matching listener, append it
@@ -248,7 +249,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 
     var already_exists = false;
     for (slice) |existing| {
-        if (std.mem.eql(u8, existing.event_type.asSlice(), listener.event_type.asSlice()) and
+        if (std.mem.eql(u8, existing.@"type".asSlice(), listener.@"type".asSlice()) and
             existing.capture == listener.capture and
             callbackEquals(existing.callback, listener.callback))
         {
@@ -281,7 +282,7 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
         const existing = &slice[i];
 
         // Match on type, callback, and capture
-        if (std.mem.eql(u8, existing.event_type.asSlice(), listener.event_type.asSlice()) and
+        if (std.mem.eql(u8, existing.@"type".asSlice(), listener.@"type".asSlice()) and
             existing.capture == listener.capture and
             callbackEquals(existing.callback, listener.callback))
         {
@@ -295,7 +296,7 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 
 /// Operation: addEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
-pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {
@@ -317,7 +318,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DO
 
     // Create listener record
     const listener = EventListenerRecord{
-        .event_type = event_type,
+        .@"type" = @"type",
         .callback = callback,
         .capture = capture,
         .passive = passive,
@@ -330,7 +331,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, event_type: runtime.DO
 
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
-pub fn call_removeEventListener(instance: *runtime.Instance, event_type: runtime.DOMString, callback: *runtime.Instance, options: *const anyopaque) ImplError!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
     const internal = getInternalFromRegistry(instance) orelse return;
 
     // Flatten options
@@ -339,7 +340,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, event_type: runtime
 
     // Create listener record for matching
     const listener = EventListenerRecord{
-        .event_type = event_type,
+        .@"type" = @"type",
         .callback = callback,
         .capture = capture,
     };
@@ -349,7 +350,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, event_type: runtime
 
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
-pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) ImplError!bool {
+pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
     // Get Event impl to check flags
     const EventImpl = @import("Event.zig");
 
@@ -376,12 +377,12 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
         EventImpl.setTarget(event, instance);
 
         // Get listeners for this event type
-        const event_type = EventImpl.get_type(event) catch return true;
+        const @"type" = EventImpl.get_type(event) catch return true;
         const listeners = int.getEventListenerList();
 
         // Invoke matching listeners
         for (listeners) |listener| {
-            if (std.mem.eql(u8, listener.event_type.asSlice(), event_type.asSlice()) and
+            if (std.mem.eql(u8, listener.@"type".asSlice(), @"type".asSlice()) and
                 !listener.removed)
             {
                 // TODO: Actually invoke the callback
@@ -402,9 +403,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 /// Operation: when (Observable)
 /// Spec: https://wicg.github.io/observable-api/#dom-eventtarget-when
 /// This is part of the Observable API proposal
-pub fn call_when(instance: *runtime.Instance, event_type: runtime.DOMString, options: dictionaries.ObservableEventListenerOptions) ImplError!*runtime.Instance {
+pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: webidl.Opt(dictionaries.ObservableEventListenerOptions)) anyerror!*runtime.Instance {
     _ = instance;
-    _ = event_type;
+    _ = @"type";
     _ = options;
     // TODO: Implement Observable API
     return error.NotImplemented;
@@ -435,12 +436,12 @@ pub fn getNodeType(instance: *runtime.Instance) u16 {
 }
 
 /// Get all event listeners for a specific type
-pub fn getEventListenersForType(instance: *runtime.Instance, event_type: []const u8) []const EventListenerRecord {
+pub fn getEventListenersForType(instance: *runtime.Instance, @"type": []const u8) []const EventListenerRecord {
     const internal = getInternalFromRegistry(instance) orelse return &[_]EventListenerRecord{};
     const list = internal.event_listener_list orelse return &[_]EventListenerRecord{};
 
     // Note: This returns all listeners, caller should filter by type
     // In a real implementation, we'd return a filtered view
-    _ = event_type;
+    _ = @"type";
     return list.toSlice();
 }

@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for session
-pub fn get_session(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_session(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for added
-pub fn get_added(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_added(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for removed
-pub fn get_removed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_removed(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

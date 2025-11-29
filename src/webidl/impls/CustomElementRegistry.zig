@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CustomElementRegistry = interfaces.CustomElementRegistry;
 
 pub const State = CustomElementRegistry.State;
@@ -52,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: define
-pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor_data: callbacks.CustomElementConstructor, options: dictionaries.ElementDefinitionOptions) ImplError!void {
+pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor_data: callbacks.CustomElementConstructor, options: webidl.Opt(dictionaries.ElementDefinitionOptions)) anyerror!void {
     _ = instance;
     _ = name;
     _ = constructor_data;
@@ -61,35 +62,35 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: getName
-pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.CustomElementConstructor) ImplError!?runtime.DOMString {
+pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.CustomElementConstructor) anyerror!?runtime.DOMString {
     _ = instance;
     _ = constructor_data;
     return null;
 }
 
 /// Operation: upgrade
-pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) ImplError!void {
+pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = root;
     return error.NotImplemented;
 }
 
 /// Operation: initialize
-pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) ImplError!void {
+pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = root;
     return error.NotImplemented;
 }
 
 /// Operation: whenDefined
-pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;

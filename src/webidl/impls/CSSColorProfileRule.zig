@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for src
-pub fn get_src(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_src(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for renderingIntent
-pub fn get_renderingIntent(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_renderingIntent(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for components
-pub fn get_components(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_components(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

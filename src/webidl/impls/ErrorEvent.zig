@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ErrorEvent = interfaces.ErrorEvent;
 
 pub const State = ErrorEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.ErrorEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ErrorEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,31 +55,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for filename
-pub fn get_filename(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_filename(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineno
-pub fn get_lineno(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_lineno(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for colno
-pub fn get_colno(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_error(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

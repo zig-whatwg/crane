@@ -40,45 +40,45 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for iceTransport
-pub fn get_iceTransport(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_iceTransport(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.RTCDtlsTransportState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.RTCDtlsTransportState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getRemoteCertificates
-pub fn call_getRemoteCertificates(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

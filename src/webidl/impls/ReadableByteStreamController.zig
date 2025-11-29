@@ -249,7 +249,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: https://streams.spec.whatwg.org/#rbs-controller-byob-request
 /// NOTE: Interface generator bug - should return ?*runtime.Instance per IDL
-pub fn get_byobRequest(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_byobRequest(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // Note: Returns NullValue error when byobRequest is null because interface generator
@@ -261,7 +261,7 @@ pub fn get_byobRequest(instance: *runtime.Instance) ImplError!*runtime.Instance 
 ///
 /// Spec: https://streams.spec.whatwg.org/#rbs-controller-desired-size
 /// NOTE: Interface generator bug - should return ?f64 per IDL
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -275,7 +275,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 /// Operation: close
 ///
 /// Spec: § 4.7.3 "The close() method steps are:"
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -300,7 +300,7 @@ pub fn call_close(instance: *runtime.Instance) ImplError!void {
 /// Operation: enqueue
 ///
 /// Spec: § 4.7.3 "The enqueue(chunk) method steps are:"
-pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView) ImplError!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -334,7 +334,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
 /// Operation: error
 ///
 /// Spec: § 4.7.3 "The error(e) method steps are:"
-pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

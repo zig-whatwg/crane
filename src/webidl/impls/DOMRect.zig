@@ -12,6 +12,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DOMRect = interfaces.DOMRect;
 const DOMRectReadOnlyImpl = @import("DOMRectReadOnly.zig");
 
@@ -70,13 +71,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: f64, y: f64, width: f64, height: f64) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
     return initWithDimensions(allocator, ctx, x, y, width, height);
 }
 
 /// Getter for x
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-x
-pub fn get_x(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
     const state = getState(instance);
     return state.own.x;
 }
@@ -89,7 +90,7 @@ pub fn set_x(instance: *runtime.Instance, value: f64) ImplError!void {
 
 /// Getter for y
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-y
-pub fn get_y(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
     const state = getState(instance);
     return state.own.y;
 }
@@ -102,7 +103,7 @@ pub fn set_y(instance: *runtime.Instance, value: f64) ImplError!void {
 
 /// Getter for width
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-width
-pub fn get_width(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
     const state = getState(instance);
     return state.own.width;
 }
@@ -115,7 +116,7 @@ pub fn set_width(instance: *runtime.Instance, value: f64) ImplError!void {
 
 /// Getter for height
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-height
-pub fn get_height(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
     const state = getState(instance);
     return state.own.height;
 }
@@ -129,7 +130,7 @@ pub fn set_height(instance: *runtime.Instance, value: f64) ImplError!void {
 /// Operation: fromRect (static)
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-fromrect
 /// Creates a new DOMRect from a DOMRectInit dictionary
-pub fn call_fromRect(instance: *runtime.Instance, other: dictionaries.DOMRectInit) ImplError!*runtime.Instance {
+pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
     const ctx = instance.ctx;
 
     // Extract values from dictionary with defaults

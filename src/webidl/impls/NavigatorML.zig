@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ml
-pub fn get_ml(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,45 +40,45 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for scriptURL
-pub fn get_scriptURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_scriptURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.ServiceWorkerState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.ServiceWorkerState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
     _ = instance;
     _ = message;
     _ = transfer;

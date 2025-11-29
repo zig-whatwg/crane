@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for namespaceURI
-pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for prefix
-pub fn get_prefix(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_prefix(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

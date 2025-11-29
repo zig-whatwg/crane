@@ -53,19 +53,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for sampleInterval
-pub fn get_sampleInterval(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_sampleInterval(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stopped
-pub fn get_stopped(instance: *runtime.Instance) ImplError!bool {
+pub fn get_stopped(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_stop(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IDBDatabase = interfaces.IDBDatabase;
 
 pub const State = IDBDatabase.State;
@@ -40,77 +41,77 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for version
-pub fn get_version(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_version(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for objectStoreNames
-pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onclose
-pub fn get_onclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onversionchange
-pub fn get_onversionchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onversionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onclose
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onversionchange
-pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: enums.IDBTransactionMode, options: dictionaries.IDBTransactionOptions) ImplError!*runtime.Instance {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = storeNames;
     _ = mode;
@@ -119,7 +120,7 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaqu
 }
 
 /// Operation: createObjectStore
-pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.IDBObjectStoreParameters) ImplError!*runtime.Instance {
+pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.IDBObjectStoreParameters)) anyerror!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = options;
@@ -127,13 +128,13 @@ pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMStri
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteObjectStore
-pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) ImplError!void {
+pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = name;
     return error.NotImplemented;

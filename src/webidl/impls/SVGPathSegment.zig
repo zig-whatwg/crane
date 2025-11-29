@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for values
-pub fn get_values(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_values(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for values
-pub fn set_values(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_values(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

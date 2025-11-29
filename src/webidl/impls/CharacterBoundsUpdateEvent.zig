@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CharacterBoundsUpdateEvent = interfaces.CharacterBoundsUpdateEvent;
 
 pub const State = CharacterBoundsUpdateEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, options: dictionaries.CharacterBoundsUpdateEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, options: webidl.Opt(dictionaries.CharacterBoundsUpdateEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CharacterBoundsUpdateEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

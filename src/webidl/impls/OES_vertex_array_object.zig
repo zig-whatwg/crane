@@ -40,27 +40,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: bindVertexArrayOES
-pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!void {
+pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;
 }
 
 /// Operation: createVertexArrayOES
-pub fn call_createVertexArrayOES(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createVertexArrayOES(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteVertexArrayOES
-pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!void {
+pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;
 }
 
 /// Operation: isVertexArrayOES
-pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: *runtime.Instance) ImplError!typedefs.GLboolean {
+pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!typedefs.GLboolean {
     _ = instance;
     _ = arrayObject;
     return error.NotImplemented;

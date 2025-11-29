@@ -40,85 +40,85 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for advances
-pub fn get_advances(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_advances(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boundingBoxLeft
-pub fn get_boundingBoxLeft(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_boundingBoxLeft(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boundingBoxRight
-pub fn get_boundingBoxRight(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_boundingBoxRight(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for emHeightAscent
-pub fn get_emHeightAscent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_emHeightAscent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for emHeightDescent
-pub fn get_emHeightDescent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_emHeightDescent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boundingBoxAscent
-pub fn get_boundingBoxAscent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_boundingBoxAscent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boundingBoxDescent
-pub fn get_boundingBoxDescent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_boundingBoxDescent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fontBoundingBoxAscent
-pub fn get_fontBoundingBoxAscent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_fontBoundingBoxAscent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fontBoundingBoxDescent
-pub fn get_fontBoundingBoxDescent(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_fontBoundingBoxDescent(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dominantBaseline
-pub fn get_dominantBaseline(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_dominantBaseline(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for baselines
-pub fn get_baselines(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_baselines(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fonts
-pub fn get_fonts(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_fonts(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

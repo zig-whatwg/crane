@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transport
-pub fn get_transport(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.RTCSctpTransportState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.RTCSctpTransportState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maxMessageSize
-pub fn get_maxMessageSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_maxMessageSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maxChannels
-pub fn get_maxChannels(instance: *runtime.Instance) ImplError!?u16 {
+pub fn get_maxChannels(instance: *runtime.Instance) anyerror!?u16 {
     _ = instance;
     return null;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

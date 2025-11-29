@@ -52,71 +52,71 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for content
-pub fn get_content(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_content(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRootMode
-pub fn get_shadowRootMode(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_shadowRootMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRootDelegatesFocus
-pub fn get_shadowRootDelegatesFocus(instance: *runtime.Instance) ImplError!bool {
+pub fn get_shadowRootDelegatesFocus(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRootClonable
-pub fn get_shadowRootClonable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_shadowRootClonable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRootSerializable
-pub fn get_shadowRootSerializable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_shadowRootSerializable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowRootCustomElementRegistry
-pub fn get_shadowRootCustomElementRegistry(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_shadowRootCustomElementRegistry(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for shadowRootMode
-pub fn set_shadowRootMode(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_shadowRootMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowRootDelegatesFocus
-pub fn set_shadowRootDelegatesFocus(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_shadowRootDelegatesFocus(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowRootClonable
-pub fn set_shadowRootClonable(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_shadowRootClonable(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowRootSerializable
-pub fn set_shadowRootSerializable(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_shadowRootSerializable(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowRootCustomElementRegistry
-pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

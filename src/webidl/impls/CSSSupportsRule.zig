@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for matches
-pub fn get_matches(instance: *runtime.Instance) ImplError!bool {
+pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

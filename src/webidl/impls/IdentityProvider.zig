@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IdentityProvider = interfaces.IdentityProvider;
 
 pub const State = IdentityProvider.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: resolve
-pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: dictionaries.IdentityResolveOptions) ImplError!*const anyopaque {
+pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = token;
     _ = options;
@@ -48,14 +49,14 @@ pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, option
 }
 
 /// Operation: getUserInfo
-pub fn call_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) ImplError!*const anyopaque {
+pub fn call_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

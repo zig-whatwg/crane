@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for notification
-pub fn get_notification(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_notification(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for action
-pub fn get_action(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_action(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

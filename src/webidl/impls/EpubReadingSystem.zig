@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const EpubReadingSystem = interfaces.EpubReadingSystem;
 
 pub const State = EpubReadingSystem.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: hasFeature
-pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, version: runtime.DOMString) ImplError!bool {
+pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, version: webidl.Opt(runtime.DOMString)) anyerror!bool {
     _ = instance;
     _ = feature;
     _ = version;

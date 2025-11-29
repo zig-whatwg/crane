@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for frameType
-pub fn get_frameType(instance: *runtime.Instance) ImplError!enums.FrameType {
+pub fn get_frameType(instance: *runtime.Instance) anyerror!enums.FrameType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.ClientType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.ClientType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lifecycleState
-pub fn get_lifecycleState(instance: *runtime.Instance) ImplError!enums.ClientLifecycleState {
+pub fn get_lifecycleState(instance: *runtime.Instance) anyerror!enums.ClientLifecycleState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
     _ = instance;
     _ = message;
     _ = transfer;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemDirectoryReader = interfaces.FileSystemDirectoryReader;
 
 pub const State = FileSystemDirectoryReader.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: readEntries
-pub fn call_readEntries(instance: *runtime.Instance, successCallback: callbacks.FileSystemEntriesCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_readEntries(instance: *runtime.Instance, successCallback: callbacks.FileSystemEntriesCallback, errorCallback: webidl.Opt(callbacks.ErrorCallback)) anyerror!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

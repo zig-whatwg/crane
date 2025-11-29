@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, initialRanges: []const *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Highlight.vtable, ctx);
     errdefer deinit(instance);
@@ -53,26 +53,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for priority
-pub fn get_priority(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_priority(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.HighlightType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.HighlightType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for priority
-pub fn set_priority(instance: *runtime.Instance, value: i32) ImplError!void {
+pub fn set_priority(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: enums.HighlightType) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: enums.HighlightType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

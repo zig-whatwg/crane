@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for currentFrame
-pub fn get_currentFrame(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_currentFrame(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sampleRate
-pub fn get_sampleRate(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_sampleRate(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for renderQuantumSize
-pub fn get_renderQuantumSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_renderQuantumSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: registerProcessor
-pub fn call_registerProcessor(instance: *runtime.Instance, name: runtime.DOMString, processorCtor: callbacks.AudioWorkletProcessorConstructor) ImplError!void {
+pub fn call_registerProcessor(instance: *runtime.Instance, name: runtime.DOMString, processorCtor: callbacks.AudioWorkletProcessorConstructor) anyerror!void {
     _ = instance;
     _ = name;
     _ = processorCtor;

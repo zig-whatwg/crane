@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setStatus
-pub fn call_setStatus(instance: *runtime.Instance, status: enums.LoginStatus) ImplError!*const anyopaque {
+pub fn call_setStatus(instance: *runtime.Instance, status: enums.LoginStatus) anyerror!*const anyopaque {
     _ = instance;
     _ = status;
     return error.NotImplemented;

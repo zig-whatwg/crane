@@ -52,13 +52,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for clear
-pub fn get_clear(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_clear(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for clear
-pub fn set_clear(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_clear(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

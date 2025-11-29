@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: restore
-pub fn call_restore(instance: *runtime.Instance) ImplError!void {
+pub fn call_restore(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isContextLost
-pub fn call_isContextLost(instance: *runtime.Instance) ImplError!bool {
+pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: save
-pub fn call_save(instance: *runtime.Instance) ImplError!void {
+pub fn call_save(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawArraysInstancedANGLE
-pub fn call_drawArraysInstancedANGLE(instance: *runtime.Instance, mode: typedefs.GLenum, first: typedefs.GLint, count: typedefs.GLsizei, primcount: typedefs.GLsizei) ImplError!void {
+pub fn call_drawArraysInstancedANGLE(instance: *runtime.Instance, mode: typedefs.GLenum, first: typedefs.GLint, count: typedefs.GLsizei, primcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = first;
@@ -50,7 +50,7 @@ pub fn call_drawArraysInstancedANGLE(instance: *runtime.Instance, mode: typedefs
 }
 
 /// Operation: vertexAttribDivisorANGLE
-pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: typedefs.GLuint, divisor: typedefs.GLuint) ImplError!void {
+pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: typedefs.GLuint, divisor: typedefs.GLuint) anyerror!void {
     _ = instance;
     _ = index;
     _ = divisor;
@@ -58,7 +58,7 @@ pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: typedef
 }
 
 /// Operation: drawElementsInstancedANGLE
-pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: typedefs.GLenum, count: typedefs.GLsizei, @"type": typedefs.GLenum, offset: typedefs.GLintptr, primcount: typedefs.GLsizei) ImplError!void {
+pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: typedefs.GLenum, count: typedefs.GLsizei, @"type": typedefs.GLenum, offset: typedefs.GLintptr, primcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = count;

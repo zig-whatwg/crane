@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for tag
-pub fn get_tag(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_tag(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

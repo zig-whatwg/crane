@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for reason
-pub fn get_reason(instance: *runtime.Instance) ImplError!enums.GPUDeviceLostReason {
+pub fn get_reason(instance: *runtime.Instance) anyerror!enums.GPUDeviceLostReason {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

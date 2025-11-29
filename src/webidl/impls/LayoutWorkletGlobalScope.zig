@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: registerLayout
-pub fn call_registerLayout(instance: *runtime.Instance, name: runtime.DOMString, layoutCtor: callbacks.VoidFunction) ImplError!void {
+pub fn call_registerLayout(instance: *runtime.Instance, name: runtime.DOMString, layoutCtor: callbacks.VoidFunction) anyerror!void {
     _ = instance;
     _ = name;
     _ = layoutCtor;

@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sharedStorageWritable
-pub fn get_sharedStorageWritable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for sharedStorageWritable
-pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

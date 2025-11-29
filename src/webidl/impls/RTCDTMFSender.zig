@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCDTMFSender = interfaces.RTCDTMFSender;
 
 pub const State = RTCDTMFSender.State;
@@ -40,32 +41,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ontonechange
-pub fn get_ontonechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ontonechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for canInsertDTMF
-pub fn get_canInsertDTMF(instance: *runtime.Instance) ImplError!bool {
+pub fn get_canInsertDTMF(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for toneBuffer
-pub fn get_toneBuffer(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_toneBuffer(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ontonechange
-pub fn set_ontonechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ontonechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: insertDTMF
-pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: u32, interToneGap: u32) ImplError!void {
+pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
     _ = instance;
     _ = tones;
     _ = duration;

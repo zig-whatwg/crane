@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

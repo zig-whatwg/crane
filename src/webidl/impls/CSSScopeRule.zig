@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for start
-pub fn get_start(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_start(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for end
-pub fn get_end(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_end(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }

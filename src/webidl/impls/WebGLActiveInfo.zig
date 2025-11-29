@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!typedefs.GLint {
+pub fn get_size(instance: *runtime.Instance) anyerror!typedefs.GLint {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!typedefs.GLenum {
+pub fn get_type(instance: *runtime.Instance) anyerror!typedefs.GLenum {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

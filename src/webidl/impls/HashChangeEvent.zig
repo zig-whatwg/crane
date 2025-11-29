@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HashChangeEvent = interfaces.HashChangeEvent;
 
 pub const State = HashChangeEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.HashChangeEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.HashChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &HashChangeEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for oldURL
-pub fn get_oldURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_oldURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for newURL
-pub fn get_newURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_newURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

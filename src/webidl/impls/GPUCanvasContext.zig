@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: unconfigure
-pub fn call_unconfigure(instance: *runtime.Instance) ImplError!void {
+pub fn call_unconfigure(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: configure
-pub fn call_configure(instance: *runtime.Instance, configuration: dictionaries.GPUCanvasConfiguration) ImplError!void {
+pub fn call_configure(instance: *runtime.Instance, configuration: dictionaries.GPUCanvasConfiguration) anyerror!void {
     _ = instance;
     _ = configuration;
     return error.NotImplemented;
 }
 
 /// Operation: getConfiguration
-pub fn call_getConfiguration(instance: *runtime.Instance) ImplError!?dictionaries.GPUCanvasConfiguration {
+pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!?dictionaries.GPUCanvasConfiguration {
     _ = instance;
     return null;
 }
 
 /// Operation: getCurrentTexture
-pub fn call_getCurrentTexture(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getCurrentTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

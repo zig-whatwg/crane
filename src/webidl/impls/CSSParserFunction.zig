@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for args
-pub fn get_args(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_args(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

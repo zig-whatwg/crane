@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createScriptURL
-pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -54,7 +54,7 @@ pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMStrin
 }
 
 /// Operation: createHTML
-pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;
@@ -62,7 +62,7 @@ pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, ar
 }
 
 /// Operation: createScript
-pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = arguments;

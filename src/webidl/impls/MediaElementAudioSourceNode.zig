@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for mediaElement
-pub fn get_mediaElement(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_mediaElement(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

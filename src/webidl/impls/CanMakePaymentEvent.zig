@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: respondWith
-pub fn call_respondWith(instance: *runtime.Instance, canMakePaymentResponse: *const anyopaque) ImplError!void {
+pub fn call_respondWith(instance: *runtime.Instance, canMakePaymentResponse: *const anyopaque) anyerror!void {
     _ = instance;
     _ = canMakePaymentResponse;
     return error.NotImplemented;

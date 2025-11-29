@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, devi
 }
 
 /// Getter for configurationValue
-pub fn get_configurationValue(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_configurationValue(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for configurationName
-pub fn get_configurationName(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_configurationName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for interfaces
-pub fn get_interfaces(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_interfaces(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

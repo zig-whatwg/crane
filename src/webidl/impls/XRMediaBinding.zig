@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const XRMediaBinding = interfaces.XRMediaBinding;
 
 pub const State = XRMediaBinding.State;
@@ -53,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sess
 }
 
 /// Operation: createCylinderLayer
-pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaCylinderLayerInit) ImplError!*runtime.Instance {
+pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRMediaCylinderLayerInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;
@@ -61,7 +62,7 @@ pub fn call_createCylinderLayer(instance: *runtime.Instance, video: *runtime.Ins
 }
 
 /// Operation: createQuadLayer
-pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaQuadLayerInit) ImplError!*runtime.Instance {
+pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRMediaQuadLayerInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;
@@ -69,7 +70,7 @@ pub fn call_createQuadLayer(instance: *runtime.Instance, video: *runtime.Instanc
 }
 
 /// Operation: createEquirectLayer
-pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: dictionaries.XRMediaEquirectLayerInit) ImplError!*runtime.Instance {
+pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Instance, init_data: webidl.Opt(dictionaries.XRMediaEquirectLayerInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = video;
     _ = init_data;

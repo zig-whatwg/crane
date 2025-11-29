@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BackgroundFetchManager = interfaces.BackgroundFetchManager;
 
 pub const State = BackgroundFetchManager.State;
@@ -40,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: *const anyopaque, options: dictionaries.BackgroundFetchOptions) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: *const anyopaque, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = id;
     _ = requests;
@@ -56,7 +57,7 @@ pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: 
 }
 
 /// Operation: getIds
-pub fn call_getIds(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

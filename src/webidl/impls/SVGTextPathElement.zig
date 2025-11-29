@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for startOffset
-pub fn get_startOffset(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_startOffset(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for method
-pub fn get_method(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_method(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for spacing
-pub fn get_spacing(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_spacing(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

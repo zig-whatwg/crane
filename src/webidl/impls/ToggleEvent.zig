@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ToggleEvent = interfaces.ToggleEvent;
 
 pub const State = ToggleEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.ToggleEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ToggleEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ToggleEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for oldState
-pub fn get_oldState(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_oldState(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for newState
-pub fn get_newState(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_newState(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_source(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

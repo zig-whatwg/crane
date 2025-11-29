@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ImageCapture = interfaces.ImageCapture;
 
 pub const State = ImageCapture.State;
@@ -53,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, vide
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPhotoCapabilities
-pub fn call_getPhotoCapabilities(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: grabFrame
-pub fn call_grabFrame(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_grabFrame(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPhotoSettings
-pub fn call_getPhotoSettings(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: takePhoto
-pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: dictionaries.PhotoSettings) ImplError!*const anyopaque {
+pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(dictionaries.PhotoSettings)) anyerror!*const anyopaque {
     _ = instance;
     _ = photoSettings;
     return error.NotImplemented;

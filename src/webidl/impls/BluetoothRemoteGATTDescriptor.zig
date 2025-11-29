@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for characteristic
-pub fn get_characteristic(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_characteristic(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for uuid
-pub fn get_uuid(instance: *runtime.Instance) ImplError!typedefs.UUID {
+pub fn get_uuid(instance: *runtime.Instance) anyerror!typedefs.UUID {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Operation: writeValue
-pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: readValue
-pub fn call_readValue(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

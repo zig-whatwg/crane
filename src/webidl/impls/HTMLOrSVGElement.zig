@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLOrSVGElement = interfaces.HTMLOrSVGElement;
 
 pub const State = HTMLOrSVGElement.State;
@@ -40,58 +41,58 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for dataset
-pub fn get_dataset(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for nonce
-pub fn get_nonce(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for autofocus
-pub fn get_autofocus(instance: *runtime.Instance) ImplError!bool {
+pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tabIndex
-pub fn get_tabIndex(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for nonce
-pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for autofocus
-pub fn set_autofocus(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tabIndex
-pub fn set_tabIndex(instance: *runtime.Instance, value: i32) ImplError!void {
+pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: blur
-pub fn call_blur(instance: *runtime.Instance) ImplError!void {
+pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: focus
-pub fn call_focus(instance: *runtime.Instance, options: dictionaries.FocusOptions) ImplError!void {
+pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

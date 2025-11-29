@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getTags
-pub fn call_getTags(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getTags(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = tag;
     return error.NotImplemented;

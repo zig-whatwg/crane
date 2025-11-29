@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

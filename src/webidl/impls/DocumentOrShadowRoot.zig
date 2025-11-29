@@ -40,56 +40,56 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for customElementRegistry
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for fullscreenElement
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for pictureInPictureElement
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for pointerLockElement
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for styleSheets
-pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for adoptedStyleSheets
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeElement
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for adoptedStyleSheets
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getAnimations
-pub fn call_getAnimations(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

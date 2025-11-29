@@ -54,39 +54,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncomplete
-pub fn get_oncomplete(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncomplete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for oncomplete
-pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: suspend
-pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) ImplError!*const anyopaque {
+pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!*const anyopaque {
     _ = instance;
     _ = suspendTime;
     return error.NotImplemented;
 }
 
 /// Operation: startRendering
-pub fn call_startRendering(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_startRendering(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: resume
-pub fn call_resume(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

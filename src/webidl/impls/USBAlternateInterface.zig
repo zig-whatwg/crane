@@ -54,37 +54,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, devi
 }
 
 /// Getter for alternateSetting
-pub fn get_alternateSetting(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_alternateSetting(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interfaceClass
-pub fn get_interfaceClass(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_interfaceClass(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interfaceSubclass
-pub fn get_interfaceSubclass(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_interfaceSubclass(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interfaceProtocol
-pub fn get_interfaceProtocol(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_interfaceProtocol(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interfaceName
-pub fn get_interfaceName(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_interfaceName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for endpoints
-pub fn get_endpoints(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_endpoints(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

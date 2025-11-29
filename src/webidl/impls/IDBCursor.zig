@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IDBCursor = interfaces.IDBCursor;
 
 pub const State = IDBCursor.State;
@@ -40,50 +41,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_source(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) ImplError!enums.IDBCursorDirection {
+pub fn get_direction(instance: *runtime.Instance) anyerror!enums.IDBCursorDirection {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_key(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryKey
-pub fn get_primaryKey(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_primaryKey(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for request
-pub fn get_request(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_request(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: continue
-pub fn call_continue(instance: *runtime.Instance, key: *const anyopaque) ImplError!void {
+pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = key;
     return error.NotImplemented;
 }
 
 /// Operation: continuePrimaryKey
-pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaque, primaryKey: *const anyopaque) ImplError!void {
+pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaque, primaryKey: *const anyopaque) anyerror!void {
     _ = instance;
     _ = key;
     _ = primaryKey;
@@ -91,14 +92,14 @@ pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaqu
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: advance
-pub fn call_advance(instance: *runtime.Instance, count: u32) ImplError!void {
+pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
     _ = instance;
     _ = count;
     return error.NotImplemented;

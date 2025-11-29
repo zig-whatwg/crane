@@ -52,71 +52,71 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for zoomLevel
-pub fn get_zoomLevel(instance: *runtime.Instance) ImplError!?i32 {
+pub fn get_zoomLevel(instance: *runtime.Instance) anyerror!?i32 {
     _ = instance;
     return null;
 }
 
 /// Getter for onzoomlevelchange
-pub fn get_onzoomlevelchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onzoomlevelchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncapturedmousechange
-pub fn get_oncapturedmousechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncapturedmousechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onzoomlevelchange
-pub fn set_onzoomlevelchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onzoomlevelchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncapturedmousechange
-pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: increaseZoomLevel
-pub fn call_increaseZoomLevel(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_increaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: forwardWheel
-pub fn call_forwardWheel(instance: *runtime.Instance, element: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = element;
     return error.NotImplemented;
 }
 
 /// Operation: setFocusBehavior
-pub fn call_setFocusBehavior(instance: *runtime.Instance, focusBehavior: enums.CaptureStartFocusBehavior) ImplError!void {
+pub fn call_setFocusBehavior(instance: *runtime.Instance, focusBehavior: enums.CaptureStartFocusBehavior) anyerror!void {
     _ = instance;
     _ = focusBehavior;
     return error.NotImplemented;
 }
 
 /// Operation: decreaseZoomLevel
-pub fn call_decreaseZoomLevel(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_decreaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: resetZoomLevel
-pub fn call_resetZoomLevel(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_resetZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSupportedZoomLevels
-pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

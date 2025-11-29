@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_key(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryKey
-pub fn get_primaryKey(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_primaryKey(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

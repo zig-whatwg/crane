@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onbufferedchange
-pub fn get_onbufferedchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onbufferedchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onbufferedchange
-pub fn set_onbufferedchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onbufferedchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

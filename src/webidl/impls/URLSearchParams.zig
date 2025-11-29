@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const URLSearchParams = interfaces.URLSearchParams;
 
@@ -75,11 +76,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Takes union type: (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
 /// The init_data parameter is a type-erased pointer that we need to interpret
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    init_data: *const anyopaque,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // For now, treat as empty string
     // Proper union type handling requires runtime type tags
     _ = init_data;
@@ -247,7 +244,7 @@ fn updateSteps(instance: *runtime.Instance) !void {
 
 /// size getter
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-size (line 2062)
-pub fn get_size(instance: *runtime.Instance) !u32 {
+pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return @intCast(internal.list.len);
@@ -259,11 +256,7 @@ pub fn get_size(instance: *runtime.Instance) !u32 {
 
 /// append method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-append (lines 2064-2066)
-pub fn call_append(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-    value: runtime.USVString,
-) !void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -283,11 +276,7 @@ pub fn call_append(
 
 /// delete method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-delete (lines 2068-2073)
-pub fn call_delete(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-    value: runtime.USVString,
-) !void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -318,10 +307,7 @@ pub fn call_delete(
 
 /// get method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-get (lines 2075-2080)
-pub fn call_get(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-) !runtime.USVString {
+pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -340,10 +326,7 @@ pub fn call_get(
 
 /// getAll method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-getall (lines 2082-2091)
-pub fn call_getAll(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-) !*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -375,11 +358,7 @@ pub fn call_getAll(
 
 /// has method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-has (lines 2093-2098)
-pub fn call_has(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-    value: runtime.USVString,
-) !bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -401,11 +380,7 @@ pub fn call_has(
 
 /// set method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-set (lines 2100-2109)
-pub fn call_set(
-    instance: *runtime.Instance,
-    name: runtime.USVString,
-    value: runtime.USVString,
-) !void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -459,7 +434,7 @@ pub fn call_set(
 
 /// sort method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-sort (lines 2111-2113)
-pub fn call_sort(instance: *runtime.Instance) !void {
+pub fn call_sort(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -477,10 +452,7 @@ pub fn call_sort(instance: *runtime.Instance) !void {
 
 /// forEach method
 /// Spec: WebIDL iterable forEach
-pub fn call_forEach(
-    instance: *runtime.Instance,
-    callback: *const anyopaque,
-) !void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
 

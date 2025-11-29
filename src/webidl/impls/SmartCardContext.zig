@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SmartCardContext = interfaces.SmartCardContext;
 
 pub const State = SmartCardContext.State;
@@ -40,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: listReaders
-pub fn call_listReaders(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_listReaders(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getStatusChange
-pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: dictionaries.SmartCardGetStatusChangeOptions) ImplError!*const anyopaque {
+pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(dictionaries.SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = readerStates;
     _ = options;
@@ -54,7 +55,7 @@ pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const an
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: dictionaries.SmartCardConnectOptions) ImplError!*const anyopaque {
+pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: webidl.Opt(dictionaries.SmartCardConnectOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = readerName;
     _ = accessMode;

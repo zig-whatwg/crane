@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const XMLHttpRequest = interfaces.XMLHttpRequest;
 
 pub const State = XMLHttpRequest.State;
@@ -52,121 +53,121 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for onreadystatechange
-pub fn get_onreadystatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for readyState
-pub fn get_readyState(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timeout
-pub fn get_timeout(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_timeout(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for withCredentials
-pub fn get_withCredentials(instance: *runtime.Instance) ImplError!bool {
+pub fn get_withCredentials(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upload
-pub fn get_upload(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseURL
-pub fn get_responseURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_responseURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for status
-pub fn get_status(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_status(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for statusText
-pub fn get_statusText(instance: *runtime.Instance) ImplError!runtime.ByteString {
+pub fn get_statusText(instance: *runtime.Instance) anyerror!runtime.ByteString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseType
-pub fn get_responseType(instance: *runtime.Instance) ImplError!enums.XMLHttpRequestResponseType {
+pub fn get_responseType(instance: *runtime.Instance) anyerror!enums.XMLHttpRequestResponseType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for response
-pub fn get_response(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_response(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseText
-pub fn get_responseText(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_responseText(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseXML
-pub fn get_responseXML(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for onreadystatechange
-pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for timeout
-pub fn set_timeout(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_timeout(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for withCredentials
-pub fn set_withCredentials(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_withCredentials(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for responseType
-pub fn set_responseType(instance: *runtime.Instance, value: enums.XMLHttpRequestResponseType) ImplError!void {
+pub fn set_responseType(instance: *runtime.Instance, value: enums.XMLHttpRequestResponseType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setPrivateToken
-pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: dictionaries.PrivateToken) ImplError!void {
+pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: dictionaries.PrivateToken) anyerror!void {
     _ = instance;
     _ = privateToken;
     return error.NotImplemented;
 }
 
 /// Operation: setAttributionReporting
-pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictionaries.AttributionReportingRequestOptions) ImplError!void {
+pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictionaries.AttributionReportingRequestOptions) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) ImplError!void {
+pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
     _ = instance;
     _ = method;
     _ = url;
@@ -174,20 +175,20 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: send
-pub fn call_send(instance: *runtime.Instance, body: *const anyopaque) ImplError!void {
+pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
     _ = instance;
     _ = body;
     return error.NotImplemented;
 }
 
 /// Operation: setRequestHeader
-pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
+pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -195,21 +196,21 @@ pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteStri
 }
 
 /// Operation: getResponseHeader
-pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) ImplError!?runtime.ByteString {
+pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
     _ = instance;
     _ = name;
     return null;
 }
 
 /// Operation: overrideMimeType
-pub fn call_overrideMimeType(instance: *runtime.Instance, mime: runtime.DOMString) ImplError!void {
+pub fn call_overrideMimeType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = mime;
     return error.NotImplemented;
 }
 
 /// Operation: getAllResponseHeaders
-pub fn call_getAllResponseHeaders(instance: *runtime.Instance) ImplError!runtime.ByteString {
+pub fn call_getAllResponseHeaders(instance: *runtime.Instance) anyerror!runtime.ByteString {
     _ = instance;
     return error.NotImplemented;
 }

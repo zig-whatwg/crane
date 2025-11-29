@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for from
-pub fn get_from(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_from(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for entry
-pub fn get_entry(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_entry(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigationType
-pub fn get_navigationType(instance: *runtime.Instance) ImplError!enums.NavigationType {
+pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.NavigationType {
     _ = instance;
     return error.NotImplemented;
 }

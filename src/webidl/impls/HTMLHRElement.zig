@@ -52,65 +52,65 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for color
-pub fn get_color(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_color(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for noShade
-pub fn get_noShade(instance: *runtime.Instance) ImplError!bool {
+pub fn get_noShade(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_size(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for color
-pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for noShade
-pub fn set_noShade(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_noShade(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for size
-pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

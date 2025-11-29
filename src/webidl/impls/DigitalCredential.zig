@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for protocol
-pub fn get_protocol(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: userAgentAllowsProtocol
-pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) ImplError!bool {
+pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = protocol;
     return error.NotImplemented;

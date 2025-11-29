@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: addStroke
-pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) ImplError!void {
+pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = stroke;
     return error.NotImplemented;
 }
 
 /// Operation: getStrokes
-pub fn call_getStrokes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStrokes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPrediction
-pub fn call_getPrediction(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getPrediction(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: removeStroke
-pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) ImplError!void {
+pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = stroke;
     return error.NotImplemented;

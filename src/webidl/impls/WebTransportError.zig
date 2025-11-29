@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WebTransportError = interfaces.WebTransportError;
 
 pub const State = WebTransportError.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: runtime.DOMString, options: dictionaries.WebTransportErrorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.WebTransportErrorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WebTransportError.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!enums.WebTransportErrorSource {
+pub fn get_source(instance: *runtime.Instance) anyerror!enums.WebTransportErrorSource {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for streamErrorCode
-pub fn get_streamErrorCode(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Animation = interfaces.Animation;
 
 pub const State = Animation.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: *runtime.Instance, timeline: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Animation.vtable, ctx);
     errdefer deinit(instance);
@@ -54,241 +55,241 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effe
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for effect
-pub fn get_effect(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_effect(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_timeline(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for playbackRate
-pub fn get_playbackRate(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_playbackRate(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for playState
-pub fn get_playState(instance: *runtime.Instance) ImplError!enums.AnimationPlayState {
+pub fn get_playState(instance: *runtime.Instance) anyerror!enums.AnimationPlayState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for replaceState
-pub fn get_replaceState(instance: *runtime.Instance) ImplError!enums.AnimationReplaceState {
+pub fn get_replaceState(instance: *runtime.Instance) anyerror!enums.AnimationReplaceState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pending
-pub fn get_pending(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pending(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onfinish
-pub fn get_onfinish(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onfinish(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncancel
-pub fn get_oncancel(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncancel(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onremove
-pub fn get_onremove(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onremove(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trigger
-pub fn get_trigger(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for overallProgress
-pub fn get_overallProgress(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Setter for id
-pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for effect
-pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for timeline
-pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for currentTime
-pub fn set_currentTime(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for playbackRate
-pub fn set_playbackRate(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_playbackRate(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onfinish
-pub fn set_onfinish(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onfinish(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncancel
-pub fn set_oncancel(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncancel(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onremove
-pub fn set_onremove(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onremove(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for trigger
-pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: reverse
-pub fn call_reverse(instance: *runtime.Instance) ImplError!void {
+pub fn call_reverse(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persist
-pub fn call_persist(instance: *runtime.Instance) ImplError!void {
+pub fn call_persist(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: commitStyles
-pub fn call_commitStyles(instance: *runtime.Instance) ImplError!void {
+pub fn call_commitStyles(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: pause
-pub fn call_pause(instance: *runtime.Instance) ImplError!void {
+pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: play
-pub fn call_play(instance: *runtime.Instance) ImplError!void {
+pub fn call_play(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: cancel
-pub fn call_cancel(instance: *runtime.Instance) ImplError!void {
+pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance) ImplError!void {
+pub fn call_finish(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: updatePlaybackRate
-pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) ImplError!void {
+pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) anyerror!void {
     _ = instance;
     _ = playbackRate;
     return error.NotImplemented;

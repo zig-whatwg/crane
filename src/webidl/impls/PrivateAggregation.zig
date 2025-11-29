@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PrivateAggregation = interfaces.PrivateAggregation;
 
 pub const State = PrivateAggregation.State;
@@ -40,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: contributeToHistogram
-pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dictionaries.PAHistogramContribution) ImplError!void {
+pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dictionaries.PAHistogramContribution) anyerror!void {
     _ = instance;
     _ = contribution;
     return error.NotImplemented;
 }
 
 /// Operation: contributeToHistogramOnEvent
-pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: runtime.DOMString, contribution: *const anyopaque) ImplError!void {
+pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: runtime.DOMString, contribution: *const anyopaque) anyerror!void {
     _ = instance;
     _ = event;
     _ = contribution;
@@ -55,7 +56,7 @@ pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: run
 }
 
 /// Operation: enableDebugMode
-pub fn call_enableDebugMode(instance: *runtime.Instance, options: dictionaries.PADebugModeOptions) ImplError!void {
+pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PADebugModeOptions)) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;

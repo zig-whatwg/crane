@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for maskUnits
-pub fn get_maskUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_maskUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maskContentUnits
-pub fn get_maskContentUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_maskContentUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

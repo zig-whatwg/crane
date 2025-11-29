@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DelayNode = interfaces.DelayNode;
 
 pub const State = DelayNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.DelayOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.DelayOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DelayNode.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for delayTime
-pub fn get_delayTime(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_delayTime(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

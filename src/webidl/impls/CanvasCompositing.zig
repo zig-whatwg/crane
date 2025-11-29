@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for globalAlpha
-pub fn get_globalAlpha(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_globalAlpha(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for globalCompositeOperation
-pub fn get_globalCompositeOperation(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_globalCompositeOperation(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for globalAlpha
-pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_globalAlpha(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for globalCompositeOperation
-pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

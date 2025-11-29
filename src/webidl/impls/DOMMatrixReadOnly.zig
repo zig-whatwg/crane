@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DOMMatrixReadOnly = interfaces.DOMMatrixReadOnly;
 
 pub const State = DOMMatrixReadOnly.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMMatrixReadOnly.vtable, ctx);
     errdefer deinit(instance);
@@ -53,164 +54,164 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for a
-pub fn get_a(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_a(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for b
-pub fn get_b(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_b(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for c
-pub fn get_c(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_c(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for d
-pub fn get_d(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_d(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for e
-pub fn get_e(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_e(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for f
-pub fn get_f(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_f(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m11
-pub fn get_m11(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m11(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m12
-pub fn get_m12(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m12(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m13
-pub fn get_m13(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m13(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m14
-pub fn get_m14(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m14(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m21
-pub fn get_m21(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m21(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m22
-pub fn get_m22(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m22(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m23
-pub fn get_m23(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m23(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m24
-pub fn get_m24(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m24(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m31
-pub fn get_m31(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m31(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m32
-pub fn get_m32(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m32(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m33
-pub fn get_m33(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m33(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m34
-pub fn get_m34(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m34(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m41
-pub fn get_m41(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m41(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m42
-pub fn get_m42(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m42(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m43
-pub fn get_m43(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m43(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for m44
-pub fn get_m44(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_m44(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for is2D
-pub fn get_is2D(instance: *runtime.Instance) ImplError!bool {
+pub fn get_is2D(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isIdentity
-pub fn get_isIdentity(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isIdentity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: fromFloat32Array
-pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = array32;
     return error.NotImplemented;
 }
 
 /// Operation: flipX
-pub fn call_flipX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_flipX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: scale3d
-pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
+pub fn call_scale3d(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = scale;
     _ = originX;
@@ -220,21 +221,21 @@ pub fn call_scale3d(instance: *runtime.Instance, scale: f64, originX: f64, origi
 }
 
 /// Operation: fromFloat64Array
-pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = array64;
     return error.NotImplemented;
 }
 
 /// Operation: fromMatrix
-pub fn call_fromMatrix(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
+pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: rotateAxisAngle
-pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64, angle: f64) ImplError!*runtime.Instance {
+pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;
@@ -244,14 +245,14 @@ pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: f64, y: f64, z: f64,
 }
 
 /// Operation: skewY
-pub fn call_skewY(instance: *runtime.Instance, sy: f64) ImplError!*runtime.Instance {
+pub fn call_skewY(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = sy;
     return error.NotImplemented;
 }
 
 /// Operation: rotate
-pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64) ImplError!*runtime.Instance {
+pub fn call_rotate(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = rotX;
     _ = rotY;
@@ -260,19 +261,19 @@ pub fn call_rotate(instance: *runtime.Instance, rotX: f64, rotY: f64, rotZ: f64)
 }
 
 /// Operation: inverse
-pub fn call_inverse(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_inverse(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toFloat64Array
-pub fn call_toFloat64Array(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toFloat64Array(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: scale
-pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ: f64, originX: f64, originY: f64, originZ: f64) ImplError!*runtime.Instance {
+pub fn call_scale(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -284,7 +285,7 @@ pub fn call_scale(instance: *runtime.Instance, scaleX: f64, scaleY: f64, scaleZ:
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) ImplError!*runtime.Instance {
+pub fn call_translate(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = tx;
     _ = ty;
@@ -293,34 +294,34 @@ pub fn call_translate(instance: *runtime.Instance, tx: f64, ty: f64, tz: f64) Im
 }
 
 /// Operation: multiply
-pub fn call_multiply(instance: *runtime.Instance, other: dictionaries.DOMMatrixInit) ImplError!*runtime.Instance {
+pub fn call_multiply(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: transformPoint
-pub fn call_transformPoint(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!*runtime.Instance {
+pub fn call_transformPoint(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = point;
     return error.NotImplemented;
 }
 
 /// Operation: skewX
-pub fn call_skewX(instance: *runtime.Instance, sx: f64) ImplError!*runtime.Instance {
+pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = sx;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: scaleNonUniform
-pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f64) ImplError!*runtime.Instance {
+pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = scaleX;
     _ = scaleY;
@@ -328,19 +329,19 @@ pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: f64, scaleY: f6
 }
 
 /// Operation: flipY
-pub fn call_flipY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_flipY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toFloat32Array
-pub fn call_toFloat32Array(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toFloat32Array(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: rotateFromVector
-pub fn call_rotateFromVector(instance: *runtime.Instance, x: f64, y: f64) ImplError!*runtime.Instance {
+pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = x;
     _ = y;

@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for granted
-pub fn get_granted(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_granted(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for granted
-pub fn set_granted(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_granted(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

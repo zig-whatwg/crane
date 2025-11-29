@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IDBFactory = interfaces.IDBFactory;
 
 pub const State = IDBFactory.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: u64) ImplError!*runtime.Instance {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = name;
     _ = version;
@@ -48,20 +49,20 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
 }
 
 /// Operation: databases
-pub fn call_databases(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_databases(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteDatabase
-pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: cmp
-pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) ImplError!i16 {
+pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) anyerror!i16 {
     _ = instance;
     _ = first;
     _ = second;

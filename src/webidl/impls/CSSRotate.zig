@@ -54,52 +54,52 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_x(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_y(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for z
-pub fn get_z(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_z(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for angle
-pub fn get_angle(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_angle(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for x
-pub fn set_x(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_x(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for y
-pub fn set_y(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_y(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for z
-pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for angle
-pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

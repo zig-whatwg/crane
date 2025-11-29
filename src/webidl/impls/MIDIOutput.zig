@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MIDIOutput = interfaces.MIDIOutput;
 
 pub const State = MIDIOutput.State;
@@ -40,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: send
-pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: typedefs.DOMHighResTimeStamp) ImplError!void {
+pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(typedefs.DOMHighResTimeStamp)) anyerror!void {
     _ = instance;
     _ = data;
     _ = timestamp;

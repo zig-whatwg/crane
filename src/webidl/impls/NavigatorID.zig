@@ -40,67 +40,67 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for appCodeName
-pub fn get_appCodeName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for appName
-pub fn get_appName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for appVersion
-pub fn get_appVersion(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for platform
-pub fn get_platform(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for product
-pub fn get_product(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for productSub
-pub fn get_productSub(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for userAgent
-pub fn get_userAgent(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vendor
-pub fn get_vendor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vendorSub
-pub fn get_vendorSub(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oscpu
-pub fn get_oscpu(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: taintEnabled
-pub fn call_taintEnabled(instance: *runtime.Instance) ImplError!bool {
+pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

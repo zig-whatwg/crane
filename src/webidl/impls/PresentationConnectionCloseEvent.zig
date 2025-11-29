@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for reason
-pub fn get_reason(instance: *runtime.Instance) ImplError!enums.PresentationConnectionCloseReason {
+pub fn get_reason(instance: *runtime.Instance) anyerror!enums.PresentationConnectionCloseReason {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

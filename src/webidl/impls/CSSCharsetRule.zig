@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for encoding
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for encoding
-pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

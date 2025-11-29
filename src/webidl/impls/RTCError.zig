@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCError = interfaces.RTCError;
 
 pub const State = RTCError.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.RTCErrorInit, message: runtime.DOMString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.RTCErrorInit, message: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &RTCError.vtable, ctx);
     errdefer deinit(instance);
@@ -54,37 +55,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for errorDetail
-pub fn get_errorDetail(instance: *runtime.Instance) ImplError!enums.RTCErrorDetailType {
+pub fn get_errorDetail(instance: *runtime.Instance) anyerror!enums.RTCErrorDetailType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sdpLineNumber
-pub fn get_sdpLineNumber(instance: *runtime.Instance) ImplError!?i32 {
+pub fn get_sdpLineNumber(instance: *runtime.Instance) anyerror!?i32 {
     _ = instance;
     return null;
 }
 
 /// Getter for sctpCauseCode
-pub fn get_sctpCauseCode(instance: *runtime.Instance) ImplError!?i32 {
+pub fn get_sctpCauseCode(instance: *runtime.Instance) anyerror!?i32 {
     _ = instance;
     return null;
 }
 
 /// Getter for receivedAlert
-pub fn get_receivedAlert(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_receivedAlert(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for sentAlert
-pub fn get_sentAlert(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_sentAlert(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for httpRequestStatusCode
-pub fn get_httpRequestStatusCode(instance: *runtime.Instance) ImplError!?i32 {
+pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!?i32 {
     _ = instance;
     return null;
 }

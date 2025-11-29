@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for filter
-pub fn get_filter(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_filter(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for filter
-pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

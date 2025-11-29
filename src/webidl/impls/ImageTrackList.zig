@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selectedIndex
-pub fn get_selectedIndex(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_selectedIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selectedTrack
-pub fn get_selectedTrack(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WebGLContextEvent = interfaces.WebGLContextEvent;
 
 pub const State = WebGLContextEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInit: dictionaries.WebGLContextEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInit: webidl.Opt(dictionaries.WebGLContextEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WebGLContextEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for statusMessage
-pub fn get_statusMessage(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_statusMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

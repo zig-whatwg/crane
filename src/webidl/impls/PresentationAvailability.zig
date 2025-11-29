@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!bool {
+pub fn get_value(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

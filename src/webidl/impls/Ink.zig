@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Ink = interfaces.Ink;
 
 pub const State = Ink.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: requestPresenter
-pub fn call_requestPresenter(instance: *runtime.Instance, param: dictionaries.InkPresenterParam) ImplError!*const anyopaque {
+pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(dictionaries.InkPresenterParam)) anyerror!*const anyopaque {
     _ = instance;
     _ = param;
     return error.NotImplemented;

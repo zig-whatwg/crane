@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUAdapter = interfaces.GPUAdapter;
 
 pub const State = GPUAdapter.State;
@@ -40,25 +41,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for features
-pub fn get_features(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_features(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for limits
-pub fn get_limits(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_limits(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for info
-pub fn get_info(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_info(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, descriptor: dictionaries.GPUDeviceDescriptor) ImplError!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUDeviceDescriptor)) anyerror!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

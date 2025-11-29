@@ -40,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: decodeUtf8
-pub fn call_decodeUtf8(instance: *runtime.Instance, bytes: *const anyopaque) ImplError!runtime.USVString {
+pub fn call_decodeUtf8(instance: *runtime.Instance, bytes: *const anyopaque) anyerror!runtime.USVString {
     _ = instance;
     _ = bytes;
     return error.NotImplemented;
 }
 
 /// Operation: encodeUtf8
-pub fn call_encodeUtf8(instance: *runtime.Instance, input: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_encodeUtf8(instance: *runtime.Instance, input: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     return error.NotImplemented;

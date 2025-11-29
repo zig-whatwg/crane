@@ -13,6 +13,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const Node = interfaces.Node;
 
@@ -177,7 +178,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for nodeType
 /// https://dom.spec.whatwg.org/#dom-node-nodetype
 /// Returns an integer corresponding to the type of the node
-pub fn get_nodeType(instance: *runtime.Instance) !u16 {
+pub fn get_nodeType(instance: *runtime.Instance) anyerror!u16 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.node_type;
 }
@@ -185,7 +186,7 @@ pub fn get_nodeType(instance: *runtime.Instance) !u16 {
 /// Getter for nodeName
 /// https://dom.spec.whatwg.org/#dom-node-nodename
 /// Returns a string appropriate for the type of node
-pub fn get_nodeName(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
@@ -230,7 +231,7 @@ pub fn get_nodeName(instance: *runtime.Instance) !runtime.DOMString {
 /// Getter for baseURI
 /// https://dom.spec.whatwg.org/#dom-node-baseuri
 /// Returns the node's document's document base URL, serialized
-pub fn get_baseURI(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get the owner document and its base URL
@@ -252,7 +253,7 @@ pub fn get_baseURI(instance: *runtime.Instance) !runtime.USVString {
 /// Getter for isConnected
 /// https://dom.spec.whatwg.org/#dom-node-isconnected
 /// Returns true if the node is connected (its root is a document)
-pub fn get_isConnected(instance: *runtime.Instance) !bool {
+pub fn get_isConnected(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.is_connected;
 }
@@ -260,7 +261,7 @@ pub fn get_isConnected(instance: *runtime.Instance) !bool {
 /// Getter for ownerDocument
 /// https://dom.spec.whatwg.org/#dom-node-ownerdocument
 /// Returns the document that the node belongs to, or null for Document nodes
-pub fn get_ownerDocument(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Document nodes return null
@@ -273,7 +274,7 @@ pub fn get_ownerDocument(instance: *runtime.Instance) !?*runtime.Instance {
 
 /// Getter for parentNode
 /// https://dom.spec.whatwg.org/#dom-node-parentnode
-pub fn get_parentNode(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.parent;
 }
@@ -281,7 +282,7 @@ pub fn get_parentNode(instance: *runtime.Instance) !?*runtime.Instance {
 /// Getter for parentElement
 /// https://dom.spec.whatwg.org/#dom-node-parentelement
 /// Returns parent if parent is an Element, otherwise null
-pub fn get_parentElement(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (internal.parent) |parent| {
@@ -297,7 +298,7 @@ pub fn get_parentElement(instance: *runtime.Instance) !?*runtime.Instance {
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes
-pub fn get_childNodes(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return cached NodeList if it exists
@@ -312,28 +313,28 @@ pub fn get_childNodes(instance: *runtime.Instance) !*runtime.Instance {
 
 /// Getter for firstChild
 /// https://dom.spec.whatwg.org/#dom-node-firstchild
-pub fn get_firstChild(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.first_child;
 }
 
 /// Getter for lastChild
 /// https://dom.spec.whatwg.org/#dom-node-lastchild
-pub fn get_lastChild(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.last_child;
 }
 
 /// Getter for previousSibling
 /// https://dom.spec.whatwg.org/#dom-node-previoussibling
-pub fn get_previousSibling(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.previous_sibling;
 }
 
 /// Getter for nextSibling
 /// https://dom.spec.whatwg.org/#dom-node-nextsibling
-pub fn get_nextSibling(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.next_sibling;
 }
@@ -341,7 +342,7 @@ pub fn get_nextSibling(instance: *runtime.Instance) !?*runtime.Instance {
 /// Getter for nodeValue
 /// https://dom.spec.whatwg.org/#dom-node-nodevalue
 /// Returns/sets the value of the node depending on node type
-pub fn get_nodeValue(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
@@ -364,7 +365,7 @@ pub fn get_nodeValue(instance: *runtime.Instance) !runtime.DOMString {
 /// Getter for textContent
 /// https://dom.spec.whatwg.org/#dom-node-textcontent
 /// Returns the text content of the node and its descendants
-pub fn get_textContent(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.node_type) {
@@ -399,7 +400,7 @@ pub fn get_textContent(instance: *runtime.Instance) !runtime.DOMString {
 
 /// Setter for nodeValue
 /// https://dom.spec.whatwg.org/#dom-node-nodevalue
-pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) !void {
+pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -423,7 +424,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) !voi
 
 /// Setter for textContent
 /// https://dom.spec.whatwg.org/#dom-node-textcontent
-pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) !void {
+pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -457,14 +458,14 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) !v
 
 /// Operation: hasChildNodes
 /// https://dom.spec.whatwg.org/#dom-node-haschildnodes
-pub fn call_hasChildNodes(instance: *runtime.Instance) !bool {
+pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.first_child != null;
 }
 
 /// Operation: getRootNode
 /// https://dom.spec.whatwg.org/#dom-node-getrootnode
-pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRootNodeOptions) !*runtime.Instance {
+pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetRootNodeOptions)) anyerror!*runtime.Instance {
     var current = instance;
     var current_internal = getInternal(current) orelse return error.InvalidStateError;
 
@@ -484,7 +485,7 @@ pub fn call_getRootNode(instance: *runtime.Instance, options: dictionaries.GetRo
 /// Operation: contains
 /// https://dom.spec.whatwg.org/#dom-node-contains
 /// Returns true if other is an inclusive descendant of this node
-pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) !bool {
+pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
     // A node contains itself
     if (instance == other) return true;
 
@@ -501,7 +502,7 @@ pub fn call_contains(instance: *runtime.Instance, other: *runtime.Instance) !boo
 
 /// Operation: compareDocumentPosition
 /// https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
-pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) !u16 {
+pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
     // Same node
     if (instance == other) return 0;
 
@@ -550,14 +551,14 @@ pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime
 /// Operation: isSameNode
 /// https://dom.spec.whatwg.org/#dom-node-issamenode
 /// Returns true if other is the same node (reference equality)
-pub fn call_isSameNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
+pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
     return instance == otherNode;
 }
 
 /// Operation: isEqualNode
 /// https://dom.spec.whatwg.org/#dom-node-isequalnode
 /// Returns true if nodes are equal (same type, attributes, children)
-pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instance) !bool {
+pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
     const self_internal = getInternal(instance) orelse return false;
     const other_internal = getInternal(otherNode) orelse return false;
 
@@ -646,7 +647,7 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: *runtime.Instanc
 /// Spec steps:
 /// 1. If this is a shadow root, throw NotSupportedError
 /// 2. Return clone of this with subtree set to deep
-pub fn call_cloneNode(instance: *runtime.Instance, subtree: bool) !*runtime.Instance {
+pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If this is a shadow root, throw NotSupportedError
@@ -741,7 +742,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
 /// Operation: normalize
 /// https://dom.spec.whatwg.org/#dom-node-normalize
 /// Removes empty text nodes and merges adjacent text nodes
-pub fn call_normalize(instance: *runtime.Instance) !void {
+pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     var child = internal.first_child;
@@ -923,7 +924,7 @@ fn updateConnectedStatus(node: *runtime.Instance, connected: bool) !void {
 
 /// Operation: appendChild
 /// https://dom.spec.whatwg.org/#dom-node-appendchild
-pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
+pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
     try preInsertValidation(instance, node, null);
     try insertNode(node, instance, null);
     return node;
@@ -931,7 +932,7 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) !*
 
 /// Operation: insertBefore
 /// https://dom.spec.whatwg.org/#dom-node-insertbefore
-pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
+pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
     try preInsertValidation(instance, node, child);
     try insertNode(node, instance, child);
     return node;
@@ -939,7 +940,7 @@ pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, c
 
 /// Operation: removeChild
 /// https://dom.spec.whatwg.org/#dom-node-removechild
-pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
+pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
 
     // Child must be a child of this node
@@ -953,7 +954,7 @@ pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) !
 
 /// Operation: replaceChild
 /// https://dom.spec.whatwg.org/#dom-node-replacechild
-pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) !*runtime.Instance {
+pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
     try preInsertValidation(instance, node, child);
 
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
@@ -981,7 +982,7 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
 
 /// Operation: lookupPrefix
 /// https://dom.spec.whatwg.org/#dom-node-lookupprefix
-pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMString) !runtime.DOMString {
+pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (namespace.len() == 0) {
@@ -1029,7 +1030,7 @@ pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: runtime.DOMStri
 
 /// Operation: lookupNamespaceURI
 /// https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
-pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMString) !runtime.DOMString {
+pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -1077,7 +1078,7 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: runtime.DOMS
 
 /// Operation: isDefaultNamespace
 /// https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
-pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: runtime.DOMString) !bool {
+pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.DOMString) anyerror!bool {
     const default_ns = try call_lookupNamespaceURI(instance, runtime.DOMString.initEmpty());
 
     if (namespace.len() == 0) {

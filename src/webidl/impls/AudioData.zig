@@ -53,50 +53,50 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for format
-pub fn get_format(instance: *runtime.Instance) ImplError!?enums.AudioSampleFormat {
+pub fn get_format(instance: *runtime.Instance) anyerror!?enums.AudioSampleFormat {
     _ = instance;
     return null;
 }
 
 /// Getter for sampleRate
-pub fn get_sampleRate(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_sampleRate(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for numberOfFrames
-pub fn get_numberOfFrames(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_numberOfFrames(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for numberOfChannels
-pub fn get_numberOfChannels(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_numberOfChannels(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_duration(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timestamp
-pub fn get_timestamp(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_timestamp(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: allocationSize
-pub fn call_allocationSize(instance: *runtime.Instance, options: dictionaries.AudioDataCopyToOptions) ImplError!u32 {
+pub fn call_allocationSize(instance: *runtime.Instance, options: dictionaries.AudioDataCopyToOptions) anyerror!u32 {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: copyTo
-pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: dictionaries.AudioDataCopyToOptions) ImplError!void {
+pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: dictionaries.AudioDataCopyToOptions) anyerror!void {
     _ = instance;
     _ = destination;
     _ = options;
@@ -104,13 +104,13 @@ pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowShare
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,43 +40,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for processingStart
-pub fn get_processingStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_processingStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for processingEnd
-pub fn get_processingEnd(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_processingEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cancelable
-pub fn get_cancelable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_cancelable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for targetSelector
-pub fn get_targetSelector(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_targetSelector(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interactionId
-pub fn get_interactionId(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_interactionId(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

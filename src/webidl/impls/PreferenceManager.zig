@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for colorScheme
-pub fn get_colorScheme(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_colorScheme(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contrast
-pub fn get_contrast(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_contrast(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedMotion
-pub fn get_reducedMotion(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_reducedMotion(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedTransparency
-pub fn get_reducedTransparency(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_reducedTransparency(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reducedData
-pub fn get_reducedData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_reducedData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

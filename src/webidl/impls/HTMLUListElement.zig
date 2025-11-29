@@ -52,26 +52,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for compact
-pub fn get_compact(instance: *runtime.Instance) ImplError!bool {
+pub fn get_compact(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for compact
-pub fn set_compact(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

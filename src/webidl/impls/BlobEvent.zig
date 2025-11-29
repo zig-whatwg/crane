@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_data(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timecode
-pub fn get_timecode(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_timecode(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }

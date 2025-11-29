@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.ConnectionType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.ConnectionType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for effectiveType
-pub fn get_effectiveType(instance: *runtime.Instance) ImplError!enums.EffectiveConnectionType {
+pub fn get_effectiveType(instance: *runtime.Instance) anyerror!enums.EffectiveConnectionType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for downlinkMax
-pub fn get_downlinkMax(instance: *runtime.Instance) ImplError!typedefs.Megabit {
+pub fn get_downlinkMax(instance: *runtime.Instance) anyerror!typedefs.Megabit {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for downlink
-pub fn get_downlink(instance: *runtime.Instance) ImplError!typedefs.Megabit {
+pub fn get_downlink(instance: *runtime.Instance) anyerror!typedefs.Megabit {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rtt
-pub fn get_rtt(instance: *runtime.Instance) ImplError!typedefs.Millisecond {
+pub fn get_rtt(instance: *runtime.Instance) anyerror!typedefs.Millisecond {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for saveData
-pub fn get_saveData(instance: *runtime.Instance) ImplError!bool {
+pub fn get_saveData(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

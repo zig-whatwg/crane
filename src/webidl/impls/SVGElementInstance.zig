@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for correspondingElement
-pub fn get_correspondingElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for correspondingUseElement
-pub fn get_correspondingUseElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_correspondingUseElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

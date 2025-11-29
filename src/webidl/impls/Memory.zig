@@ -53,26 +53,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, desc
 }
 
 /// Getter for buffer
-pub fn get_buffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_buffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: grow
-pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue) ImplError!typedefs.AddressValue {
+pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue) anyerror!typedefs.AddressValue {
     _ = instance;
     _ = delta;
     return error.NotImplemented;
 }
 
 /// Operation: toFixedLengthBuffer
-pub fn call_toFixedLengthBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toFixedLengthBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toResizableBuffer
-pub fn call_toResizableBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toResizableBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

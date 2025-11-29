@@ -40,51 +40,51 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for mid
-pub fn get_mid(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_mid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for sender
-pub fn get_sender(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sender(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_receiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) ImplError!enums.RTCRtpTransceiverDirection {
+pub fn get_direction(instance: *runtime.Instance) anyerror!enums.RTCRtpTransceiverDirection {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentDirection
-pub fn get_currentDirection(instance: *runtime.Instance) ImplError!?enums.RTCRtpTransceiverDirection {
+pub fn get_currentDirection(instance: *runtime.Instance) anyerror!?enums.RTCRtpTransceiverDirection {
     _ = instance;
     return null;
 }
 
 /// Setter for direction
-pub fn set_direction(instance: *runtime.Instance, value: enums.RTCRtpTransceiverDirection) ImplError!void {
+pub fn set_direction(instance: *runtime.Instance, value: enums.RTCRtpTransceiverDirection) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setCodecPreferences
-pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: *const anyopaque) ImplError!void {
+pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: *const anyopaque) anyerror!void {
     _ = instance;
     _ = codecs;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

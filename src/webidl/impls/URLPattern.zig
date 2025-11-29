@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const URLPattern = interfaces.URLPattern;
 
 pub const State = URLPattern.State;
@@ -54,61 +55,61 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for protocol
-pub fn get_protocol(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for username
-pub fn get_username(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for password
-pub fn get_password(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hostname
-pub fn get_hostname(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pathname
-pub fn get_pathname(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for search
-pub fn get_search(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hash
-pub fn get_hash(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hasRegExpGroups
-pub fn get_hasRegExpGroups(instance: *runtime.Instance) ImplError!bool {
+pub fn get_hasRegExpGroups(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: test
-pub fn call_test(instance: *runtime.Instance, input: typedefs.URLPatternInput, baseURL: runtime.USVString) ImplError!bool {
+pub fn call_test(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) anyerror!bool {
     _ = instance;
     _ = input;
     _ = baseURL;
@@ -116,7 +117,7 @@ pub fn call_test(instance: *runtime.Instance, input: typedefs.URLPatternInput, b
 }
 
 /// Operation: exec
-pub fn call_exec(instance: *runtime.Instance, input: typedefs.URLPatternInput, baseURL: runtime.USVString) ImplError!?dictionaries.URLPatternResult {
+pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatternInput), baseURL: webidl.Opt(runtime.USVString)) anyerror!?dictionaries.URLPatternResult {
     _ = instance;
     _ = input;
     _ = baseURL;

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-28T22:33:18Z
+//! Generated at: 2025-11-29T02:15:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

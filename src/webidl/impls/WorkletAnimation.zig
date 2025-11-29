@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WorkletAnimation = interfaces.WorkletAnimation;
 
 pub const State = WorkletAnimation.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: runtime.DOMString, effects: *const anyopaque, timeline: *runtime.Instance, options: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?*const anyopaque), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WorkletAnimation.vtable, ctx);
     errdefer deinit(instance);
@@ -56,7 +57,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, anim
 }
 
 /// Getter for animatorName
-pub fn get_animatorName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_animatorName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

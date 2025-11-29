@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemDirectoryEntry = interfaces.FileSystemDirectoryEntry;
 
 pub const State = FileSystemDirectoryEntry.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance, path: runtime.USVString, options: dictionaries.FileSystemFlags, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(dictionaries.FileSystemFlags), successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) anyerror!void {
     _ = instance;
     _ = path;
     _ = options;
@@ -50,7 +51,7 @@ pub fn call_getDirectory(instance: *runtime.Instance, path: runtime.USVString, o
 }
 
 /// Operation: getFile
-pub fn call_getFile(instance: *runtime.Instance, path: runtime.USVString, options: dictionaries.FileSystemFlags, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_getFile(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(dictionaries.FileSystemFlags), successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) anyerror!void {
     _ = instance;
     _ = path;
     _ = options;
@@ -60,7 +61,7 @@ pub fn call_getFile(instance: *runtime.Instance, path: runtime.USVString, option
 }
 
 /// Operation: createReader
-pub fn call_createReader(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createReader(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

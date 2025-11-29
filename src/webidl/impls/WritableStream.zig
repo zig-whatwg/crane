@@ -160,12 +160,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 /// 6. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 /// 7. Perform ? SetUpWritableStreamDefaultControllerFromUnderlyingSink(...)
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    underlyingSink: *const anyopaque,
-    strategy: dictionaries.QueuingStrategy,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(*const anyopaque), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
@@ -235,7 +230,7 @@ pub fn call_constructor(
 /// readonly attribute boolean locked
 ///
 /// Returns true if the stream is locked to a writer.
-pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
+pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -249,7 +244,7 @@ pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
 /// WritableStreamDefaultWriter getWriter()
 ///
 /// Returns: A new WritableStreamDefaultWriter locked to this stream
-pub fn call_getWriter(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -273,7 +268,7 @@ pub fn call_getWriter(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Steps:
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. Return ! WritableStreamAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -507,7 +502,7 @@ fn writableStreamRejectCloseAndClosedPromiseIfNeeded(instance: *runtime.Instance
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. If ! WritableStreamCloseQueuedOrInFlight(this) is true, return rejected promise
 /// 3. Return ! WritableStreamClose(this)
-pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Table = interfaces.Table;
 
 pub const State = Table.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: dictionaries.TableDescriptor, value: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: dictionaries.TableDescriptor, value: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Table.vtable, ctx);
     errdefer deinit(instance);
@@ -54,20 +55,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, desc
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!typedefs.AddressValue {
+pub fn get_length(instance: *runtime.Instance) anyerror!typedefs.AddressValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, index: typedefs.AddressValue) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, index: typedefs.AddressValue) anyerror!*const anyopaque {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: grow
-pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, value: *const anyopaque) ImplError!typedefs.AddressValue {
+pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!typedefs.AddressValue {
     _ = instance;
     _ = delta;
     _ = value;
@@ -75,7 +76,7 @@ pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, valu
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, index: typedefs.AddressValue, value: *const anyopaque) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, index: typedefs.AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = index;
     _ = value;

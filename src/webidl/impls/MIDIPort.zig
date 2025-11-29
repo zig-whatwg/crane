@@ -40,68 +40,68 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for manufacturer
-pub fn get_manufacturer(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_manufacturer(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.MIDIPortType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.MIDIPortType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for version
-pub fn get_version(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_version(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.MIDIPortDeviceState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.MIDIPortDeviceState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connection
-pub fn get_connection(instance: *runtime.Instance) ImplError!enums.MIDIPortConnectionState {
+pub fn get_connection(instance: *runtime.Instance) anyerror!enums.MIDIPortConnectionState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GroupEffect = interfaces.GroupEffect;
 
 pub const State = GroupEffect.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, children: *const anyopaque, timing: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, children: ?*const anyopaque, timing: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &GroupEffect.vtable, ctx);
     errdefer deinit(instance);
@@ -54,38 +55,38 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, chil
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstChild
-pub fn get_firstChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for lastChild
-pub fn get_lastChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: prepend
-pub fn call_prepend(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
+pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;

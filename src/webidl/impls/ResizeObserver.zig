@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ResizeObserver = interfaces.ResizeObserver;
 
 pub const State = ResizeObserver.State;
@@ -53,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: dictionaries.ResizeObserverOptions) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(dictionaries.ResizeObserverOptions)) anyerror!void {
     _ = instance;
     _ = target;
     _ = options;
@@ -61,14 +62,14 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 }
 
 /// Operation: unobserve
-pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) ImplError!void {
+pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = target;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

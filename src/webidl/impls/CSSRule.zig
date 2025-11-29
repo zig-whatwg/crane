@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for parentRule
-pub fn get_parentRule(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for parentStyleSheet
-pub fn get_parentStyleSheet(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_type(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

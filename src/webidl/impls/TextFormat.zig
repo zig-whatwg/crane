@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TextFormat = interfaces.TextFormat;
 
 pub const State = TextFormat.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.TextFormatInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.TextFormatInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TextFormat.vtable, ctx);
     errdefer deinit(instance);
@@ -53,25 +54,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for underlineStyle
-pub fn get_underlineStyle(instance: *runtime.Instance) ImplError!enums.UnderlineStyle {
+pub fn get_underlineStyle(instance: *runtime.Instance) anyerror!enums.UnderlineStyle {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for underlineThickness
-pub fn get_underlineThickness(instance: *runtime.Instance) ImplError!enums.UnderlineThickness {
+pub fn get_underlineThickness(instance: *runtime.Instance) anyerror!enums.UnderlineThickness {
     _ = instance;
     return error.NotImplemented;
 }

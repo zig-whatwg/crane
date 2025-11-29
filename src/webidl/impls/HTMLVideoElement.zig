@@ -52,130 +52,130 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for videoWidth
-pub fn get_videoWidth(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for videoHeight
-pub fn get_videoHeight(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for poster
-pub fn get_poster(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_poster(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for playsInline
-pub fn get_playsInline(instance: *runtime.Instance) ImplError!bool {
+pub fn get_playsInline(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onenterpictureinpicture
-pub fn get_onenterpictureinpicture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onenterpictureinpicture(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onleavepictureinpicture
-pub fn get_onleavepictureinpicture(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onleavepictureinpicture(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for disablePictureInPicture
-pub fn get_disablePictureInPicture(instance: *runtime.Instance) ImplError!bool {
+pub fn get_disablePictureInPicture(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for poster
-pub fn set_poster(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_poster(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for playsInline
-pub fn set_playsInline(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_playsInline(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onenterpictureinpicture
-pub fn set_onenterpictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onenterpictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onleavepictureinpicture
-pub fn set_onleavepictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onleavepictureinpicture(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for disablePictureInPicture
-pub fn set_disablePictureInPicture(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_disablePictureInPicture(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: cancelVideoFrameCallback
-pub fn call_cancelVideoFrameCallback(instance: *runtime.Instance, handle: u32) ImplError!void {
+pub fn call_cancelVideoFrameCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
     _ = instance;
     _ = handle;
     return error.NotImplemented;
 }
 
 /// Operation: requestPictureInPicture
-pub fn call_requestPictureInPicture(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_requestPictureInPicture(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestVideoFrameCallback
-pub fn call_requestVideoFrameCallback(instance: *runtime.Instance, callback: callbacks.VideoFrameRequestCallback) ImplError!u32 {
+pub fn call_requestVideoFrameCallback(instance: *runtime.Instance, callback: callbacks.VideoFrameRequestCallback) anyerror!u32 {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: getVideoPlaybackQuality
-pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

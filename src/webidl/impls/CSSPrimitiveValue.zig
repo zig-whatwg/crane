@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for primitiveType
-pub fn get_primitiveType(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_primitiveType(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setStringValue
-pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringValue: runtime.DOMString) ImplError!void {
+pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringValue: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = stringType;
     _ = stringValue;
@@ -54,20 +54,20 @@ pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringV
 }
 
 /// Operation: getFloatValue
-pub fn call_getFloatValue(instance: *runtime.Instance, unitType: u16) ImplError!f32 {
+pub fn call_getFloatValue(instance: *runtime.Instance, unitType: u16) anyerror!f32 {
     _ = instance;
     _ = unitType;
     return error.NotImplemented;
 }
 
 /// Operation: getRGBColorValue
-pub fn call_getRGBColorValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getRGBColorValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setFloatValue
-pub fn call_setFloatValue(instance: *runtime.Instance, unitType: u16, floatValue: f32) ImplError!void {
+pub fn call_setFloatValue(instance: *runtime.Instance, unitType: u16, floatValue: f32) anyerror!void {
     _ = instance;
     _ = unitType;
     _ = floatValue;
@@ -75,19 +75,19 @@ pub fn call_setFloatValue(instance: *runtime.Instance, unitType: u16, floatValue
 }
 
 /// Operation: getStringValue
-pub fn call_getStringValue(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_getStringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRectValue
-pub fn call_getRectValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getRectValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getCounterValue
-pub fn call_getCounterValue(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

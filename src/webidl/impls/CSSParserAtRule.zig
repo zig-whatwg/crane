@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSParserAtRule = interfaces.CSSParserAtRule;
 
 pub const State = CSSParserAtRule.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: runtime.DOMString, prelude: *const anyopaque, body: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: runtime.DOMString, prelude: *const anyopaque, body: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSParserAtRule.vtable, ctx);
     errdefer deinit(instance);
@@ -55,19 +56,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for prelude
-pub fn get_prelude(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_prelude(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_body(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }

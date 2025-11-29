@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for offsetNode
-pub fn get_offsetNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_offsetNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for offset
-pub fn get_offset(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_offset(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getClientRect
-pub fn call_getClientRect(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getClientRect(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

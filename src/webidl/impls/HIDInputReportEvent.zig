@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for device
-pub fn get_device(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_device(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reportId
-pub fn get_reportId(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_reportId(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

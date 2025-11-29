@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: consume
-pub fn call_consume(instance: *runtime.Instance, purchaseToken: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_consume(instance: *runtime.Instance, purchaseToken: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = purchaseToken;
     return error.NotImplemented;
 }
 
 /// Operation: listPurchases
-pub fn call_listPurchases(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_listPurchases(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: listPurchaseHistory
-pub fn call_listPurchaseHistory(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getDetails
-pub fn call_getDetails(instance: *runtime.Instance, itemIds: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getDetails(instance: *runtime.Instance, itemIds: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = itemIds;
     return error.NotImplemented;

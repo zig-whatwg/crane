@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onserviceadded
-pub fn get_onserviceadded(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onservicechanged
-pub fn get_onservicechanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onserviceremoved
-pub fn get_onserviceremoved(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onserviceadded
-pub fn set_onserviceadded(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onserviceadded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onservicechanged
-pub fn set_onservicechanged(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onservicechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onserviceremoved
-pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

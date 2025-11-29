@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HighlightRegistry = interfaces.HighlightRegistry;
 
 pub const State = HighlightRegistry.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: highlightsFromPoint
-pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: dictionaries.HighlightsFromPointOptions) ImplError!*const anyopaque {
+pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(dictionaries.HighlightsFromPointOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = x;
     _ = y;

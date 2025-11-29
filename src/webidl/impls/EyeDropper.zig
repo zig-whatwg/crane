@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const EyeDropper = interfaces.EyeDropper;
 
 pub const State = EyeDropper.State;
@@ -52,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, options: dictionaries.ColorSelectionOptions) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ColorSelectionOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

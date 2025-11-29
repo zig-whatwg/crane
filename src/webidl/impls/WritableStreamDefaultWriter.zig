@@ -95,7 +95,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
 ///
 /// Steps:
 /// 1. Return this.[[closedPromise]]
-pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -114,7 +114,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, throw TypeError
 /// 2. Return WritableStreamDefaultWriterGetDesiredSize(this)
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -132,7 +132,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 ///
 /// Steps:
 /// 1. Return this.[[readyPromise]]
-pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -151,7 +151,7 @@ pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// 2. If stream is undefined, return
 /// 3. Assert: stream.[[writer]] is not undefined
 /// 4. Perform WritableStreamDefaultWriterRelease(this)
-pub fn call_releaseLock(instance: *runtime.Instance) ImplError!void {
+pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -172,7 +172,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) ImplError!void {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -193,7 +193,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-pub fn call_write(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -205,7 +205,7 @@ pub fn call_write(instance: *runtime.Instance, chunk: *const anyopaque) ImplErro
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSHWB = interfaces.CSSHWB;
 
 pub const State = CSSHWB.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: *runtime.Instance, w: typedefs.CSSNumberish, b: typedefs.CSSNumberish, alpha: typedefs.CSSNumberish) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: *runtime.Instance, w: typedefs.CSSNumberish, b: typedefs.CSSNumberish, alpha: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSHWB.vtable, ctx);
     errdefer deinit(instance);
@@ -56,52 +57,52 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: *
 }
 
 /// Getter for h
-pub fn get_h(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_h(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for w
-pub fn get_w(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_w(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for b
-pub fn get_b(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_b(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for alpha
-pub fn get_alpha(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_alpha(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for h
-pub fn set_h(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_h(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for w
-pub fn set_w(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_w(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for b
-pub fn set_b(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_b(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for alpha
-pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

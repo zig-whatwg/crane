@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const UncalibratedMagnetometer = interfaces.UncalibratedMagnetometer;
 
 pub const State = UncalibratedMagnetometer.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: dictionaries.MagnetometerSensorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sensorOptions: webidl.Opt(dictionaries.MagnetometerSensorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &UncalibratedMagnetometer.vtable, ctx);
     errdefer deinit(instance);
@@ -53,37 +54,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sens
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_y(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for z
-pub fn get_z(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for xBias
-pub fn get_xBias(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_xBias(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for yBias
-pub fn get_yBias(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_yBias(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for zBias
-pub fn get_zBias(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_zBias(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }

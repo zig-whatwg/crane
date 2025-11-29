@@ -167,28 +167,28 @@ pub fn create(
 
 /// DOM §7.2 - MutationRecord.type
 /// Returns "attributes", "characterData", or "childList"
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance);
     return runtime.DOMString.initInterned(internal.mutation_type);
 }
 
 /// DOM §7.2 - MutationRecord.target
 /// Returns the node that was mutated
-pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.target orelse return error.NotImplemented;
 }
 
 /// DOM §7.2 - MutationRecord.addedNodes
 /// Returns the list of added nodes
-pub fn get_addedNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_addedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.added_nodes orelse return error.NotImplemented;
 }
 
 /// DOM §7.2 - MutationRecord.removedNodes
 /// Returns the list of removed nodes
-pub fn get_removedNodes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_removedNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.removed_nodes orelse return error.NotImplemented;
 }
@@ -196,7 +196,7 @@ pub fn get_removedNodes(instance: *runtime.Instance) ImplError!*runtime.Instance
 /// DOM §7.2 - MutationRecord.previousSibling
 /// Returns the previous sibling of added/removed nodes
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.previous_sibling orelse return error.NotImplemented;
 }
@@ -204,7 +204,7 @@ pub fn get_previousSibling(instance: *runtime.Instance) ImplError!*runtime.Insta
 /// DOM §7.2 - MutationRecord.nextSibling
 /// Returns the next sibling of added/removed nodes
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.next_sibling orelse return error.NotImplemented;
 }
@@ -212,7 +212,7 @@ pub fn get_nextSibling(instance: *runtime.Instance) ImplError!*runtime.Instance 
 /// DOM §7.2 - MutationRecord.attributeName
 /// Returns the name of the changed attribute (null if not attribute mutation)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_attributeName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_attributeName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.attribute_name) |name| {
         return runtime.DOMString.initInterned(name);
@@ -223,7 +223,7 @@ pub fn get_attributeName(instance: *runtime.Instance) ImplError!runtime.DOMStrin
 /// DOM §7.2 - MutationRecord.attributeNamespace
 /// Returns the namespace of the changed attribute (null if not attribute mutation)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_attributeNamespace(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.attribute_namespace) |ns| {
         return runtime.DOMString.initInterned(ns);
@@ -234,7 +234,7 @@ pub fn get_attributeNamespace(instance: *runtime.Instance) ImplError!runtime.DOM
 /// DOM §7.2 - MutationRecord.oldValue
 /// Returns the old value (for attributes/characterData, null otherwise)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
-pub fn get_oldValue(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.old_value) |value| {
         return runtime.DOMString.initInterned(value);

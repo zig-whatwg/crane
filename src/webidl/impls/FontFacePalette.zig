@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usableWithLightBackground
-pub fn get_usableWithLightBackground(instance: *runtime.Instance) ImplError!bool {
+pub fn get_usableWithLightBackground(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usableWithDarkBackground
-pub fn get_usableWithDarkBackground(instance: *runtime.Instance) ImplError!bool {
+pub fn get_usableWithDarkBackground(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

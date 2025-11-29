@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onaudioprocess
-pub fn get_onaudioprocess(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onaudioprocess(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bufferSize
-pub fn get_bufferSize(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_bufferSize(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onaudioprocess
-pub fn set_onaudioprocess(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onaudioprocess(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for deviceId
-pub fn get_deviceId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_deviceId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for kind
-pub fn get_kind(instance: *runtime.Instance) ImplError!enums.MediaDeviceKind {
+pub fn get_kind(instance: *runtime.Instance) anyerror!enums.MediaDeviceKind {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for groupId
-pub fn get_groupId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_groupId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

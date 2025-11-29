@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: typedefs.CSSNumberish) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: []const typedefs.CSSNumberish) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSMathProduct.vtable, ctx);
     errdefer deinit(instance);
@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for values
-pub fn get_values(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_values(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

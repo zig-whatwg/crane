@@ -52,19 +52,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for datatype
-pub fn get_datatype(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_datatype(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for language
-pub fn get_language(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_language(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }

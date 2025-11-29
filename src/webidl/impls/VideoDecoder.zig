@@ -53,65 +53,65 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.CodecState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.CodecState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for decodeQueueSize
-pub fn get_decodeQueueSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_decodeQueueSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondequeue
-pub fn get_ondequeue(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondequeue(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ondequeue
-pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: isConfigSupported
-pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoDecoderConfig) ImplError!*const anyopaque {
+pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoDecoderConfig) anyerror!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: decode
-pub fn call_decode(instance: *runtime.Instance, chunk: *runtime.Instance) ImplError!void {
+pub fn call_decode(instance: *runtime.Instance, chunk: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = chunk;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: configure
-pub fn call_configure(instance: *runtime.Instance, config: dictionaries.VideoDecoderConfig) ImplError!void {
+pub fn call_configure(instance: *runtime.Instance, config: dictionaries.VideoDecoderConfig) anyerror!void {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: flush
-pub fn call_flush(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

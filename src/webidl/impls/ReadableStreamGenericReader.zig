@@ -16,6 +16,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ReadableStreamGenericReader = interfaces.ReadableStreamGenericReader;
 
 pub const State = ReadableStreamGenericReader.State;
@@ -60,7 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: This delegates to the concrete reader implementation.
 /// Both DefaultReader and BYOBReader implement this via their internal closedPromise.
-pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Determine which reader type this is and delegate
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
@@ -93,7 +94,7 @@ pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Cancels the stream with the given reason.
 ///
 /// Note: This delegates to the concrete reader implementation.
-pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     // Determine which reader type this is and delegate
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {

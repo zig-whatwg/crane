@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawImage
-pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, dx: f64, dy: f64) ImplError!void {
+pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, dx: f64, dy: f64) anyerror!void {
     _ = instance;
     _ = image;
     _ = dx;

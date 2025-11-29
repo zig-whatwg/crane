@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.GPUQueryType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.GPUQueryType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for count
-pub fn get_count(instance: *runtime.Instance) ImplError!typedefs.GPUSize32Out {
+pub fn get_count(instance: *runtime.Instance) anyerror!typedefs.GPUSize32Out {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

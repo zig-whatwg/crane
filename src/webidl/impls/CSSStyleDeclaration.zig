@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
 
 pub const State = CSSStyleDeclaration.State;
@@ -40,60 +41,60 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for parentRule
-pub fn get_parentRule(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!typedefs.CSSOMString {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!typedefs.CSSOMString {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: removeProperty
-pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
+pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: getPropertyCSSValue
-pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = propertyName;
     return error.NotImplemented;
 }
 
 /// Operation: getPropertyPriority
-pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
+pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: setProperty
-pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: typedefs.CSSOMString) ImplError!void {
+pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: webidl.Opt(typedefs.CSSOMString)) anyerror!void {
     _ = instance;
     _ = property;
     _ = value;
@@ -102,7 +103,7 @@ pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMStr
 }
 
 /// Operation: getPropertyValue
-pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSSOMString) ImplError!typedefs.CSSOMString {
+pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     _ = instance;
     _ = property;
     return error.NotImplemented;

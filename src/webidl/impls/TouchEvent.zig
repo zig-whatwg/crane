@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TouchEvent = interfaces.TouchEvent;
 
 pub const State = TouchEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.TouchEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.TouchEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TouchEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,49 +55,49 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for touches
-pub fn get_touches(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_touches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetTouches
-pub fn get_targetTouches(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_targetTouches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for changedTouches
-pub fn get_changedTouches(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_changedTouches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for altKey
-pub fn get_altKey(instance: *runtime.Instance) ImplError!bool {
+pub fn get_altKey(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for metaKey
-pub fn get_metaKey(instance: *runtime.Instance) ImplError!bool {
+pub fn get_metaKey(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ctrlKey
-pub fn get_ctrlKey(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ctrlKey(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shiftKey
-pub fn get_shiftKey(instance: *runtime.Instance) ImplError!bool {
+pub fn get_shiftKey(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getModifierState
-pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMString) ImplError!bool {
+pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = keyArg;
     return error.NotImplemented;

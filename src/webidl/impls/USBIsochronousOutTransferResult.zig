@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, pack
 }
 
 /// Getter for packets
-pub fn get_packets(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_packets(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

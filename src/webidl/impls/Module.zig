@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Module = interfaces.Module;
 
 pub const State = Module.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, bytes: typedefs.BufferSource, options: dictionaries.WebAssemblyCompileOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, bytes: typedefs.BufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Module.vtable, ctx);
     errdefer deinit(instance);
@@ -54,21 +55,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, byte
 }
 
 /// Operation: exports
-pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: imports
-pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: customSections
-pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = moduleObject;
     _ = sectionName;

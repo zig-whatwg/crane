@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: queryCounterEXT
-pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: typedefs.GLenum) ImplError!void {
+pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = query;
     _ = target;
@@ -48,27 +48,27 @@ pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instanc
 }
 
 /// Operation: createQueryEXT
-pub fn call_createQueryEXT(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createQueryEXT(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: endQueryEXT
-pub fn call_endQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum) ImplError!void {
+pub fn call_endQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = target;
     return error.NotImplemented;
 }
 
 /// Operation: isQueryEXT
-pub fn call_isQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!bool {
+pub fn call_isQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!bool {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: beginQueryEXT
-pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, query: *runtime.Instance) ImplError!void {
+pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, query: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = target;
     _ = query;
@@ -76,7 +76,7 @@ pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: getQueryObjectEXT
-pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) ImplError!*const anyopaque {
+pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
     _ = instance;
     _ = query;
     _ = pname;
@@ -84,7 +84,7 @@ pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Insta
 }
 
 /// Operation: getQueryEXT
-pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) ImplError!*const anyopaque {
+pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
     _ = instance;
     _ = target;
     _ = pname;
@@ -92,7 +92,7 @@ pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pn
 }
 
 /// Operation: deleteQueryEXT
-pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: *runtime.Instance) ImplError!void {
+pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = query;
     return error.NotImplemented;

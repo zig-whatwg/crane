@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCRtpScriptTransformer = interfaces.RTCRtpScriptTransformer;
 
 pub const State = RTCRtpScriptTransformer.State;
@@ -40,44 +41,44 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onkeyframerequest
-pub fn get_onkeyframerequest(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onkeyframerequest(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for options
-pub fn get_options(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_options(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onkeyframerequest
-pub fn set_onkeyframerequest(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onkeyframerequest(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: sendKeyFrameRequest
-pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: generateKeyFrame
-pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtime.DOMString)) anyerror!*const anyopaque {
     _ = instance;
     _ = rid;
     return error.NotImplemented;

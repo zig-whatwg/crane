@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contentRect
-pub fn get_contentRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_contentRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for borderBoxSize
-pub fn get_borderBoxSize(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_borderBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contentBoxSize
-pub fn get_contentBoxSize(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_contentBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for devicePixelContentBoxSize
-pub fn get_devicePixelContentBoxSize(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_devicePixelContentBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

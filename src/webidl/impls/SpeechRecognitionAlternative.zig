@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transcript
-pub fn get_transcript(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_transcript(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for confidence
-pub fn get_confidence(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_confidence(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }

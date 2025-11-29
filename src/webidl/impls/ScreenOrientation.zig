@@ -40,38 +40,38 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.OrientationType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.OrientationType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for angle
-pub fn get_angle(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_angle(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: unlock
-pub fn call_unlock(instance: *runtime.Instance) ImplError!void {
+pub fn call_unlock(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: lock
-pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLockType) ImplError!*const anyopaque {
+pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLockType) anyerror!*const anyopaque {
     _ = instance;
     _ = orientation;
     return error.NotImplemented;

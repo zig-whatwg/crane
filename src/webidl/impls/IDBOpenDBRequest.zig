@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onblocked
-pub fn get_onblocked(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onblocked(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onupgradeneeded
-pub fn get_onupgradeneeded(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onupgradeneeded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onblocked
-pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onupgradeneeded
-pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

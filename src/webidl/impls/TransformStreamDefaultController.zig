@@ -98,7 +98,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for desiredSize
 ///
 /// Spec: § 6.2.3 "The desiredSize getter steps"
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -125,7 +125,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 /// Operation: error
 ///
 /// Spec: § 6.2.3 "The error(e) method steps"
-pub fn call_error(instance: *runtime.Instance, reason: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -143,7 +143,7 @@ pub fn call_error(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
 /// Operation: terminate
 ///
 /// Spec: § 6.2.3 "The terminate() method steps"
-pub fn call_terminate(instance: *runtime.Instance) ImplError!void {
+pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -154,7 +154,7 @@ pub fn call_terminate(instance: *runtime.Instance) ImplError!void {
 /// Operation: enqueue
 ///
 /// Spec: § 6.2.3 "The enqueue(chunk) method steps"
-pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

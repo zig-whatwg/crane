@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for storage
-pub fn get_storage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

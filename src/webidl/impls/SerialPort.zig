@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SerialPort = interfaces.SerialPort;
 
 pub const State = SerialPort.State;
@@ -40,83 +41,83 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onconnect
-pub fn get_onconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondisconnect
-pub fn get_ondisconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondisconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connected
-pub fn get_connected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_connected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onconnect
-pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ondisconnect
-pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getInfo
-pub fn call_getInfo(instance: *runtime.Instance) ImplError!dictionaries.SerialPortInfo {
+pub fn call_getInfo(instance: *runtime.Instance) anyerror!dictionaries.SerialPortInfo {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, options: dictionaries.SerialOptions) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, options: dictionaries.SerialOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: setSignals
-pub fn call_setSignals(instance: *runtime.Instance, signals: dictionaries.SerialOutputSignals) ImplError!*const anyopaque {
+pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(dictionaries.SerialOutputSignals)) anyerror!*const anyopaque {
     _ = instance;
     _ = signals;
     return error.NotImplemented;
 }
 
 /// Operation: getSignals
-pub fn call_getSignals(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSignals(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

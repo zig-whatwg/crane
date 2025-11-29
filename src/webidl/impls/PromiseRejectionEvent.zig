@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for promise
-pub fn get_promise(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_promise(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reason
-pub fn get_reason(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_reason(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

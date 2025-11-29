@@ -40,133 +40,133 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for navigationStart
-pub fn get_navigationStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_navigationStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for unloadEventStart
-pub fn get_unloadEventStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_unloadEventStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for unloadEventEnd
-pub fn get_unloadEventEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_unloadEventEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for redirectStart
-pub fn get_redirectStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_redirectStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for redirectEnd
-pub fn get_redirectEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_redirectEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fetchStart
-pub fn get_fetchStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_fetchStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domainLookupStart
-pub fn get_domainLookupStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domainLookupStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domainLookupEnd
-pub fn get_domainLookupEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domainLookupEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connectStart
-pub fn get_connectStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_connectStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connectEnd
-pub fn get_connectEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_connectEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for secureConnectionStart
-pub fn get_secureConnectionStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_secureConnectionStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for requestStart
-pub fn get_requestStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_requestStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseStart
-pub fn get_responseStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_responseStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for responseEnd
-pub fn get_responseEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_responseEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domLoading
-pub fn get_domLoading(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domLoading(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domInteractive
-pub fn get_domInteractive(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domInteractive(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domContentLoadedEventStart
-pub fn get_domContentLoadedEventStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domContentLoadedEventStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domContentLoadedEventEnd
-pub fn get_domContentLoadedEventEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domContentLoadedEventEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for domComplete
-pub fn get_domComplete(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_domComplete(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for loadEventStart
-pub fn get_loadEventStart(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_loadEventStart(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for loadEventEnd
-pub fn get_loadEventEnd(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_loadEventEnd(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

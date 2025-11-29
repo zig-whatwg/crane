@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Fence = interfaces.Fence;
 
 pub const State = Fence.State;
@@ -40,33 +41,33 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: reportEvent
-pub fn call_reportEvent(instance: *runtime.Instance, event: typedefs.ReportEventType) ImplError!void {
+pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(typedefs.ReportEventType)) anyerror!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;
 }
 
 /// Operation: getNestedConfigs
-pub fn call_getNestedConfigs(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setReportEventDataForAutomaticBeacons
-pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: dictionaries.FenceEvent) ImplError!void {
+pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, event: webidl.Opt(dictionaries.FenceEvent)) anyerror!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;
 }
 
 /// Operation: disableUntrustedNetwork
-pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: notifyEvent
-pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) ImplError!void {
+pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;

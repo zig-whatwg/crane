@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGTransformList = interfaces.SVGTransformList;
 
 pub const State = SVGTransformList.State;
@@ -40,26 +41,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for numberOfItems
-pub fn get_numberOfItems(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_numberOfItems(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: removeItem
-pub fn call_removeItem(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_removeItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: insertItemBefore
-pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = newItem;
     _ = index;
@@ -67,21 +68,21 @@ pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Inst
 }
 
 /// Operation: createSVGTransformFromMatrix
-pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: dictionaries.DOMMatrix2DInit) ImplError!*runtime.Instance {
+pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(dictionaries.DOMMatrix2DInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = matrix;
     return error.NotImplemented;
 }
 
 /// Operation: getItem
-pub fn call_getItem(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: replaceItem
-pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = newItem;
     _ = index;
@@ -89,26 +90,26 @@ pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance,
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initialize
-pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = newItem;
     return error.NotImplemented;
 }
 
 /// Operation: consolidate
-pub fn call_consolidate(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_consolidate(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: appendItem
-pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = newItem;
     return error.NotImplemented;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DataCue = interfaces.DataCue;
 
 pub const State = DataCue.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, startTime: f64, endTime: f64, value: *const anyopaque, @"type": runtime.DOMString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, startTime: f64, endTime: f64, value: *const anyopaque, @"type": webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DataCue.vtable, ctx);
     errdefer deinit(instance);
@@ -56,19 +57,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, star
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

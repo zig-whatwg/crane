@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PeriodicSyncManager = interfaces.PeriodicSyncManager;
 
 pub const State = PeriodicSyncManager.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getTags
-pub fn call_getTags(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getTags(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: unregister
-pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = tag;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: dictionaries.BackgroundSyncOptions) ImplError!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: webidl.Opt(dictionaries.BackgroundSyncOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = tag;
     _ = options;

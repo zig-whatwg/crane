@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createAnchor
-pub fn call_createAnchor(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_createAnchor(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPose
-pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = baseSpace;
     return null;

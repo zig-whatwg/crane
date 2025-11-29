@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 }
 
 /// Operation: setSharedStorageContext
-pub fn call_setSharedStorageContext(instance: *runtime.Instance, contextString: runtime.DOMString) ImplError!void {
+pub fn call_setSharedStorageContext(instance: *runtime.Instance, contextString: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = contextString;
     return error.NotImplemented;

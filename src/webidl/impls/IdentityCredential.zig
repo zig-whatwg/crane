@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for token
-pub fn get_token(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_token(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isAutoSelected
-pub fn get_isAutoSelected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isAutoSelected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for configURL
-pub fn get_configURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_configURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance, options: dictionaries.IdentityCredentialDisconnectOptions) ImplError!*const anyopaque {
+pub fn call_disconnect(instance: *runtime.Instance, options: dictionaries.IdentityCredentialDisconnectOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

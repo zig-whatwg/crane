@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for errorType
-pub fn get_errorType(instance: *runtime.Instance) ImplError!enums.SFrameTransformErrorEventType {
+pub fn get_errorType(instance: *runtime.Instance) anyerror!enums.SFrameTransformErrorEventType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for keyID
-pub fn get_keyID(instance: *runtime.Instance) ImplError!?typedefs.CryptoKeyID {
+pub fn get_keyID(instance: *runtime.Instance) anyerror!?typedefs.CryptoKeyID {
     _ = instance;
     return null;
 }
 
 /// Getter for frame
-pub fn get_frame(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_frame(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

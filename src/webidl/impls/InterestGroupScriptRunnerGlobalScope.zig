@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for privateAggregation
-pub fn get_privateAggregation(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for protectedAudience
-pub fn get_protectedAudience(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

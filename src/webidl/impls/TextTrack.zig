@@ -40,88 +40,88 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for kind
-pub fn get_kind(instance: *runtime.Instance) ImplError!enums.TextTrackKind {
+pub fn get_kind(instance: *runtime.Instance) anyerror!enums.TextTrackKind {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for language
-pub fn get_language(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inBandMetadataTrackDispatchType
-pub fn get_inBandMetadataTrackDispatchType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_inBandMetadataTrackDispatchType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mode
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.TextTrackMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.TextTrackMode {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cues
-pub fn get_cues(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_cues(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for activeCues
-pub fn get_activeCues(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_activeCues(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for oncuechange
-pub fn get_oncuechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncuechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceBuffer
-pub fn get_sourceBuffer(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for mode
-pub fn set_mode(instance: *runtime.Instance, value: enums.TextTrackMode) ImplError!void {
+pub fn set_mode(instance: *runtime.Instance, value: enums.TextTrackMode) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncuechange
-pub fn set_oncuechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncuechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: addCue
-pub fn call_addCue(instance: *runtime.Instance, cue: *runtime.Instance) ImplError!void {
+pub fn call_addCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = cue;
     return error.NotImplemented;
 }
 
 /// Operation: removeCue
-pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) ImplError!void {
+pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = cue;
     return error.NotImplemented;

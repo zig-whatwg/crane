@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for texture
-pub fn get_texture(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_texture(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for textureType
-pub fn get_textureType(instance: *runtime.Instance) ImplError!enums.XRTextureType {
+pub fn get_textureType(instance: *runtime.Instance) anyerror!enums.XRTextureType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for imageIndex
-pub fn get_imageIndex(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_imageIndex(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }

@@ -40,50 +40,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_index(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sameDocument
-pub fn get_sameDocument(instance: *runtime.Instance) ImplError!bool {
+pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondispose
-pub fn get_ondispose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondispose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ondispose
-pub fn set_ondispose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondispose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getState
-pub fn call_getState(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

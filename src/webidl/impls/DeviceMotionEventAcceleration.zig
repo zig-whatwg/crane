@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_x(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_y(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for z
-pub fn get_z(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }

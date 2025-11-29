@@ -53,13 +53,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, valu
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sendGroup
-pub fn get_sendGroup(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_sendGroup(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for sendOrder
-pub fn get_sendOrder(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_sendOrder(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for sendGroup
-pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for sendOrder
-pub fn set_sendOrder(instance: *runtime.Instance, value: i64) ImplError!void {
+pub fn set_sendOrder(instance: *runtime.Instance, value: i64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getWriter
-pub fn call_getWriter(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

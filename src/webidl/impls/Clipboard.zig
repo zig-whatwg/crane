@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Clipboard = interfaces.Clipboard;
 
 pub const State = Clipboard.State;
@@ -40,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, formats: dictionaries.ClipboardUnsanitizedFormats) ImplError!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(dictionaries.ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
     _ = instance;
     _ = formats;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, data: typedefs.ClipboardItems) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, data: typedefs.ClipboardItems) anyerror!*const anyopaque {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: readText
-pub fn call_readText(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_readText(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: writeText
-pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = data;
     return error.NotImplemented;

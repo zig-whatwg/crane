@@ -40,58 +40,58 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for contentEditable
-pub fn get_contentEditable(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_contentEditable(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for enterKeyHint
-pub fn get_enterKeyHint(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_enterKeyHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isContentEditable
-pub fn get_isContentEditable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isContentEditable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inputMode
-pub fn get_inputMode(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_inputMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for virtualKeyboardPolicy
-pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for contentEditable
-pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_contentEditable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for enterKeyHint
-pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_enterKeyHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for inputMode
-pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_inputMode(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for virtualKeyboardPolicy
-pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

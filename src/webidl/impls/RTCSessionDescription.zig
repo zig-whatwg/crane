@@ -53,19 +53,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, desc
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.RTCSdpType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.RTCSdpType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sdp
-pub fn get_sdp(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sdp(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!dictionaries.RTCSessionDescriptionInit {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.RTCSessionDescriptionInit {
     _ = instance;
     return error.NotImplemented;
 }

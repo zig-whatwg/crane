@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for titlebarAreaRect
-pub fn get_titlebarAreaRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_titlebarAreaRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for visible
-pub fn get_visible(instance: *runtime.Instance) ImplError!bool {
+pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

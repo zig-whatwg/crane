@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TransitionEvent = interfaces.TransitionEvent;
 
 pub const State = TransitionEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, transitionEventInitDict: dictionaries.TransitionEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": typedefs.CSSOMString, transitionEventInitDict: webidl.Opt(dictionaries.TransitionEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TransitionEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for propertyName
-pub fn get_propertyName(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_propertyName(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for elapsedTime
-pub fn get_elapsedTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_elapsedTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pseudoElement
-pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

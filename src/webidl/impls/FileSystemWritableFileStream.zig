@@ -40,21 +40,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: truncate
-pub fn call_truncate(instance: *runtime.Instance, size: u64) ImplError!*const anyopaque {
+pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!*const anyopaque {
     _ = instance;
     _ = size;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, data: typedefs.FileSystemWriteChunkType) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, data: typedefs.FileSystemWriteChunkType) anyerror!*const anyopaque {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: seek
-pub fn call_seek(instance: *runtime.Instance, position: u64) ImplError!*const anyopaque {
+pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!*const anyopaque {
     _ = instance;
     _ = position;
     return error.NotImplemented;

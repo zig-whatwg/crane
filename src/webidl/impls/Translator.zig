@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Translator = interfaces.Translator;
 
 pub const State = Translator.State;
@@ -40,32 +41,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sourceLanguage
-pub fn get_sourceLanguage(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sourceLanguage(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetLanguage
-pub fn get_targetLanguage(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_targetLanguage(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inputQuota
-pub fn get_inputQuota(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inputQuota(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) ImplError!*const anyopaque {
+pub fn call_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.TranslatorTranslateOptions) ImplError!*const anyopaque {
+pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -73,7 +74,7 @@ pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, opt
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.TranslatorTranslateOptions) ImplError!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
@@ -81,13 +82,13 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: translateStreaming
-pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: dictionaries.TranslatorTranslateOptions) ImplError!*runtime.Instance {
+pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = options;
@@ -95,7 +96,7 @@ pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMSt
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

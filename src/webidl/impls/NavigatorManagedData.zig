@@ -40,51 +40,51 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onmanagedconfigurationchange
-pub fn get_onmanagedconfigurationchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmanagedconfigurationchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onmanagedconfigurationchange
-pub fn set_onmanagedconfigurationchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmanagedconfigurationchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getManagedConfiguration
-pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = keys;
     return error.NotImplemented;
 }
 
 /// Operation: getHostname
-pub fn call_getHostname(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getHostname(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAnnotatedAssetId
-pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getDirectoryId
-pub fn call_getDirectoryId(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getDirectoryId(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAnnotatedLocation
-pub fn call_getAnnotatedLocation(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSerialNumber
-pub fn call_getSerialNumber(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

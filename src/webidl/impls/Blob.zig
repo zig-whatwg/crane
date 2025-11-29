@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Blob = interfaces.Blob;
 
 pub const State = Blob.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: *const anyopaque, options: dictionaries.BlobPropertyBag) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Blob.vtable, ctx);
     errdefer deinit(instance);
@@ -54,25 +55,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blob
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_size(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: text
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: slice
-pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     _ = instance;
     _ = start;
     _ = end;
@@ -81,19 +82,19 @@ pub fn call_slice(instance: *runtime.Instance, start: i64, end: i64, contentType
 }
 
 /// Operation: stream
-pub fn call_stream(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

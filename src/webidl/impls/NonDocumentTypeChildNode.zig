@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for previousElementSibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for nextElementSibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: transferFromImageBitmap
-pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: *runtime.Instance) ImplError!void {
+pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = bitmap;
     return error.NotImplemented;

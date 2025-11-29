@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onreset
-pub fn get_onreset(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreset(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onreset
-pub fn set_onreset(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreset(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getOffsetReferenceSpace
-pub fn call_getOffsetReferenceSpace(instance: *runtime.Instance, originOffset: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getOffsetReferenceSpace(instance: *runtime.Instance, originOffset: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = originOffset;
     return error.NotImplemented;

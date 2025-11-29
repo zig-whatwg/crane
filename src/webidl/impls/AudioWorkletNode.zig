@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AudioWorkletNode = interfaces.AudioWorkletNode;
 
 pub const State = AudioWorkletNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, name: runtime.DOMString, options: dictionaries.AudioWorkletNodeOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.AudioWorkletNodeOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &AudioWorkletNode.vtable, ctx);
     errdefer deinit(instance);
@@ -55,25 +56,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for parameters
-pub fn get_parameters(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_parameters(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onprocessorerror
-pub fn get_onprocessorerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onprocessorerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onprocessorerror
-pub fn set_onprocessorerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onprocessorerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

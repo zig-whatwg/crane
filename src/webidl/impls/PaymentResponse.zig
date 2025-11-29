@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PaymentResponse = interfaces.PaymentResponse;
 
 pub const State = PaymentResponse.State;
@@ -40,68 +41,68 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for requestId
-pub fn get_requestId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_requestId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for methodName
-pub fn get_methodName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_methodName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for details
-pub fn get_details(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_details(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shippingAddress
-pub fn get_shippingAddress(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_shippingAddress(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for shippingOption
-pub fn get_shippingOption(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_shippingOption(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for payerName
-pub fn get_payerName(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_payerName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for payerEmail
-pub fn get_payerEmail(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_payerEmail(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for payerPhone
-pub fn get_payerPhone(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_payerPhone(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for onpayerdetailchange
-pub fn get_onpayerdetailchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onpayerdetailchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onpayerdetailchange
-pub fn set_onpayerdetailchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onpayerdetailchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: complete
-pub fn call_complete(instance: *runtime.Instance, result: enums.PaymentComplete, details: dictionaries.PaymentCompleteDetails) ImplError!*const anyopaque {
+pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.PaymentComplete), details: webidl.Opt(dictionaries.PaymentCompleteDetails)) anyerror!*const anyopaque {
     _ = instance;
     _ = result;
     _ = details;
@@ -109,13 +110,13 @@ pub fn call_complete(instance: *runtime.Instance, result: enums.PaymentComplete,
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: retry
-pub fn call_retry(instance: *runtime.Instance, errorFields: dictionaries.PaymentValidationErrors) ImplError!*const anyopaque {
+pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(dictionaries.PaymentValidationErrors)) anyerror!*const anyopaque {
     _ = instance;
     _ = errorFields;
     return error.NotImplemented;

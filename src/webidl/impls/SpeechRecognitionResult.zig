@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isFinal
-pub fn get_isFinal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isFinal(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

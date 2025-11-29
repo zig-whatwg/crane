@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for normDepthBufferFromNormView
-pub fn get_normDepthBufferFromNormView(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_normDepthBufferFromNormView(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rawValueToMeters
-pub fn get_rawValueToMeters(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_rawValueToMeters(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

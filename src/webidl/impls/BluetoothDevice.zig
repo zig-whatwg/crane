@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BluetoothDevice = interfaces.BluetoothDevice;
 
 pub const State = BluetoothDevice.State;
@@ -40,116 +41,116 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for gatt
-pub fn get_gatt(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_gatt(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for watchingAdvertisements
-pub fn get_watchingAdvertisements(instance: *runtime.Instance) ImplError!bool {
+pub fn get_watchingAdvertisements(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onadvertisementreceived
-pub fn get_onadvertisementreceived(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onadvertisementreceived(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ongattserverdisconnected
-pub fn get_ongattserverdisconnected(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ongattserverdisconnected(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncharacteristicvaluechanged
-pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onserviceadded
-pub fn get_onserviceadded(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onservicechanged
-pub fn get_onservicechanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onservicechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onserviceremoved
-pub fn get_onserviceremoved(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onserviceremoved(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onadvertisementreceived
-pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ongattserverdisconnected
-pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncharacteristicvaluechanged
-pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onserviceadded
-pub fn set_onserviceadded(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onserviceadded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onservicechanged
-pub fn set_onservicechanged(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onservicechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onserviceremoved
-pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: watchAdvertisements
-pub fn call_watchAdvertisements(instance: *runtime.Instance, options: dictionaries.WatchAdvertisementsOptions) ImplError!*const anyopaque {
+pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WatchAdvertisementsOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

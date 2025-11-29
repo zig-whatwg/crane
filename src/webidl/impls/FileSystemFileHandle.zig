@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemFileHandle = interfaces.FileSystemFileHandle;
 
 pub const State = FileSystemFileHandle.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getFile
-pub fn call_getFile(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getFile(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createWritable
-pub fn call_createWritable(instance: *runtime.Instance, options: dictionaries.FileSystemCreateWritableOptions) ImplError!*const anyopaque {
+pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FileSystemCreateWritableOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: createSyncAccessHandle
-pub fn call_createSyncAccessHandle(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

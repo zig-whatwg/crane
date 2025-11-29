@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for anchorSpace
-pub fn get_anchorSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_anchorSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestPersistentHandle
-pub fn call_requestPersistentHandle(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_requestPersistentHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for navigation
-pub fn get_navigation(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_navigation(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

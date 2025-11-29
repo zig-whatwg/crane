@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PageSwapEvent = interfaces.PageSwapEvent;
 
 pub const State = PageSwapEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.PageSwapEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PageSwapEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PageSwapEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for activation
-pub fn get_activation(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_activation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for viewTransition
-pub fn get_viewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_viewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

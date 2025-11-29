@@ -40,44 +40,44 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for override
-pub fn get_override(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_override(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for validValues
-pub fn get_validValues(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_validValues(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: clearOverride
-pub fn call_clearOverride(instance: *runtime.Instance) ImplError!void {
+pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestOverride
-pub fn call_requestOverride(instance: *runtime.Instance, value: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_requestOverride(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     return error.NotImplemented;

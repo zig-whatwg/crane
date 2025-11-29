@@ -52,19 +52,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for subject
-pub fn get_subject(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_subject(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for predicate
-pub fn get_predicate(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_predicate(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for _object
-pub fn get__object(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get__object(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -54,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for utterance
-pub fn get_utterance(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_utterance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for charIndex
-pub fn get_charIndex(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_charIndex(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for charLength
-pub fn get_charLength(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_charLength(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for elapsedTime
-pub fn get_elapsedTime(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_elapsedTime(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

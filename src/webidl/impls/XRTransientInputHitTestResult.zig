@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for inputSource
-pub fn get_inputSource(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_inputSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for results
-pub fn get_results(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_results(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

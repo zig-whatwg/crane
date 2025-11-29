@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const OscillatorNode = interfaces.OscillatorNode;
 
 pub const State = OscillatorNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.OscillatorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.OscillatorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &OscillatorNode.vtable, ctx);
     errdefer deinit(instance);
@@ -54,32 +55,32 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.OscillatorType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.OscillatorType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for frequency
-pub fn get_frequency(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_frequency(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detune
-pub fn get_detune(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_detune(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: enums.OscillatorType) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: enums.OscillatorType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setPeriodicWave
-pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: *runtime.Instance) ImplError!void {
+pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = periodicWave;
     return error.NotImplemented;

@@ -40,56 +40,56 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persist
-pub fn call_persist(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: estimate
-pub fn call_estimate(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setExpires
-pub fn call_setExpires(instance: *runtime.Instance, expires: typedefs.DOMHighResTimeStamp) ImplError!*const anyopaque {
+pub fn call_setExpires(instance: *runtime.Instance, expires: typedefs.DOMHighResTimeStamp) anyerror!*const anyopaque {
     _ = instance;
     _ = expires;
     return error.NotImplemented;
 }
 
 /// Operation: expires
-pub fn call_expires(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_expires(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persisted
-pub fn call_persisted(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

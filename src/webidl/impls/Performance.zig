@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Performance = interfaces.Performance;
 
 pub const State = Performance.State;
@@ -40,50 +41,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for timeOrigin
-pub fn get_timeOrigin(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_timeOrigin(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for eventCounts
-pub fn get_eventCounts(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_eventCounts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for interactionCount
-pub fn get_interactionCount(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_interactionCount(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timing
-pub fn get_timing(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_timing(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigation
-pub fn get_navigation(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onresourcetimingbufferfull
-pub fn get_onresourcetimingbufferfull(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onresourcetimingbufferfull(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onresourcetimingbufferfull
-pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: measure
-pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: *const anyopaque, endMark: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     _ = instance;
     _ = measureName;
     _ = startOrMeasureOptions;
@@ -92,27 +93,27 @@ pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString,
 }
 
 /// Operation: clearResourceTimings
-pub fn call_clearResourceTimings(instance: *runtime.Instance) ImplError!void {
+pub fn call_clearResourceTimings(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByType
-pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: clearMeasures
-pub fn call_clearMeasures(instance: *runtime.Instance, measureName: runtime.DOMString) ImplError!void {
+pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = measureName;
     return error.NotImplemented;
 }
 
 /// Operation: mark
-pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: dictionaries.PerformanceMarkOptions) ImplError!*runtime.Instance {
+pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markOptions: webidl.Opt(dictionaries.PerformanceMarkOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = markName;
     _ = markOptions;
@@ -120,45 +121,45 @@ pub fn call_mark(instance: *runtime.Instance, markName: runtime.DOMString, markO
 }
 
 /// Operation: getEntries
-pub fn call_getEntries(instance: *runtime.Instance) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntries(instance: *runtime.Instance) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setResourceTimingBufferSize
-pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) ImplError!void {
+pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) anyerror!void {
     _ = instance;
     _ = maxSize;
     return error.NotImplemented;
 }
 
 /// Operation: now
-pub fn call_now(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn call_now(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: measureUserAgentSpecificMemory
-pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: clearMarks
-pub fn call_clearMarks(instance: *runtime.Instance, markName: runtime.DOMString) ImplError!void {
+pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = markName;
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByName
-pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     _ = name;
     _ = @"type";

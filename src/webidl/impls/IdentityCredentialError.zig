@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IdentityCredentialError = interfaces.IdentityCredentialError;
 
 pub const State = IdentityCredentialError.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: runtime.DOMString, options: dictionaries.IdentityCredentialErrorInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.IdentityCredentialErrorInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &IdentityCredentialError.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_error(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

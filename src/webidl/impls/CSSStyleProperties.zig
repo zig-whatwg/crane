@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssFloat
-pub fn get_cssFloat(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_cssFloat(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cssFloat
-pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

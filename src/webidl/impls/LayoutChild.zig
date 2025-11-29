@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for styleMap
-pub fn get_styleMap(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_styleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: intrinsicSizes
-pub fn call_intrinsicSizes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_intrinsicSizes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: layoutNextFragment
-pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = constraints;
     _ = breakToken;

@@ -55,137 +55,137 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, star
 }
 
 /// Getter for region
-pub fn get_region(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_region(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for vertical
-pub fn get_vertical(instance: *runtime.Instance) ImplError!enums.DirectionSetting {
+pub fn get_vertical(instance: *runtime.Instance) anyerror!enums.DirectionSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for snapToLines
-pub fn get_snapToLines(instance: *runtime.Instance) ImplError!bool {
+pub fn get_snapToLines(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for line
-pub fn get_line(instance: *runtime.Instance) ImplError!typedefs.LineAndPositionSetting {
+pub fn get_line(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineAlign
-pub fn get_lineAlign(instance: *runtime.Instance) ImplError!enums.LineAlignSetting {
+pub fn get_lineAlign(instance: *runtime.Instance) anyerror!enums.LineAlignSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for position
-pub fn get_position(instance: *runtime.Instance) ImplError!typedefs.LineAndPositionSetting {
+pub fn get_position(instance: *runtime.Instance) anyerror!typedefs.LineAndPositionSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionAlign
-pub fn get_positionAlign(instance: *runtime.Instance) ImplError!enums.PositionAlignSetting {
+pub fn get_positionAlign(instance: *runtime.Instance) anyerror!enums.PositionAlignSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_size(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!enums.AlignSetting {
+pub fn get_align(instance: *runtime.Instance) anyerror!enums.AlignSetting {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for text
-pub fn get_text(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for region
-pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for vertical
-pub fn set_vertical(instance: *runtime.Instance, value: enums.DirectionSetting) ImplError!void {
+pub fn set_vertical(instance: *runtime.Instance, value: enums.DirectionSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for snapToLines
-pub fn set_snapToLines(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_snapToLines(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for line
-pub fn set_line(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) ImplError!void {
+pub fn set_line(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lineAlign
-pub fn set_lineAlign(instance: *runtime.Instance, value: enums.LineAlignSetting) ImplError!void {
+pub fn set_lineAlign(instance: *runtime.Instance, value: enums.LineAlignSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for position
-pub fn set_position(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) ImplError!void {
+pub fn set_position(instance: *runtime.Instance, value: typedefs.LineAndPositionSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for positionAlign
-pub fn set_positionAlign(instance: *runtime.Instance, value: enums.PositionAlignSetting) ImplError!void {
+pub fn set_positionAlign(instance: *runtime.Instance, value: enums.PositionAlignSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for size
-pub fn set_size(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_size(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: enums.AlignSetting) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: enums.AlignSetting) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for text
-pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getCueAsHTML
-pub fn call_getCueAsHTML(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getCueAsHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

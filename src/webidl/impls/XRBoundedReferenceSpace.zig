@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for boundsGeometry
-pub fn get_boundsGeometry(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_boundsGeometry(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

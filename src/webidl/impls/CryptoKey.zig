@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.KeyType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.KeyType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for extractable
-pub fn get_extractable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_extractable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for algorithm
-pub fn get_algorithm(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_algorithm(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usages
-pub fn get_usages(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_usages(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

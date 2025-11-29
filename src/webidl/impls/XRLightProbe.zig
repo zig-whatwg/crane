@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for probeSpace
-pub fn get_probeSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_probeSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onreflectionchange
-pub fn get_onreflectionchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreflectionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onreflectionchange
-pub fn set_onreflectionchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreflectionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

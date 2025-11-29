@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for dataType
-pub fn get_dataType(instance: *runtime.Instance) ImplError!enums.MLOperandDataType {
+pub fn get_dataType(instance: *runtime.Instance) anyerror!enums.MLOperandDataType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shape
-pub fn get_shape(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_shape(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_readable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_writable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for constant
-pub fn get_constant(instance: *runtime.Instance) ImplError!bool {
+pub fn get_constant(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

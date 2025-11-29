@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: registerAdMacro
-pub fn call_registerAdMacro(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.USVString) ImplError!void {
+pub fn call_registerAdMacro(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -48,14 +48,14 @@ pub fn call_registerAdMacro(instance: *runtime.Instance, name: runtime.DOMString
 }
 
 /// Operation: registerAdBeacon
-pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) ImplError!void {
+pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) anyerror!void {
     _ = instance;
     _ = map;
     return error.NotImplemented;
 }
 
 /// Operation: sendReportTo
-pub fn call_sendReportTo(instance: *runtime.Instance, url: runtime.DOMString) ImplError!void {
+pub fn call_sendReportTo(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = url;
     return error.NotImplemented;

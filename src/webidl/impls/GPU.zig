@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPU = interfaces.GPU;
 
 pub const State = GPU.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for wgslLanguageFeatures
-pub fn get_wgslLanguageFeatures(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_wgslLanguageFeatures(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestAdapter
-pub fn call_requestAdapter(instance: *runtime.Instance, options: dictionaries.GPURequestAdapterOptions) ImplError!*const anyopaque {
+pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GPURequestAdapterOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getPreferredCanvasFormat
-pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) ImplError!enums.GPUTextureFormat {
+pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) anyerror!enums.GPUTextureFormat {
     _ = instance;
     return error.NotImplemented;
 }

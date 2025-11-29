@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setConsumer
-pub fn call_setConsumer(instance: *runtime.Instance, consumer: callbacks.LaunchConsumer) ImplError!void {
+pub fn call_setConsumer(instance: *runtime.Instance, consumer: callbacks.LaunchConsumer) anyerror!void {
     _ = instance;
     _ = consumer;
     return error.NotImplemented;

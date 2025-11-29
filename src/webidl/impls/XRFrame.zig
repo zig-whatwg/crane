@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for session
-pub fn get_session(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_session(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for predictedDisplayTime
-pub fn get_predictedDisplayTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_predictedDisplayTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for trackedAnchors
-pub fn get_trackedAnchors(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_trackedAnchors(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detectedPlanes
-pub fn get_detectedPlanes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_detectedPlanes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detectedMeshes
-pub fn get_detectedMeshes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_detectedMeshes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for metaData
-pub fn get_metaData(instance: *runtime.Instance) ImplError!dictionaries.XRMetadata {
+pub fn get_metaData(instance: *runtime.Instance) anyerror!dictionaries.XRMetadata {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createAnchor
-pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = pose;
     _ = space;
@@ -90,28 +90,28 @@ pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, s
 }
 
 /// Operation: getViewerPose
-pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = referenceSpace;
     return null;
 }
 
 /// Operation: getHitTestResults
-pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
 }
 
 /// Operation: getLightEstimate
-pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = lightProbe;
     return null;
 }
 
 /// Operation: getPose
-pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = space;
     _ = baseSpace;
@@ -119,14 +119,14 @@ pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseS
 }
 
 /// Operation: getHitTestResultsForTransientInput
-pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
 }
 
 /// Operation: fillPoses
-pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) ImplError!bool {
+pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = spaces;
     _ = baseSpace;
@@ -135,7 +135,7 @@ pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, bas
 }
 
 /// Operation: getJointPose
-pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = joint;
     _ = baseSpace;
@@ -143,7 +143,7 @@ pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, 
 }
 
 /// Operation: fillJointRadii
-pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) ImplError!bool {
+pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = jointSpaces;
     _ = radii;
@@ -151,7 +151,7 @@ pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyo
 }
 
 /// Operation: getDepthInformation
-pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = view;
     return null;

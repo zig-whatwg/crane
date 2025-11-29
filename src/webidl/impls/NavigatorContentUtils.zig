@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: unregisterProtocolHandler
-pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) ImplError!void {
+pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
     _ = instance;
     _ = scheme;
     _ = url;
@@ -48,7 +48,7 @@ pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runti
 }
 
 /// Operation: registerProtocolHandler
-pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) ImplError!void {
+pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime.DOMString, url: runtime.USVString) anyerror!void {
     _ = instance;
     _ = scheme;
     _ = url;

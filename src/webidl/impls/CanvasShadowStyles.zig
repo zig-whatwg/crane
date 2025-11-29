@@ -40,52 +40,52 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for shadowOffsetX
-pub fn get_shadowOffsetX(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_shadowOffsetX(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowOffsetY
-pub fn get_shadowOffsetY(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_shadowOffsetY(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowBlur
-pub fn get_shadowBlur(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_shadowBlur(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shadowColor
-pub fn get_shadowColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_shadowColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for shadowOffsetX
-pub fn set_shadowOffsetX(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_shadowOffsetX(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowOffsetY
-pub fn set_shadowOffsetY(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_shadowOffsetY(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowBlur
-pub fn set_shadowBlur(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_shadowBlur(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for shadowColor
-pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

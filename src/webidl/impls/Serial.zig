@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Serial = interfaces.Serial;
 
 pub const State = Serial.State;
@@ -40,39 +41,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onconnect
-pub fn get_onconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondisconnect
-pub fn get_ondisconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondisconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onconnect
-pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ondisconnect
-pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getPorts
-pub fn call_getPorts(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getPorts(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestPort
-pub fn call_requestPort(instance: *runtime.Instance, options: dictionaries.SerialPortRequestOptions) ImplError!*const anyopaque {
+pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SerialPortRequestOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

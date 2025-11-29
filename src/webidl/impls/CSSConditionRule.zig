@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for conditionText
-pub fn get_conditionText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_conditionText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

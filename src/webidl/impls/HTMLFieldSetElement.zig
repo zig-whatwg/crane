@@ -52,81 +52,81 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for elements
-pub fn get_elements(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for willValidate
-pub fn get_willValidate(instance: *runtime.Instance) ImplError!bool {
+pub fn get_willValidate(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for validity
-pub fn get_validity(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_validity(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for validationMessage
-pub fn get_validationMessage(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: checkValidity
-pub fn call_checkValidity(instance: *runtime.Instance) ImplError!bool {
+pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reportValidity
-pub fn call_reportValidity(instance: *runtime.Instance) ImplError!bool {
+pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setCustomValidity
-pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) ImplError!void {
+pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOMString) anyerror!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;

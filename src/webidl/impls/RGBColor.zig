@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for red
-pub fn get_red(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_red(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for green
-pub fn get_green(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_green(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blue
-pub fn get_blue(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_blue(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

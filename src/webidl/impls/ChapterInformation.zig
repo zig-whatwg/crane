@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for title
-pub fn get_title(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for artwork
-pub fn get_artwork(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_artwork(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

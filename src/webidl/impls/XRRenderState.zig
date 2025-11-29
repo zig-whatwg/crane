@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for depthNear
-pub fn get_depthNear(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_depthNear(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for depthFar
-pub fn get_depthFar(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_depthFar(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for passthroughFullyObscured
-pub fn get_passthroughFullyObscured(instance: *runtime.Instance) ImplError!?bool {
+pub fn get_passthroughFullyObscured(instance: *runtime.Instance) anyerror!?bool {
     _ = instance;
     return null;
 }
 
 /// Getter for inlineVerticalFieldOfView
-pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_inlineVerticalFieldOfView(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for baseLayer
-pub fn get_baseLayer(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_baseLayer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for layers
-pub fn get_layers(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_layers(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

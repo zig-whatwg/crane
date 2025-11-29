@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ML = interfaces.ML;
 
 pub const State = ML.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createContext
-pub fn call_createContext(instance: *runtime.Instance, options: dictionaries.MLContextOptions) ImplError!*const anyopaque {
+pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MLContextOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

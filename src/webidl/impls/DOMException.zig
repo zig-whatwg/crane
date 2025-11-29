@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DOMException = interfaces.DOMException;
 
 pub const State = DOMException.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: runtime.DOMString, name: runtime.DOMString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMException.vtable, ctx);
     errdefer deinit(instance);
@@ -54,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for code
-pub fn get_code(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_code(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }

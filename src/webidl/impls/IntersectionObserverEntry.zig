@@ -53,49 +53,49 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inte
 }
 
 /// Getter for time
-pub fn get_time(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_time(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rootBounds
-pub fn get_rootBounds(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_rootBounds(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for boundingClientRect
-pub fn get_boundingClientRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_boundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for intersectionRect
-pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isIntersecting
-pub fn get_isIntersecting(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isIntersecting(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isVisible
-pub fn get_isVisible(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isVisible(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for intersectionRatio
-pub fn get_intersectionRatio(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_intersectionRatio(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

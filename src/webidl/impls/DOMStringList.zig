@@ -116,7 +116,7 @@ pub fn createFromSlice(allocator: std.mem.Allocator, ctx: runtime.Context, strin
 
 /// HTML §2.6.3 - DOMStringList.length
 /// Returns the number of strings in the list.
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return @intCast(internal.strings.items.len);
 }
@@ -130,7 +130,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 ///
 /// This method is also the getter for indexed properties, allowing
 /// list[index] access in JavaScript.
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!runtime.DOMString {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check bounds
@@ -146,7 +146,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!runtime.DOMS
 
 /// HTML §2.6.3 - DOMStringList.contains(string)
 /// Returns true if the list contains the given string.
-pub fn call_contains(instance: *runtime.Instance, string: runtime.DOMString) ImplError!bool {
+pub fn call_contains(instance: *runtime.Instance, string: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const search = string.asSlice();
 

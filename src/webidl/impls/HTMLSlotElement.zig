@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLSlotElement = interfaces.HTMLSlotElement;
 
 pub const State = HTMLSlotElement.State;
@@ -52,34 +53,34 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: assignedElements
-pub fn call_assignedElements(instance: *runtime.Instance, options: dictionaries.AssignedNodesOptions) ImplError!*const anyopaque {
+pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: assignedNodes
-pub fn call_assignedNodes(instance: *runtime.Instance, options: dictionaries.AssignedNodesOptions) ImplError!*const anyopaque {
+pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: assign
-pub fn call_assign(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;

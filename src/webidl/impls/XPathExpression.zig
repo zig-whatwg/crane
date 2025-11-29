@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const XPathExpression = interfaces.XPathExpression;
 
 pub const State = XPathExpression.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: evaluate
-pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": u16, result: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     _ = instance;
     _ = contextNode;
     _ = @"type";

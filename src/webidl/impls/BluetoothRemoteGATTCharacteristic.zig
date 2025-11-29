@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BluetoothRemoteGATTCharacteristic = interfaces.BluetoothRemoteGATTCharacteristic;
 
 pub const State = BluetoothRemoteGATTCharacteristic.State;
@@ -40,91 +41,91 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for service
-pub fn get_service(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_service(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for uuid
-pub fn get_uuid(instance: *runtime.Instance) ImplError!typedefs.UUID {
+pub fn get_uuid(instance: *runtime.Instance) anyerror!typedefs.UUID {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for properties
-pub fn get_properties(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_properties(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for oncharacteristicvaluechanged
-pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for oncharacteristicvaluechanged
-pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: startNotifications
-pub fn call_startNotifications(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_startNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: writeValueWithResponse
-pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: writeValue
-pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptors
-pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) ImplError!*const anyopaque {
+pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(typedefs.BluetoothDescriptorUUID)) anyerror!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptor
-pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) ImplError!*const anyopaque {
+pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) anyerror!*const anyopaque {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: writeValueWithoutResponse
-pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stopNotifications
-pub fn call_stopNotifications(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: readValue
-pub fn call_readValue(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

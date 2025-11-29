@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for entryType
-pub fn get_entryType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_duration(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

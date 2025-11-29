@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fontFamily
-pub fn get_fontFamily(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_fontFamily(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for basePalette
-pub fn get_basePalette(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_basePalette(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for overrideColors
-pub fn get_overrideColors(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_overrideColors(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

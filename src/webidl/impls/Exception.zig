@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Exception = interfaces.Exception;
 
 pub const State = Exception.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: dictionaries.ExceptionOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: webidl.Opt(dictionaries.ExceptionOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Exception.vtable, ctx);
     errdefer deinit(instance);
@@ -55,20 +56,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exce
 }
 
 /// Getter for stack
-pub fn get_stack(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_stack(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: is
-pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) ImplError!bool {
+pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) anyerror!bool {
     _ = instance;
     _ = exceptionTag;
     return error.NotImplemented;
 }
 
 /// Operation: getArg
-pub fn call_getArg(instance: *runtime.Instance, index: u32) ImplError!*const anyopaque {
+pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!*const anyopaque {
     _ = instance;
     _ = index;
     return error.NotImplemented;

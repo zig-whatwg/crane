@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for messageType
-pub fn get_messageType(instance: *runtime.Instance) ImplError!enums.MediaKeyMessageType {
+pub fn get_messageType(instance: *runtime.Instance) anyerror!enums.MediaKeyMessageType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_message(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

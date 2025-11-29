@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for forDebuggingOnly
-pub fn get_forDebuggingOnly(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_forDebuggingOnly(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for realTimeReporting
-pub fn get_realTimeReporting(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_realTimeReporting(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

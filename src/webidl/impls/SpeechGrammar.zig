@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for src
-pub fn get_src(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_src(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for weight
-pub fn get_weight(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_weight(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for src
-pub fn set_src(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_src(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for weight
-pub fn set_weight(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_weight(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

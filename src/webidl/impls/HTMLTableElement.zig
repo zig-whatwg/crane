@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLTableElement = interfaces.HTMLTableElement;
 
 pub const State = HTMLTableElement.State;
@@ -52,225 +53,225 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for caption
-pub fn get_caption(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_caption(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for tHead
-pub fn get_tHead(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_tHead(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for tFoot
-pub fn get_tFoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_tFoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for tBodies
-pub fn get_tBodies(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_tBodies(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rows
-pub fn get_rows(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_rows(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for border
-pub fn get_border(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_border(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for frame
-pub fn get_frame(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_frame(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rules
-pub fn get_rules(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_rules(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for summary
-pub fn get_summary(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_summary(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bgColor
-pub fn get_bgColor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cellPadding
-pub fn get_cellPadding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_cellPadding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cellSpacing
-pub fn get_cellSpacing(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_cellSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for caption
-pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tHead
-pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tFoot
-pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for border
-pub fn set_border(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_border(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for frame
-pub fn set_frame(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_frame(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rules
-pub fn set_rules(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_rules(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for summary
-pub fn set_summary(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_summary(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for bgColor
-pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for cellPadding
-pub fn set_cellPadding(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_cellPadding(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for cellSpacing
-pub fn set_cellSpacing(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_cellSpacing(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: createTFoot
-pub fn call_createTFoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createTFoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteTHead
-pub fn call_deleteTHead(instance: *runtime.Instance) ImplError!void {
+pub fn call_deleteTHead(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createCaption
-pub fn call_createCaption(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createCaption(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: insertRow
-pub fn call_insertRow(instance: *runtime.Instance, index: i32) ImplError!*runtime.Instance {
+pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: createTBody
-pub fn call_createTBody(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createTBody(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createTHead
-pub fn call_createTHead(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createTHead(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteRow
-pub fn call_deleteRow(instance: *runtime.Instance, index: i32) ImplError!void {
+pub fn call_deleteRow(instance: *runtime.Instance, index: i32) anyerror!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: deleteCaption
-pub fn call_deleteCaption(instance: *runtime.Instance) ImplError!void {
+pub fn call_deleteCaption(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteTFoot
-pub fn call_deleteTFoot(instance: *runtime.Instance) ImplError!void {
+pub fn call_deleteTFoot(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

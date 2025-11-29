@@ -53,91 +53,91 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, touc
 }
 
 /// Getter for identifier
-pub fn get_identifier(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_identifier(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for screenX
-pub fn get_screenX(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_screenX(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for screenY
-pub fn get_screenY(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_screenY(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for clientX
-pub fn get_clientX(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_clientX(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for clientY
-pub fn get_clientY(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_clientY(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pageX
-pub fn get_pageX(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_pageX(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pageY
-pub fn get_pageY(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_pageY(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for radiusX
-pub fn get_radiusX(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_radiusX(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for radiusY
-pub fn get_radiusY(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_radiusY(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rotationAngle
-pub fn get_rotationAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_rotationAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for force
-pub fn get_force(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_force(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for altitudeAngle
-pub fn get_altitudeAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_altitudeAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for azimuthAngle
-pub fn get_azimuthAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_azimuthAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for touchType
-pub fn get_touchType(instance: *runtime.Instance) ImplError!enums.TouchType {
+pub fn get_touchType(instance: *runtime.Instance) anyerror!enums.TouchType {
     _ = instance;
     return error.NotImplemented;
 }

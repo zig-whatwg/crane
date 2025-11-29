@@ -52,13 +52,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: i32) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

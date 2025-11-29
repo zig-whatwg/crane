@@ -40,77 +40,77 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for layout
-pub fn get_layout(instance: *runtime.Instance) ImplError!enums.XRLayerLayout {
+pub fn get_layout(instance: *runtime.Instance) anyerror!enums.XRLayerLayout {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blendTextureSourceAlpha
-pub fn get_blendTextureSourceAlpha(instance: *runtime.Instance) ImplError!bool {
+pub fn get_blendTextureSourceAlpha(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forceMonoPresentation
-pub fn get_forceMonoPresentation(instance: *runtime.Instance) ImplError!bool {
+pub fn get_forceMonoPresentation(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for opacity
-pub fn get_opacity(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_opacity(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mipLevels
-pub fn get_mipLevels(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_mipLevels(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for quality
-pub fn get_quality(instance: *runtime.Instance) ImplError!enums.XRLayerQuality {
+pub fn get_quality(instance: *runtime.Instance) anyerror!enums.XRLayerQuality {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for needsRedraw
-pub fn get_needsRedraw(instance: *runtime.Instance) ImplError!bool {
+pub fn get_needsRedraw(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for blendTextureSourceAlpha
-pub fn set_blendTextureSourceAlpha(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_blendTextureSourceAlpha(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for forceMonoPresentation
-pub fn set_forceMonoPresentation(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_forceMonoPresentation(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for opacity
-pub fn set_opacity(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_opacity(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for quality
-pub fn set_quality(instance: *runtime.Instance, value: enums.XRLayerQuality) ImplError!void {
+pub fn set_quality(instance: *runtime.Instance, value: enums.XRLayerQuality) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

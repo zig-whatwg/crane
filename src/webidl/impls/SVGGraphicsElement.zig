@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGGraphicsElement = interfaces.SVGGraphicsElement;
 
 pub const State = SVGGraphicsElement.State;
@@ -40,37 +41,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for requiredExtensions
-pub fn get_requiredExtensions(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_requiredExtensions(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for systemLanguage
-pub fn get_systemLanguage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_systemLanguage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getScreenCTM
-pub fn call_getScreenCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: getCTM
-pub fn call_getCTM(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: getBBox
-pub fn call_getBBox(instance: *runtime.Instance, options: dictionaries.SVGBoundingBoxOptions) ImplError!*runtime.Instance {
+pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SVGBoundingBoxOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = options;
     return error.NotImplemented;

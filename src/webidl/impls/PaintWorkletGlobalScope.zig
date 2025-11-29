@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for devicePixelRatio
-pub fn get_devicePixelRatio(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: registerPaint
-pub fn call_registerPaint(instance: *runtime.Instance, name: runtime.DOMString, paintCtor: callbacks.VoidFunction) ImplError!void {
+pub fn call_registerPaint(instance: *runtime.Instance, name: runtime.DOMString, paintCtor: callbacks.VoidFunction) anyerror!void {
     _ = instance;
     _ = name;
     _ = paintCtor;

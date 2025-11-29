@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSColor = interfaces.CSSColor;
 
 pub const State = CSSColor.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: typedefs.CSSKeywordish, channels: *const anyopaque, alpha: typedefs.CSSNumberish) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: typedefs.CSSKeywordish, channels: *const anyopaque, alpha: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSColor.vtable, ctx);
     errdefer deinit(instance);
@@ -55,39 +56,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colo
 }
 
 /// Getter for colorSpace
-pub fn get_colorSpace(instance: *runtime.Instance) ImplError!typedefs.CSSKeywordish {
+pub fn get_colorSpace(instance: *runtime.Instance) anyerror!typedefs.CSSKeywordish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for channels
-pub fn get_channels(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_channels(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for alpha
-pub fn get_alpha(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_alpha(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for colorSpace
-pub fn set_colorSpace(instance: *runtime.Instance, value: typedefs.CSSKeywordish) ImplError!void {
+pub fn set_colorSpace(instance: *runtime.Instance, value: typedefs.CSSKeywordish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for channels
-pub fn set_channels(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_channels(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for alpha
-pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

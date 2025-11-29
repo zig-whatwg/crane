@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for postscriptName
-pub fn get_postscriptName(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_postscriptName(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fullName
-pub fn get_fullName(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_fullName(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for family
-pub fn get_family(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_family(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_style(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

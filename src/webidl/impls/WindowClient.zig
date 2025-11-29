@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for visibilityState
-pub fn get_visibilityState(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_visibilityState(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for focused
-pub fn get_focused(instance: *runtime.Instance) ImplError!bool {
+pub fn get_focused(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ancestorOrigins
-pub fn get_ancestorOrigins(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: focus
-pub fn call_focus(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_focus(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: navigate
-pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = url;
     return error.NotImplemented;

@@ -12,6 +12,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AbortController = interfaces.AbortController;
 
 pub const State = AbortController.State;
@@ -89,7 +90,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 /// Getter for signal
 ///
 /// Spec: § 3.2.2 "The signal getter steps are to return this's signal"
-pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.signal;
@@ -98,7 +99,7 @@ pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Operation: abort
 ///
 /// Spec: § 3.2.3 "The abort(reason) method steps are to signal abort on this's signal with reason"
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

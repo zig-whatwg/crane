@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for inlineSize
-pub fn get_inlineSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inlineSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockSize
-pub fn get_blockSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_blockSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

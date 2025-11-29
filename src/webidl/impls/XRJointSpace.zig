@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for jointName
-pub fn get_jointName(instance: *runtime.Instance) ImplError!enums.XRHandJoint {
+pub fn get_jointName(instance: *runtime.Instance) anyerror!enums.XRHandJoint {
     _ = instance;
     return error.NotImplemented;
 }

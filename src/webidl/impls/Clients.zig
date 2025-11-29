@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Clients = interfaces.Clients;
 
 pub const State = Clients.State;
@@ -40,28 +41,28 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: matchAll
-pub fn call_matchAll(instance: *runtime.Instance, options: dictionaries.ClientQueryOptions) ImplError!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ClientQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: openWindow
-pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = url;
     return error.NotImplemented;
 }
 
 /// Operation: claim
-pub fn call_claim(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_claim(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

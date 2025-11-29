@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 
 pub const State = WorkerGlobalScope.State;
@@ -40,184 +41,184 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for self
-pub fn get_self(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for location
-pub fn get_location(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigator
-pub fn get_navigator(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.OnErrorEventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.OnErrorEventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onlanguagechange
-pub fn get_onlanguagechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onlanguagechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onoffline
-pub fn get_onoffline(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onoffline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ononline
-pub fn get_ononline(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ononline(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onrejectionhandled
-pub fn get_onrejectionhandled(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onrejectionhandled(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onunhandledrejection
-pub fn get_onunhandledrejection(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onunhandledrejection(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fonts
-pub fn get_fonts(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for origin
-pub fn get_origin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isSecureContext
-pub fn get_isSecureContext(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for crossOriginIsolated
-pub fn get_crossOriginIsolated(instance: *runtime.Instance) ImplError!bool {
+pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for indexedDB
-pub fn get_indexedDB(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trustedTypes
-pub fn get_trustedTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for performance
-pub fn get_performance(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for caches
-pub fn get_caches(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scheduler
-pub fn get_scheduler(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for crypto
-pub fn get_crypto(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onlanguagechange
-pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onoffline
-pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ononline
-pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onrejectionhandled
-pub fn set_onrejectionhandled(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onrejectionhandled(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onunhandledrejection
-pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
     _ = instance;
     _ = e;
     return error.NotImplemented;
 }
 
 /// Operation: atob
-pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) ImplError!runtime.ByteString {
+pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: btoa
-pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -226,7 +227,7 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: dictionaries.ImageBitmapOptions) ImplError!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = image;
     _ = options;
@@ -234,21 +235,21 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 }
 
 /// Operation: clearInterval
-pub fn call_clearInterval(instance: *runtime.Instance, id: i32) ImplError!void {
+pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: queueMicrotask
-pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) ImplError!void {
+pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: dictionaries.StructuredSerializeOptions) ImplError!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = value;
     _ = options;
@@ -256,21 +257,21 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Operation: importScripts
-pub fn call_importScripts(instance: *runtime.Instance, urls: *const anyopaque) ImplError!void {
+pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOMString) anyerror!void {
     _ = instance;
     _ = urls;
     return error.NotImplemented;
 }
 
 /// Operation: clearTimeout
-pub fn call_clearTimeout(instance: *runtime.Instance, id: i32) ImplError!void {
+pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: i32, arguments: *const anyopaque) ImplError!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -279,7 +280,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: dictionaries.RequestInit) ImplError!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = init_data;

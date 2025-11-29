@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for baseVal
-pub fn get_baseVal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_baseVal(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for animVal
-pub fn get_animVal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_animVal(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for baseVal
-pub fn set_baseVal(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_baseVal(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

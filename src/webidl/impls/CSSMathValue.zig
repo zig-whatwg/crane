@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for operator
-pub fn get_operator(instance: *runtime.Instance) ImplError!enums.CSSMathOperator {
+pub fn get_operator(instance: *runtime.Instance) anyerror!enums.CSSMathOperator {
     _ = instance;
     return error.NotImplemented;
 }

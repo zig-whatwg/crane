@@ -40,73 +40,73 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for renderTime
-pub fn get_renderTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_renderTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for loadTime
-pub fn get_loadTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_loadTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for intersectionRect
-pub fn get_intersectionRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for identifier
-pub fn get_identifier(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_identifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for naturalWidth
-pub fn get_naturalWidth(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_naturalWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for naturalHeight
-pub fn get_naturalHeight(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_naturalHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for element
-pub fn get_element(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_element(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paintTime
-pub fn get_paintTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
+pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
     _ = instance;
     return null;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

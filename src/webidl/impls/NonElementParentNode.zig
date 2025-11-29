@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getElementById
-pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = elementId;
     return null;

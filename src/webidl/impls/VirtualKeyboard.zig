@@ -40,45 +40,45 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for boundingRect
-pub fn get_boundingRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_boundingRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for overlaysContent
-pub fn get_overlaysContent(instance: *runtime.Instance) ImplError!bool {
+pub fn get_overlaysContent(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ongeometrychange
-pub fn get_ongeometrychange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ongeometrychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for overlaysContent
-pub fn set_overlaysContent(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_overlaysContent(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ongeometrychange
-pub fn set_ongeometrychange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ongeometrychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: hide
-pub fn call_hide(instance: *runtime.Instance) ImplError!void {
+pub fn call_hide(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: show
-pub fn call_show(instance: *runtime.Instance) ImplError!void {
+pub fn call_show(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

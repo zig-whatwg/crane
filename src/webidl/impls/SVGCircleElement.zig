@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cx
-pub fn get_cx(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cx(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cy
-pub fn get_cy(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cy(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for r
-pub fn get_r(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_r(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

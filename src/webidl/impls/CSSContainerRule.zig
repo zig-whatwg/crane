@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for containerName
-pub fn get_containerName(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_containerName(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for containerQuery
-pub fn get_containerQuery(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_containerQuery(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

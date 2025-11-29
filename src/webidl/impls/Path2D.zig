@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Path2D = interfaces.Path2D;
 
 pub const State = Path2D.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, path: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, path: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Path2D.vtable, ctx);
     errdefer deinit(instance);
@@ -53,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, path
 }
 
 /// Operation: lineTo
-pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -61,7 +62,7 @@ pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
 }
 
 /// Operation: arcTo
-pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) ImplError!void {
+pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
     _ = instance;
     _ = x1;
     _ = y1;
@@ -72,7 +73,7 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
 }
 
 /// Operation: arc
-pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -84,7 +85,7 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
 }
 
 /// Operation: moveTo
-pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -92,7 +93,7 @@ pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
 }
 
 /// Operation: quadraticCurveTo
-pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) ImplError!void {
+pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = cpx;
     _ = cpy;
@@ -102,7 +103,7 @@ pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x:
 }
 
 /// Operation: bezierCurveTo
-pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) ImplError!void {
+pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = cp1x;
     _ = cp1y;
@@ -114,7 +115,7 @@ pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2
 }
 
 /// Operation: ellipse
-pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: bool) ImplError!void {
+pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -128,7 +129,7 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
 }
 
 /// Operation: addPath
-pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
+pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transform: webidl.Opt(dictionaries.DOMMatrix2DInit)) anyerror!void {
     _ = instance;
     _ = path;
     _ = transform;
@@ -136,13 +137,13 @@ pub fn call_addPath(instance: *runtime.Instance, path: *runtime.Instance, transf
 }
 
 /// Operation: closePath
-pub fn call_closePath(instance: *runtime.Instance) ImplError!void {
+pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: roundRect
-pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: *const anyopaque) ImplError!void {
+pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -153,7 +154,7 @@ pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
 }
 
 /// Operation: rect
-pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) ImplError!void {
+pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

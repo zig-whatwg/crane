@@ -54,25 +54,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, conf
 }
 
 /// Getter for interfaceNumber
-pub fn get_interfaceNumber(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_interfaceNumber(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for alternate
-pub fn get_alternate(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_alternate(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for alternates
-pub fn get_alternates(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_alternates(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for claimed
-pub fn get_claimed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_claimed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

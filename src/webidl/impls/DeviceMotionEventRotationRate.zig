@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for alpha
-pub fn get_alpha(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_alpha(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for beta
-pub fn get_beta(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_beta(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for gamma
-pub fn get_gamma(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_gamma(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }

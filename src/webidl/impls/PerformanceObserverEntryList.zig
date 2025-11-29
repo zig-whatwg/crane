@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PerformanceObserverEntryList = interfaces.PerformanceObserverEntryList;
 
 pub const State = PerformanceObserverEntryList.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getEntries
-pub fn call_getEntries(instance: *runtime.Instance) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntries(instance: *runtime.Instance) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByType
-pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByName
-pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": runtime.DOMString) ImplError!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     _ = name;
     _ = @"type";

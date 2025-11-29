@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IdleDetector = interfaces.IdleDetector;
 
 pub const State = IdleDetector.State;
@@ -52,39 +53,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for userState
-pub fn get_userState(instance: *runtime.Instance) ImplError!?enums.UserIdleState {
+pub fn get_userState(instance: *runtime.Instance) anyerror!?enums.UserIdleState {
     _ = instance;
     return null;
 }
 
 /// Getter for screenState
-pub fn get_screenState(instance: *runtime.Instance) ImplError!?enums.ScreenIdleState {
+pub fn get_screenState(instance: *runtime.Instance) anyerror!?enums.ScreenIdleState {
     _ = instance;
     return null;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, options: dictionaries.IdleOptions) ImplError!*const anyopaque {
+pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IdleOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

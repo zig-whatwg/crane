@@ -138,7 +138,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 ///
 /// Spec: § 5.2.1 "The encoding getter steps are to return 'utf-8'"
 /// TextEncoderStream always uses UTF-8 encoding.
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     // Return static "utf-8" string (interned, no allocation needed)
     return runtime.DOMString.initInterned("utf-8");
@@ -147,7 +147,7 @@ pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Getter for readable
 ///
 /// Spec: "The readable getter steps are to return this's transform.[[readable]]"
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -158,7 +158,7 @@ pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for writable
 ///
 /// Spec: "The writable getter steps are to return this's transform.[[writable]]"
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

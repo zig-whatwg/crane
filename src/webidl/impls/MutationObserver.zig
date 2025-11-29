@@ -15,6 +15,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MutationObserver = interfaces.MutationObserver;
 
 pub const State = MutationObserver.State;
@@ -144,7 +145,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 /// any mutations based on the criteria given by options (an object).
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe
-pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: dictionaries.MutationObserverInit) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(dictionaries.MutationObserverInit)) anyerror!void {
     const internal = getInternal(instance);
 
     // Step 1: If either options["attributeOldValue"] or options["attributeFilter"]
@@ -207,7 +208,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 /// is used again, observer's callback will not be invoked.
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
 
     // Step 1: For each node of this's node list, remove any registered
@@ -227,7 +228,7 @@ pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
 /// Empties the record queue and returns what was in there.
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-takerecords
-pub fn call_takeRecords(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance);
 
     // Step 1: Let records be a clone of this's record queue.

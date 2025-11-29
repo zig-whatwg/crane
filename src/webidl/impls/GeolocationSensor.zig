@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GeolocationSensor = interfaces.GeolocationSensor;
 
 pub const State = GeolocationSensor.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.GeolocationSensorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.GeolocationSensorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &GeolocationSensor.vtable, ctx);
     errdefer deinit(instance);
@@ -53,49 +54,49 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for latitude
-pub fn get_latitude(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_latitude(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for longitude
-pub fn get_longitude(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_longitude(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for altitude
-pub fn get_altitude(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_altitude(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for accuracy
-pub fn get_accuracy(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_accuracy(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for altitudeAccuracy
-pub fn get_altitudeAccuracy(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for heading
-pub fn get_heading(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_heading(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for speed
-pub fn get_speed(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, readOptions: dictionaries.ReadOptions) ImplError!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = readOptions;
     return error.NotImplemented;

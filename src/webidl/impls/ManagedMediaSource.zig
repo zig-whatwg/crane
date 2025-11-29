@@ -52,32 +52,32 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for streaming
-pub fn get_streaming(instance: *runtime.Instance) ImplError!bool {
+pub fn get_streaming(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstartstreaming
-pub fn get_onstartstreaming(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstartstreaming(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onendstreaming
-pub fn get_onendstreaming(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onendstreaming(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstartstreaming
-pub fn set_onstartstreaming(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstartstreaming(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onendstreaming
-pub fn set_onendstreaming(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onendstreaming(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -52,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: serializeToString
-pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     _ = root;
     return error.NotImplemented;

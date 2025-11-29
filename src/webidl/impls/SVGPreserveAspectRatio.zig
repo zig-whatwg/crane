@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_align(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for meetOrSlice
-pub fn get_meetOrSlice(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_meetOrSlice(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: u16) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: u16) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for meetOrSlice
-pub fn set_meetOrSlice(instance: *runtime.Instance, value: u16) ImplError!void {
+pub fn set_meetOrSlice(instance: *runtime.Instance, value: u16) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

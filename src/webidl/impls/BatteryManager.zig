@@ -40,76 +40,76 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for charging
-pub fn get_charging(instance: *runtime.Instance) ImplError!bool {
+pub fn get_charging(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for chargingTime
-pub fn get_chargingTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_chargingTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dischargingTime
-pub fn get_dischargingTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_dischargingTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for level
-pub fn get_level(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_level(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchargingchange
-pub fn get_onchargingchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchargingchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchargingtimechange
-pub fn get_onchargingtimechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchargingtimechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondischargingtimechange
-pub fn get_ondischargingtimechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondischargingtimechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onlevelchange
-pub fn get_onlevelchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onlevelchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchargingchange
-pub fn set_onchargingchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchargingchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onchargingtimechange
-pub fn set_onchargingtimechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchargingtimechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ondischargingtimechange
-pub fn set_ondischargingtimechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondischargingtimechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onlevelchange
-pub fn set_onlevelchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onlevelchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -40,21 +40,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: unsubscribe
-pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = subscriptions;
     return error.NotImplemented;
 }
 
 /// Operation: subscribe
-pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = subscriptions;
     return error.NotImplemented;
 }
 
 /// Operation: getSubscriptions
-pub fn call_getSubscriptions(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

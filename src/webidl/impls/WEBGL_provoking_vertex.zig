@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: provokingVertexWEBGL
-pub fn call_provokingVertexWEBGL(instance: *runtime.Instance, provokeMode: typedefs.GLenum) ImplError!void {
+pub fn call_provokingVertexWEBGL(instance: *runtime.Instance, provokeMode: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = provokeMode;
     return error.NotImplemented;

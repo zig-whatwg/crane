@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for planeSpace
-pub fn get_planeSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_planeSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for polygon
-pub fn get_polygon(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_polygon(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientation
-pub fn get_orientation(instance: *runtime.Instance) ImplError!?enums.XRPlaneOrientation {
+pub fn get_orientation(instance: *runtime.Instance) anyerror!?enums.XRPlaneOrientation {
     _ = instance;
     return null;
 }
 
 /// Getter for lastChangedTime
-pub fn get_lastChangedTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_lastChangedTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for semanticLabel
-pub fn get_semanticLabel(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }

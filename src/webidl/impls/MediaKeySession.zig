@@ -40,83 +40,83 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sessionId
-pub fn get_sessionId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sessionId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for expiration
-pub fn get_expiration(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_expiration(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for closed
-pub fn get_closed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for keyStatuses
-pub fn get_keyStatuses(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_keyStatuses(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onkeystatuseschange
-pub fn get_onkeystatuseschange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onkeystatuseschange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onkeystatuseschange
-pub fn set_onkeystatuseschange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onkeystatuseschange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, response: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_update(instance: *runtime.Instance, response: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = response;
     return error.NotImplemented;
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_remove(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: load
-pub fn call_load(instance: *runtime.Instance, sessionId: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_load(instance: *runtime.Instance, sessionId: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = sessionId;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: generateRequest
-pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.DOMString, initData: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.DOMString, initData: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = initDataType;
     _ = initData;

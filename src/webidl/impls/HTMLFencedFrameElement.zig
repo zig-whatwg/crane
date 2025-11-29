@@ -52,58 +52,58 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for config
-pub fn get_config(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_config(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_height(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sandbox
-pub fn get_sandbox(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for allow
-pub fn get_allow(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for config
-pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for allow
-pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

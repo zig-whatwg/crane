@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const NavigatorBadge = interfaces.NavigatorBadge;
 
 pub const State = NavigatorBadge.State;
@@ -40,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: u64) ImplError!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
     _ = instance;
     _ = contents;
     return error.NotImplemented;
 }
 
 /// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const XRWebGLLayer = interfaces.XRWebGLLayer;
 
 pub const State = XRWebGLLayer.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: typedefs.XRWebGLRenderingContext, layerInit: dictionaries.XRWebGLLayerInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, session: *runtime.Instance, context: typedefs.XRWebGLRenderingContext, layerInit: webidl.Opt(dictionaries.XRWebGLLayerInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &XRWebGLLayer.vtable, ctx);
     errdefer deinit(instance);
@@ -55,57 +56,57 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, sess
 }
 
 /// Getter for antialias
-pub fn get_antialias(instance: *runtime.Instance) ImplError!bool {
+pub fn get_antialias(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ignoreDepthValues
-pub fn get_ignoreDepthValues(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ignoreDepthValues(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fixedFoveation
-pub fn get_fixedFoveation(instance: *runtime.Instance) ImplError!?f32 {
+pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!?f32 {
     _ = instance;
     return null;
 }
 
 /// Getter for framebuffer
-pub fn get_framebuffer(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_framebuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for framebufferWidth
-pub fn get_framebufferWidth(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_framebufferWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for framebufferHeight
-pub fn get_framebufferHeight(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_framebufferHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for fixedFoveation
-pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getNativeFramebufferScaleFactor
-pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) ImplError!f64 {
+pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
     _ = instance;
     _ = session;
     return error.NotImplemented;
 }
 
 /// Operation: getViewport
-pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     _ = view;
     return null;

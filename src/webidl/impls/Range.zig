@@ -18,6 +18,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Range = interfaces.Range;
 
 // Import related impls
@@ -137,7 +138,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 /// DOM §5 - Range.commonAncestorContainer
 /// Returns the node, furthest away from the document, that is an ancestor
 /// of both range's start node and end node.
-pub fn get_commonAncestorContainer(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_commonAncestorContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -397,7 +398,7 @@ fn compareBoundaryPoints(
 
 /// DOM §5.3 - Range.setStart(node, offset)
 /// Sets the start of the range to the given boundary point
-pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -436,7 +437,7 @@ pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offse
 
 /// DOM §5.3 - Range.setEnd(node, offset)
 /// Sets the end of the range to the given boundary point
-pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -475,7 +476,7 @@ pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset:
 
 /// DOM §5.3 - Range.setStartBefore(node)
 /// Sets the start to immediately before the given node
-pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
     const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
 
@@ -488,7 +489,7 @@ pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance)
 
 /// DOM §5.3 - Range.setStartAfter(node)
 /// Sets the start to immediately after the given node
-pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
     const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
 
@@ -501,7 +502,7 @@ pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) 
 
 /// DOM §5.3 - Range.setEndBefore(node)
 /// Sets the end to immediately before the given node
-pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
     const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
 
@@ -514,7 +515,7 @@ pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) I
 
 /// DOM §5.3 - Range.setEndAfter(node)
 /// Sets the end to immediately after the given node
-pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
     const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
 
@@ -526,7 +527,7 @@ pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) Im
 }
 
 /// DOM §5.3 - Range.collapse(toStart)
-pub fn call_collapse(instance: *runtime.Instance, toStart: bool) ImplError!void {
+pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (toStart) {
@@ -540,7 +541,7 @@ pub fn call_collapse(instance: *runtime.Instance, toStart: bool) ImplError!void 
 
 /// DOM §5.3 - Range.selectNode(node)
 /// Selects the entire node and its contents
-pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     // Step 1: Let parent be node's parent
     const parent = NodeImpl.getParent(node) orelse return error.InvalidNodeTypeError;
 
@@ -557,7 +558,7 @@ pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) Imp
 }
 
 /// DOM §5.3 - Range.selectNodeContents(node)
-pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If node is a doctype, throw InvalidNodeTypeError
@@ -575,7 +576,7 @@ pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Insta
 }
 
 /// DOM §5.5 - Range.compareBoundaryPoints(how, sourceRange)
-pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: *runtime.Instance) ImplError!i16 {
+pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: *runtime.Instance) anyerror!i16 {
     // Step 1: Validate 'how' parameter
     if (how != START_TO_START and how != START_TO_END and how != END_TO_END and how != END_TO_START) {
         return error.NotSupportedError;
@@ -675,7 +676,7 @@ fn isNodePartiallyContained(internal: *InternalState, node: *runtime.Instance) b
 
 /// DOM §5.4 - Range.deleteContents()
 /// Removes the contents of the range from the range's context tree
-pub fn call_deleteContents(instance: *runtime.Instance) ImplError!void {
+pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: If range is collapsed, return
@@ -720,7 +721,7 @@ pub fn call_deleteContents(instance: *runtime.Instance) ImplError!void {
 
 /// DOM §5.6 - Range.extractContents()
 /// Moves the contents of the range into a DocumentFragment
-pub fn call_extractContents(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create fragment
@@ -797,7 +798,7 @@ pub fn call_extractContents(instance: *runtime.Instance) ImplError!*runtime.Inst
 
 /// DOM §5.6 - Range.cloneContents()
 /// Returns a DocumentFragment that is a copy of the contents
-pub fn call_cloneContents(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create fragment
@@ -860,7 +861,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) ImplError!*runtime.Instan
 
 /// DOM §5.4 - Range.insertNode(node)
 /// Inserts node into the range's context tree
-pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -948,7 +949,7 @@ pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) Imp
 
 /// DOM §5.4 - Range.surroundContents(newParent)
 /// Moves the contents of the range into newParent, then inserts newParent at range's start
-pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) ImplError!void {
+pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Check for partially contained non-Text nodes
@@ -996,7 +997,7 @@ pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.In
 }
 
 /// DOM §5 - Range.cloneRange()
-pub fn call_cloneRange(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create new range with same boundary points
@@ -1017,7 +1018,7 @@ pub fn call_cloneRange(instance: *runtime.Instance) ImplError!*runtime.Instance 
 
 /// DOM §5 - Range.detach()
 /// Does nothing. Kept for compatibility.
-pub fn call_detach(instance: *runtime.Instance) ImplError!void {
+pub fn call_detach(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     // Historical artifact - does nothing per spec
 }
@@ -1027,7 +1028,7 @@ pub fn call_detach(instance: *runtime.Instance) ImplError!void {
 // =============================================================================
 
 /// DOM §5 - Range.isPointInRange(node, offset)
-pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!bool {
+pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Check if node's root is different from this's root
@@ -1064,7 +1065,7 @@ pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance,
 }
 
 /// DOM §5 - Range.comparePoint(node, offset)
-pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!i16 {
+pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!i16 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Check if node's root is different from this's root
@@ -1106,7 +1107,7 @@ pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, o
 
 /// DOM §5 - Range.intersectsNode(node)
 /// Returns true if the node intersects with the range
-pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!bool {
+pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Check if node's root is different from this's root
@@ -1147,7 +1148,7 @@ pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance)
 /// CSSOM View - Range.getClientRects()
 /// Returns a DOMRectList representing the area of the screen occupied by the range
 /// Note: Requires layout engine integration
-pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     // NOTE: Full implementation requires layout engine
     // DOMRectList is a sequence of DOMRect objects representing client rectangles
@@ -1157,7 +1158,7 @@ pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Insta
 /// CSSOM View - Range.getBoundingClientRect()
 /// Returns a DOMRect representing the bounding rectangle of the range
 /// Note: Requires layout engine integration
-pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     // NOTE: Full implementation requires layout engine
     // Would return a DOMRect with x, y, width, height of the bounding box
@@ -1167,7 +1168,7 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtim
 /// DOM Parsing - Range.createContextualFragment(string)
 /// Parses the given string as HTML and returns a DocumentFragment
 /// Note: Requires HTML parser integration
-pub fn call_createContextualFragment(instance: *runtime.Instance, string: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_createContextualFragment(instance: *runtime.Instance, string: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = string;
 

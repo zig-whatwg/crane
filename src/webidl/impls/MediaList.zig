@@ -40,40 +40,40 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for mediaText
-pub fn get_mediaText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_mediaText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for mediaText
-pub fn set_mediaText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_mediaText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!?typedefs.CSSOMString {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?typedefs.CSSOMString {
     _ = instance;
     _ = index;
     return null;
 }
 
 /// Operation: deleteMedium
-pub fn call_deleteMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) ImplError!void {
+pub fn call_deleteMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = medium;
     return error.NotImplemented;
 }
 
 /// Operation: appendMedium
-pub fn call_appendMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) ImplError!void {
+pub fn call_appendMedium(instance: *runtime.Instance, medium: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = medium;
     return error.NotImplemented;

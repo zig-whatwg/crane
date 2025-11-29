@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ContactsManager = interfaces.ContactsManager;
 
 pub const State = ContactsManager.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: select
-pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: dictionaries.ContactsSelectOptions) ImplError!*const anyopaque {
+pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: webidl.Opt(dictionaries.ContactsSelectOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = properties;
     _ = options;
@@ -48,7 +49,7 @@ pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, op
 }
 
 /// Operation: getProperties
-pub fn call_getProperties(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getProperties(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

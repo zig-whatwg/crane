@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for gradientUnits
-pub fn get_gradientUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_gradientUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gradientTransform
-pub fn get_gradientTransform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_gradientTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for spreadMethod
-pub fn get_spreadMethod(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_spreadMethod(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SpeechRecognitionPhrase = interfaces.SpeechRecognitionPhrase;
 
 pub const State = SpeechRecognitionPhrase.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, phrase: runtime.DOMString, boost: f32) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, phrase: runtime.DOMString, boost: webidl.Opt(f32)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &SpeechRecognitionPhrase.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, phra
 }
 
 /// Getter for phrase
-pub fn get_phrase(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_phrase(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for boost
-pub fn get_boost(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_boost(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }

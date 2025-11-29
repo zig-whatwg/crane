@@ -189,7 +189,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// NOTE: This returns the AbortSignal associated with the controller's AbortController.
 /// Per spec, the signal should be created when the controller is set up.
-pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -217,7 +217,7 @@ pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// 1. Let state = this.[[stream]].[[state]]
 /// 2. If state is not "writable", return
 /// 3. Perform WritableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

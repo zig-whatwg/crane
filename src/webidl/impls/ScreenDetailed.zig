@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for availLeft
-pub fn get_availLeft(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_availLeft(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for availTop
-pub fn get_availTop(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_availTop(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for left
-pub fn get_left(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_left(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for top
-pub fn get_top(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_top(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isPrimary
-pub fn get_isPrimary(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isPrimary(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isInternal
-pub fn get_isInternal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isInternal(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for devicePixelRatio
-pub fn get_devicePixelRatio(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

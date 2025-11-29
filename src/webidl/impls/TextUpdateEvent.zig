@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TextUpdateEvent = interfaces.TextUpdateEvent;
 
 pub const State = TextUpdateEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, options: dictionaries.TextUpdateEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, options: webidl.Opt(dictionaries.TextUpdateEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TextUpdateEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,31 +55,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for updateRangeStart
-pub fn get_updateRangeStart(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_updateRangeStart(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for updateRangeEnd
-pub fn get_updateRangeEnd(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_updateRangeEnd(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for text
-pub fn get_text(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selectionStart
-pub fn get_selectionStart(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_selectionStart(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selectionEnd
-pub fn get_selectionEnd(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_selectionEnd(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CacheStorage = interfaces.CacheStorage;
 
 pub const State = CacheStorage.State;
@@ -40,34 +41,34 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = cacheName;
     return error.NotImplemented;
 }
 
 /// Operation: keys
-pub fn call_keys(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_keys(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: has
-pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = cacheName;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = cacheName;
     return error.NotImplemented;
 }
 
 /// Operation: match
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.MultiCacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.MultiCacheQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;

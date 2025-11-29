@@ -40,61 +40,61 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for colorTexture
-pub fn get_colorTexture(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_colorTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for depthStencilTexture
-pub fn get_depthStencilTexture(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_depthStencilTexture(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for motionVectorTexture
-pub fn get_motionVectorTexture(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_motionVectorTexture(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for imageIndex
-pub fn get_imageIndex(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_imageIndex(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for colorTextureWidth
-pub fn get_colorTextureWidth(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_colorTextureWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for colorTextureHeight
-pub fn get_colorTextureHeight(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_colorTextureHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for depthStencilTextureWidth
-pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_depthStencilTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for depthStencilTextureHeight
-pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_depthStencilTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for motionVectorTextureWidth
-pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_motionVectorTextureWidth(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
 
 /// Getter for motionVectorTextureHeight
-pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) ImplError!?u32 {
+pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }

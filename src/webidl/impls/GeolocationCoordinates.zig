@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for accuracy
-pub fn get_accuracy(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_accuracy(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for latitude
-pub fn get_latitude(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_latitude(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for longitude
-pub fn get_longitude(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_longitude(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for altitude
-pub fn get_altitude(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_altitude(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for altitudeAccuracy
-pub fn get_altitudeAccuracy(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_altitudeAccuracy(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for heading
-pub fn get_heading(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_heading(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for speed
-pub fn get_speed(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

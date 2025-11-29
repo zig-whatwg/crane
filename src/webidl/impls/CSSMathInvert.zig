@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, arg:
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_value(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

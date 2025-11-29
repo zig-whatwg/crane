@@ -52,14 +52,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) ImplError!void {
+pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = triple;
     return error.NotImplemented;
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

@@ -40,43 +40,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for kind
-pub fn get_kind(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for language
-pub fn get_language(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selected
-pub fn get_selected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_selected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceBuffer
-pub fn get_sourceBuffer(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for selected
-pub fn set_selected(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

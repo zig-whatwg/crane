@@ -20,6 +20,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const encoding_mod = @import("encoding");
 const TextDecoderStream = interfaces.TextDecoderStream;
@@ -140,12 +141,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 10. Set up transformStream with transformAlgorithm set to transformAlgorithm
 ///     and flushAlgorithm set to flushAlgorithm.
 /// 11. Set this's transform to transformStream.
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    label: runtime.DOMString,
-    options: dictionaries.TextDecoderOptions,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
     const instance = try init(allocator, State, &TextDecoderStream.vtable, ctx);
     errdefer deinit(instance);
 
@@ -199,7 +195,7 @@ pub fn call_constructor(
 ///
 /// Spec: § 5.1.1 "The encoding getter steps are to return this's encoding's name,
 /// ASCII lowercased."
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // Return the WHATWG canonical name (already lowercase)
@@ -210,7 +206,7 @@ pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// Spec: § 5.1.1 "The fatal getter steps are to return true if this's error mode
 /// is "fatal"; otherwise false."
-pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.fatal;
@@ -219,7 +215,7 @@ pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
 /// Getter for ignoreBOM
 ///
 /// Spec: § 5.1.1 "The ignoreBOM getter steps are to return this's ignore BOM."
-pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.ignore_bom;
@@ -228,7 +224,7 @@ pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
 /// Getter for readable
 ///
 /// Spec: "The readable getter steps are to return this's transform.[[readable]]"
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -239,7 +235,7 @@ pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for writable
 ///
 /// Spec: "The writable getter steps are to return this's transform.[[writable]]"
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

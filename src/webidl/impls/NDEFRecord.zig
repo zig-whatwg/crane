@@ -53,43 +53,43 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, reco
 }
 
 /// Getter for recordType
-pub fn get_recordType(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_recordType(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mediaType
-pub fn get_mediaType(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_mediaType(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_id(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for encoding
-pub fn get_encoding(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for lang
-pub fn get_lang(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_lang(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Operation: toRecords
-pub fn call_toRecords(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn call_toRecords(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }

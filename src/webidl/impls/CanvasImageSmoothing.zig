@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for imageSmoothingEnabled
-pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for imageSmoothingQuality
-pub fn get_imageSmoothingQuality(instance: *runtime.Instance) ImplError!enums.ImageSmoothingQuality {
+pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!enums.ImageSmoothingQuality {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for imageSmoothingEnabled
-pub fn set_imageSmoothingEnabled(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_imageSmoothingEnabled(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for imageSmoothingQuality
-pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.ImageSmoothingQuality) ImplError!void {
+pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.ImageSmoothingQuality) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

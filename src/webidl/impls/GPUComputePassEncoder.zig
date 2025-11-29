@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUComputePassEncoder = interfaces.GPUComputePassEncoder;
 
 pub const State = GPUComputePassEncoder.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: dispatchWorkgroups
-pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: typedefs.GPUSize32, workgroupCountZ: typedefs.GPUSize32) ImplError!void {
+pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typedefs.GPUSize32, workgroupCountY: webidl.Opt(typedefs.GPUSize32), workgroupCountZ: webidl.Opt(typedefs.GPUSize32)) anyerror!void {
     _ = instance;
     _ = workgroupCountX;
     _ = workgroupCountY;
@@ -62,13 +63,13 @@ pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: typ
 }
 
 /// Operation: popDebugGroup
-pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
+pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: *runtime.Instance, dynamicOffsets: *const anyopaque) ImplError!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -77,7 +78,7 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
 }
 
 /// Operation: dispatchWorkgroupsIndirect
-pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: typedefs.GPUSize64) anyerror!void {
     _ = instance;
     _ = indirectBuffer;
     _ = indirectOffset;
@@ -85,27 +86,27 @@ pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuff
 }
 
 /// Operation: insertDebugMarker
-pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) ImplError!void {
+pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = markerLabel;
     return error.NotImplemented;
 }
 
 /// Operation: pushDebugGroup
-pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) ImplError!void {
+pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = groupLabel;
     return error.NotImplemented;
 }
 
 /// Operation: end
-pub fn call_end(instance: *runtime.Instance) ImplError!void {
+pub fn call_end(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setPipeline
-pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) ImplError!void {
+pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = pipeline;
     return error.NotImplemented;

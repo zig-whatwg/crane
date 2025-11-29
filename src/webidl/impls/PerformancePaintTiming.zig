@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for paintTime
-pub fn get_paintTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_paintTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for presentationTime
-pub fn get_presentationTime(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
+pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
     _ = instance;
     return null;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
@@ -136,12 +137,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. Set this's encoding to encoding.
 /// 4. If options["fatal"] is true, then set this's error mode to "fatal".
 /// 5. Set this's ignore BOM to options["ignoreBOM"].
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    label: runtime.DOMString,
-    options: dictionaries.TextDecoderOptions,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TextDecoder.vtable, ctx);
     errdefer deinit(instance);
@@ -193,21 +189,21 @@ pub fn call_constructor(
 
 /// Getter for encoding
 /// Spec: "The encoding getter steps are to return this's encoding's name, ASCII lowercased."
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     return state.own.encoding;
 }
 
 /// Getter for fatal
 /// Spec: "The fatal getter steps are to return true if this's error mode is "fatal"; otherwise false."
-pub fn get_fatal(instance: *runtime.Instance) ImplError!bool {
+pub fn get_fatal(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.fatal;
 }
 
 /// Getter for ignoreBOM
 /// Spec: "The ignoreBOM getter steps are to return this's ignore BOM."
-pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.ignoreBOM;
 }
@@ -234,11 +230,7 @@ pub fn get_ignoreBOM(instance: *runtime.Instance) ImplError!bool {
 ///       ii.  If result is finished, then return the result of running
 ///            serialize I/O queue with this and output.
 ///       iii. Otherwise, if result is error, throw a TypeError.
-pub fn call_decode(
-    instance: *runtime.Instance,
-    input: typedefs.AllowSharedBufferSource,
-    options: dictionaries.TextDecodeOptions,
-) ImplError!runtime.USVString {
+pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.AllowSharedBufferSource), options: webidl.Opt(dictionaries.TextDecodeOptions)) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return ImplError.InvalidState;
 

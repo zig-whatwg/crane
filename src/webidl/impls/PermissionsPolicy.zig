@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PermissionsPolicy = interfaces.PermissionsPolicy;
 
 pub const State = PermissionsPolicy.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: allowsFeature
-pub fn call_allowsFeature(instance: *runtime.Instance, feature: runtime.DOMString, origin: runtime.DOMString) ImplError!bool {
+pub fn call_allowsFeature(instance: *runtime.Instance, feature: runtime.DOMString, origin: webidl.Opt(runtime.DOMString)) anyerror!bool {
     _ = instance;
     _ = feature;
     _ = origin;
@@ -48,19 +49,19 @@ pub fn call_allowsFeature(instance: *runtime.Instance, feature: runtime.DOMStrin
 }
 
 /// Operation: allowedFeatures
-pub fn call_allowedFeatures(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: features
-pub fn call_features(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_features(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAllowlistForFeature
-pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = feature;
     return error.NotImplemented;

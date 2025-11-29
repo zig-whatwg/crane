@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DeviceMotionEvent = interfaces.DeviceMotionEvent;
 
 pub const State = DeviceMotionEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.DeviceMotionEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.DeviceMotionEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DeviceMotionEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,31 +55,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for acceleration
-pub fn get_acceleration(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_acceleration(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for accelerationIncludingGravity
-pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_accelerationIncludingGravity(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for rotationRate
-pub fn get_rotationRate(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_rotationRate(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for interval
-pub fn get_interval(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_interval(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

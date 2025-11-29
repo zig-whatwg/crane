@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DocumentPictureInPicture = interfaces.DocumentPictureInPicture;
 
 pub const State = DocumentPictureInPicture.State;
@@ -40,26 +41,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for window
-pub fn get_window(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_window(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onenter
-pub fn get_onenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onenter(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onenter
-pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: requestWindow
-pub fn call_requestWindow(instance: *runtime.Instance, options: dictionaries.DocumentPictureInPictureOptions) ImplError!*const anyopaque {
+pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DocumentPictureInPictureOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

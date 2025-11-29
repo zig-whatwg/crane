@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileReaderSync = interfaces.FileReaderSync;
 
 pub const State = FileReaderSync.State;
@@ -52,28 +53,28 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: readAsArrayBuffer
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsBinaryString
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsDataURL
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsText
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!runtime.DOMString {
     _ = instance;
     _ = blob;
     _ = encoding;

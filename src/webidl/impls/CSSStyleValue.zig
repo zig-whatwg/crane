@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: parseAll
-pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = property;
     _ = cssText;
@@ -48,7 +48,7 @@ pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, c
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) ImplError!*runtime.Instance {
+pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = property;
     _ = cssText;

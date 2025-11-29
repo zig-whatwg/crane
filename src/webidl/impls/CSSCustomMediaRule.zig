@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for query
-pub fn get_query(instance: *runtime.Instance) ImplError!typedefs.CustomMediaQuery {
+pub fn get_query(instance: *runtime.Instance) anyerror!typedefs.CustomMediaQuery {
     _ = instance;
     return error.NotImplemented;
 }

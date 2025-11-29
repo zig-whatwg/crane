@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for storageBuckets
-pub fn get_storageBuckets(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

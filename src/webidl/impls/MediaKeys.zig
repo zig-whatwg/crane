@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MediaKeys = interfaces.MediaKeys;
 
 pub const State = MediaKeys.State;
@@ -40,21 +41,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setServerCertificate
-pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate: typedefs.BufferSource) ImplError!*const anyopaque {
+pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate: typedefs.BufferSource) anyerror!*const anyopaque {
     _ = instance;
     _ = serverCertificate;
     return error.NotImplemented;
 }
 
 /// Operation: createSession
-pub fn call_createSession(instance: *runtime.Instance, sessionType: enums.MediaKeySessionType) ImplError!*runtime.Instance {
+pub fn call_createSession(instance: *runtime.Instance, sessionType: webidl.Opt(enums.MediaKeySessionType)) anyerror!*runtime.Instance {
     _ = instance;
     _ = sessionType;
     return error.NotImplemented;
 }
 
 /// Operation: getStatusForPolicy
-pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: dictionaries.MediaKeysPolicy) ImplError!*const anyopaque {
+pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(dictionaries.MediaKeysPolicy)) anyerror!*const anyopaque {
     _ = instance;
     _ = policy;
     return error.NotImplemented;

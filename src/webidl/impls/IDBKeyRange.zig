@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IDBKeyRange = interfaces.IDBKeyRange;
 
 pub const State = IDBKeyRange.State;
@@ -40,45 +41,45 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for lower
-pub fn get_lower(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_lower(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upper
-pub fn get_upper(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_upper(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lowerOpen
-pub fn get_lowerOpen(instance: *runtime.Instance) ImplError!bool {
+pub fn get_lowerOpen(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upperOpen
-pub fn get_upperOpen(instance: *runtime.Instance) ImplError!bool {
+pub fn get_upperOpen(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: only
-pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: includes
-pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplError!bool {
+pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = key;
     return error.NotImplemented;
 }
 
 /// Operation: bound
-pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: bool, upperOpen: bool) ImplError!*runtime.Instance {
+pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
     _ = instance;
     _ = lower;
     _ = upper;
@@ -88,7 +89,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
 }
 
 /// Operation: upperBound
-pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: bool) ImplError!*runtime.Instance {
+pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     _ = instance;
     _ = upper;
     _ = open;
@@ -96,7 +97,7 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
 }
 
 /// Operation: lowerBound
-pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: bool) ImplError!*runtime.Instance {
+pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     _ = instance;
     _ = lower;
     _ = open;

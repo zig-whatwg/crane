@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!enums.PressureSource {
+pub fn get_source(instance: *runtime.Instance) anyerror!enums.PressureSource {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.PressureState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.PressureState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for time
-pub fn get_time(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_time(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -52,78 +52,78 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for span
-pub fn get_span(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_span(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for align
-pub fn get_align(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_align(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ch
-pub fn get_ch(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ch(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for chOff
-pub fn get_chOff(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_chOff(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vAlign
-pub fn get_vAlign(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_vAlign(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_width(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for span
-pub fn set_span(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_span(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for align
-pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ch
-pub fn set_ch(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ch(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for chOff
-pub fn set_chOff(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_chOff(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for vAlign
-pub fn set_vAlign(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_vAlign(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

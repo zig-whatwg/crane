@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BluetoothLEScanFilter = interfaces.BluetoothLEScanFilter;
 
 pub const State = BluetoothLEScanFilter.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.BluetoothLEScanFilterInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothLEScanFilterInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &BluetoothLEScanFilter.vtable, ctx);
     errdefer deinit(instance);
@@ -53,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for namePrefix
-pub fn get_namePrefix(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_namePrefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for services
-pub fn get_services(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_services(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for manufacturerData
-pub fn get_manufacturerData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_manufacturerData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serviceData
-pub fn get_serviceData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_serviceData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

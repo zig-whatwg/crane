@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, valu
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for unit
-pub fn get_unit(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_unit(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -52,84 +52,84 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for min
-pub fn get_min(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_min(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for max
-pub fn get_max(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for low
-pub fn get_low(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_low(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for high
-pub fn get_high(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_high(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for optimum
-pub fn get_optimum(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_optimum(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for labels
-pub fn get_labels(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for min
-pub fn set_min(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_min(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for max
-pub fn set_max(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_max(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for low
-pub fn set_low(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_low(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for high
-pub fn set_high(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_high(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for optimum
-pub fn set_optimum(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_optimum(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Scheduling = interfaces.Scheduling;
 
 pub const State = Scheduling.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: isInputPending
-pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: dictionaries.IsInputPendingOptions) ImplError!bool {
+pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: webidl.Opt(dictionaries.IsInputPendingOptions)) anyerror!bool {
     _ = instance;
     _ = isInputPendingOptions;
     return error.NotImplemented;

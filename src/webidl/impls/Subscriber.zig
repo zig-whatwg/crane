@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for active
-pub fn get_active(instance: *runtime.Instance) ImplError!bool {
+pub fn get_active(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for signal
-pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: error
-pub fn call_error(instance: *runtime.Instance, @"error": *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, @"error": *const anyopaque) anyerror!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;
 }
 
 /// Operation: complete
-pub fn call_complete(instance: *runtime.Instance) ImplError!void {
+pub fn call_complete(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: addTeardown
-pub fn call_addTeardown(instance: *runtime.Instance, teardown: callbacks.VoidFunction) ImplError!void {
+pub fn call_addTeardown(instance: *runtime.Instance, teardown: callbacks.VoidFunction) anyerror!void {
     _ = instance;
     _ = teardown;
     return error.NotImplemented;
 }
 
 /// Operation: next
-pub fn call_next(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn call_next(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

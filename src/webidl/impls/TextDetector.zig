@@ -52,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: detect
-pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) ImplError!*const anyopaque {
+pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) anyerror!*const anyopaque {
     _ = instance;
     _ = image;
     return error.NotImplemented;

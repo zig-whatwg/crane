@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for minContentSize
-pub fn get_minContentSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_minContentSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maxContentSize
-pub fn get_maxContentSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_maxContentSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

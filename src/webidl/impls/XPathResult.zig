@@ -40,56 +40,56 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for resultType
-pub fn get_resultType(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_resultType(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for numberValue
-pub fn get_numberValue(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_numberValue(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stringValue
-pub fn get_stringValue(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_stringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for booleanValue
-pub fn get_booleanValue(instance: *runtime.Instance) ImplError!bool {
+pub fn get_booleanValue(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for singleNodeValue
-pub fn get_singleNodeValue(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_singleNodeValue(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for invalidIteratorState
-pub fn get_invalidIteratorState(instance: *runtime.Instance) ImplError!bool {
+pub fn get_invalidIteratorState(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for snapshotLength
-pub fn get_snapshotLength(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_snapshotLength(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: snapshotItem
-pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) ImplError!?*runtime.Instance {
+pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     _ = instance;
     _ = index;
     return null;
 }
 
 /// Operation: iterateNext
-pub fn call_iterateNext(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

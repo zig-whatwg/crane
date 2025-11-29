@@ -40,28 +40,28 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getService
-pub fn call_getService(instance: *runtime.Instance, name: *const anyopaque) ImplError!typedefs.UUID {
+pub fn call_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: canonicalUUID
-pub fn call_canonicalUUID(instance: *runtime.Instance, alias: u32) ImplError!typedefs.UUID {
+pub fn call_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!typedefs.UUID {
     _ = instance;
     _ = alias;
     return error.NotImplemented;
 }
 
 /// Operation: getCharacteristic
-pub fn call_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) ImplError!typedefs.UUID {
+pub fn call_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptor
-pub fn call_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) ImplError!typedefs.UUID {
+pub fn call_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;

@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for inputs
-pub fn get_inputs(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_inputs(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for outputs
-pub fn get_outputs(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_outputs(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sysexEnabled
-pub fn get_sysexEnabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_sysexEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

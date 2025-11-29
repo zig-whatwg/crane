@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

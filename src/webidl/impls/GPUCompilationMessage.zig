@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for message
-pub fn get_message(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.GPUCompilationMessageType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.GPUCompilationMessageType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineNum
-pub fn get_lineNum(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_lineNum(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for linePos
-pub fn get_linePos(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_linePos(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for offset
-pub fn get_offset(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_offset(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }

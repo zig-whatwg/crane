@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemDirectoryHandle = interfaces.FileSystemDirectoryHandle;
 
 pub const State = FileSystemDirectoryHandle.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getFileHandle
-pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetFileOptions) ImplError!*const anyopaque {
+pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetFileOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -48,14 +49,14 @@ pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, 
 }
 
 /// Operation: resolve
-pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = possibleDescendant;
     return error.NotImplemented;
 }
 
 /// Operation: getDirectoryHandle
-pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemGetDirectoryOptions) ImplError!*const anyopaque {
+pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemGetDirectoryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -63,7 +64,7 @@ pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVStr
 }
 
 /// Operation: removeEntry
-pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: dictionaries.FileSystemRemoveOptions) ImplError!*const anyopaque {
+pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(dictionaries.FileSystemRemoveOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;

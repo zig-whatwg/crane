@@ -55,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, lowe
 }
 
 /// Getter for lower
-pub fn get_lower(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_lower(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_value(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upper
-pub fn get_upper(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_upper(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

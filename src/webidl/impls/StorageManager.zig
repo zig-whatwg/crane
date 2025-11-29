@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persist
-pub fn call_persist(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: estimate
-pub fn call_estimate(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persisted
-pub fn call_persisted(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

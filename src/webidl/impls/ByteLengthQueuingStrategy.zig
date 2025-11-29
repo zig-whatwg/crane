@@ -63,11 +63,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Steps:
 /// 1. Set this.[[highWaterMark]] to init["highWaterMark"]
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    init_data: dictionaries.QueuingStrategyInit,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.QueuingStrategyInit) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &ByteLengthQueuingStrategy.vtable, ctx);
     errdefer deinit(instance);
@@ -95,7 +91,7 @@ pub fn call_constructor(
 ///
 /// Steps:
 /// 1. Return this.[[highWaterMark]]
-pub fn get_highWaterMark(instance: *runtime.Instance) !f64 {
+pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -128,7 +124,7 @@ fn byteLengthSizeFunction(arguments: *const anyopaque) *const anyopaque {
 ///
 /// Note: This returns a Function object. The actual size calculation happens
 /// when the function is called with a chunk.
-pub fn get_size(instance: *runtime.Instance) !callbacks.Function {
+pub fn get_size(instance: *runtime.Instance) anyerror!callbacks.Function {
     _ = instance;
 
     // Return the byte length size function

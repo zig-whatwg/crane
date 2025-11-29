@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for cssText
-pub fn get_cssText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_cssText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cssValueType
-pub fn get_cssValueType(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_cssValueType(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cssText
-pub fn set_cssText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_cssText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

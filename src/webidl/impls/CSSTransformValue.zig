@@ -53,25 +53,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for is2D
-pub fn get_is2D(instance: *runtime.Instance) ImplError!bool {
+pub fn get_is2D(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toMatrix
-pub fn call_toMatrix(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

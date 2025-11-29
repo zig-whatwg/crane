@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const File = interfaces.File;
 
 pub const State = File.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: dictionaries.FilePropertyBag) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &File.vtable, ctx);
     errdefer deinit(instance);
@@ -55,19 +56,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, file
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastModified
-pub fn get_lastModified(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for webkitRelativePath
-pub fn get_webkitRelativePath(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

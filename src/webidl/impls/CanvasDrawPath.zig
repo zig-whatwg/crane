@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CanvasDrawPath = interfaces.CanvasDrawPath;
 
 pub const State = CanvasDrawPath.State;
@@ -40,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clip
-pub fn call_clip(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;
 }
 
 /// Operation: isPointInPath
-pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: enums.CanvasFillRule) ImplError!bool {
+pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!bool {
     _ = instance;
     _ = x;
     _ = y;
@@ -56,7 +57,7 @@ pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule:
 }
 
 /// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) ImplError!bool {
+pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
     _ = instance;
     _ = x;
     _ = y;
@@ -64,20 +65,20 @@ pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) ImplErr
 }
 
 /// Operation: beginPath
-pub fn call_beginPath(instance: *runtime.Instance) ImplError!void {
+pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: fill
-pub fn call_fill(instance: *runtime.Instance, fillRule: enums.CanvasFillRule) ImplError!void {
+pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasFillRule)) anyerror!void {
     _ = instance;
     _ = fillRule;
     return error.NotImplemented;
 }
 
 /// Operation: stroke
-pub fn call_stroke(instance: *runtime.Instance) ImplError!void {
+pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

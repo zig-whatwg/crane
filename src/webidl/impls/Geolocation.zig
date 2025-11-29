@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Geolocation = interfaces.Geolocation;
 
 pub const State = Geolocation.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getCurrentPosition
-pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: callbacks.PositionErrorCallback, options: dictionaries.PositionOptions) ImplError!void {
+pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) anyerror!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;
@@ -49,14 +50,14 @@ pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: cal
 }
 
 /// Operation: clearWatch
-pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) ImplError!void {
+pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) anyerror!void {
     _ = instance;
     _ = watchId;
     return error.NotImplemented;
 }
 
 /// Operation: watchPosition
-pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: callbacks.PositionErrorCallback, options: dictionaries.PositionOptions) ImplError!i32 {
+pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callbacks.PositionCallback, errorCallback: webidl.Opt(?callbacks.PositionErrorCallback), options: webidl.Opt(dictionaries.PositionOptions)) anyerror!i32 {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

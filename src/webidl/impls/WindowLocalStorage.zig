@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for localStorage
-pub fn get_localStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

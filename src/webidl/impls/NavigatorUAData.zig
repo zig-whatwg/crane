@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for brands
-pub fn get_brands(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_brands(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mobile
-pub fn get_mobile(instance: *runtime.Instance) ImplError!bool {
+pub fn get_mobile(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for platform
-pub fn get_platform(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getHighEntropyValues
-pub fn call_getHighEntropyValues(instance: *runtime.Instance, hints: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_getHighEntropyValues(instance: *runtime.Instance, hints: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = hints;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!dictionaries.UALowEntropyJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.UALowEntropyJSON {
     _ = instance;
     return error.NotImplemented;
 }

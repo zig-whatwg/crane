@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUBuffer = interfaces.GPUBuffer;
 
 pub const State = GPUBuffer.State;
@@ -40,44 +41,44 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!typedefs.GPUSize64Out {
+pub fn get_size(instance: *runtime.Instance) anyerror!typedefs.GPUSize64Out {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usage
-pub fn get_usage(instance: *runtime.Instance) ImplError!typedefs.GPUFlagsConstant {
+pub fn get_usage(instance: *runtime.Instance) anyerror!typedefs.GPUFlagsConstant {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mapState
-pub fn get_mapState(instance: *runtime.Instance) ImplError!enums.GPUBufferMapState {
+pub fn get_mapState(instance: *runtime.Instance) anyerror!enums.GPUBufferMapState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: unmap
-pub fn call_unmap(instance: *runtime.Instance) ImplError!void {
+pub fn call_unmap(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getMappedRange
-pub fn call_getMappedRange(instance: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!*const anyopaque {
+pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!*const anyopaque {
     _ = instance;
     _ = offset;
     _ = size;
@@ -85,7 +86,7 @@ pub fn call_getMappedRange(instance: *runtime.Instance, offset: typedefs.GPUSize
 }
 
 /// Operation: mapAsync
-pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!*const anyopaque {
+pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!*const anyopaque {
     _ = instance;
     _ = mode;
     _ = offset;
@@ -94,7 +95,7 @@ pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags
 }
 
 /// Operation: destroy
-pub fn call_destroy(instance: *runtime.Instance) ImplError!void {
+pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

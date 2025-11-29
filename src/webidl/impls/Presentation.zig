@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for defaultRequest
-pub fn get_defaultRequest(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_defaultRequest(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_receiver(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for defaultRequest
-pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

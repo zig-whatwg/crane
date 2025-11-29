@@ -52,91 +52,91 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for src
-pub fn get_src(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for srcset
-pub fn get_srcset(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_srcset(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sizes
-pub fn get_sizes(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sizes(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for src
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for srcset
-pub fn set_srcset(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_srcset(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for sizes
-pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for media
-pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for description
-pub fn get_description(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for suffixes
-pub fn get_suffixes(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_suffixes(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for enabledPlugin
-pub fn get_enabledPlugin(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_enabledPlugin(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

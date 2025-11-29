@@ -40,81 +40,81 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for refX
-pub fn get_refX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_refX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for refY
-pub fn get_refY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_refY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerUnits
-pub fn get_markerUnits(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_markerUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerWidth
-pub fn get_markerWidth(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_markerWidth(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for markerHeight
-pub fn get_markerHeight(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_markerHeight(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientType
-pub fn get_orientType(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientType(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientAngle
-pub fn get_orientAngle(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientAngle(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orient
-pub fn get_orient(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_orient(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for viewBox
-pub fn get_viewBox(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for orient
-pub fn set_orient(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_orient(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setOrientToAngle
-pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: *runtime.Instance) ImplError!void {
+pub fn call_setOrientToAngle(instance: *runtime.Instance, angle: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = angle;
     return error.NotImplemented;
 }
 
 /// Operation: setOrientToAuto
-pub fn call_setOrientToAuto(instance: *runtime.Instance) ImplError!void {
+pub fn call_setOrientToAuto(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,78 +40,78 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for lineWidth
-pub fn get_lineWidth(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineCap
-pub fn get_lineCap(instance: *runtime.Instance) ImplError!enums.CanvasLineCap {
+pub fn get_lineCap(instance: *runtime.Instance) anyerror!enums.CanvasLineCap {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineJoin
-pub fn get_lineJoin(instance: *runtime.Instance) ImplError!enums.CanvasLineJoin {
+pub fn get_lineJoin(instance: *runtime.Instance) anyerror!enums.CanvasLineJoin {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for miterLimit
-pub fn get_miterLimit(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lineDashOffset
-pub fn get_lineDashOffset(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for lineWidth
-pub fn set_lineWidth(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lineCap
-pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) ImplError!void {
+pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lineJoin
-pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) ImplError!void {
+pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for miterLimit
-pub fn set_miterLimit(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lineDashOffset
-pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getLineDash
-pub fn call_getLineDash(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setLineDash
-pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) ImplError!void {
+pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
     _ = instance;
     _ = segments;
     return error.NotImplemented;

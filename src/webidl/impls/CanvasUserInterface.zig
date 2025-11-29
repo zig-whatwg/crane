@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawFocusIfNeeded
-pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) ImplError!void {
+pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = element;
     return error.NotImplemented;

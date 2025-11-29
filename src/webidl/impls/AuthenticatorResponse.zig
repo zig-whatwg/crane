@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for clientDataJSON
-pub fn get_clientDataJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_clientDataJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

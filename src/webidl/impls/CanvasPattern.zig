@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CanvasPattern = interfaces.CanvasPattern;
 
 pub const State = CanvasPattern.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setTransform
-pub fn call_setTransform(instance: *runtime.Instance, transform: dictionaries.DOMMatrix2DInit) ImplError!void {
+pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(dictionaries.DOMMatrix2DInit)) anyerror!void {
     _ = instance;
     _ = transform;
     return error.NotImplemented;

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for segments
-pub fn get_segments(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_segments(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }

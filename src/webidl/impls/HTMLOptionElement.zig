@@ -52,90 +52,90 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for defaultSelected
-pub fn get_defaultSelected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_defaultSelected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selected
-pub fn get_selected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_selected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for text
-pub fn get_text(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_index(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for defaultSelected
-pub fn set_defaultSelected(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_defaultSelected(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for selected
-pub fn set_selected(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for text
-pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

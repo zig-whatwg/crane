@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const InputDeviceCapabilities = interfaces.InputDeviceCapabilities;
 
 pub const State = InputDeviceCapabilities.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, deviceInitDict: dictionaries.InputDeviceCapabilitiesInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, deviceInitDict: webidl.Opt(dictionaries.InputDeviceCapabilitiesInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &InputDeviceCapabilities.vtable, ctx);
     errdefer deinit(instance);
@@ -53,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, devi
 }
 
 /// Getter for firesTouchEvents
-pub fn get_firesTouchEvents(instance: *runtime.Instance) ImplError!bool {
+pub fn get_firesTouchEvents(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pointerMovementScrolls
-pub fn get_pointerMovementScrolls(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pointerMovementScrolls(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

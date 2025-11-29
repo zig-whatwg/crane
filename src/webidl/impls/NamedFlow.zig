@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for overset
-pub fn get_overset(instance: *runtime.Instance) ImplError!bool {
+pub fn get_overset(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstEmptyRegionIndex
-pub fn get_firstEmptyRegionIndex(instance: *runtime.Instance) ImplError!i16 {
+pub fn get_firstEmptyRegionIndex(instance: *runtime.Instance) anyerror!i16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegions
-pub fn call_getRegions(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRegions(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getContent
-pub fn call_getContent(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getContent(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegionsByContent
-pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = node;
     return error.NotImplemented;

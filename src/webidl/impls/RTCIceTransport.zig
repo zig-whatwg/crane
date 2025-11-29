@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCIceTransport = interfaces.RTCIceTransport;
 
 pub const State = RTCIceTransport.State;
@@ -52,146 +53,146 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for role
-pub fn get_role(instance: *runtime.Instance) ImplError!enums.RTCIceRole {
+pub fn get_role(instance: *runtime.Instance) anyerror!enums.RTCIceRole {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for component
-pub fn get_component(instance: *runtime.Instance) ImplError!enums.RTCIceComponent {
+pub fn get_component(instance: *runtime.Instance) anyerror!enums.RTCIceComponent {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!enums.RTCIceTransportState {
+pub fn get_state(instance: *runtime.Instance) anyerror!enums.RTCIceTransportState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gatheringState
-pub fn get_gatheringState(instance: *runtime.Instance) ImplError!enums.RTCIceGathererState {
+pub fn get_gatheringState(instance: *runtime.Instance) anyerror!enums.RTCIceGathererState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onstatechange
-pub fn get_onstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ongatheringstatechange
-pub fn get_ongatheringstatechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ongatheringstatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onselectedcandidatepairchange
-pub fn get_onselectedcandidatepairchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onselectedcandidatepairchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onicecandidate
-pub fn get_onicecandidate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onicecandidate(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onstatechange
-pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ongatheringstatechange
-pub fn set_ongatheringstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ongatheringstatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onselectedcandidatepairchange
-pub fn set_onselectedcandidatepairchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onselectedcandidatepairchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onicecandidate
-pub fn set_onicecandidate(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onicecandidate(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: gather
-pub fn call_gather(instance: *runtime.Instance, options: dictionaries.RTCIceGatherOptions) ImplError!void {
+pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RTCIceGatherOptions)) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: addRemoteCandidate
-pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: dictionaries.RTCIceCandidateInit) ImplError!void {
+pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(dictionaries.RTCIceCandidateInit)) anyerror!void {
     _ = instance;
     _ = remoteCandidate;
     return error.NotImplemented;
 }
 
 /// Operation: getRemoteParameters
-pub fn call_getRemoteParameters(instance: *runtime.Instance) ImplError!?dictionaries.RTCIceParameters {
+pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!?dictionaries.RTCIceParameters {
     _ = instance;
     return null;
 }
 
 /// Operation: getLocalParameters
-pub fn call_getLocalParameters(instance: *runtime.Instance) ImplError!?dictionaries.RTCIceParameters {
+pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!?dictionaries.RTCIceParameters {
     _ = instance;
     return null;
 }
 
 /// Operation: getSelectedCandidatePair
-pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: getLocalCandidates
-pub fn call_getLocalCandidates(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getLocalCandidates(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRemoteCandidates
-pub fn call_getRemoteCandidates(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRemoteCandidates(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, remoteParameters: dictionaries.RTCIceParameters, role: enums.RTCIceRole) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(dictionaries.RTCIceParameters), role: webidl.Opt(enums.RTCIceRole)) anyerror!void {
     _ = instance;
     _ = remoteParameters;
     _ = role;

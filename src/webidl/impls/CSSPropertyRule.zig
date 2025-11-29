@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for syntax
-pub fn get_syntax(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_syntax(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inherits
-pub fn get_inherits(instance: *runtime.Instance) ImplError!bool {
+pub fn get_inherits(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for initialValue
-pub fn get_initialValue(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_initialValue(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }

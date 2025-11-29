@@ -52,26 +52,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for cite
-pub fn get_cite(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dateTime
-pub fn get_dateTime(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_dateTime(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cite
-pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for dateTime
-pub fn set_dateTime(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_dateTime(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

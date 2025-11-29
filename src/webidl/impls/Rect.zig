@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for top
-pub fn get_top(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_top(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for right
-pub fn get_right(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_right(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for bottom
-pub fn get_bottom(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_bottom(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for left
-pub fn get_left(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_left(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

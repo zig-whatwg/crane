@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for rangeMin
-pub fn get_rangeMin(instance: *runtime.Instance) ImplError!typedefs.GLint {
+pub fn get_rangeMin(instance: *runtime.Instance) anyerror!typedefs.GLint {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeMax
-pub fn get_rangeMax(instance: *runtime.Instance) ImplError!typedefs.GLint {
+pub fn get_rangeMax(instance: *runtime.Instance) anyerror!typedefs.GLint {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for precision
-pub fn get_precision(instance: *runtime.Instance) ImplError!typedefs.GLint {
+pub fn get_precision(instance: *runtime.Instance) anyerror!typedefs.GLint {
     _ = instance;
     return error.NotImplemented;
 }

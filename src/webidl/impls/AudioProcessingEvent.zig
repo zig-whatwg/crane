@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for playbackTime
-pub fn get_playbackTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_playbackTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inputBuffer
-pub fn get_inputBuffer(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_inputBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for outputBuffer
-pub fn get_outputBuffer(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_outputBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

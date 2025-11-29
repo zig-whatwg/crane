@@ -54,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!typedefs.ImageDataArray {
+pub fn get_data(instance: *runtime.Instance) anyerror!typedefs.ImageDataArray {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pixelFormat
-pub fn get_pixelFormat(instance: *runtime.Instance) ImplError!enums.ImageDataPixelFormat {
+pub fn get_pixelFormat(instance: *runtime.Instance) anyerror!enums.ImageDataPixelFormat {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for colorSpace
-pub fn get_colorSpace(instance: *runtime.Instance) ImplError!enums.PredefinedColorSpace {
+pub fn get_colorSpace(instance: *runtime.Instance) anyerror!enums.PredefinedColorSpace {
     _ = instance;
     return error.NotImplemented;
 }

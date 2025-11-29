@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for plugins
-pub fn get_plugins(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_plugins(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mimeTypes
-pub fn get_mimeTypes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_mimeTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pdfViewerEnabled
-pub fn get_pdfViewerEnabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pdfViewerEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: javaEnabled
-pub fn call_javaEnabled(instance: *runtime.Instance) ImplError!bool {
+pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

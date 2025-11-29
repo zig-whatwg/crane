@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for popoverTargetElement
-pub fn get_popoverTargetElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for popoverTargetAction
-pub fn get_popoverTargetAction(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for popoverTargetAction
-pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

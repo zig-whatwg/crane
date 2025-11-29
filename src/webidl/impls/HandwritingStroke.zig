@@ -52,20 +52,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: addPoint
-pub fn call_addPoint(instance: *runtime.Instance, point: dictionaries.HandwritingPoint) ImplError!void {
+pub fn call_addPoint(instance: *runtime.Instance, point: dictionaries.HandwritingPoint) anyerror!void {
     _ = instance;
     _ = point;
     return error.NotImplemented;
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPoints
-pub fn call_getPoints(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getPoints(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

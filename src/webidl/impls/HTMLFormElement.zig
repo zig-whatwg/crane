@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLFormElement = interfaces.HTMLFormElement;
 
 pub const State = HTMLFormElement.State;
@@ -52,180 +53,180 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for acceptCharset
-pub fn get_acceptCharset(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_acceptCharset(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for action
-pub fn get_action(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_action(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for autocomplete
-pub fn get_autocomplete(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for enctype
-pub fn get_enctype(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_enctype(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for encoding
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for method
-pub fn get_method(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for noValidate
-pub fn get_noValidate(instance: *runtime.Instance) ImplError!bool {
+pub fn get_noValidate(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rel
-pub fn get_rel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for relList
-pub fn get_relList(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for elements
-pub fn get_elements(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_elements(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for acceptCharset
-pub fn set_acceptCharset(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_acceptCharset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for action
-pub fn set_action(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_action(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for autocomplete
-pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for enctype
-pub fn set_enctype(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_enctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for encoding
-pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for method
-pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for noValidate
-pub fn set_noValidate(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_noValidate(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for target
-pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rel
-pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: requestSubmit
-pub fn call_requestSubmit(instance: *runtime.Instance, submitter: *runtime.Instance) ImplError!void {
+pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
     _ = instance;
     _ = submitter;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: checkValidity
-pub fn call_checkValidity(instance: *runtime.Instance) ImplError!bool {
+pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: submit
-pub fn call_submit(instance: *runtime.Instance) ImplError!void {
+pub fn call_submit(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reportValidity
-pub fn call_reportValidity(instance: *runtime.Instance) ImplError!bool {
+pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

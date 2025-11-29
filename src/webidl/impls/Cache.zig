@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Cache = interfaces.Cache;
 
 pub const State = Cache.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;
@@ -48,7 +49,7 @@ pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, o
 }
 
 /// Operation: match
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;
@@ -56,7 +57,7 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
 }
 
 /// Operation: keys
-pub fn call_keys(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;
@@ -64,7 +65,7 @@ pub fn call_keys(instance: *runtime.Instance, request: typedefs.RequestInfo, opt
 }
 
 /// Operation: matchAll
-pub fn call_matchAll(instance: *runtime.Instance, request: typedefs.RequestInfo, options: dictionaries.CacheQueryOptions) ImplError!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = options;
@@ -72,21 +73,21 @@ pub fn call_matchAll(instance: *runtime.Instance, request: typedefs.RequestInfo,
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, request: typedefs.RequestInfo) ImplError!*const anyopaque {
+pub fn call_add(instance: *runtime.Instance, request: typedefs.RequestInfo) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     return error.NotImplemented;
 }
 
 /// Operation: addAll
-pub fn call_addAll(instance: *runtime.Instance, requests: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_addAll(instance: *runtime.Instance, requests: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = requests;
     return error.NotImplemented;
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, request: typedefs.RequestInfo, response: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_put(instance: *runtime.Instance, request: typedefs.RequestInfo, response: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = request;
     _ = response;

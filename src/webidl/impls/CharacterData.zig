@@ -98,27 +98,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for data
 /// DOM §4.11 - Returns this's data.
-pub fn get_data(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.data);
 }
 
 /// Getter for length
 /// DOM §4.11 - Returns this's length (number of code units).
-pub fn get_length(instance: *runtime.Instance) !u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return @intCast(internal.data.len);
 }
 
 /// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return NonDocumentTypeChildNode.previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return NonDocumentTypeChildNode.nextElementSibling(instance);
 }
 
@@ -128,7 +128,7 @@ pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.I
 
 /// Setter for data
 /// DOM §4.11 - Replace data with node this, offset 0, count this's length, and data new value.
-pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) !void {
+pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const new_value = value.asSlice();
     try replaceDataInternal(instance, internal, 0, @intCast(internal.data.len), new_value);
@@ -146,7 +146,7 @@ pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) !void {
 /// 2. If offset is greater than length, then throw an "IndexSizeError" DOMException.
 /// 3. If offset plus count is greater than length, return code units from offset to end.
 /// 4. Return code units from offset to offset+count.
-pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) !runtime.DOMString {
+pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const length: u32 = @intCast(internal.data.len);
 
@@ -168,7 +168,7 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
 /// DOM §4.11 - Appends data to this's data.
 ///
 /// Steps: Replace data with node this, offset this's length, count 0, and data.
-pub fn call_appendData(instance: *runtime.Instance, data: runtime.DOMString) !void {
+pub fn call_appendData(instance: *runtime.Instance, data: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try replaceDataInternal(instance, internal, @intCast(internal.data.len), 0, data.asSlice());
 }
@@ -177,7 +177,7 @@ pub fn call_appendData(instance: *runtime.Instance, data: runtime.DOMString) !vo
 /// DOM §4.11 - Inserts data at the given offset.
 ///
 /// Steps: Replace data with node this, offset, count 0, and data.
-pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: runtime.DOMString) !void {
+pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try replaceDataInternal(instance, internal, offset, 0, data.asSlice());
 }
@@ -186,14 +186,14 @@ pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: runtime.D
 /// DOM §4.11 - Deletes count code units starting at offset.
 ///
 /// Steps: Replace data with node this, offset, count, and empty string.
-pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) !void {
+pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try replaceDataInternal(instance, internal, offset, count, "");
 }
 
 /// Operation: replaceData(offset, count, data)
 /// DOM §4.11 - Replaces count code units at offset with data.
-pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: runtime.DOMString) !void {
+pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try replaceDataInternal(instance, internal, offset, count, data.asSlice());
 }
@@ -204,7 +204,7 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 
 /// Operation: remove (from ChildNode mixin)
 /// https://dom.spec.whatwg.org/#dom-childnode-remove
-pub fn call_remove(instance: *runtime.Instance) !void {
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     // Delegate to ChildNode mixin
     ChildNode.remove(instance) catch |err| {
         return switch (err) {
@@ -216,7 +216,7 @@ pub fn call_remove(instance: *runtime.Instance) !void {
 
 /// Operation: before (from ChildNode mixin)
 /// https://dom.spec.whatwg.org/#dom-childnode-before
-pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // TODO: Insert nodes before this node
@@ -225,7 +225,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) !void {
 
 /// Operation: after (from ChildNode mixin)
 /// https://dom.spec.whatwg.org/#dom-childnode-after
-pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // TODO: Insert nodes after this node
@@ -234,7 +234,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) !void {
 
 /// Operation: replaceWith (from ChildNode mixin)
 /// https://dom.spec.whatwg.org/#dom-childnode-replacewith
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // TODO: Replace this node with nodes

@@ -90,14 +90,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for target
 /// DOM §4.13 - Returns this's target.
-pub fn get_target(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.target);
 }
 
 /// Getter for sheet (from LinkStyle mixin - CSSOM)
 /// Returns the associated stylesheet, if any
-pub fn get_sheet(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     // TODO: Return associated CSSStyleSheet if this is <?xml-stylesheet?>
     // Requires CSSOM integration

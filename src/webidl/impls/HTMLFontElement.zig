@@ -52,39 +52,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for color
-pub fn get_color(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_color(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for face
-pub fn get_face(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_face(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_size(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for color
-pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_color(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for face
-pub fn set_face(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_face(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for size
-pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

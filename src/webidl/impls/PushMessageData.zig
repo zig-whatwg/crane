@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_blob(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: text
-pub fn call_text(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn call_text(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

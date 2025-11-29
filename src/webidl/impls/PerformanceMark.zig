@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PerformanceMark = interfaces.PerformanceMark;
 
 pub const State = PerformanceMark.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, markName: runtime.DOMString, markOptions: dictionaries.PerformanceMarkOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, markName: runtime.DOMString, markOptions: webidl.Opt(dictionaries.PerformanceMarkOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PerformanceMark.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mark
 }
 
 /// Getter for detail
-pub fn get_detail(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

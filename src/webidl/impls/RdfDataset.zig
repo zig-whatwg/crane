@@ -52,13 +52,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for defaultGraph
-pub fn get_defaultGraph(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_defaultGraph(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) ImplError!void {
+pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = graphName;
     _ = graph;
@@ -66,7 +66,7 @@ pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for keyText
-pub fn get_keyText(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_keyText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for style
-pub fn get_style(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for keyText
-pub fn set_keyText(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_keyText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

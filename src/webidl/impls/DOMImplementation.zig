@@ -15,6 +15,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DOMImplementation = interfaces.DOMImplementation;
 
 // Import related impls for factory methods
@@ -116,7 +117,7 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
 /// 1. If name is not a valid doctype name, then throw an "InvalidCharacterError" DOMException.
 /// 2. Return a new doctype, with name as its name, publicId as its public ID, and systemId
 ///    as its system ID, and with its node document set to the associated document of this.
-pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMString, publicId: runtime.DOMString, systemId: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
     const ctx = instance.context;
@@ -170,7 +171,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
 ///    - SVG namespace: "image/svg+xml"
 ///    - Any other namespace: "application/xml"
 /// 8. Return document.
-pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, doctype: ?*runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
     const ctx = instance.context;
@@ -255,7 +256,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: runtime.DOMSt
 /// 7. Append the result of creating an element given doc, "body", and the HTML namespace, to the html element created earlier.
 /// 8. doc's origin is this's associated document's origin.
 /// 9. Return doc.
-pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     const allocator = internal.allocator;
     const ctx = instance.context;
@@ -335,7 +336,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: runtime.DOMSt
 /// as simply checking whether the desired objects, attributes, or methods existed.
 /// As such, it is no longer to be used, but continues to exist (and simply returns true)
 /// so that old pages don't stop working.
-pub fn call_hasFeature(instance: *runtime.Instance) bool {
+pub fn call_hasFeature(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return true;
 }

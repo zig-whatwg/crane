@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: framebufferTextureMultiviewOVR
-pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, texture: *runtime.Instance, level: typedefs.GLint, baseViewIndex: typedefs.GLint, numViews: typedefs.GLsizei) ImplError!void {
+pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, texture: ?*runtime.Instance, level: typedefs.GLint, baseViewIndex: typedefs.GLint, numViews: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = target;
     _ = attachment;

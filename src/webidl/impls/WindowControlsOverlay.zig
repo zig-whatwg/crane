@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for visible
-pub fn get_visible(instance: *runtime.Instance) ImplError!bool {
+pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ongeometrychange
-pub fn get_ongeometrychange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ongeometrychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ongeometrychange
-pub fn set_ongeometrychange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ongeometrychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getTitlebarAreaRect
-pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

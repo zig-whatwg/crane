@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!enums.SpeechSynthesisErrorCode {
+pub fn get_error(instance: *runtime.Instance) anyerror!enums.SpeechSynthesisErrorCode {
     _ = instance;
     return error.NotImplemented;
 }

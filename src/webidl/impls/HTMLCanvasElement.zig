@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLCanvasElement = interfaces.HTMLCanvasElement;
 
 pub const State = HTMLCanvasElement.State;
@@ -52,40 +53,40 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: captureStream
-pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: f64) ImplError!*runtime.Instance {
+pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {
     _ = instance;
     _ = frameRequestRate;
     return error.NotImplemented;
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: *const anyopaque) ImplError!?typedefs.RenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(*const anyopaque)) anyerror!?typedefs.RenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -93,7 +94,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString
 }
 
 /// Operation: toDataURL
-pub fn call_toDataURL(instance: *runtime.Instance, @"type": runtime.DOMString, quality: *const anyopaque) ImplError!runtime.USVString {
+pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!runtime.USVString {
     _ = instance;
     _ = @"type";
     _ = quality;
@@ -101,7 +102,7 @@ pub fn call_toDataURL(instance: *runtime.Instance, @"type": runtime.DOMString, q
 }
 
 /// Operation: toBlob
-pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": runtime.DOMString, quality: *const anyopaque) ImplError!void {
+pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = _callback;
     _ = @"type";
@@ -110,7 +111,7 @@ pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallbac
 }
 
 /// Operation: transferControlToOffscreen
-pub fn call_transferControlToOffscreen(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

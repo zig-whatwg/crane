@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FormData = interfaces.FormData;
 
 pub const State = FormData.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form: *runtime.Instance, submitter: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form: webidl.Opt(*runtime.Instance), submitter: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &FormData.vtable, ctx);
     errdefer deinit(instance);
@@ -54,14 +55,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -69,28 +70,28 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: 
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!?typedefs.FormDataEntryValue {
+pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?typedefs.FormDataEntryValue {
     _ = instance;
     _ = name;
     return null;
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: has
-pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!bool {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -98,7 +99,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

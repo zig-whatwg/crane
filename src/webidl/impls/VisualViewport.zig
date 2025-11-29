@@ -40,81 +40,81 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for offsetLeft
-pub fn get_offsetLeft(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_offsetLeft(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for offsetTop
-pub fn get_offsetTop(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_offsetTop(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pageLeft
-pub fn get_pageLeft(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_pageLeft(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pageTop
-pub fn get_pageTop(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_pageTop(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scale
-pub fn get_scale(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_scale(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onresize
-pub fn get_onresize(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onresize(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onscroll
-pub fn get_onscroll(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onscroll(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onscrollend
-pub fn get_onscrollend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onscrollend(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onresize
-pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onscroll
-pub fn set_onscroll(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onscroll(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onscrollend
-pub fn set_onscrollend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onscrollend(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

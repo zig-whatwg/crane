@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mode
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.LockMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.LockMode {
     _ = instance;
     return error.NotImplemented;
 }

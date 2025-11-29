@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for targetURL
-pub fn get_targetURL(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_targetURL(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for files
-pub fn get_files(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_files(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

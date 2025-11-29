@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGPathData = interfaces.SVGPathData;
 
 pub const State = SVGPathData.State;
@@ -40,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setPathData
-pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) ImplError!void {
+pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
     _ = instance;
     _ = pathData;
     return error.NotImplemented;
 }
 
 /// Operation: getPathData
-pub fn call_getPathData(instance: *runtime.Instance, settings: dictionaries.SVGPathDataSettings) ImplError!*const anyopaque {
+pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!*const anyopaque {
     _ = instance;
     _ = settings;
     return error.NotImplemented;

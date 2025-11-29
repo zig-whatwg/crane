@@ -52,14 +52,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: transformToDocument
-pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = source;
     return error.NotImplemented;
 }
 
 /// Operation: getParameter
-pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = namespaceURI;
     _ = localName;
@@ -67,7 +67,7 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 }
 
 /// Operation: removeParameter
-pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) ImplError!void {
+pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = namespaceURI;
     _ = localName;
@@ -75,7 +75,7 @@ pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.D
 }
 
 /// Operation: setParameter
-pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: *const anyopaque) ImplError!void {
+pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = namespaceURI;
     _ = localName;
@@ -84,26 +84,26 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 }
 
 /// Operation: importStylesheet
-pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) ImplError!void {
+pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = style;
     return error.NotImplemented;
 }
 
 /// Operation: clearParameters
-pub fn call_clearParameters(instance: *runtime.Instance) ImplError!void {
+pub fn call_clearParameters(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: transformToFragment
-pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = source;
     _ = output;

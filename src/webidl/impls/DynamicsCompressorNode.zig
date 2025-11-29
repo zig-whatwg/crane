@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DynamicsCompressorNode = interfaces.DynamicsCompressorNode;
 
 pub const State = DynamicsCompressorNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.DynamicsCompressorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.DynamicsCompressorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DynamicsCompressorNode.vtable, ctx);
     errdefer deinit(instance);
@@ -54,37 +55,37 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for threshold
-pub fn get_threshold(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_threshold(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for knee
-pub fn get_knee(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_knee(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ratio
-pub fn get_ratio(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_ratio(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for reduction
-pub fn get_reduction(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_reduction(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for attack
-pub fn get_attack(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_attack(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for release
-pub fn get_release(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_release(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

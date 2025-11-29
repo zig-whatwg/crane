@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ProgressEvent = interfaces.ProgressEvent;
 
 pub const State = ProgressEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.ProgressEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ProgressEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for lengthComputable
-pub fn get_lengthComputable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_lengthComputable(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for loaded
-pub fn get_loaded(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_loaded(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for total
-pub fn get_total(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_total(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

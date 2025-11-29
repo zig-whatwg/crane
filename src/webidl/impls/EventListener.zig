@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: handleEvent
-pub fn call_handleEvent(instance: *runtime.Instance, event: *runtime.Instance) ImplError!void {
+pub fn call_handleEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = event;
     return error.NotImplemented;

@@ -53,13 +53,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, leng
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!typedefs.CSSPerspectiveValue {
+pub fn get_length(instance: *runtime.Instance) anyerror!typedefs.CSSPerspectiveValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for length
-pub fn set_length(instance: *runtime.Instance, value: typedefs.CSSPerspectiveValue) ImplError!void {
+pub fn set_length(instance: *runtime.Instance, value: typedefs.CSSPerspectiveValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

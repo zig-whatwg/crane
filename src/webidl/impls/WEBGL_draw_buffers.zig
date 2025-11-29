@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawBuffersWEBGL
-pub fn call_drawBuffersWEBGL(instance: *runtime.Instance, buffers: *const anyopaque) ImplError!void {
+pub fn call_drawBuffersWEBGL(instance: *runtime.Instance, buffers: *const anyopaque) anyerror!void {
     _ = instance;
     _ = buffers;
     return error.NotImplemented;

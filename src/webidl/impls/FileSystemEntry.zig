@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemEntry = interfaces.FileSystemEntry;
 
 pub const State = FileSystemEntry.State;
@@ -40,37 +41,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for isFile
-pub fn get_isFile(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isFile(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isDirectory
-pub fn get_isDirectory(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isDirectory(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fullPath
-pub fn get_fullPath(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_fullPath(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for filesystem
-pub fn get_filesystem(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_filesystem(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getParent
-pub fn call_getParent(instance: *runtime.Instance, successCallback: callbacks.FileSystemEntryCallback, errorCallback: callbacks.ErrorCallback) ImplError!void {
+pub fn call_getParent(instance: *runtime.Instance, successCallback: webidl.Opt(callbacks.FileSystemEntryCallback), errorCallback: webidl.Opt(callbacks.ErrorCallback)) anyerror!void {
     _ = instance;
     _ = successCallback;
     _ = errorCallback;

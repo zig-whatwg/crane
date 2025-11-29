@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for filters
-pub fn get_filters(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_filters(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for keepRepeatedDevices
-pub fn get_keepRepeatedDevices(instance: *runtime.Instance) ImplError!bool {
+pub fn get_keepRepeatedDevices(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for acceptAllAdvertisements
-pub fn get_acceptAllAdvertisements(instance: *runtime.Instance) ImplError!bool {
+pub fn get_acceptAllAdvertisements(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for active
-pub fn get_active(instance: *runtime.Instance) ImplError!bool {
+pub fn get_active(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

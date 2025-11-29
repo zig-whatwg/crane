@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SharedStorageWorklet = interfaces.SharedStorageWorklet;
 
 pub const State = SharedStorageWorklet.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: run
-pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = options;
@@ -48,7 +49,7 @@ pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: d
 }
 
 /// Operation: selectURL
-pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: dictionaries.SharedStorageRunOperationMethodOptions) ImplError!*const anyopaque {
+pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = urls;

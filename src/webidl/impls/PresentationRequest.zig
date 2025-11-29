@@ -53,33 +53,33 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 }
 
 /// Getter for onconnectionavailable
-pub fn get_onconnectionavailable(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnectionavailable(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onconnectionavailable
-pub fn set_onconnectionavailable(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnectionavailable(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_start(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reconnect
-pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = presentationId;
     return error.NotImplemented;
 }
 
 /// Operation: getAvailability
-pub fn call_getAvailability(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

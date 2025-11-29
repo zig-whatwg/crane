@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

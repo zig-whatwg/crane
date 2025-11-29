@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: addColorStop
-pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: runtime.DOMString) ImplError!void {
+pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = offset;
     _ = color;

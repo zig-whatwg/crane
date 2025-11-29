@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for axisTag
-pub fn get_axisTag(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_axisTag(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for minimumValue
-pub fn get_minimumValue(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_minimumValue(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maximumValue
-pub fn get_maximumValue(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_maximumValue(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for defaultValue
-pub fn get_defaultValue(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_defaultValue(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

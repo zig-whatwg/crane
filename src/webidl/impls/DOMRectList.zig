@@ -91,7 +91,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for length
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-domrectlist-length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const state = getState(instance);
     return state.own.length;
 }
@@ -99,7 +99,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 /// Operation: item
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-domrectlist-item
 /// Returns the DOMRect at the given index, or null if out of bounds
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.NotImplemented;
 
     if (index >= internal.rects.items.len) {

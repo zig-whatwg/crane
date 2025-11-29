@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Request = interfaces.Request;
 
 pub const State = Request.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: typedefs.RequestInfo, init_data: dictionaries.RequestInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Request.vtable, ctx);
     errdefer deinit(instance);
@@ -54,157 +55,157 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
 }
 
 /// Getter for method
-pub fn get_method(instance: *runtime.Instance) ImplError!runtime.ByteString {
+pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for headers
-pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for destination
-pub fn get_destination(instance: *runtime.Instance) ImplError!enums.RequestDestination {
+pub fn get_destination(instance: *runtime.Instance) anyerror!enums.RequestDestination {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for referrer
-pub fn get_referrer(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for referrerPolicy
-pub fn get_referrerPolicy(instance: *runtime.Instance) ImplError!enums.ReferrerPolicy {
+pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!enums.ReferrerPolicy {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mode
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.RequestMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.RequestMode {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for credentials
-pub fn get_credentials(instance: *runtime.Instance) ImplError!enums.RequestCredentials {
+pub fn get_credentials(instance: *runtime.Instance) anyerror!enums.RequestCredentials {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cache
-pub fn get_cache(instance: *runtime.Instance) ImplError!enums.RequestCache {
+pub fn get_cache(instance: *runtime.Instance) anyerror!enums.RequestCache {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for redirect
-pub fn get_redirect(instance: *runtime.Instance) ImplError!enums.RequestRedirect {
+pub fn get_redirect(instance: *runtime.Instance) anyerror!enums.RequestRedirect {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for integrity
-pub fn get_integrity(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for keepalive
-pub fn get_keepalive(instance: *runtime.Instance) ImplError!bool {
+pub fn get_keepalive(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isReloadNavigation
-pub fn get_isReloadNavigation(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isReloadNavigation(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isHistoryNavigation
-pub fn get_isHistoryNavigation(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isHistoryNavigation(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for signal
-pub fn get_signal(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duplex
-pub fn get_duplex(instance: *runtime.Instance) ImplError!enums.RequestDuplex {
+pub fn get_duplex(instance: *runtime.Instance) anyerror!enums.RequestDuplex {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetAddressSpace
-pub fn get_targetAddressSpace(instance: *runtime.Instance) ImplError!enums.IPAddressSpace {
+pub fn get_targetAddressSpace(instance: *runtime.Instance) anyerror!enums.IPAddressSpace {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for bodyUsed
-pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: formData
-pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: text
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

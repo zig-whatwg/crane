@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for attestationObject
-pub fn get_attestationObject(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_attestationObject(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPublicKey
-pub fn call_getPublicKey(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn call_getPublicKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Operation: getTransports
-pub fn call_getTransports(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getTransports(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPublicKeyAlgorithm
-pub fn call_getPublicKeyAlgorithm(instance: *runtime.Instance) ImplError!typedefs.COSEAlgorithmIdentifier {
+pub fn call_getPublicKeyAlgorithm(instance: *runtime.Instance) anyerror!typedefs.COSEAlgorithmIdentifier {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAuthenticatorData
-pub fn call_getAuthenticatorData(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

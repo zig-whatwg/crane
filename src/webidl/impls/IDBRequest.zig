@@ -40,56 +40,56 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for result
-pub fn get_result(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_result(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_source(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transaction
-pub fn get_transaction(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_transaction(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for readyState
-pub fn get_readyState(instance: *runtime.Instance) ImplError!enums.IDBRequestReadyState {
+pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.IDBRequestReadyState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onsuccess
-pub fn get_onsuccess(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onsuccess(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onsuccess
-pub fn set_onsuccess(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onsuccess(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

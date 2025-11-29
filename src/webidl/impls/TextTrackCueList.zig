@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getCueById
-pub fn call_getCueById(instance: *runtime.Instance, id: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_getCueById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = id;
     return null;

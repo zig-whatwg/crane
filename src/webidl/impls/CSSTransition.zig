@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transitionProperty
-pub fn get_transitionProperty(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_transitionProperty(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }

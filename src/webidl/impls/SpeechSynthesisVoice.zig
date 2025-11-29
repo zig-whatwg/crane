@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for voiceURI
-pub fn get_voiceURI(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_voiceURI(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lang
-pub fn get_lang(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_lang(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for localService
-pub fn get_localService(instance: *runtime.Instance) ImplError!bool {
+pub fn get_localService(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for default
-pub fn get_default(instance: *runtime.Instance) ImplError!bool {
+pub fn get_default(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

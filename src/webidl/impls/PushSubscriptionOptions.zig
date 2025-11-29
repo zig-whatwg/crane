@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for userVisibleOnly
-pub fn get_userVisibleOnly(instance: *runtime.Instance) ImplError!bool {
+pub fn get_userVisibleOnly(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for applicationServerKey
-pub fn get_applicationServerKey(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }

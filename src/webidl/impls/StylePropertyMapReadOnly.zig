@@ -40,34 +40,34 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for size
-pub fn get_size(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: has
-pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerror!bool {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

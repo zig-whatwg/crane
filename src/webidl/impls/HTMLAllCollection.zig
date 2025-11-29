@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLAllCollection = interfaces.HTMLAllCollection;
 
 pub const State = HTMLAllCollection.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, nameOrIndex: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?*const anyopaque {
     _ = instance;
     _ = nameOrIndex;
     return error.NotImplemented;
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;

@@ -53,19 +53,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
 }
 
 /// Getter for password
-pub fn get_password(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for iconURL
-pub fn get_iconURL(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_iconURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

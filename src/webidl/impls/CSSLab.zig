@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSLab = interfaces.CSSLab;
 
 pub const State = CSSLab.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, l: typedefs.CSSColorPercent, a: typedefs.CSSColorNumber, b: typedefs.CSSColorNumber, alpha: typedefs.CSSColorPercent) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, l: typedefs.CSSColorPercent, a: typedefs.CSSColorNumber, b: typedefs.CSSColorNumber, alpha: webidl.Opt(typedefs.CSSColorPercent)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSLab.vtable, ctx);
     errdefer deinit(instance);
@@ -56,52 +57,52 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, l: t
 }
 
 /// Getter for l
-pub fn get_l(instance: *runtime.Instance) ImplError!typedefs.CSSColorPercent {
+pub fn get_l(instance: *runtime.Instance) anyerror!typedefs.CSSColorPercent {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for a
-pub fn get_a(instance: *runtime.Instance) ImplError!typedefs.CSSColorNumber {
+pub fn get_a(instance: *runtime.Instance) anyerror!typedefs.CSSColorNumber {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for b
-pub fn get_b(instance: *runtime.Instance) ImplError!typedefs.CSSColorNumber {
+pub fn get_b(instance: *runtime.Instance) anyerror!typedefs.CSSColorNumber {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for alpha
-pub fn get_alpha(instance: *runtime.Instance) ImplError!typedefs.CSSColorPercent {
+pub fn get_alpha(instance: *runtime.Instance) anyerror!typedefs.CSSColorPercent {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for l
-pub fn set_l(instance: *runtime.Instance, value: typedefs.CSSColorPercent) ImplError!void {
+pub fn set_l(instance: *runtime.Instance, value: typedefs.CSSColorPercent) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for a
-pub fn set_a(instance: *runtime.Instance, value: typedefs.CSSColorNumber) ImplError!void {
+pub fn set_a(instance: *runtime.Instance, value: typedefs.CSSColorNumber) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for b
-pub fn set_b(instance: *runtime.Instance, value: typedefs.CSSColorNumber) ImplError!void {
+pub fn set_b(instance: *runtime.Instance, value: typedefs.CSSColorNumber) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for alpha
-pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSColorPercent) ImplError!void {
+pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSColorPercent) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

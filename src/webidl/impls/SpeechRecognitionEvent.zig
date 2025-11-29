@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for resultIndex
-pub fn get_resultIndex(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_resultIndex(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for results
-pub fn get_results(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_results(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clearRect
-pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) ImplError!void {
+pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -50,7 +50,7 @@ pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
 }
 
 /// Operation: fillRect
-pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) ImplError!void {
+pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -60,7 +60,7 @@ pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64
 }
 
 /// Operation: strokeRect
-pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) ImplError!void {
+pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

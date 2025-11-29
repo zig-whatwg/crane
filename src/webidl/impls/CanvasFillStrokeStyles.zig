@@ -40,33 +40,33 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for strokeStyle
-pub fn get_strokeStyle(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fillStyle
-pub fn get_fillStyle(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_fillStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for strokeStyle
-pub fn set_strokeStyle(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_strokeStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for fillStyle
-pub fn set_fillStyle(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_fillStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) ImplError!*runtime.Instance {
+pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;
@@ -76,7 +76,7 @@ pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, 
 }
 
 /// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = image;
     _ = repetition;
@@ -84,7 +84,7 @@ pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasIma
 }
 
 /// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) ImplError!*runtime.Instance {
+pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = startAngle;
     _ = x;
@@ -93,7 +93,7 @@ pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x:
 }
 
 /// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) ImplError!*runtime.Instance {
+pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = x0;
     _ = y0;

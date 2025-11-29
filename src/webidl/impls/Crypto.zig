@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for subtle
-pub fn get_subtle(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_subtle(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRandomValues
-pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBufferView) ImplError!typedefs.ArrayBufferView {
+pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBufferView) anyerror!typedefs.ArrayBufferView {
     _ = instance;
     _ = array;
     return error.NotImplemented;
 }
 
 /// Operation: randomUUID
-pub fn call_randomUUID(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_randomUUID(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,84 +40,84 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for endTime
-pub fn get_endTime(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_endTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pauseOnExit
-pub fn get_pauseOnExit(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pauseOnExit(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onenter
-pub fn get_onenter(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onenter(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onexit
-pub fn get_onexit(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onexit(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for id
-pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for endTime
-pub fn set_endTime(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_endTime(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for pauseOnExit
-pub fn set_pauseOnExit(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_pauseOnExit(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onenter
-pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onexit
-pub fn set_onexit(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onexit(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

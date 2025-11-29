@@ -122,32 +122,32 @@ pub fn getInternalPort(instance: *runtime.Instance) ?*InternalMessagePort {
 }
 
 /// Getter for onclose
-pub fn get_onclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     return state.own.onclose;
 }
 
 /// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     return state.own.onmessage;
 }
 
 /// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     return state.own.onmessageerror;
 }
 
 /// Setter for onclose
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onclose = value;
 }
 
 /// Setter for onmessage
 /// Spec: § 9.3.2.1 Setting onmessage implicitly calls start()
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onmessage = value;
 
@@ -158,7 +158,7 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onmessageerror = value;
 }
@@ -168,7 +168,7 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 ///
 /// Enables the port's message queue. Messages received while the queue
 /// is disabled are queued and will be dispatched when start() is called.
-pub fn call_start(instance: *runtime.Instance) ImplError!void {
+pub fn call_start(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.internal_port.enableQueue();
@@ -179,7 +179,7 @@ pub fn call_start(instance: *runtime.Instance) ImplError!void {
 /// Spec: § 9.3.2.6 close() method
 ///
 /// Disconnects the port so it is no longer active.
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.internal_port.close();
@@ -191,7 +191,7 @@ pub fn call_close(instance: *runtime.Instance) ImplError!void {
 ///
 /// Posts a message to the entangled port. For Streams transfer, we use
 /// simplified messages with type and value.
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) ImplError!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
     _ = transfer; // Transfer semantics simplified for now
 
     const state = instance.getState(State);

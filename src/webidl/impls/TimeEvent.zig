@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TimeEvent = interfaces.TimeEvent;
 
 pub const State = TimeEvent.State;
@@ -40,19 +41,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for view
-pub fn get_view(instance: *runtime.Instance) ImplError!?typedefs.WindowProxy {
+pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     _ = instance;
     return null;
 }
 
 /// Getter for detail
-pub fn get_detail(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_detail(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initTimeEvent
-pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: *runtime.Instance, detailArg: i32) ImplError!void {
+pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
     _ = instance;
     _ = typeArg;
     _ = viewArg;

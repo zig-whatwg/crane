@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for globalPrivacyControl
-pub fn get_globalPrivacyControl(instance: *runtime.Instance) ImplError!bool {
+pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

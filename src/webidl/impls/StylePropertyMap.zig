@@ -40,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) anyerror!void {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
     _ = instance;
     _ = property;
     _ = values;
@@ -55,13 +55,13 @@ pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, val
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: *const anyopaque) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
     _ = instance;
     _ = property;
     _ = values;

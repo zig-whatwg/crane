@@ -52,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

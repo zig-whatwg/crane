@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for bodyUsed
-pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: formData
-pub fn call_formData(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: text
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AudioBuffer = interfaces.AudioBuffer;
 
 pub const State = AudioBuffer.State;
@@ -53,38 +54,38 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for sampleRate
-pub fn get_sampleRate(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_sampleRate(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_duration(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for numberOfChannels
-pub fn get_numberOfChannels(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_numberOfChannels(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getChannelData
-pub fn call_getChannelData(instance: *runtime.Instance, channel: u32) ImplError!*const anyopaque {
+pub fn call_getChannelData(instance: *runtime.Instance, channel: u32) anyerror!*const anyopaque {
     _ = instance;
     _ = channel;
     return error.NotImplemented;
 }
 
 /// Operation: copyFromChannel
-pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: u32) ImplError!void {
+pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
     _ = instance;
     _ = destination;
     _ = channelNumber;
@@ -93,7 +94,7 @@ pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const any
 }
 
 /// Operation: copyToChannel
-pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: u32) ImplError!void {
+pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
     _ = instance;
     _ = source;
     _ = channelNumber;

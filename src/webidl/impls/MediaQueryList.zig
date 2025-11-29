@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_media(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for matches
-pub fn get_matches(instance: *runtime.Instance) ImplError!bool {
+pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: removeListener
-pub fn call_removeListener(instance: *runtime.Instance, callback: *runtime.Instance) ImplError!void {
+pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: addListener
-pub fn call_addListener(instance: *runtime.Instance, callback: *runtime.Instance) ImplError!void {
+pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

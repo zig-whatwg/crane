@@ -40,43 +40,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for vendor
-pub fn get_vendor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for architecture
-pub fn get_architecture(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_architecture(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for device
-pub fn get_device(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_device(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for description
-pub fn get_description(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for subgroupMinSize
-pub fn get_subgroupMinSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_subgroupMinSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for subgroupMaxSize
-pub fn get_subgroupMaxSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_subgroupMaxSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for isFallbackAdapter
-pub fn get_isFallbackAdapter(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isFallbackAdapter(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

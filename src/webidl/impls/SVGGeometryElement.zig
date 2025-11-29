@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGGeometryElement = interfaces.SVGGeometryElement;
 
 pub const State = SVGGeometryElement.State;
@@ -40,33 +41,33 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for pathLength
-pub fn get_pathLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isPointInStroke
-pub fn call_isPointInStroke(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
+pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) anyerror!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;
 }
 
 /// Operation: getTotalLength
-pub fn call_getTotalLength(instance: *runtime.Instance) ImplError!f32 {
+pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPointAtLength
-pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplError!*runtime.Instance {
+pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
     _ = instance;
     _ = distance;
     return error.NotImplemented;
 }
 
 /// Operation: isPointInFill
-pub fn call_isPointInFill(instance: *runtime.Instance, point: dictionaries.DOMPointInit) ImplError!bool {
+pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(dictionaries.DOMPointInit)) anyerror!bool {
     _ = instance;
     _ = point;
     return error.NotImplemented;

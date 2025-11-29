@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for meshSpace
-pub fn get_meshSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_meshSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vertices
-pub fn get_vertices(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_vertices(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for indices
-pub fn get_indices(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_indices(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastChangedTime
-pub fn get_lastChangedTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_lastChangedTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for semanticLabel
-pub fn get_semanticLabel(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }

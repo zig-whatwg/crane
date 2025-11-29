@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for handedness
-pub fn get_handedness(instance: *runtime.Instance) ImplError!enums.XRHandedness {
+pub fn get_handedness(instance: *runtime.Instance) anyerror!enums.XRHandedness {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetRayMode
-pub fn get_targetRayMode(instance: *runtime.Instance) ImplError!enums.XRTargetRayMode {
+pub fn get_targetRayMode(instance: *runtime.Instance) anyerror!enums.XRTargetRayMode {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for targetRaySpace
-pub fn get_targetRaySpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_targetRaySpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gripSpace
-pub fn get_gripSpace(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_gripSpace(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for profiles
-pub fn get_profiles(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_profiles(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for skipRendering
-pub fn get_skipRendering(instance: *runtime.Instance) ImplError!bool {
+pub fn get_skipRendering(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gamepad
-pub fn get_gamepad(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_gamepad(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for hand
-pub fn get_hand(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_hand(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

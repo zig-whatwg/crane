@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for maxChannelCount
-pub fn get_maxChannelCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_maxChannelCount(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PannerNode = interfaces.PannerNode;
 
 pub const State = PannerNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.PannerOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.PannerOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PannerNode.vtable, ctx);
     errdefer deinit(instance);
@@ -54,147 +55,147 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for panningModel
-pub fn get_panningModel(instance: *runtime.Instance) ImplError!enums.PanningModelType {
+pub fn get_panningModel(instance: *runtime.Instance) anyerror!enums.PanningModelType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionX
-pub fn get_positionX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionY
-pub fn get_positionY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionZ
-pub fn get_positionZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationX
-pub fn get_orientationX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientationX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationY
-pub fn get_orientationY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientationY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientationZ
-pub fn get_orientationZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientationZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for distanceModel
-pub fn get_distanceModel(instance: *runtime.Instance) ImplError!enums.DistanceModelType {
+pub fn get_distanceModel(instance: *runtime.Instance) anyerror!enums.DistanceModelType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for refDistance
-pub fn get_refDistance(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_refDistance(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maxDistance
-pub fn get_maxDistance(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_maxDistance(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rolloffFactor
-pub fn get_rolloffFactor(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_rolloffFactor(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for coneInnerAngle
-pub fn get_coneInnerAngle(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_coneInnerAngle(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for coneOuterAngle
-pub fn get_coneOuterAngle(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_coneOuterAngle(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for coneOuterGain
-pub fn get_coneOuterGain(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_coneOuterGain(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for panningModel
-pub fn set_panningModel(instance: *runtime.Instance, value: enums.PanningModelType) ImplError!void {
+pub fn set_panningModel(instance: *runtime.Instance, value: enums.PanningModelType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for distanceModel
-pub fn set_distanceModel(instance: *runtime.Instance, value: enums.DistanceModelType) ImplError!void {
+pub fn set_distanceModel(instance: *runtime.Instance, value: enums.DistanceModelType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for refDistance
-pub fn set_refDistance(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_refDistance(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for maxDistance
-pub fn set_maxDistance(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_maxDistance(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rolloffFactor
-pub fn set_rolloffFactor(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_rolloffFactor(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for coneInnerAngle
-pub fn set_coneInnerAngle(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_coneInnerAngle(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for coneOuterAngle
-pub fn set_coneOuterAngle(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_coneOuterAngle(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for coneOuterGain
-pub fn set_coneOuterGain(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_coneOuterGain(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setPosition
-pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) ImplError!void {
+pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -203,7 +204,7 @@ pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) Imp
 }
 
 /// Operation: setOrientation
-pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32) ImplError!void {
+pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

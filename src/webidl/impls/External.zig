@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: AddSearchProvider
-pub fn call_AddSearchProvider(instance: *runtime.Instance) ImplError!void {
+pub fn call_AddSearchProvider(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: IsSearchProviderInstalled
-pub fn call_IsSearchProviderInstalled(instance: *runtime.Instance) ImplError!void {
+pub fn call_IsSearchProviderInstalled(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

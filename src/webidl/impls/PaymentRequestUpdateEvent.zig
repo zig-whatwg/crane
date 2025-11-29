@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PaymentRequestUpdateEvent = interfaces.PaymentRequestUpdateEvent;
 
 pub const State = PaymentRequestUpdateEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.PaymentRequestUpdateEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PaymentRequestUpdateEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PaymentRequestUpdateEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: updateWith
-pub fn call_updateWith(instance: *runtime.Instance, detailsPromise: *const anyopaque) ImplError!void {
+pub fn call_updateWith(instance: *runtime.Instance, detailsPromise: *const anyopaque) anyerror!void {
     _ = instance;
     _ = detailsPromise;
     return error.NotImplemented;

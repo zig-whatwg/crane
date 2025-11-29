@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const infra = @import("infra");
@@ -93,7 +94,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 /// Getter for encoding
 /// Returns the encoding name (always "utf-8" for TextEncoder)
 /// Spec: https://encoding.spec.whatwg.org/#dom-textencodercommon-encoding
-pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     return state.own.encoding;
 }
@@ -109,7 +110,7 @@ pub fn get_encoding(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// 2. Let output be the I/O queue of bytes
 /// 3. Process with UTF-8 encoder
 /// 4. Return Uint8Array
-pub fn call_encode(instance: *runtime.Instance, input: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return ImplError.InvalidState;
     const allocator = internal.allocator;
@@ -170,11 +171,7 @@ pub fn call_encode(instance: *runtime.Instance, input: runtime.USVString) ImplEr
 ///            4. Increment written by the number of bytes in result.
 ///       ii.  Otherwise, break.
 /// 7. Return «[ "read" → read, "written" → written ]».
-pub fn call_encodeInto(
-    instance: *runtime.Instance,
-    source: runtime.USVString,
-    destination: *const anyopaque,
-) ImplError!dictionaries.TextEncoderEncodeIntoResult {
+pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) anyerror!dictionaries.TextEncoderEncodeIntoResult {
     _ = instance;
 
     // Extract destination buffer from opaque pointer

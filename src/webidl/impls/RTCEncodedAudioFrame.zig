@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCEncodedAudioFrame = interfaces.RTCEncodedAudioFrame;
 
 pub const State = RTCEncodedAudioFrame.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, originalFrame: *runtime.Instance, options: dictionaries.RTCEncodedAudioFrameOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, originalFrame: *runtime.Instance, options: webidl.Opt(dictionaries.RTCEncodedAudioFrameOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &RTCEncodedAudioFrame.vtable, ctx);
     errdefer deinit(instance);
@@ -54,20 +55,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, orig
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for data
-pub fn set_data(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_data(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getMetadata
-pub fn call_getMetadata(instance: *runtime.Instance) ImplError!dictionaries.RTCEncodedAudioFrameMetadata {
+pub fn call_getMetadata(instance: *runtime.Instance) anyerror!dictionaries.RTCEncodedAudioFrameMetadata {
     _ = instance;
     return error.NotImplemented;
 }

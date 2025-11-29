@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createCSSStyleSheet
-pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: runtime.DOMString, media: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: runtime.DOMString, media: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = title;
     _ = media;

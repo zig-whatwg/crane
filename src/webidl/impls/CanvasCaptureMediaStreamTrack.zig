@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestFrame
-pub fn call_requestFrame(instance: *runtime.Instance) ImplError!void {
+pub fn call_requestFrame(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

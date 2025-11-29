@@ -54,66 +54,66 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for target
-pub fn get_target(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for pseudoElement
-pub fn get_pseudoElement(instance: *runtime.Instance) ImplError!?typedefs.CSSOMString {
+pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for composite
-pub fn get_composite(instance: *runtime.Instance) ImplError!enums.CompositeOperation {
+pub fn get_composite(instance: *runtime.Instance) anyerror!enums.CompositeOperation {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for iterationComposite
-pub fn get_iterationComposite(instance: *runtime.Instance) ImplError!enums.IterationCompositeOperation {
+pub fn get_iterationComposite(instance: *runtime.Instance) anyerror!enums.IterationCompositeOperation {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for target
-pub fn set_target(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_target(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for pseudoElement
-pub fn set_pseudoElement(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_pseudoElement(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for composite
-pub fn set_composite(instance: *runtime.Instance, value: enums.CompositeOperation) ImplError!void {
+pub fn set_composite(instance: *runtime.Instance, value: enums.CompositeOperation) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for iterationComposite
-pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.IterationCompositeOperation) ImplError!void {
+pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.IterationCompositeOperation) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setKeyframes
-pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: *const anyopaque) ImplError!void {
+pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?*const anyopaque) anyerror!void {
     _ = instance;
     _ = keyframes;
     return error.NotImplemented;
 }
 
 /// Operation: getKeyframes
-pub fn call_getKeyframes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

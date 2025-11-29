@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AnimationTimeline = interfaces.AnimationTimeline;
 
 pub const State = AnimationTimeline.State;
@@ -40,19 +41,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!?typedefs.CSSNumberish {
+pub fn get_duration(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
     _ = instance;
     return null;
 }
 
 /// Operation: play
-pub fn call_play(instance: *runtime.Instance, effect: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     _ = instance;
     _ = effect;
     return error.NotImplemented;

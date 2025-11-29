@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const mixins = @import("mixins");
 const ParentNode = interfaces.ParentNode;
 
 pub const State = ParentNode.State;
@@ -40,52 +42,52 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for firstElementChild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for lastElementChild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for childElementCount
-pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: querySelectorAll
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = selectors;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: replaceChildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: moveBefore
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = node;
     _ = child;
@@ -93,14 +95,14 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 }
 
 /// Operation: prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: querySelector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = selectors;
     return null;

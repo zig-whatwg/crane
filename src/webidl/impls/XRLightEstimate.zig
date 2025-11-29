@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sphericalHarmonicsCoefficients
-pub fn get_sphericalHarmonicsCoefficients(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_sphericalHarmonicsCoefficients(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryLightDirection
-pub fn get_primaryLightDirection(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_primaryLightDirection(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryLightIntensity
-pub fn get_primaryLightIntensity(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_primaryLightIntensity(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

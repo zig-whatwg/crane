@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Headers = interfaces.Headers;
 
 pub const State = Headers.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: typedefs.HeadersInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Headers.vtable, ctx);
     errdefer deinit(instance);
@@ -53,14 +54,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerror!void {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -68,27 +69,27 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value:
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) ImplError!?runtime.ByteString {
+pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
     _ = instance;
     _ = name;
     return null;
 }
 
 /// Operation: has
-pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: getSetCookie
-pub fn call_getSetCookie(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
     _ = instance;
     _ = name;
     _ = value;
@@ -96,7 +97,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: ru
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

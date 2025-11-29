@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for identifier
-pub fn get_identifier(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_identifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for listStyle
-pub fn get_listStyle(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_listStyle(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for separator
-pub fn get_separator(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_separator(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }

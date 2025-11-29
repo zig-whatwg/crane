@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for dataType
-pub fn get_dataType(instance: *runtime.Instance) ImplError!enums.MLOperandDataType {
+pub fn get_dataType(instance: *runtime.Instance) anyerror!enums.MLOperandDataType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for shape
-pub fn get_shape(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_shape(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

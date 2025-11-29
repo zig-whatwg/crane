@@ -92,7 +92,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for length
 /// Spec: https://dom.spec.whatwg.org/#dom-nodelist-length
 /// Returns the number of nodes in the collection.
-pub fn get_length(instance: *runtime.Instance) !u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     return @intCast(internal.nodes.size());
 }
@@ -100,7 +100,7 @@ pub fn get_length(instance: *runtime.Instance) !u32 {
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-nodelist-item
 /// Returns the node at the given index, or null if out of bounds.
-pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     return internal.nodes.get(index) orelse return error.NotImplemented;
 }
@@ -108,7 +108,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
 /// Operation: forEach(callback)
 /// Spec: https://webidl.spec.whatwg.org/#es-forEach
 /// Calls callback for each node in the list
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) !void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     const internal = getInternal(instance) orelse return;
     _ = callback;
 

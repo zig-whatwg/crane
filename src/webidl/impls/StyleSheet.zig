@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_href(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for ownerNode
-pub fn get_ownerNode(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for parentStyleSheet
-pub fn get_parentStyleSheet(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parentStyleSheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for title
-pub fn get_title(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_title(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for disabled
-pub fn get_disabled(instance: *runtime.Instance) ImplError!bool {
+pub fn get_disabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for disabled
-pub fn set_disabled(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

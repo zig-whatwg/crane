@@ -40,55 +40,55 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_duration(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for entryType
-pub fn get_entryType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for containerType
-pub fn get_containerType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_containerType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for containerSrc
-pub fn get_containerSrc(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_containerSrc(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for containerId
-pub fn get_containerId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_containerId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for containerName
-pub fn get_containerName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_containerName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

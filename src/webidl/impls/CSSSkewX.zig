@@ -53,13 +53,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, ax: 
 }
 
 /// Getter for ax
-pub fn get_ax(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_ax(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ax
-pub fn set_ax(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_ax(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

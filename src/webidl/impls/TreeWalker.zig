@@ -143,21 +143,21 @@ pub fn createTreeWalker(
 
 /// DOM §6.3 - TreeWalker.root
 /// Returns the root node
-pub fn get_root(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_root(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.root orelse return error.NotImplemented;
 }
 
 /// DOM §6.3 - TreeWalker.whatToShow
 /// Returns the whatToShow bitmask
-pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance);
     return internal.what_to_show;
 }
 
 /// DOM §6.3 - TreeWalker.filter
 /// Returns the filter callback (may be null)
-pub fn get_filter(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
     // TODO: Return proper NodeFilter interface
     _ = internal;
@@ -166,14 +166,14 @@ pub fn get_filter(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 
 /// DOM §6.3 - TreeWalker.currentNode getter
 /// Returns the current node
-pub fn get_currentNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_currentNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.current orelse return error.NotImplemented;
 }
 
 /// DOM §6.3 - TreeWalker.currentNode setter
 /// Sets the current node to the given value
-pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
     internal.current = value;
 }
@@ -184,7 +184,7 @@ pub fn set_currentNode(instance: *runtime.Instance, value: *runtime.Instance) Im
 
 /// DOM §6.3 - TreeWalker.parentNode()
 /// Move to parent node if it passes filter, return null otherwise
-pub fn call_parentNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current
@@ -210,31 +210,31 @@ pub fn call_parentNode(instance: *runtime.Instance) ImplError!?*runtime.Instance
 
 /// DOM §6.3 - TreeWalker.firstChild()
 /// Move to first child that passes filter
-pub fn call_firstChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverseChildren(instance, .first);
 }
 
 /// DOM §6.3 - TreeWalker.lastChild()
 /// Move to last child that passes filter
-pub fn call_lastChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverseChildren(instance, .last);
 }
 
 /// DOM §6.3 - TreeWalker.previousSibling()
 /// Move to previous sibling that passes filter
-pub fn call_previousSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverseSiblings(instance, .previous);
 }
 
 /// DOM §6.3 - TreeWalker.nextSibling()
 /// Move to next sibling that passes filter
-pub fn call_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverseSiblings(instance, .next);
 }
 
 /// DOM §6.3 - TreeWalker.previousNode()
 /// Move to previous node in tree order that passes filter
-pub fn call_previousNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current
@@ -297,7 +297,7 @@ pub fn call_previousNode(instance: *runtime.Instance) ImplError!?*runtime.Instan
 
 /// DOM §6.3 - TreeWalker.nextNode()
 /// Move to next node in tree order that passes filter
-pub fn call_nextNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
 
     // Step 1: Let node be this's current

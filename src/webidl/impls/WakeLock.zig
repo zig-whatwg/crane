@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WakeLock = interfaces.WakeLock;
 
 pub const State = WakeLock.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, @"type": enums.WakeLockType) ImplError!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(enums.WakeLockType)) anyerror!*const anyopaque {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

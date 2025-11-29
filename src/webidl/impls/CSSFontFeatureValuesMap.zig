@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMString, values: *const anyopaque) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMString, values: *const anyopaque) anyerror!void {
     _ = instance;
     _ = featureValueName;
     _ = values;

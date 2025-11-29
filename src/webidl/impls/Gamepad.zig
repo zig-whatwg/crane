@@ -40,73 +40,73 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for id
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_index(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for connected
-pub fn get_connected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_connected(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timestamp
-pub fn get_timestamp(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_timestamp(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mapping
-pub fn get_mapping(instance: *runtime.Instance) ImplError!enums.GamepadMappingType {
+pub fn get_mapping(instance: *runtime.Instance) anyerror!enums.GamepadMappingType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for axes
-pub fn get_axes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_axes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for buttons
-pub fn get_buttons(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_buttons(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for touches
-pub fn get_touches(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_touches(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for vibrationActuator
-pub fn get_vibrationActuator(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_vibrationActuator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hand
-pub fn get_hand(instance: *runtime.Instance) ImplError!enums.GamepadHand {
+pub fn get_hand(instance: *runtime.Instance) anyerror!enums.GamepadHand {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hapticActuators
-pub fn get_hapticActuators(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_hapticActuators(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pose
-pub fn get_pose(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_pose(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

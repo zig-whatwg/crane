@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: cropTo
-pub fn call_cropTo(instance: *runtime.Instance, cropTarget: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = cropTarget;
     return error.NotImplemented;
 }
 
 /// Operation: restrictTo
-pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: ?*runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = RestrictionTarget;
     return error.NotImplemented;

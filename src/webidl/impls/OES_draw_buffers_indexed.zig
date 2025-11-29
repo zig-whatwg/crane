@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: enableiOES
-pub fn call_enableiOES(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) ImplError!void {
+pub fn call_enableiOES(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!void {
     _ = instance;
     _ = target;
     _ = index;
@@ -48,7 +48,7 @@ pub fn call_enableiOES(instance: *runtime.Instance, target: typedefs.GLenum, ind
 }
 
 /// Operation: blendEquationiOES
-pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: typedefs.GLuint, mode: typedefs.GLenum) ImplError!void {
+pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: typedefs.GLuint, mode: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = buf;
     _ = mode;
@@ -56,7 +56,7 @@ pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: typedefs.GLuint,
 }
 
 /// Operation: blendEquationSeparateiOES
-pub fn call_blendEquationSeparateiOES(instance: *runtime.Instance, buf: typedefs.GLuint, modeRGB: typedefs.GLenum, modeAlpha: typedefs.GLenum) ImplError!void {
+pub fn call_blendEquationSeparateiOES(instance: *runtime.Instance, buf: typedefs.GLuint, modeRGB: typedefs.GLenum, modeAlpha: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = buf;
     _ = modeRGB;
@@ -65,7 +65,7 @@ pub fn call_blendEquationSeparateiOES(instance: *runtime.Instance, buf: typedefs
 }
 
 /// Operation: blendFunciOES
-pub fn call_blendFunciOES(instance: *runtime.Instance, buf: typedefs.GLuint, src: typedefs.GLenum, dst: typedefs.GLenum) ImplError!void {
+pub fn call_blendFunciOES(instance: *runtime.Instance, buf: typedefs.GLuint, src: typedefs.GLenum, dst: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = buf;
     _ = src;
@@ -74,7 +74,7 @@ pub fn call_blendFunciOES(instance: *runtime.Instance, buf: typedefs.GLuint, src
 }
 
 /// Operation: blendFuncSeparateiOES
-pub fn call_blendFuncSeparateiOES(instance: *runtime.Instance, buf: typedefs.GLuint, srcRGB: typedefs.GLenum, dstRGB: typedefs.GLenum, srcAlpha: typedefs.GLenum, dstAlpha: typedefs.GLenum) ImplError!void {
+pub fn call_blendFuncSeparateiOES(instance: *runtime.Instance, buf: typedefs.GLuint, srcRGB: typedefs.GLenum, dstRGB: typedefs.GLenum, srcAlpha: typedefs.GLenum, dstAlpha: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = buf;
     _ = srcRGB;
@@ -85,7 +85,7 @@ pub fn call_blendFuncSeparateiOES(instance: *runtime.Instance, buf: typedefs.GLu
 }
 
 /// Operation: colorMaskiOES
-pub fn call_colorMaskiOES(instance: *runtime.Instance, buf: typedefs.GLuint, r: typedefs.GLboolean, g: typedefs.GLboolean, b: typedefs.GLboolean, a: typedefs.GLboolean) ImplError!void {
+pub fn call_colorMaskiOES(instance: *runtime.Instance, buf: typedefs.GLuint, r: typedefs.GLboolean, g: typedefs.GLboolean, b: typedefs.GLboolean, a: typedefs.GLboolean) anyerror!void {
     _ = instance;
     _ = buf;
     _ = r;
@@ -96,7 +96,7 @@ pub fn call_colorMaskiOES(instance: *runtime.Instance, buf: typedefs.GLuint, r: 
 }
 
 /// Operation: disableiOES
-pub fn call_disableiOES(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) ImplError!void {
+pub fn call_disableiOES(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!void {
     _ = instance;
     _ = target;
     _ = index;

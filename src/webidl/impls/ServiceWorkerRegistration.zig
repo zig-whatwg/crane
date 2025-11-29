@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
 
 pub const State = ServiceWorkerRegistration.State;
@@ -40,110 +41,110 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for installing
-pub fn get_installing(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_installing(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for waiting
-pub fn get_waiting(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_waiting(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for active
-pub fn get_active(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_active(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for navigationPreload
-pub fn get_navigationPreload(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scope
-pub fn get_scope(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for updateViaCache
-pub fn get_updateViaCache(instance: *runtime.Instance) ImplError!enums.ServiceWorkerUpdateViaCache {
+pub fn get_updateViaCache(instance: *runtime.Instance) anyerror!enums.ServiceWorkerUpdateViaCache {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onupdatefound
-pub fn get_onupdatefound(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onupdatefound(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for periodicSync
-pub fn get_periodicSync(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cookies
-pub fn get_cookies(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sync
-pub fn get_sync(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sync(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_index(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for backgroundFetch
-pub fn get_backgroundFetch(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paymentManager
-pub fn get_paymentManager(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_paymentManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pushManager
-pub fn get_pushManager(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onupdatefound
-pub fn set_onupdatefound(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onupdatefound(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: unregister
-pub fn call_unregister(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_unregister(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_update(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: showNotification
-pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: dictionaries.NotificationOptions) ImplError!*const anyopaque {
+pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = title;
     _ = options;
@@ -151,7 +152,7 @@ pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMStri
 }
 
 /// Operation: getNotifications
-pub fn call_getNotifications(instance: *runtime.Instance, filter: dictionaries.GetNotificationOptions) ImplError!*const anyopaque {
+pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dictionaries.GetNotificationOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = filter;
     return error.NotImplemented;

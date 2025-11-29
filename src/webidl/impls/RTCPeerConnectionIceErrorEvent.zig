@@ -54,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for address
-pub fn get_address(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_address(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!?u16 {
+pub fn get_port(instance: *runtime.Instance) anyerror!?u16 {
     _ = instance;
     return null;
 }
 
 /// Getter for url
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for errorCode
-pub fn get_errorCode(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_errorCode(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for errorText
-pub fn get_errorText(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_errorText(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

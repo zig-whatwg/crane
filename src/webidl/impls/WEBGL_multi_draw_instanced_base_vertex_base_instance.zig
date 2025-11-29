@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: multiDrawArraysInstancedBaseInstanceWEBGL
-pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) ImplError!void {
+pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = firstsList;
@@ -56,7 +56,7 @@ pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instanc
 }
 
 /// Operation: multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL
-pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseVerticesList: *const anyopaque, baseVerticesOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) ImplError!void {
+pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseVerticesList: *const anyopaque, baseVerticesOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = countsList;

@@ -52,25 +52,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for form
-pub fn get_form(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for htmlFor
-pub fn get_htmlFor(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for control
-pub fn get_control(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_control(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for htmlFor
-pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

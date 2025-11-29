@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for baseVal
-pub fn get_baseVal(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_baseVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for animVal
-pub fn get_animVal(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_animVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for baseVal
-pub fn set_baseVal(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_baseVal(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

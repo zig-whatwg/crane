@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLOptionsCollection = interfaces.HTMLOptionsCollection;
 
 pub const State = HTMLOptionsCollection.State;
@@ -40,33 +41,33 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for selectedIndex
-pub fn get_selectedIndex(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_selectedIndex(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for length
-pub fn set_length(instance: *runtime.Instance, value: u32) ImplError!void {
+pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for selectedIndex
-pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) ImplError!void {
+pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: *const anyopaque) ImplError!void {
+pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) anyerror!void {
     _ = instance;
     _ = element;
     _ = before;
@@ -74,7 +75,7 @@ pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: 
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance, index: i32) ImplError!void {
+pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;

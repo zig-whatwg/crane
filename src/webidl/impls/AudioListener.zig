@@ -40,61 +40,61 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for positionX
-pub fn get_positionX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionY
-pub fn get_positionY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for positionZ
-pub fn get_positionZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_positionZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forwardX
-pub fn get_forwardX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_forwardX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forwardY
-pub fn get_forwardY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_forwardY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forwardZ
-pub fn get_forwardZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_forwardZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upX
-pub fn get_upX(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_upX(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upY
-pub fn get_upY(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_upY(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upZ
-pub fn get_upZ(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_upZ(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setPosition
-pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) ImplError!void {
+pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -103,7 +103,7 @@ pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) Imp
 }
 
 /// Operation: setOrientation
-pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32, xUp: f32, yUp: f32, zUp: f32) ImplError!void {
+pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32, xUp: f32, yUp: f32, zUp: f32) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

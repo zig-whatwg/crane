@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for quaternion
-pub fn get_quaternion(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_quaternion(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Operation: populateMatrix
-pub fn call_populateMatrix(instance: *runtime.Instance, targetMatrix: typedefs.RotationMatrixType) ImplError!void {
+pub fn call_populateMatrix(instance: *runtime.Instance, targetMatrix: typedefs.RotationMatrixType) anyerror!void {
     _ = instance;
     _ = targetMatrix;
     return error.NotImplemented;

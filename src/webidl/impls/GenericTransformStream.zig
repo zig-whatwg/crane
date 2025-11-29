@@ -65,7 +65,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: "The readable getter steps are to return this's readable side."
 ///
 /// Note: This delegates to the concrete transform stream implementation.
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Determine which transform stream type this is and delegate
     // Try TransformStream first
     if (instance.vtable == &interfaces.TransformStream.vtable) {
@@ -130,7 +130,7 @@ pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Spec: "The writable getter steps are to return this's writable side."
 ///
 /// Note: This delegates to the concrete transform stream implementation.
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Determine which transform stream type this is and delegate
     // Try TransformStream first
     if (instance.vtable == &interfaces.TransformStream.vtable) {

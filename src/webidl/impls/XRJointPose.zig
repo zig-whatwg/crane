@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for radius
-pub fn get_radius(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_radius(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }

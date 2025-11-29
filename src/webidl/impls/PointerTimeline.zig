@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PointerTimeline = interfaces.PointerTimeline;
 
 pub const State = PointerTimeline.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.PointerTimelineOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.PointerTimelineOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PointerTimeline.vtable, ctx);
     errdefer deinit(instance);
@@ -53,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_source(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for axis
-pub fn get_axis(instance: *runtime.Instance) ImplError!enums.PointerAxis {
+pub fn get_axis(instance: *runtime.Instance) anyerror!enums.PointerAxis {
     _ = instance;
     return error.NotImplemented;
 }

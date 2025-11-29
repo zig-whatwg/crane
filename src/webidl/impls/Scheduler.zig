@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Scheduler = interfaces.Scheduler;
 
 pub const State = Scheduler.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: postTask
-pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: dictionaries.SchedulerPostTaskOptions) ImplError!*const anyopaque {
+pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: webidl.Opt(dictionaries.SchedulerPostTaskOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = callback;
     _ = options;
@@ -48,7 +49,7 @@ pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerP
 }
 
 /// Operation: yield
-pub fn call_yield(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

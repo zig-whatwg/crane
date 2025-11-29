@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TextEvent = interfaces.TextEvent;
 
 pub const State = TextEvent.State;
@@ -40,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initTextEvent
-pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool, view: *runtime.Instance, data: runtime.DOMString) ImplError!void {
+pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), view: webidl.Opt(?*runtime.Instance), data: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = @"type";
     _ = bubbles;

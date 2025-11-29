@@ -19,6 +19,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Selection = interfaces.Selection;
 
 // Import related implementations
@@ -145,7 +146,7 @@ pub fn createSelection(allocator: std.mem.Allocator, ctx: runtime.Context, docum
 /// Selection API - anchorNode getter
 /// Returns the Node in which the selection begins.
 /// Returns null if the selection is empty.
-pub fn get_anchorNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_anchorNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.anchor_node orelse return error.NotImplemented; // null
 }
@@ -153,7 +154,7 @@ pub fn get_anchorNode(instance: *runtime.Instance) ImplError!?*runtime.Instance 
 /// Selection API - anchorOffset getter
 /// Returns the offset within the anchor node where the selection begins.
 /// Returns 0 if the selection is empty.
-pub fn get_anchorOffset(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_anchorOffset(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.anchor_offset;
 }
@@ -161,7 +162,7 @@ pub fn get_anchorOffset(instance: *runtime.Instance) ImplError!u32 {
 /// Selection API - focusNode getter
 /// Returns the Node in which the selection ends.
 /// Returns null if the selection is empty.
-pub fn get_focusNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_focusNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.focus_node orelse return error.NotImplemented; // null
 }
@@ -169,7 +170,7 @@ pub fn get_focusNode(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 /// Selection API - focusOffset getter
 /// Returns the offset within the focus node where the selection ends.
 /// Returns 0 if the selection is empty.
-pub fn get_focusOffset(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_focusOffset(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.focus_offset;
 }
@@ -177,7 +178,7 @@ pub fn get_focusOffset(instance: *runtime.Instance) ImplError!u32 {
 /// Selection API - isCollapsed getter
 /// Returns true if the selection is collapsed (anchor equals focus).
 /// A collapsed selection is also known as a caret.
-pub fn get_isCollapsed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isCollapsed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Empty selection is considered collapsed
@@ -193,7 +194,7 @@ pub fn get_isCollapsed(instance: *runtime.Instance) ImplError!bool {
 /// Selection API - rangeCount getter
 /// Returns the number of ranges in the selection.
 /// Per spec, this is typically 0 or 1 (most browsers only support single range).
-pub fn get_rangeCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_rangeCount(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If we have anchor and focus set, we have one range
@@ -205,7 +206,7 @@ pub fn get_rangeCount(instance: *runtime.Instance) ImplError!u32 {
 
 /// Selection API - type getter
 /// Returns the type of selection: "None", "Caret", or "Range"
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // No selection
@@ -226,7 +227,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 
 /// Selection API - direction getter
 /// Returns the direction of selection: "none", "forward", or "backward"
-pub fn get_direction(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_direction(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     return switch (internal.direction) {
@@ -243,7 +244,7 @@ pub fn get_direction(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Selection API - getRangeAt(index)
 /// Returns the Range at the specified index.
 /// Throws IndexSizeError if index is out of range.
-pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Only support index 0 (single range per selection)
@@ -271,7 +272,7 @@ pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) ImplError!*runti
 /// Adds the specified range to the selection.
 /// Per spec, if there's already a range, this may be ignored or replace it
 /// (browser-dependent behavior). We replace the selection.
-pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) ImplError!void {
+pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get the range's boundary points
@@ -291,7 +292,7 @@ pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) Impl
 
 /// Selection API - removeRange(range)
 /// Removes the specified range from the selection.
-pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) ImplError!void {
+pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if this is our range
@@ -309,7 +310,7 @@ pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) I
 
 /// Selection API - removeAllRanges()
 /// Removes all ranges from the selection, leaving it empty.
-pub fn call_removeAllRanges(instance: *runtime.Instance) ImplError!void {
+pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     internal.anchor_node = null;
@@ -322,14 +323,14 @@ pub fn call_removeAllRanges(instance: *runtime.Instance) ImplError!void {
 
 /// Selection API - empty()
 /// Alias for removeAllRanges() (Gecko-compatible)
-pub fn call_empty(instance: *runtime.Instance) ImplError!void {
+pub fn call_empty(instance: *runtime.Instance) anyerror!void {
     return call_removeAllRanges(instance);
 }
 
 /// Selection API - collapse(node, offset)
 /// Collapses the selection to a single point at the specified position.
 /// If node is null, collapses to no selection.
-pub fn call_collapse(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // TODO: Validate offset against node's length
@@ -346,14 +347,14 @@ pub fn call_collapse(instance: *runtime.Instance, node: *runtime.Instance, offse
 
 /// Selection API - setPosition(node, offset)
 /// Alias for collapse() (WebKit-compatible)
-pub fn call_setPosition(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
     return call_collapse(instance, node, offset);
 }
 
 /// Selection API - collapseToStart()
 /// Collapses the selection to its start point.
 /// Throws InvalidStateError if the selection is empty.
-pub fn call_collapseToStart(instance: *runtime.Instance) ImplError!void {
+pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Must have a selection
@@ -383,7 +384,7 @@ pub fn call_collapseToStart(instance: *runtime.Instance) ImplError!void {
 /// Selection API - collapseToEnd()
 /// Collapses the selection to its end point.
 /// Throws InvalidStateError if the selection is empty.
-pub fn call_collapseToEnd(instance: *runtime.Instance) ImplError!void {
+pub fn call_collapseToEnd(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Must have a selection
@@ -413,7 +414,7 @@ pub fn call_collapseToEnd(instance: *runtime.Instance) ImplError!void {
 /// Selection API - extend(node, offset)
 /// Moves the focus of the selection to the specified position.
 /// The anchor remains unchanged. This changes the selection direction.
-pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) ImplError!void {
+pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Must have an anchor point to extend from
@@ -434,7 +435,7 @@ pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset:
 
 /// Selection API - setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
 /// Sets the selection to span the specified positions.
-pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) ImplError!void {
+pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Set both anchor and focus
@@ -462,7 +463,7 @@ pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.I
 
 /// Selection API - selectAllChildren(node)
 /// Selects all the children of the specified node.
-pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) ImplError!void {
+pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Set anchor to beginning of node's children
@@ -491,7 +492,7 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 /// alter: "move" | "extend"
 /// direction: "forward" | "backward" | "left" | "right"
 /// granularity: "character" | "word" | "sentence" | "line" | "paragraph" | etc.
-pub fn call_modify(instance: *runtime.Instance, alter: runtime.DOMString, direction: runtime.DOMString, granularity: runtime.DOMString) ImplError!void {
+pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = alter;
     _ = direction;
@@ -502,7 +503,7 @@ pub fn call_modify(instance: *runtime.Instance, alter: runtime.DOMString, direct
 
 /// Selection API - deleteFromDocument()
 /// Deletes the content of the selection from the document.
-pub fn call_deleteFromDocument(instance: *runtime.Instance) ImplError!void {
+pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If there's no selection or it's collapsed, do nothing
@@ -529,7 +530,7 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) ImplError!void {
 
 /// Selection API - containsNode(node, allowPartialContainment)
 /// Returns true if the specified node is part of the selection.
-pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: bool) ImplError!bool {
+pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // No selection means no containment
@@ -558,7 +559,7 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 /// Selection API - getComposedRanges(options)
 /// Returns an array of StaticRanges representing the selection,
 /// crossing shadow boundaries if shadowRoots are provided.
-pub fn call_getComposedRanges(instance: *runtime.Instance, options: dictionaries.GetComposedRangesOptions) ImplError!*const anyopaque {
+pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // TODO: Implement composed ranges with shadow DOM support

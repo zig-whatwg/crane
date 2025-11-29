@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const XRSystem = interfaces.XRSystem;
 
 pub const State = XRSystem.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ondevicechange
-pub fn get_ondevicechange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondevicechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ondevicechange
-pub fn set_ondevicechange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondevicechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: requestSession
-pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: dictionaries.XRSessionInit) ImplError!*const anyopaque {
+pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: webidl.Opt(dictionaries.XRSessionInit)) anyerror!*const anyopaque {
     _ = instance;
     _ = mode;
     _ = options;
@@ -61,7 +62,7 @@ pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMod
 }
 
 /// Operation: isSessionSupported
-pub fn call_isSessionSupported(instance: *runtime.Instance, mode: enums.XRSessionMode) ImplError!*const anyopaque {
+pub fn call_isSessionSupported(instance: *runtime.Instance, mode: enums.XRSessionMode) anyerror!*const anyopaque {
     _ = instance;
     _ = mode;
     return error.NotImplemented;

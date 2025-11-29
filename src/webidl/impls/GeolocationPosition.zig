@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for coords
-pub fn get_coords(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_coords(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timestamp
-pub fn get_timestamp(instance: *runtime.Instance) ImplError!typedefs.EpochTimeStamp {
+pub fn get_timestamp(instance: *runtime.Instance) anyerror!typedefs.EpochTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

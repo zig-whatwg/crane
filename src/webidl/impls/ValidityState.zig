@@ -40,67 +40,67 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for valueMissing
-pub fn get_valueMissing(instance: *runtime.Instance) ImplError!bool {
+pub fn get_valueMissing(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for typeMismatch
-pub fn get_typeMismatch(instance: *runtime.Instance) ImplError!bool {
+pub fn get_typeMismatch(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for patternMismatch
-pub fn get_patternMismatch(instance: *runtime.Instance) ImplError!bool {
+pub fn get_patternMismatch(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tooLong
-pub fn get_tooLong(instance: *runtime.Instance) ImplError!bool {
+pub fn get_tooLong(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tooShort
-pub fn get_tooShort(instance: *runtime.Instance) ImplError!bool {
+pub fn get_tooShort(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeUnderflow
-pub fn get_rangeUnderflow(instance: *runtime.Instance) ImplError!bool {
+pub fn get_rangeUnderflow(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeOverflow
-pub fn get_rangeOverflow(instance: *runtime.Instance) ImplError!bool {
+pub fn get_rangeOverflow(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stepMismatch
-pub fn get_stepMismatch(instance: *runtime.Instance) ImplError!bool {
+pub fn get_stepMismatch(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for badInput
-pub fn get_badInput(instance: *runtime.Instance) ImplError!bool {
+pub fn get_badInput(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for customError
-pub fn get_customError(instance: *runtime.Instance) ImplError!bool {
+pub fn get_customError(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for valid
-pub fn get_valid(instance: *runtime.Instance) ImplError!bool {
+pub fn get_valid(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const USBInTransferResult = interfaces.USBInTransferResult;
 
 pub const State = USBInTransferResult.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, status: enums.USBTransferStatus, data: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, status: enums.USBTransferStatus, data: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &USBInTransferResult.vtable, ctx);
     errdefer deinit(instance);
@@ -54,13 +55,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stat
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for status
-pub fn get_status(instance: *runtime.Instance) ImplError!enums.USBTransferStatus {
+pub fn get_status(instance: *runtime.Instance) anyerror!enums.USBTransferStatus {
     _ = instance;
     return error.NotImplemented;
 }

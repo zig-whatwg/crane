@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const InterestGroupBiddingScriptRunnerGlobalScope = interfaces.InterestGroupBiddingScriptRunnerGlobalScope;
 
 pub const State = InterestGroupBiddingScriptRunnerGlobalScope.State;
@@ -40,21 +41,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setBid
-pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: *const anyopaque) ImplError!bool {
+pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(*const anyopaque)) anyerror!bool {
     _ = instance;
     _ = oneOrManyBids;
     return error.NotImplemented;
 }
 
 /// Operation: setPriority
-pub fn call_setPriority(instance: *runtime.Instance, priority: f64) ImplError!void {
+pub fn call_setPriority(instance: *runtime.Instance, priority: f64) anyerror!void {
     _ = instance;
     _ = priority;
     return error.NotImplemented;
 }
 
 /// Operation: setPrioritySignalsOverride
-pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: runtime.DOMString, priority: f64) ImplError!void {
+pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: runtime.DOMString, priority: webidl.Opt(?f64)) anyerror!void {
     _ = instance;
     _ = key;
     _ = priority;

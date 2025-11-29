@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: contributeToHistogram
-pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dictionaries.RealTimeContribution) ImplError!void {
+pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dictionaries.RealTimeContribution) anyerror!void {
     _ = instance;
     _ = contribution;
     return error.NotImplemented;

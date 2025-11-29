@@ -129,7 +129,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. If state is "errored", return null
 /// 4. If state is "closed", return 0
 /// 5. Return controller.[[strategyHWM]] - controller.[[queueTotalSize]]
-pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -155,7 +155,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) ImplError!f64 {
 ///
 /// Steps:
 /// 1. Perform ! ReadableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: *const anyopaque) ImplError!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -204,7 +204,7 @@ pub fn readableStreamDefaultControllerError(internal: *InternalState, e: *const 
 /// Steps:
 /// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false, throw TypeError
 /// 2. Perform ! ReadableStreamDefaultControllerClose(this)
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -276,7 +276,7 @@ fn readableStreamDefaultControllerClearAlgorithms(internal: *InternalState) void
 /// Steps:
 /// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false, throw TypeError
 /// 2. Perform ? ReadableStreamDefaultControllerEnqueue(this, chunk)
-pub fn call_enqueue(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

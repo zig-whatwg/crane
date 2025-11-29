@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for endpoint
-pub fn get_endpoint(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_endpoint(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for expirationTime
-pub fn get_expirationTime(instance: *runtime.Instance) ImplError!?typedefs.EpochTimeStamp {
+pub fn get_expirationTime(instance: *runtime.Instance) anyerror!?typedefs.EpochTimeStamp {
     _ = instance;
     return null;
 }
 
 /// Getter for options
-pub fn get_options(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_options(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: unsubscribe
-pub fn call_unsubscribe(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_unsubscribe(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!dictionaries.PushSubscriptionJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.PushSubscriptionJSON {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) ImplError!?*const anyopaque {
+pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) anyerror!?*const anyopaque {
     _ = instance;
     _ = name;
     return null;

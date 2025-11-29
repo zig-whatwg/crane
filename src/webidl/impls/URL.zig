@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const URL = interfaces.URL;
 const URLSearchParams = interfaces.URLSearchParams;
@@ -60,12 +61,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://url.spec.whatwg.org/#dom-url-url (lines 1794-1800)
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    url: runtime.USVString,
-    base: runtime.USVString,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
     // Create instance
     const instance = try init(allocator, State, &URL.vtable, ctx);
     errdefer deinit(instance);
@@ -146,7 +142,7 @@ pub fn call_constructor(
 
 /// href getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-href (line 1855)
-pub fn get_href(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return url_serializer.serialize(internal.allocator, &internal.url_record, false);
@@ -154,7 +150,7 @@ pub fn get_href(instance: *runtime.Instance) !runtime.USVString {
 
 /// origin getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
-pub fn get_origin(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const url_origin = try origin_module.getOrigin(internal.allocator, &internal.url_record);
@@ -164,7 +160,7 @@ pub fn get_origin(instance: *runtime.Instance) !runtime.USVString {
 
 /// protocol getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
-pub fn get_protocol(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const scheme = internal.url_record.scheme();
@@ -176,7 +172,7 @@ pub fn get_protocol(instance: *runtime.Instance) !runtime.USVString {
 
 /// username getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-username (line 1877)
-pub fn get_username(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return try internal.allocator.dupe(u8, internal.url_record.username());
@@ -184,7 +180,7 @@ pub fn get_username(instance: *runtime.Instance) !runtime.USVString {
 
 /// password getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-password (line 1885)
-pub fn get_password(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return try internal.allocator.dupe(u8, internal.url_record.password());
@@ -192,7 +188,7 @@ pub fn get_password(instance: *runtime.Instance) !runtime.USVString {
 
 /// host getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1893-1901)
-pub fn get_host(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -216,7 +212,7 @@ pub fn get_host(instance: *runtime.Instance) !runtime.USVString {
 
 /// hostname getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1911-1915)
-pub fn get_hostname(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -229,7 +225,7 @@ pub fn get_hostname(instance: *runtime.Instance) !runtime.USVString {
 
 /// port getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1923-1927)
-pub fn get_port(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -242,7 +238,7 @@ pub fn get_port(instance: *runtime.Instance) !runtime.USVString {
 
 /// pathname getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (line 1937)
-pub fn get_pathname(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return path_serializer.serializePath(internal.allocator, &internal.url_record);
@@ -250,7 +246,7 @@ pub fn get_pathname(instance: *runtime.Instance) !runtime.USVString {
 
 /// search getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1947-1951)
-pub fn get_search(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const q = internal.url_record.query();
@@ -266,7 +262,7 @@ pub fn get_search(instance: *runtime.Instance) !runtime.USVString {
 
 /// searchParams getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-searchparams (line 1967)
-pub fn get_searchParams(instance: *runtime.Instance) !*runtime.Instance {
+pub fn get_searchParams(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -281,7 +277,7 @@ pub fn get_searchParams(instance: *runtime.Instance) !*runtime.Instance {
 
 /// hash getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1969-1973)
-pub fn get_hash(instance: *runtime.Instance) !runtime.USVString {
+pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const f = internal.url_record.fragment();
@@ -301,7 +297,7 @@ pub fn get_hash(instance: *runtime.Instance) !runtime.USVString {
 
 /// href setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-href (lines 1855-1870)
-pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -319,7 +315,7 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) !void {
 
 /// protocol setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1875)
-pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -342,7 +338,7 @@ pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) !void
 
 /// username setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-username (lines 1879-1883)
-pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -413,7 +409,7 @@ pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) !void
 
 /// password setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-password (lines 1887-1891)
-pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -474,7 +470,7 @@ pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) !void
 
 /// host setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1903-1907)
-pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -495,7 +491,7 @@ pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) !void {
 
 /// hostname setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1917-1921)
-pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -516,7 +512,7 @@ pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) !void
 
 /// port setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1929-1935)
-pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -543,7 +539,7 @@ pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) !void {
 
 /// pathname setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (lines 1939-1945)
-pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -564,7 +560,7 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) !void
 
 /// search setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1953-1965)
-pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -597,7 +593,7 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) !void {
 
 /// hash setter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1975-1983)
-pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) !void {
+pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -631,11 +627,7 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) !void {
 
 /// parse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-parse (lines 1835-1845)
-pub fn call_parse(
-    instance: *runtime.Instance,
-    url: runtime.USVString,
-    base: runtime.USVString,
-) !*runtime.Instance {
+pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
     // Static method - instance is not used
     _ = instance;
     _ = url;
@@ -645,11 +637,7 @@ pub fn call_parse(
 
 /// canParse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
-pub fn call_canParse(
-    instance: *runtime.Instance,
-    url: runtime.USVString,
-    base: runtime.USVString,
-) !bool {
+pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
     // Static method - instance is not used
     _ = instance;
 
@@ -675,19 +663,19 @@ pub fn call_canParse(
 
 /// toJSON method
 /// Spec: https://url.spec.whatwg.org/#dom-url-tojson (line 1855)
-pub fn call_toJSON(instance: *runtime.Instance) !runtime.USVString {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
     return get_href(instance);
 }
 
 /// createObjectURL static method (Blob URLs)
-pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) !runtime.DOMString {
+pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!runtime.DOMString {
     _ = instance;
     _ = obj;
     return error.NotImplemented;
 }
 
 /// revokeObjectURL static method (Blob URLs)
-pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) !void {
+pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = url;
     return error.NotImplemented;

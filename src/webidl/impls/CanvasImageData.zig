@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CanvasImageData = interfaces.CanvasImageData;
 
 pub const State = CanvasImageData.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getImageData
-pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) anyerror!*runtime.Instance {
     _ = instance;
     _ = sx;
     _ = sy;
@@ -51,7 +52,7 @@ pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32,
 }
 
 /// Operation: createImageData
-pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: dictionaries.ImageDataSettings) ImplError!*runtime.Instance {
+pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(dictionaries.ImageDataSettings)) anyerror!*runtime.Instance {
     _ = instance;
     _ = sw;
     _ = sh;
@@ -60,7 +61,7 @@ pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, setti
 }
 
 /// Operation: putImageData
-pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) ImplError!void {
+pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
     _ = instance;
     _ = imageData;
     _ = dx;

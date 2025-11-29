@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for language
-pub fn get_language(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for languages
-pub fn get_languages(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

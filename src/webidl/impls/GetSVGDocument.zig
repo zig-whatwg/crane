@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getSVGDocument
-pub fn call_getSVGDocument(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

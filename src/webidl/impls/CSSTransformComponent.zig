@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for is2D
-pub fn get_is2D(instance: *runtime.Instance) ImplError!bool {
+pub fn get_is2D(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for is2D
-pub fn set_is2D(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_is2D(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: toMatrix
-pub fn call_toMatrix(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

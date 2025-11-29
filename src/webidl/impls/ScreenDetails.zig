@@ -40,38 +40,38 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for screens
-pub fn get_screens(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_screens(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentScreen
-pub fn get_currentScreen(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_currentScreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onscreenschange
-pub fn get_onscreenschange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onscreenschange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncurrentscreenchange
-pub fn get_oncurrentscreenchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncurrentscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onscreenschange
-pub fn set_onscreenschange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onscreenschange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncurrentscreenchange
-pub fn set_oncurrentscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncurrentscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

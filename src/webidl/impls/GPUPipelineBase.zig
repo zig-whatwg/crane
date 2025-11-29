@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getBindGroupLayout
-pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) ImplError!*runtime.Instance {
+pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
     _ = instance;
     _ = index;
     return error.NotImplemented;

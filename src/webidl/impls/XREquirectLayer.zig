@@ -40,91 +40,91 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for space
-pub fn get_space(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for radius
-pub fn get_radius(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_radius(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for centralHorizontalAngle
-pub fn get_centralHorizontalAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_centralHorizontalAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for upperVerticalAngle
-pub fn get_upperVerticalAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_upperVerticalAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lowerVerticalAngle
-pub fn get_lowerVerticalAngle(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_lowerVerticalAngle(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onredraw
-pub fn get_onredraw(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onredraw(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for space
-pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_transform(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for radius
-pub fn set_radius(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_radius(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for centralHorizontalAngle
-pub fn set_centralHorizontalAngle(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_centralHorizontalAngle(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for upperVerticalAngle
-pub fn set_upperVerticalAngle(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_upperVerticalAngle(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for lowerVerticalAngle
-pub fn set_lowerVerticalAngle(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_lowerVerticalAngle(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onredraw
-pub fn set_onredraw(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onredraw(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

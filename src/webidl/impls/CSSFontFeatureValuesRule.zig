@@ -40,55 +40,55 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for fontFamily
-pub fn get_fontFamily(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_fontFamily(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for annotation
-pub fn get_annotation(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_annotation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ornaments
-pub fn get_ornaments(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_ornaments(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for stylistic
-pub fn get_stylistic(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_stylistic(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for swash
-pub fn get_swash(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_swash(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for characterVariant
-pub fn get_characterVariant(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_characterVariant(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for styleset
-pub fn get_styleset(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_styleset(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for historicalForms
-pub fn get_historicalForms(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_historicalForms(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for fontFamily
-pub fn set_fontFamily(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_fontFamily(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

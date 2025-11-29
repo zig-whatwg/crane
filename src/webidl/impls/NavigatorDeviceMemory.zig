@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for deviceMemory
-pub fn get_deviceMemory(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

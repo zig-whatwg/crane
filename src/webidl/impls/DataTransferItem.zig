@@ -40,38 +40,38 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for kind
-pub fn get_kind(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAsString
-pub fn call_getAsString(instance: *runtime.Instance, _callback: callbacks.FunctionStringCallback) ImplError!void {
+pub fn call_getAsString(instance: *runtime.Instance, _callback: ?callbacks.FunctionStringCallback) anyerror!void {
     _ = instance;
     _ = _callback;
     return error.NotImplemented;
 }
 
 /// Operation: getAsFileSystemHandle
-pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: webkitGetAsEntry
-pub fn call_webkitGetAsEntry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: getAsFile
-pub fn call_getAsFile(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_getAsFile(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

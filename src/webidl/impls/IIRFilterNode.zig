@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Operation: getFrequencyResponse
-pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *const anyopaque, magResponse: *const anyopaque, phaseResponse: *const anyopaque) ImplError!void {
+pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *const anyopaque, magResponse: *const anyopaque, phaseResponse: *const anyopaque) anyerror!void {
     _ = instance;
     _ = frequencyHz;
     _ = magResponse;

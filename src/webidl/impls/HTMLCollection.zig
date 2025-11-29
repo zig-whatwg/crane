@@ -98,7 +98,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for length
 /// Spec: https://dom.spec.whatwg.org/#dom-htmlcollection-length
 /// Returns the number of elements in the collection.
-pub fn get_length(instance: *runtime.Instance) !u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     return @intCast(internal.elements.size());
 }
@@ -106,7 +106,7 @@ pub fn get_length(instance: *runtime.Instance) !u32 {
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-htmlcollection-item
 /// Returns the element at the given index, or null if out of bounds.
-pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     return internal.elements.get(index) orelse return error.NotImplemented;
 }
@@ -114,7 +114,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) !*runtime.Instance {
 /// Operation: namedItem(name)
 /// Spec: https://dom.spec.whatwg.org/#dom-htmlcollection-nameditem
 /// Returns the first element with the given id or name attribute.
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) !*runtime.Instance {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const name_slice = name.asSlice();
 

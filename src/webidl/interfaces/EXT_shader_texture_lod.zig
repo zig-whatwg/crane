@@ -1,5 +1,5 @@
 //! Generated from: EXT_shader_texture_lod.idl
-//! Generated at: 2025-11-28T22:33:20Z
+//! Generated at: 2025-11-29T02:15:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

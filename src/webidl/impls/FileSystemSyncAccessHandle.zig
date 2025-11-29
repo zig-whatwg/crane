@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileSystemSyncAccessHandle = interfaces.FileSystemSyncAccessHandle;
 
 pub const State = FileSystemSyncAccessHandle.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: dictionaries.FileSystemReadWriteOptions) ImplError!u64 {
+pub fn call_read(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.FileSystemReadWriteOptions)) anyerror!u64 {
     _ = instance;
     _ = buffer;
     _ = options;
@@ -48,14 +49,14 @@ pub fn call_read(instance: *runtime.Instance, buffer: typedefs.AllowSharedBuffer
 }
 
 /// Operation: truncate
-pub fn call_truncate(instance: *runtime.Instance, newSize: u64) ImplError!void {
+pub fn call_truncate(instance: *runtime.Instance, newSize: u64) anyerror!void {
     _ = instance;
     _ = newSize;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: dictionaries.FileSystemReadWriteOptions) ImplError!u64 {
+pub fn call_write(instance: *runtime.Instance, buffer: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.FileSystemReadWriteOptions)) anyerror!u64 {
     _ = instance;
     _ = buffer;
     _ = options;
@@ -63,19 +64,19 @@ pub fn call_write(instance: *runtime.Instance, buffer: typedefs.AllowSharedBuffe
 }
 
 /// Operation: getSize
-pub fn call_getSize(instance: *runtime.Instance) ImplError!u64 {
+pub fn call_getSize(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: flush
-pub fn call_flush(instance: *runtime.Instance) ImplError!void {
+pub fn call_flush(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

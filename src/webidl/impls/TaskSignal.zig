@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TaskSignal = interfaces.TaskSignal;
 
 pub const State = TaskSignal.State;
@@ -40,26 +41,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for priority
-pub fn get_priority(instance: *runtime.Instance) ImplError!enums.TaskPriority {
+pub fn get_priority(instance: *runtime.Instance) anyerror!enums.TaskPriority {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onprioritychange
-pub fn get_onprioritychange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onprioritychange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onprioritychange
-pub fn set_onprioritychange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onprioritychange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: _any
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: dictionaries.TaskSignalAnyInit) ImplError!*runtime.Instance {
+pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: webidl.Opt(dictionaries.TaskSignalAnyInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     _ = init_data;

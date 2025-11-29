@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 }
 
 /// Getter for records
-pub fn get_records(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_records(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const WebTransportWriter = interfaces.WebTransportWriter;
 
 pub const State = WebTransportWriter.State;
@@ -40,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: commit
-pub fn call_commit(instance: *runtime.Instance) ImplError!void {
+pub fn call_commit(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: atomicWrite
-pub fn call_atomicWrite(instance: *runtime.Instance, chunk: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = chunk;
     return error.NotImplemented;

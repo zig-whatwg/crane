@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dx
-pub fn get_dx(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_dx(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dy
-pub fn get_dy(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_dy(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rotate
-pub fn get_rotate(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_rotate(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

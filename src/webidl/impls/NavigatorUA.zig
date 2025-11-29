@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for userAgentData
-pub fn get_userAgentData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

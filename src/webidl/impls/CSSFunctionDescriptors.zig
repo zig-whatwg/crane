@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for result
-pub fn get_result(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_result(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for result
-pub fn set_result(instance: *runtime.Instance, value: typedefs.CSSOMString) ImplError!void {
+pub fn set_result(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

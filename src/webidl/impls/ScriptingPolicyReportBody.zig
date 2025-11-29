@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for violationType
-pub fn get_violationType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_violationType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for violationURL
-pub fn get_violationURL(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_violationURL(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for violationSample
-pub fn get_violationSample(instance: *runtime.Instance) ImplError!?runtime.USVString {
+pub fn get_violationSample(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
 
 /// Getter for lineno
-pub fn get_lineno(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_lineno(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for colno
-pub fn get_colno(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

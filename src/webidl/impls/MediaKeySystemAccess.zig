@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for keySystem
-pub fn get_keySystem(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_keySystem(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getConfiguration
-pub fn call_getConfiguration(instance: *runtime.Instance) ImplError!dictionaries.MediaKeySystemConfiguration {
+pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!dictionaries.MediaKeySystemConfiguration {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createMediaKeys
-pub fn call_createMediaKeys(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_createMediaKeys(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

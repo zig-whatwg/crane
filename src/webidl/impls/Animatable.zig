@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Animatable = interfaces.Animatable;
 
 pub const State = Animatable.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;
@@ -48,7 +49,7 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, op
 }
 
 /// Operation: getAnimations
-pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.GetAnimationsOptions) ImplError!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

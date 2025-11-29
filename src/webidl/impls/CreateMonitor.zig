@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ondownloadprogress
-pub fn get_ondownloadprogress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondownloadprogress(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for ondownloadprogress
-pub fn set_ondownloadprogress(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondownloadprogress(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

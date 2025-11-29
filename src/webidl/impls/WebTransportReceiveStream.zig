@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

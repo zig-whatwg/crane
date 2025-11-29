@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AnimationEffect = interfaces.AnimationEffect;
 
 pub const State = AnimationEffect.State;
@@ -40,65 +41,65 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_parent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for previousSibling
-pub fn get_previousSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for nextSibling
-pub fn get_nextSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: updateTiming
-pub fn call_updateTiming(instance: *runtime.Instance, timing: dictionaries.OptionalEffectTiming) ImplError!void {
+pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(dictionaries.OptionalEffectTiming)) anyerror!void {
     _ = instance;
     _ = timing;
     return error.NotImplemented;
 }
 
 /// Operation: replace
-pub fn call_replace(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
+pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: before
-pub fn call_before(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
+pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: after
-pub fn call_after(instance: *runtime.Instance, effects: *runtime.Instance) ImplError!void {
+pub fn call_after(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = effects;
     return error.NotImplemented;
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance) ImplError!void {
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getTiming
-pub fn call_getTiming(instance: *runtime.Instance) ImplError!dictionaries.EffectTiming {
+pub fn call_getTiming(instance: *runtime.Instance) anyerror!dictionaries.EffectTiming {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getComputedTiming
-pub fn call_getComputedTiming(instance: *runtime.Instance) ImplError!dictionaries.ComputedEffectTiming {
+pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries.ComputedEffectTiming {
     _ = instance;
     return error.NotImplemented;
 }

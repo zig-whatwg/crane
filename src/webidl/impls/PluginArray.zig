@@ -40,27 +40,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!?*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     _ = instance;
     _ = index;
     return null;
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = name;
     return null;
 }
 
 /// Operation: refresh
-pub fn call_refresh(instance: *runtime.Instance) ImplError!void {
+pub fn call_refresh(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

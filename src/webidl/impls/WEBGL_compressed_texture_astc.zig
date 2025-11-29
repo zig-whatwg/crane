@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getSupportedProfiles
-pub fn call_getSupportedProfiles(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSupportedProfiles(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

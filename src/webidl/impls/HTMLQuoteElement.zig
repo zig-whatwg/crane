@@ -52,13 +52,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for cite
-pub fn get_cite(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_cite(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for cite
-pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

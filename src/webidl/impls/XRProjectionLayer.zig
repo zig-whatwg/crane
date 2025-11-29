@@ -40,50 +40,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for textureWidth
-pub fn get_textureWidth(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_textureWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for textureHeight
-pub fn get_textureHeight(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_textureHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for textureArrayLength
-pub fn get_textureArrayLength(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_textureArrayLength(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ignoreDepthValues
-pub fn get_ignoreDepthValues(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ignoreDepthValues(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fixedFoveation
-pub fn get_fixedFoveation(instance: *runtime.Instance) ImplError!?f32 {
+pub fn get_fixedFoveation(instance: *runtime.Instance) anyerror!?f32 {
     _ = instance;
     return null;
 }
 
 /// Getter for deltaPose
-pub fn get_deltaPose(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_deltaPose(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for fixedFoveation
-pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for deltaPose
-pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

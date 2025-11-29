@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const IntersectionObserver = interfaces.IntersectionObserver;
 
 pub const State = IntersectionObserver.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: dictionaries.IntersectionObserverInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &IntersectionObserver.vtable, ctx);
     errdefer deinit(instance);
@@ -54,63 +55,63 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Getter for root
-pub fn get_root(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_root(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rootMargin
-pub fn get_rootMargin(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_rootMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollMargin
-pub fn get_scrollMargin(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for thresholds
-pub fn get_thresholds(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_thresholds(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for delay
-pub fn get_delay(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_delay(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for trackVisibility
-pub fn get_trackVisibility(instance: *runtime.Instance) ImplError!bool {
+pub fn get_trackVisibility(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = target;
     return error.NotImplemented;
 }
 
 /// Operation: unobserve
-pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) ImplError!void {
+pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = target;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: takeRecords
-pub fn call_takeRecords(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

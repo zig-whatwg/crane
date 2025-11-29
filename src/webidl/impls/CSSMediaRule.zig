@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for media
-pub fn get_media(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for matches
-pub fn get_matches(instance: *runtime.Instance) ImplError!bool {
+pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for cssRules
-pub fn get_cssRules(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: deleteRule
-pub fn call_deleteRule(instance: *runtime.Instance, index: u32) ImplError!void {
+pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: insertRule
-pub fn call_insertRule(instance: *runtime.Instance, rule: runtime.DOMString, index: u32) ImplError!u32 {
+pub fn call_insertRule(instance: *runtime.Instance, rule: runtime.DOMString, index: u32) anyerror!u32 {
     _ = instance;
     _ = rule;
     _ = index;

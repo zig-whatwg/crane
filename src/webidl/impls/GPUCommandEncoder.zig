@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUCommandEncoder = interfaces.GPUCommandEncoder;
 
 pub const State = GPUCommandEncoder.State;
@@ -40,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: copyBufferToBuffer
-pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(typedefs.GPUSize64)) anyerror!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -62,7 +63,7 @@ pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Ins
 }
 
 /// Operation: copyTextureToBuffer
-pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyTextureInfo, destination: dictionaries.GPUTexelCopyBufferInfo, copySize: typedefs.GPUExtent3D) ImplError!void {
+pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyTextureInfo, destination: dictionaries.GPUTexelCopyBufferInfo, copySize: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -71,7 +72,7 @@ pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: dictionarie
 }
 
 /// Operation: copyBufferToTexture
-pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyBufferInfo, destination: dictionaries.GPUTexelCopyTextureInfo, copySize: typedefs.GPUExtent3D) ImplError!void {
+pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyBufferInfo, destination: dictionaries.GPUTexelCopyTextureInfo, copySize: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -80,13 +81,13 @@ pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: dictionarie
 }
 
 /// Operation: popDebugGroup
-pub fn call_popDebugGroup(instance: *runtime.Instance) ImplError!void {
+pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: copyTextureToTexture
-pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyTextureInfo, destination: dictionaries.GPUTexelCopyTextureInfo, copySize: typedefs.GPUExtent3D) ImplError!void {
+pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: dictionaries.GPUTexelCopyTextureInfo, destination: dictionaries.GPUTexelCopyTextureInfo, copySize: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
     _ = source;
     _ = destination;
@@ -95,7 +96,7 @@ pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: dictionari
 }
 
 /// Operation: resolveQuerySet
-pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: typedefs.GPUSize32, queryCount: typedefs.GPUSize32, destination: *runtime.Instance, destinationOffset: typedefs.GPUSize64) ImplError!void {
+pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: typedefs.GPUSize32, queryCount: typedefs.GPUSize32, destination: *runtime.Instance, destinationOffset: typedefs.GPUSize64) anyerror!void {
     _ = instance;
     _ = querySet;
     _ = firstQuery;
@@ -106,42 +107,42 @@ pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Inst
 }
 
 /// Operation: insertDebugMarker
-pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) ImplError!void {
+pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = markerLabel;
     return error.NotImplemented;
 }
 
 /// Operation: pushDebugGroup
-pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) ImplError!void {
+pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
     _ = instance;
     _ = groupLabel;
     return error.NotImplemented;
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance, descriptor: dictionaries.GPUCommandBufferDescriptor) ImplError!*runtime.Instance {
+pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: beginComputePass
-pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePassDescriptor) ImplError!*runtime.Instance {
+pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUComputePassDescriptor)) anyerror!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: beginRenderPass
-pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPassDescriptor) ImplError!*runtime.Instance {
+pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPassDescriptor) anyerror!*runtime.Instance {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: clearBuffer
-pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!void {
     _ = instance;
     _ = buffer;
     _ = offset;

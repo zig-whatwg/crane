@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for attributionSrc
-pub fn get_attributionSrc(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for attributionSrc
-pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

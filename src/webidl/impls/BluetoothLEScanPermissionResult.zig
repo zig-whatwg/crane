@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for scans
-pub fn get_scans(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_scans(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for scans
-pub fn set_scans(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_scans(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

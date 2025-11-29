@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

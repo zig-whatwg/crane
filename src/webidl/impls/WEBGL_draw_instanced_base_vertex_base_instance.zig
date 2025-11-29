@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: drawArraysInstancedBaseInstanceWEBGL
-pub fn call_drawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, first: typedefs.GLint, count: typedefs.GLsizei, instanceCount: typedefs.GLsizei, baseInstance: typedefs.GLuint) ImplError!void {
+pub fn call_drawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, first: typedefs.GLint, count: typedefs.GLsizei, instanceCount: typedefs.GLsizei, baseInstance: typedefs.GLuint) anyerror!void {
     _ = instance;
     _ = mode;
     _ = first;
@@ -51,7 +51,7 @@ pub fn call_drawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mo
 }
 
 /// Operation: drawElementsInstancedBaseVertexBaseInstanceWEBGL
-pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, count: typedefs.GLsizei, @"type": typedefs.GLenum, offset: typedefs.GLintptr, instanceCount: typedefs.GLsizei, baseVertex: typedefs.GLint, baseInstance: typedefs.GLuint) ImplError!void {
+pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, count: typedefs.GLsizei, @"type": typedefs.GLenum, offset: typedefs.GLintptr, instanceCount: typedefs.GLsizei, baseVertex: typedefs.GLint, baseInstance: typedefs.GLuint) anyerror!void {
     _ = instance;
     _ = mode;
     _ = count;

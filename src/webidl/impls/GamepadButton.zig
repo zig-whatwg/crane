@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for pressed
-pub fn get_pressed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pressed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for touched
-pub fn get_touched(instance: *runtime.Instance) ImplError!bool {
+pub fn get_touched(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

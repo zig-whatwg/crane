@@ -54,25 +54,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for receiver
-pub fn get_receiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_receiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for streams
-pub fn get_streams(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_streams(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transceiver
-pub fn get_transceiver(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transceiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

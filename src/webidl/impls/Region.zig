@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for regionOverset
-pub fn get_regionOverset(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegionFlowRanges
-pub fn call_getRegionFlowRanges(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }

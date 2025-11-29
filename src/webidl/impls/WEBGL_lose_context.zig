@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: loseContext
-pub fn call_loseContext(instance: *runtime.Instance) ImplError!void {
+pub fn call_loseContext(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: restoreContext
-pub fn call_restoreContext(instance: *runtime.Instance) ImplError!void {
+pub fn call_restoreContext(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

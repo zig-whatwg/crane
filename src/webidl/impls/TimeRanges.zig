@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, index: u32) ImplError!f64 {
+pub fn call_start(instance: *runtime.Instance, index: u32) anyerror!f64 {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: end
-pub fn call_end(instance: *runtime.Instance, index: u32) ImplError!f64 {
+pub fn call_end(instance: *runtime.Instance, index: u32) anyerror!f64 {
     _ = instance;
     _ = index;
     return error.NotImplemented;

@@ -40,51 +40,51 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for updateCallbackDone
-pub fn get_updateCallbackDone(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_updateCallbackDone(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_types(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transitionRoot
-pub fn get_transitionRoot(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transitionRoot(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for types
-pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: waitUntil
-pub fn call_waitUntil(instance: *runtime.Instance, promise: *const anyopaque) ImplError!void {
+pub fn call_waitUntil(instance: *runtime.Instance, promise: *const anyopaque) anyerror!void {
     _ = instance;
     _ = promise;
     return error.NotImplemented;
 }
 
 /// Operation: skipTransition
-pub fn call_skipTransition(instance: *runtime.Instance) ImplError!void {
+pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

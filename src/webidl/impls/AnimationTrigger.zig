@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AnimationTrigger = interfaces.AnimationTrigger;
 
 pub const State = AnimationTrigger.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.AnimationTriggerOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.AnimationTriggerOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &AnimationTrigger.vtable, ctx);
     errdefer deinit(instance);
@@ -53,78 +54,78 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, opti
 }
 
 /// Getter for timeline
-pub fn get_timeline(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for behavior
-pub fn get_behavior(instance: *runtime.Instance) ImplError!enums.AnimationTriggerBehavior {
+pub fn get_behavior(instance: *runtime.Instance) anyerror!enums.AnimationTriggerBehavior {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeStart
-pub fn get_exitRangeStart(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeEnd
-pub fn get_exitRangeEnd(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for timeline
-pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for behavior
-pub fn set_behavior(instance: *runtime.Instance, value: enums.AnimationTriggerBehavior) ImplError!void {
+pub fn set_behavior(instance: *runtime.Instance, value: enums.AnimationTriggerBehavior) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeStart
-pub fn set_exitRangeStart(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_exitRangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeEnd
-pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

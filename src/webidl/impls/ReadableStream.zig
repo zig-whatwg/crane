@@ -131,12 +131,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///    2. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 ///    3. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 ///    4. Perform ? SetUpReadableStreamDefaultControllerFromUnderlyingSource(...)
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    underlyingSource: *const anyopaque,
-    strategy: dictionaries.QueuingStrategy,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(*const anyopaque), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Get event loop from context (required for async operations)
     const loop = try ctx.getEventLoop();
 
@@ -224,7 +219,7 @@ pub fn call_constructor(
 ///
 /// Returns true if the stream is locked to a reader.
 /// A stream is locked if stream.[[reader]] is not undefined.
-pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
+pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -251,7 +246,7 @@ pub fn get_locked(instance: *runtime.Instance) ImplError!bool {
 /// 4. Let cancelAlgorithm = steps that call IteratorReturn
 /// 5. SetUpReadableStreamDefaultController with pullAlgorithm and cancelAlgorithm
 /// 6. Return stream
-pub fn call_from(instance: *runtime.Instance, async_iterable: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!*runtime.Instance {
     const allocator = instance.ctx.getAllocator();
 
     // Step 1: Create new ReadableStream instance
@@ -273,7 +268,7 @@ pub fn call_from(instance: *runtime.Instance, async_iterable: *const anyopaque) 
     const iterator_record = IteratorRecord.fromAsyncIterable(
         allocator,
         instance.ctx,
-        async_iterable,
+        asyncIterable,
     ) catch |err| {
         allocator.destroy(stream_internal);
         deinit(stream_instance);
@@ -366,7 +361,7 @@ pub fn call_from(instance: *runtime.Instance, async_iterable: *const anyopaque) 
 /// 4. Let promise be ReadableStreamPipeTo(this, transform["writable"], options)
 /// 5. Set promise.[[PromiseIsHandled]] to true
 /// 6. Return transform["readable"]
-pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.ReadableWritablePair, options: dictionaries.StreamPipeOptions) ImplError!*runtime.Instance {
+pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.ReadableWritablePair, options: webidl.Opt(dictionaries.StreamPipeOptions)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -418,7 +413,7 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 /// 6. If reader is not undefined and reader implements ReadableStreamBYOBReader, [handle BYOB]
 /// 7. Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
 /// 8. Return result of reacting to sourceCancelPromise with fulfillment step that returns undefined
-pub fn call_cancel(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -574,7 +569,7 @@ pub fn readableStreamError(internal: *InternalState, e: *const anyopaque) void {
 /// 1. Let reader be a new ReadableStreamDefaultReader
 /// 2. Perform ? SetUpReadableStreamDefaultReader(reader, stream)
 /// 3. Return reader
-pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.ReadableStreamGetReaderOptions) ImplError!typedefs.ReadableStreamReader {
+pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ReadableStreamGetReaderOptions)) anyerror!typedefs.ReadableStreamReader {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -621,7 +616,7 @@ pub fn call_getReader(instance: *runtime.Instance, options: dictionaries.Readabl
 /// 2. If IsWritableStreamLocked(destination) is true, return rejected promise with TypeError
 /// 3. Let signal be options["signal"] if it exists, or undefined otherwise
 /// 4. Return ReadableStreamPipeTo(this, destination, preventClose, preventAbort, preventCancel, signal)
-pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: dictionaries.StreamPipeOptions) ImplError!*const anyopaque {
+pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(dictionaries.StreamPipeOptions)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -678,7 +673,7 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
 ///
 /// Steps:
 /// 1. Return ReadableStreamTee(this, false)
-pub fn call_tee(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_tee(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -1408,7 +1403,7 @@ pub fn call_values(
 /// Operation: [Symbol.asyncIterator]
 ///
 /// Spec: https://streams.spec.whatwg.org/#rs-asynciterator
-/// WebIDL: async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
+/// WebIDL: asyncIterable<any>(optional ReadableStreamIteratorOptions options = {});
 ///
 /// Default async iterator (enables for-await-of loops).
 /// Per WebIDL spec, @@asyncIterator and values() are the same.

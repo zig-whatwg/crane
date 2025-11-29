@@ -172,28 +172,28 @@ pub fn initWithParams(
 
 /// DOM §6.2 - NodeIterator.root
 /// Returns the root node
-pub fn get_root(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_root(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.root orelse return error.InvalidStateError;
 }
 
 /// DOM §6.2 - NodeIterator.referenceNode
 /// Returns the current reference node
-pub fn get_referenceNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_referenceNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.reference orelse return error.InvalidStateError;
 }
 
 /// DOM §6.2 - NodeIterator.pointerBeforeReferenceNode
 /// Returns true if pointer is before the reference node
-pub fn get_pointerBeforeReferenceNode(instance: *runtime.Instance) ImplError!bool {
+pub fn get_pointerBeforeReferenceNode(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance);
     return internal.pointer_before_reference;
 }
 
 /// DOM §6.2 - NodeIterator.whatToShow
 /// Returns the whatToShow bitmask
-pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance);
     return internal.what_to_show;
 }
@@ -201,7 +201,7 @@ pub fn get_whatToShow(instance: *runtime.Instance) ImplError!u32 {
 /// DOM §6.2 - NodeIterator.filter
 /// Returns the filter callback (may be null)
 /// Note: WebIDL says nullable NodeFilter, returns null if no filter
-pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
     const internal = getInternal(instance);
     // If filter is null, return NotImplemented (signals null in WebIDL)
     if (internal.filter) |filter_ptr| {
@@ -218,21 +218,21 @@ pub fn get_filter(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// DOM §6.2 - NodeIterator.nextNode()
 /// Returns the next node in the iteration, or null if none
 /// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-nextnode
-pub fn call_nextNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverse(instance, .next) orelse return error.NotImplemented; // null
 }
 
 /// DOM §6.2 - NodeIterator.previousNode()
 /// Returns the previous node in the iteration, or null if none
 /// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-previousnode
-pub fn call_previousNode(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try traverse(instance, .previous) orelse return error.NotImplemented; // null
 }
 
 /// DOM §6.2 - NodeIterator.detach()
 /// Legacy method - does nothing (functionality removed, kept for compatibility)
 /// Spec: https://dom.spec.whatwg.org/#dom-nodeiterator-detach
-pub fn call_detach(instance: *runtime.Instance) ImplError!void {
+pub fn call_detach(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     // Do nothing per spec - method is a no-op for compatibility
 }

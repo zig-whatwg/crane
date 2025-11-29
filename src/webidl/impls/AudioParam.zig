@@ -40,51 +40,51 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for automationRate
-pub fn get_automationRate(instance: *runtime.Instance) ImplError!enums.AutomationRate {
+pub fn get_automationRate(instance: *runtime.Instance) anyerror!enums.AutomationRate {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for defaultValue
-pub fn get_defaultValue(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_defaultValue(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for minValue
-pub fn get_minValue(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_minValue(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for maxValue
-pub fn get_maxValue(instance: *runtime.Instance) ImplError!f32 {
+pub fn get_maxValue(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f32) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for automationRate
-pub fn set_automationRate(instance: *runtime.Instance, value: enums.AutomationRate) ImplError!void {
+pub fn set_automationRate(instance: *runtime.Instance, value: enums.AutomationRate) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: exponentialRampToValueAtTime
-pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!*runtime.Instance {
+pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = endTime;
@@ -92,14 +92,14 @@ pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32
 }
 
 /// Operation: cancelAndHoldAtTime
-pub fn call_cancelAndHoldAtTime(instance: *runtime.Instance, cancelTime: f64) ImplError!*runtime.Instance {
+pub fn call_cancelAndHoldAtTime(instance: *runtime.Instance, cancelTime: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = cancelTime;
     return error.NotImplemented;
 }
 
 /// Operation: setValueAtTime
-pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) ImplError!*runtime.Instance {
+pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = startTime;
@@ -107,14 +107,14 @@ pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f
 }
 
 /// Operation: cancelScheduledValues
-pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) ImplError!*runtime.Instance {
+pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = cancelTime;
     return error.NotImplemented;
 }
 
 /// Operation: setValueCurveAtTime
-pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) ImplError!*runtime.Instance {
+pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     _ = startTime;
@@ -123,7 +123,7 @@ pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyo
 }
 
 /// Operation: linearRampToValueAtTime
-pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) ImplError!*runtime.Instance {
+pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     _ = endTime;
@@ -131,7 +131,7 @@ pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, end
 }
 
 /// Operation: setTargetAtTime
-pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) ImplError!*runtime.Instance {
+pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) anyerror!*runtime.Instance {
     _ = instance;
     _ = target;
     _ = startTime;

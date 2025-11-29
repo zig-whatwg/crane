@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for linearVelocity
-pub fn get_linearVelocity(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for angularVelocity
-pub fn get_angularVelocity(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for emulatedPosition
-pub fn get_emulatedPosition(instance: *runtime.Instance) ImplError!bool {
+pub fn get_emulatedPosition(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }

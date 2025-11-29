@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for eye
-pub fn get_eye(instance: *runtime.Instance) ImplError!enums.XREye {
+pub fn get_eye(instance: *runtime.Instance) anyerror!enums.XREye {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for index
-pub fn get_index(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_index(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for recommendedViewportScale
-pub fn get_recommendedViewportScale(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_recommendedViewportScale(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for camera
-pub fn get_camera(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_camera(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for isFirstPersonObserver
-pub fn get_isFirstPersonObserver(instance: *runtime.Instance) ImplError!bool {
+pub fn get_isFirstPersonObserver(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestViewportScale
-pub fn call_requestViewportScale(instance: *runtime.Instance, scale: f64) ImplError!void {
+pub fn call_requestViewportScale(instance: *runtime.Instance, scale: ?f64) anyerror!void {
     _ = instance;
     _ = scale;
     return error.NotImplemented;

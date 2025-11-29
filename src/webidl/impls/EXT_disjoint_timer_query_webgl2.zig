@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: queryCounterEXT
-pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: typedefs.GLenum) ImplError!void {
+pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = query;
     _ = target;

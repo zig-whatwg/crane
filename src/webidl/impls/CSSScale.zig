@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSScale = interfaces.CSSScale;
 
 pub const State = CSSScale.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: typedefs.CSSNumberish, y: typedefs.CSSNumberish, z: typedefs.CSSNumberish) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: typedefs.CSSNumberish, y: typedefs.CSSNumberish, z: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSScale.vtable, ctx);
     errdefer deinit(instance);
@@ -55,39 +56,39 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: t
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_x(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_y(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for z
-pub fn get_z(instance: *runtime.Instance) ImplError!typedefs.CSSNumberish {
+pub fn get_z(instance: *runtime.Instance) anyerror!typedefs.CSSNumberish {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for x
-pub fn set_x(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_x(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for y
-pub fn set_y(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_y(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for z
-pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!void {
+pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

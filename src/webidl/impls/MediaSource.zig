@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MediaSource = interfaces.MediaSource;
 
 pub const State = MediaSource.State;
@@ -52,96 +53,96 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for handle
-pub fn get_handle(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_handle(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceBuffers
-pub fn get_sourceBuffers(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sourceBuffers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for activeSourceBuffers
-pub fn get_activeSourceBuffers(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_activeSourceBuffers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for readyState
-pub fn get_readyState(instance: *runtime.Instance) ImplError!enums.ReadyState {
+pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.ReadyState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_duration(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onsourceopen
-pub fn get_onsourceopen(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onsourceopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onsourceended
-pub fn get_onsourceended(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onsourceended(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onsourceclose
-pub fn get_onsourceclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onsourceclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for canConstructInDedicatedWorker
-pub fn get_canConstructInDedicatedWorker(instance: *runtime.Instance) ImplError!bool {
+pub fn get_canConstructInDedicatedWorker(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for duration
-pub fn set_duration(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_duration(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onsourceopen
-pub fn set_onsourceopen(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onsourceopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onsourceended
-pub fn set_onsourceended(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onsourceended(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onsourceclose
-pub fn set_onsourceclose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onsourceclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: endOfStream
-pub fn call_endOfStream(instance: *runtime.Instance, @"error": enums.EndOfStreamError) ImplError!void {
+pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(enums.EndOfStreamError)) anyerror!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;
 }
 
 /// Operation: setLiveSeekableRange
-pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) ImplError!void {
+pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
     _ = instance;
     _ = start;
     _ = end;
@@ -149,27 +150,27 @@ pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f
 }
 
 /// Operation: clearLiveSeekableRange
-pub fn call_clearLiveSeekableRange(instance: *runtime.Instance) ImplError!void {
+pub fn call_clearLiveSeekableRange(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: addSourceBuffer
-pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: removeSourceBuffer
-pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runtime.Instance) ImplError!void {
+pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = sourceBuffer;
     return error.NotImplemented;
 }
 
 /// Operation: isTypeSupported
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!bool {
+pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

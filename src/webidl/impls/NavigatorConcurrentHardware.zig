@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for hardwareConcurrency
-pub fn get_hardwareConcurrency(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }

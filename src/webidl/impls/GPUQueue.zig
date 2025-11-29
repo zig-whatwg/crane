@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUQueue = interfaces.GPUQueue;
 
 pub const State = GPUQueue.State;
@@ -40,26 +41,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for label
-pub fn get_label(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for label
-pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: onSubmittedWorkDone
-pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: writeBuffer
-pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: typedefs.GPUSize64, size: typedefs.GPUSize64) ImplError!void {
+pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: typedefs.GPUSize64, data: typedefs.AllowSharedBufferSource, dataOffset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!void {
     _ = instance;
     _ = buffer;
     _ = bufferOffset;
@@ -70,7 +71,7 @@ pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, 
 }
 
 /// Operation: writeTexture
-pub fn call_writeTexture(instance: *runtime.Instance, destination: dictionaries.GPUTexelCopyTextureInfo, data: typedefs.AllowSharedBufferSource, dataLayout: dictionaries.GPUTexelCopyBufferLayout, size: typedefs.GPUExtent3D) ImplError!void {
+pub fn call_writeTexture(instance: *runtime.Instance, destination: dictionaries.GPUTexelCopyTextureInfo, data: typedefs.AllowSharedBufferSource, dataLayout: dictionaries.GPUTexelCopyBufferLayout, size: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
     _ = destination;
     _ = data;
@@ -80,14 +81,14 @@ pub fn call_writeTexture(instance: *runtime.Instance, destination: dictionaries.
 }
 
 /// Operation: submit
-pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) ImplError!void {
+pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
     _ = instance;
     _ = commandBuffers;
     return error.NotImplemented;
 }
 
 /// Operation: copyExternalImageToTexture
-pub fn call_copyExternalImageToTexture(instance: *runtime.Instance, source: dictionaries.GPUCopyExternalImageSourceInfo, destination: dictionaries.GPUCopyExternalImageDestInfo, copySize: typedefs.GPUExtent3D) ImplError!void {
+pub fn call_copyExternalImageToTexture(instance: *runtime.Instance, source: dictionaries.GPUCopyExternalImageSourceInfo, destination: dictionaries.GPUCopyExternalImageDestInfo, copySize: typedefs.GPUExtent3D) anyerror!void {
     _ = instance;
     _ = source;
     _ = destination;

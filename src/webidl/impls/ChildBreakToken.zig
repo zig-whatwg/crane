@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for breakType
-pub fn get_breakType(instance: *runtime.Instance) ImplError!enums.BreakType {
+pub fn get_breakType(instance: *runtime.Instance) anyerror!enums.BreakType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for child
-pub fn get_child(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_child(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

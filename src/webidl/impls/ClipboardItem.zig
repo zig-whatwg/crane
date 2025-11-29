@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ClipboardItem = interfaces.ClipboardItem;
 
 pub const State = ClipboardItem.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, items: *const anyopaque, options: dictionaries.ClipboardItemOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, items: *const anyopaque, options: webidl.Opt(dictionaries.ClipboardItemOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ClipboardItem.vtable, ctx);
     errdefer deinit(instance);
@@ -54,26 +55,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, item
 }
 
 /// Getter for presentationStyle
-pub fn get_presentationStyle(instance: *runtime.Instance) ImplError!enums.PresentationStyle {
+pub fn get_presentationStyle(instance: *runtime.Instance) anyerror!enums.PresentationStyle {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getType
-pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: supports
-pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!bool {
+pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

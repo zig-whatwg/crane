@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const RTCRtpSender = interfaces.RTCRtpSender;
 
 pub const State = RTCRtpSender.State;
@@ -40,71 +41,71 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for transport
-pub fn get_transport(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_transport(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for dtmf
-pub fn get_dtmf(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_dtmf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!?typedefs.RTCRtpTransform {
+pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpTransform {
     _ = instance;
     return null;
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransform) ImplError!void {
+pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransform) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: replaceTrack
-pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = withTrack;
     return error.NotImplemented;
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) ImplError!?dictionaries.RTCRtpCapabilities {
+pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;
     return null;
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getParameters
-pub fn call_getParameters(instance: *runtime.Instance) ImplError!dictionaries.RTCRtpSendParameters {
+pub fn call_getParameters(instance: *runtime.Instance) anyerror!dictionaries.RTCRtpSendParameters {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setStreams
-pub fn call_setStreams(instance: *runtime.Instance, streams: *runtime.Instance) ImplError!void {
+pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.Instance) anyerror!void {
     _ = instance;
     _ = streams;
     return error.NotImplemented;
 }
 
 /// Operation: setParameters
-pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: dictionaries.RTCSetParameterOptions) ImplError!*const anyopaque {
+pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: webidl.Opt(dictionaries.RTCSetParameterOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = parameters;
     _ = setParameterOptions;

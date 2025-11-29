@@ -7,6 +7,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const mixins = @import("mixins");
 const ChildNode = interfaces.ChildNode;
 
 pub const State = ChildNode.State;
@@ -40,28 +42,28 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: replaceWith
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: before
-pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: after
-pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance) ImplError!void {
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

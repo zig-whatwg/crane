@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PressureObserver = interfaces.PressureObserver;
 
 pub const State = PressureObserver.State;
@@ -53,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Getter for knownSources
-pub fn get_knownSources(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_knownSources(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, source: enums.PressureSource, options: dictionaries.PressureObserverOptions) ImplError!*const anyopaque {
+pub fn call_observe(instance: *runtime.Instance, source: enums.PressureSource, options: webidl.Opt(dictionaries.PressureObserverOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = source;
     _ = options;
@@ -67,20 +68,20 @@ pub fn call_observe(instance: *runtime.Instance, source: enums.PressureSource, o
 }
 
 /// Operation: unobserve
-pub fn call_unobserve(instance: *runtime.Instance, source: enums.PressureSource) ImplError!void {
+pub fn call_unobserve(instance: *runtime.Instance, source: enums.PressureSource) anyerror!void {
     _ = instance;
     _ = source;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: takeRecords
-pub fn call_takeRecords(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

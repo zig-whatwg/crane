@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sheet
-pub fn get_sheet(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

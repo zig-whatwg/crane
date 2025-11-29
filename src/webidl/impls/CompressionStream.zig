@@ -138,7 +138,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
 /// Getter for readable
 ///
 /// Spec: "The readable getter steps are to return this's transform.[[readable]]"
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -149,7 +149,7 @@ pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for writable
 ///
 /// Spec: "The writable getter steps are to return this's transform.[[writable]]"
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

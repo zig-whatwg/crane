@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PaymentRequestEvent = interfaces.PaymentRequestEvent;
 
 pub const State = PaymentRequestEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.PaymentRequestEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PaymentRequestEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &PaymentRequestEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,55 +55,55 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for topOrigin
-pub fn get_topOrigin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_topOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paymentRequestOrigin
-pub fn get_paymentRequestOrigin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_paymentRequestOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paymentRequestId
-pub fn get_paymentRequestId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_paymentRequestId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for methodData
-pub fn get_methodData(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_methodData(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for total
-pub fn get_total(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_total(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for modifiers
-pub fn get_modifiers(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_modifiers(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for paymentOptions
-pub fn get_paymentOptions(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Getter for shippingOptions
-pub fn get_shippingOptions(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
 
 /// Operation: changePaymentMethod
-pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime.DOMString, methodDetails: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime.DOMString, methodDetails: webidl.Opt(?*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = methodName;
     _ = methodDetails;
@@ -110,28 +111,28 @@ pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime
 }
 
 /// Operation: respondWith
-pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: *const anyopaque) ImplError!void {
+pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: *const anyopaque) anyerror!void {
     _ = instance;
     _ = handlerResponsePromise;
     return error.NotImplemented;
 }
 
 /// Operation: openWindow
-pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = url;
     return error.NotImplemented;
 }
 
 /// Operation: changeShippingAddress
-pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = shippingAddress;
     return error.NotImplemented;
 }
 
 /// Operation: changeShippingOption
-pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = shippingOption;
     return error.NotImplemented;

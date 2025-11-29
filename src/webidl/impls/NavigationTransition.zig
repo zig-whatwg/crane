@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for navigationType
-pub fn get_navigationType(instance: *runtime.Instance) ImplError!enums.NavigationType {
+pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.NavigationType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for from
-pub fn get_from(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for committed
-pub fn get_committed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_committed(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

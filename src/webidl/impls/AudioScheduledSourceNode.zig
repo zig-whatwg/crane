@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AudioScheduledSourceNode = interfaces.AudioScheduledSourceNode;
 
 pub const State = AudioScheduledSourceNode.State;
@@ -40,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onended
-pub fn get_onended(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onended(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onended
-pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onended(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance, when: f64) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
     _ = instance;
     _ = when;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, when: f64) ImplError!void {
+pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
     _ = instance;
     _ = when;
     return error.NotImplemented;

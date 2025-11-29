@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for creationTime
-pub fn get_creationTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_creationTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for droppedVideoFrames
-pub fn get_droppedVideoFrames(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_droppedVideoFrames(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for totalVideoFrames
-pub fn get_totalVideoFrames(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_totalVideoFrames(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for corruptedVideoFrames
-pub fn get_corruptedVideoFrames(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_corruptedVideoFrames(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

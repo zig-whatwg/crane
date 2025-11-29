@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.AudioSinkType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.AudioSinkType {
     _ = instance;
     return error.NotImplemented;
 }

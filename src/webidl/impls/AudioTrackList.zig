@@ -40,52 +40,52 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onaddtrack
-pub fn get_onaddtrack(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onaddtrack(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onremovetrack
-pub fn get_onremovetrack(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onremovetrack(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onaddtrack
-pub fn set_onaddtrack(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onaddtrack(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onremovetrack
-pub fn set_onremovetrack(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onremovetrack(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getTrackById
-pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = id;
     return null;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const NavigationPrecommitController = interfaces.NavigationPrecommitController;
 
 pub const State = NavigationPrecommitController.State;
@@ -40,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: redirect
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: dictionaries.NavigationNavigateOptions) ImplError!void {
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) anyerror!void {
     _ = instance;
     _ = url;
     _ = options;

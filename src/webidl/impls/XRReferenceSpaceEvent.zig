@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for referenceSpace
-pub fn get_referenceSpace(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_referenceSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_transform(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }

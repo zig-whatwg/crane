@@ -54,49 +54,49 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for device
-pub fn get_device(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_device(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for uuids
-pub fn get_uuids(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_uuids(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for appearance
-pub fn get_appearance(instance: *runtime.Instance) ImplError!?u16 {
+pub fn get_appearance(instance: *runtime.Instance) anyerror!?u16 {
     _ = instance;
     return null;
 }
 
 /// Getter for txPower
-pub fn get_txPower(instance: *runtime.Instance) ImplError!?i8 {
+pub fn get_txPower(instance: *runtime.Instance) anyerror!?i8 {
     _ = instance;
     return null;
 }
 
 /// Getter for rssi
-pub fn get_rssi(instance: *runtime.Instance) ImplError!?i8 {
+pub fn get_rssi(instance: *runtime.Instance) anyerror!?i8 {
     _ = instance;
     return null;
 }
 
 /// Getter for manufacturerData
-pub fn get_manufacturerData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_manufacturerData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for serviceData
-pub fn get_serviceData(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_serviceData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

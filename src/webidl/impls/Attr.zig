@@ -110,7 +110,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for namespaceURI
 /// DOM §4.9 - Returns this's namespace.
-pub fn get_namespaceURI(instance: *runtime.Instance) !?runtime.DOMString {
+pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
         return runtime.DOMString.initInterned(ns);
@@ -120,7 +120,7 @@ pub fn get_namespaceURI(instance: *runtime.Instance) !?runtime.DOMString {
 
 /// Getter for prefix
 /// DOM §4.9 - Returns this's namespace prefix.
-pub fn get_prefix(instance: *runtime.Instance) !?runtime.DOMString {
+pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
         return runtime.DOMString.initInterned(p);
@@ -130,7 +130,7 @@ pub fn get_prefix(instance: *runtime.Instance) !?runtime.DOMString {
 
 /// Getter for localName
 /// DOM §4.9 - Returns this's local name.
-pub fn get_localName(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.local_name);
 }
@@ -139,7 +139,7 @@ pub fn get_localName(instance: *runtime.Instance) !runtime.DOMString {
 /// DOM §4.9 - Returns this's qualified name.
 /// The qualified name is local name if namespace prefix is null,
 /// otherwise it's prefix + ":" + local name.
-pub fn get_name(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (internal.prefix) |p| {
@@ -157,14 +157,14 @@ pub fn get_name(instance: *runtime.Instance) !runtime.DOMString {
 
 /// Getter for value
 /// DOM §4.9 - Returns this's value.
-pub fn get_value(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.value);
 }
 
 /// Getter for ownerElement
 /// DOM §4.9 - Returns this's element.
-pub fn get_ownerElement(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_ownerElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.owner_element) |elem| {
         return elem;
@@ -174,7 +174,7 @@ pub fn get_ownerElement(instance: *runtime.Instance) !?*runtime.Instance {
 
 /// Getter for specified
 /// DOM §4.9 - Always returns true (this is a legacy attribute).
-pub fn get_specified(instance: *runtime.Instance) !bool {
+pub fn get_specified(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return true;
 }
@@ -186,7 +186,7 @@ pub fn get_specified(instance: *runtime.Instance) !bool {
 /// Setter for value
 /// DOM §4.9 - Sets this's value.
 /// Steps: Set an existing attribute value with this and the given value.
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) !void {
+pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const new_value = value.asSlice();
 

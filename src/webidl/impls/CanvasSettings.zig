@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getContextAttributes
-pub fn call_getContextAttributes(instance: *runtime.Instance) ImplError!dictionaries.CanvasRenderingContext2DSettings {
+pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionaries.CanvasRenderingContext2DSettings {
     _ = instance;
     return error.NotImplemented;
 }

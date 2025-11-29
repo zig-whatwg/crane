@@ -52,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: parseFromString
-pub fn call_parseFromString(instance: *runtime.Instance, string: *const anyopaque, @"type": enums.DOMParserSupportedType) ImplError!*runtime.Instance {
+pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMString, @"type": enums.DOMParserSupportedType) anyerror!*runtime.Instance {
     _ = instance;
     _ = string;
     _ = @"type";

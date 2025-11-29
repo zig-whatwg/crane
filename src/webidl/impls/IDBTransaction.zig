@@ -40,89 +40,89 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for objectStoreNames
-pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mode
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.IDBTransactionMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.IDBTransactionMode {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for durability
-pub fn get_durability(instance: *runtime.Instance) ImplError!enums.IDBTransactionDurability {
+pub fn get_durability(instance: *runtime.Instance) anyerror!enums.IDBTransactionDurability {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for db
-pub fn get_db(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_db(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncomplete
-pub fn get_oncomplete(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncomplete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncomplete
-pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: objectStore
-pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: commit
-pub fn call_commit(instance: *runtime.Instance) ImplError!void {
+pub fn call_commit(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

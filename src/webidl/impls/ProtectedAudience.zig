@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: queryFeatureSupport
-pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = feature;
     return error.NotImplemented;

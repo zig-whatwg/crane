@@ -40,41 +40,41 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onchange
-pub fn get_onchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onchange
-pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = name;
     _ = value;

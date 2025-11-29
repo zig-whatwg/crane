@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

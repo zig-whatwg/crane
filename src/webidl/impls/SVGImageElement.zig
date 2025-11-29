@@ -40,49 +40,49 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x
-pub fn get_x(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y
-pub fn get_y(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_width(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_height(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preserveAspectRatio
-pub fn get_preserveAspectRatio(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for crossOrigin
-pub fn get_crossOrigin(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_href(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for crossOrigin
-pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

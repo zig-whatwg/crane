@@ -40,55 +40,55 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for availableInlineSize
-pub fn get_availableInlineSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_availableInlineSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for availableBlockSize
-pub fn get_availableBlockSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_availableBlockSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fixedInlineSize
-pub fn get_fixedInlineSize(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_fixedInlineSize(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for fixedBlockSize
-pub fn get_fixedBlockSize(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_fixedBlockSize(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for percentageInlineSize
-pub fn get_percentageInlineSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_percentageInlineSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for percentageBlockSize
-pub fn get_percentageBlockSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_percentageBlockSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockFragmentationOffset
-pub fn get_blockFragmentationOffset(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_blockFragmentationOffset(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Getter for blockFragmentationType
-pub fn get_blockFragmentationType(instance: *runtime.Instance) ImplError!enums.BlockFragmentationType {
+pub fn get_blockFragmentationType(instance: *runtime.Instance) anyerror!enums.BlockFragmentationType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

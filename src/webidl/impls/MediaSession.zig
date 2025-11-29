@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const MediaSession = interfaces.MediaSession;
 
 pub const State = MediaSession.State;
@@ -40,61 +41,61 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for metadata
-pub fn get_metadata(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_metadata(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for playbackState
-pub fn get_playbackState(instance: *runtime.Instance) ImplError!enums.MediaSessionPlaybackState {
+pub fn get_playbackState(instance: *runtime.Instance) anyerror!enums.MediaSessionPlaybackState {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for metadata
-pub fn set_metadata(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_metadata(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for playbackState
-pub fn set_playbackState(instance: *runtime.Instance, value: enums.MediaSessionPlaybackState) ImplError!void {
+pub fn set_playbackState(instance: *runtime.Instance, value: enums.MediaSessionPlaybackState) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: setMicrophoneActive
-pub fn call_setMicrophoneActive(instance: *runtime.Instance, active: bool) ImplError!*const anyopaque {
+pub fn call_setMicrophoneActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
     _ = instance;
     _ = active;
     return error.NotImplemented;
 }
 
 /// Operation: setCameraActive
-pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) ImplError!*const anyopaque {
+pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
     _ = instance;
     _ = active;
     return error.NotImplemented;
 }
 
 /// Operation: setPositionState
-pub fn call_setPositionState(instance: *runtime.Instance, state: dictionaries.MediaPositionState) ImplError!void {
+pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(dictionaries.MediaPositionState)) anyerror!void {
     _ = instance;
     _ = state;
     return error.NotImplemented;
 }
 
 /// Operation: setScreenshareActive
-pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) ImplError!*const anyopaque {
+pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
     _ = instance;
     _ = active;
     return error.NotImplemented;
 }
 
 /// Operation: setActionHandler
-pub fn call_setActionHandler(instance: *runtime.Instance, action: enums.MediaSessionAction, handler: callbacks.MediaSessionActionHandler) ImplError!void {
+pub fn call_setActionHandler(instance: *runtime.Instance, action: enums.MediaSessionAction, handler: ?callbacks.MediaSessionActionHandler) anyerror!void {
     _ = instance;
     _ = action;
     _ = handler;

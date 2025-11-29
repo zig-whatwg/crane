@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CSSVariableReferenceValue = interfaces.CSSVariableReferenceValue;
 
 pub const State = CSSVariableReferenceValue.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, variable: runtime.USVString, fallback: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, variable: runtime.USVString, fallback: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &CSSVariableReferenceValue.vtable, ctx);
     errdefer deinit(instance);
@@ -54,19 +55,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, vari
 }
 
 /// Getter for variable
-pub fn get_variable(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_variable(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fallback
-pub fn get_fallback(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_fallback(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for variable
-pub fn set_variable(instance: *runtime.Instance, value: runtime.USVString) ImplError!void {
+pub fn set_variable(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

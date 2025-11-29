@@ -13,6 +13,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const DOMTokenList = interfaces.DOMTokenList;
 
@@ -103,7 +104,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for length
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-length
-pub fn get_length(instance: *runtime.Instance) !u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     return @intCast(internal.tokens.size());
 }
@@ -111,7 +112,7 @@ pub fn get_length(instance: *runtime.Instance) !u32 {
 /// Getter for value
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-value
 /// Returns the serialized value (space-separated tokens)
-pub fn get_value(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
 
     // Serialize tokens to space-separated string
@@ -146,7 +147,7 @@ pub fn get_value(instance: *runtime.Instance) !runtime.DOMString {
 /// Setter for value
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-value
 /// Parses the value and replaces all tokens
-pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) !void {
+pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
 
     // Clear existing tokens
@@ -171,7 +172,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) !void {
 
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-item
-pub fn call_item(instance: *runtime.Instance, index: u32) !runtime.DOMString {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const token = internal.tokens.get(index) orelse return runtime.DOMString.initEmpty();
     return token;
@@ -179,7 +180,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) !runtime.DOMString {
 
 /// Operation: contains(token)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-contains
-pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) !bool {
+pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const token_slice = token.asSlice();
 
@@ -194,7 +195,7 @@ pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) !boo
 
 /// Operation: add(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-add
-pub fn call_add(instance: *runtime.Instance, tokens: runtime.DOMString) !void {
+pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
     const token_slice = tokens.asSlice();
 
@@ -223,7 +224,7 @@ pub fn call_add(instance: *runtime.Instance, tokens: runtime.DOMString) !void {
 
 /// Operation: remove(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-remove
-pub fn call_remove(instance: *runtime.Instance, tokens: runtime.DOMString) !void {
+pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
     const token_slice = tokens.asSlice();
 
@@ -252,7 +253,7 @@ pub fn call_remove(instance: *runtime.Instance, tokens: runtime.DOMString) !void
 
 /// Operation: toggle(token, force?)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-toggle
-pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: bool) !bool {
+pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
     const contains = try call_contains(instance, token);
 
     if (contains) {
@@ -272,7 +273,7 @@ pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force:
 
 /// Operation: replace(token, newToken)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-replace
-pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newToken: runtime.DOMString) !bool {
+pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newToken: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const token_slice = token.asSlice();
     const new_slice = newToken.asSlice();
@@ -301,7 +302,7 @@ pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newTo
 
 /// Operation: supports(token)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-supports
-pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) !bool {
+pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
 
     // Check if supported tokens are defined
@@ -321,7 +322,7 @@ pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) !boo
 
 /// Operation: forEach(callback)
 /// Spec: https://webidl.spec.whatwg.org/#es-forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) !void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     const internal = getInternal(instance) orelse return;
     _ = callback;
 

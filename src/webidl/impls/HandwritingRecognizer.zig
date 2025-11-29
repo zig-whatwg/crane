@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HandwritingRecognizer = interfaces.HandwritingRecognizer;
 
 pub const State = HandwritingRecognizer.State;
@@ -40,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: finish
-pub fn call_finish(instance: *runtime.Instance) ImplError!void {
+pub fn call_finish(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: startDrawing
-pub fn call_startDrawing(instance: *runtime.Instance, hints: dictionaries.HandwritingHints) ImplError!*runtime.Instance {
+pub fn call_startDrawing(instance: *runtime.Instance, hints: webidl.Opt(dictionaries.HandwritingHints)) anyerror!*runtime.Instance {
     _ = instance;
     _ = hints;
     return error.NotImplemented;

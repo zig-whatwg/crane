@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for jointName
-pub fn get_jointName(instance: *runtime.Instance) ImplError!enums.XRBodyJoint {
+pub fn get_jointName(instance: *runtime.Instance) anyerror!enums.XRBodyJoint {
     _ = instance;
     return error.NotImplemented;
 }

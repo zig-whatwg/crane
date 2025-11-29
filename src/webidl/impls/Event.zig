@@ -10,6 +10,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const Event = interfaces.Event;
 
@@ -111,7 +112,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The Event(type, eventInitDict) constructor steps are:
 /// 1. Set this's initialized flag.
 /// 2. Initialize this with type, bubbles, and cancelable.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, event_type: runtime.DOMString, eventInitDict: dictionaries.EventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.EventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Event.vtable, ctx);
     errdefer deinit(instance);
@@ -134,7 +135,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, even
     const composed = eventInitDict.composed orelse false;
 
     // Store event type - clone the string to ensure we own it
-    state.own.type = try event_type.clone(allocator);
+    state.own.type = try @"type".clone(allocator);
 
     // Initialize from EventInit dictionary
     state.own.bubbles = bubbles;
@@ -157,7 +158,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, even
 
 /// Getter for type
 /// Spec: https://dom.spec.whatwg.org/#dom-event-type
-pub fn get_type(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     return state.own.type;
 }
@@ -166,7 +167,7 @@ pub fn get_type(instance: *runtime.Instance) !runtime.DOMString {
 /// Getter for target
 /// Returns the target of this event, or null if the event is not dispatched.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-target
-pub fn get_target(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     return state.own.target;
 }
@@ -175,7 +176,7 @@ pub fn get_target(instance: *runtime.Instance) !?*runtime.Instance {
 /// Returns the same as target.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-srcelement
 /// The srcElement getter steps are to return this's target.
-pub fn get_srcElement(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_srcElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     return state.own.target;
 }
@@ -183,14 +184,14 @@ pub fn get_srcElement(instance: *runtime.Instance) !?*runtime.Instance {
 /// Getter for currentTarget
 /// Returns the current target of this event, or null.
 /// Spec: https://dom.spec.whatwg.org/#dom-event-currenttarget
-pub fn get_currentTarget(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_currentTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     return state.own.currentTarget;
 }
 
 /// Getter for eventPhase
 /// Spec: https://dom.spec.whatwg.org/#dom-event-eventphase
-pub fn get_eventPhase(instance: *runtime.Instance) !u16 {
+pub fn get_eventPhase(instance: *runtime.Instance) anyerror!u16 {
     const state = instance.getState(State);
     return state.own.eventPhase;
 }
@@ -199,21 +200,21 @@ pub fn get_eventPhase(instance: *runtime.Instance) !u16 {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-cancelbubble
 /// The cancelBubble getter steps are to return true if this's stop propagation
 /// flag is set; otherwise false.
-pub fn get_cancelBubble(instance: *runtime.Instance) !bool {
+pub fn get_cancelBubble(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     return internal.stop_propagation_flag;
 }
 
 /// Getter for bubbles
 /// Spec: https://dom.spec.whatwg.org/#dom-event-bubbles
-pub fn get_bubbles(instance: *runtime.Instance) !bool {
+pub fn get_bubbles(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.bubbles;
 }
 
 /// Getter for cancelable
 /// Spec: https://dom.spec.whatwg.org/#dom-event-cancelable
-pub fn get_cancelable(instance: *runtime.Instance) !bool {
+pub fn get_cancelable(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.cancelable;
 }
@@ -222,35 +223,35 @@ pub fn get_cancelable(instance: *runtime.Instance) !bool {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-returnvalue
 /// The returnValue getter steps are to return false if this's canceled flag
 /// is set; otherwise true.
-pub fn get_returnValue(instance: *runtime.Instance) !bool {
+pub fn get_returnValue(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return true;
     return !internal.canceled_flag;
 }
 
 /// Getter for defaultPrevented
 /// Spec: https://dom.spec.whatwg.org/#dom-event-defaultprevented
-pub fn get_defaultPrevented(instance: *runtime.Instance) !bool {
+pub fn get_defaultPrevented(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     return internal.canceled_flag;
 }
 
 /// Getter for composed
 /// Spec: https://dom.spec.whatwg.org/#dom-event-composed
-pub fn get_composed(instance: *runtime.Instance) !bool {
+pub fn get_composed(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.composed;
 }
 
 /// Getter for isTrusted
 /// Spec: https://dom.spec.whatwg.org/#dom-event-istrusted
-pub fn get_isTrusted(instance: *runtime.Instance) !bool {
+pub fn get_isTrusted(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     return state.own.isTrusted;
 }
 
 /// Getter for timeStamp
 /// Spec: https://dom.spec.whatwg.org/#dom-event-timestamp
-pub fn get_timeStamp(instance: *runtime.Instance) !typedefs.DOMHighResTimeStamp {
+pub fn get_timeStamp(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     const state = instance.getState(State);
     return state.own.timeStamp;
 }
@@ -259,7 +260,7 @@ pub fn get_timeStamp(instance: *runtime.Instance) !typedefs.DOMHighResTimeStamp 
 /// Spec: https://dom.spec.whatwg.org/#dom-event-cancelbubble
 /// The cancelBubble setter steps are to set this's stop propagation flag if
 /// the given value is true; otherwise do nothing.
-pub fn set_cancelBubble(instance: *runtime.Instance, value: bool) !void {
+pub fn set_cancelBubble(instance: *runtime.Instance, value: bool) anyerror!void {
     if (value) {
         const internal = getInternal(instance) orelse return;
         internal.stop_propagation_flag = true;
@@ -270,7 +271,7 @@ pub fn set_cancelBubble(instance: *runtime.Instance, value: bool) !void {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-returnvalue
 /// The returnValue setter steps are to set the canceled flag with this if
 /// the given value is false; otherwise do nothing.
-pub fn set_returnValue(instance: *runtime.Instance, value: bool) !void {
+pub fn set_returnValue(instance: *runtime.Instance, value: bool) anyerror!void {
     if (!value) {
         setCanceledFlag(instance);
     }
@@ -291,14 +292,14 @@ fn setCanceledFlag(instance: *runtime.Instance) void {
 
 /// Operation: stopPropagation
 /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
-pub fn call_stopPropagation(instance: *runtime.Instance) !void {
+pub fn call_stopPropagation(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
     internal.stop_propagation_flag = true;
 }
 
 /// Operation: stopImmediatePropagation
 /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
-pub fn call_stopImmediatePropagation(instance: *runtime.Instance) !void {
+pub fn call_stopImmediatePropagation(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
     internal.stop_propagation_flag = true;
     internal.stop_immediate_propagation_flag = true;
@@ -307,13 +308,13 @@ pub fn call_stopImmediatePropagation(instance: *runtime.Instance) !void {
 /// Operation: preventDefault
 /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
 /// The preventDefault() method steps are to set the canceled flag with this.
-pub fn call_preventDefault(instance: *runtime.Instance) !void {
+pub fn call_preventDefault(instance: *runtime.Instance) anyerror!void {
     setCanceledFlag(instance);
 }
 
 /// DOM §2.3 - initialize an event
 /// To initialize an event, with type, bubbles, and cancelable, run these steps:
-fn initializeEvent(instance: *runtime.Instance, event_type: runtime.DOMString, bubbles: bool, cancelable: bool) void {
+fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: bool, cancelable: bool) void {
     const state = instance.getState(State);
     const internal = getInternal(instance) orelse return;
 
@@ -332,7 +333,7 @@ fn initializeEvent(instance: *runtime.Instance, event_type: runtime.DOMString, b
     state.own.target = null;
 
     // Step 5: Set event's type attribute to type
-    state.own.type = event_type;
+    state.own.type = @"type";
 
     // Step 6: Set event's bubbles attribute to bubbles
     state.own.bubbles = bubbles;
@@ -346,14 +347,14 @@ fn initializeEvent(instance: *runtime.Instance, event_type: runtime.DOMString, b
 /// The initEvent(type, bubbles, cancelable) method steps are:
 /// 1. If this's dispatch flag is set, then return.
 /// 2. Initialize this with type, bubbles, and cancelable.
-pub fn call_initEvent(instance: *runtime.Instance, event_type: runtime.DOMString, bubbles: bool, cancelable: bool) !void {
+pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
     const internal = getInternal(instance) orelse return;
 
     // Step 1: If dispatch flag is set, return
     if (internal.dispatch_flag) return;
 
     // Step 2: Initialize this
-    initializeEvent(instance, event_type, bubbles, cancelable);
+    initializeEvent(instance, @"type", bubbles, cancelable);
 }
 
 /// Operation: composedPath
@@ -363,7 +364,7 @@ pub fn call_initEvent(instance: *runtime.Instance, event_type: runtime.DOMString
 /// listeners will be invoked), except for any nodes in shadow trees of which
 /// the shadow root's mode is "closed" that are not reachable from event's
 /// currentTarget.
-pub fn call_composedPath(instance: *runtime.Instance) !*const anyopaque {
+pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.NotImplemented;
     const state = instance.getState(State);
 

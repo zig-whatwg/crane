@@ -54,19 +54,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
 }
 
 /// Getter for origin
-pub fn get_origin(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_origin(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_direction(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for matrix
-pub fn get_matrix(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_matrix(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

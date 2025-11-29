@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for pictureInPictureWindow
-pub fn get_pictureInPictureWindow(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pictureInPictureWindow(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

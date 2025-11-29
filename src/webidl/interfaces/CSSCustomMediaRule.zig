@@ -1,5 +1,5 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-11-28T22:33:21Z
+//! Generated at: 2025-11-29T02:15:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

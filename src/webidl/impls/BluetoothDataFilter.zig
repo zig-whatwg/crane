@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BluetoothDataFilter = interfaces.BluetoothDataFilter;
 
 pub const State = BluetoothDataFilter.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.BluetoothDataFilterInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothDataFilterInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &BluetoothDataFilter.vtable, ctx);
     errdefer deinit(instance);
@@ -53,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for dataPrefix
-pub fn get_dataPrefix(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_dataPrefix(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mask
-pub fn get_mask(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_mask(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

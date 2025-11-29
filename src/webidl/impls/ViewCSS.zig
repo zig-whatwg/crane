@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getComputedStyle
-pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = elt;
     _ = pseudoElt;

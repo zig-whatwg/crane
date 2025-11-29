@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for local
-pub fn get_local(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_local(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for remote
-pub fn get_remote(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_remote(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

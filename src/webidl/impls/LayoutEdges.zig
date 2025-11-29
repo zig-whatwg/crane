@@ -40,37 +40,37 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for inlineStart
-pub fn get_inlineStart(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inlineStart(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inlineEnd
-pub fn get_inlineEnd(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inlineEnd(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockStart
-pub fn get_blockStart(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_blockStart(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockEnd
-pub fn get_blockEnd(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_blockEnd(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inline
-pub fn get_inline(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inline(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for block
-pub fn get_block(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_block(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }

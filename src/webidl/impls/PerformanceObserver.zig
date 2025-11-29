@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PerformanceObserver = interfaces.PerformanceObserver;
 
 pub const State = PerformanceObserver.State;
@@ -53,26 +54,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Getter for supportedEntryTypes
-pub fn get_supportedEntryTypes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: observe
-pub fn call_observe(instance: *runtime.Instance, options: dictionaries.PerformanceObserverInit) ImplError!void {
+pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PerformanceObserverInit)) anyerror!void {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance) ImplError!void {
+pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: takeRecords
-pub fn call_takeRecords(instance: *runtime.Instance) ImplError!typedefs.PerformanceEntryList {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!typedefs.PerformanceEntryList {
     _ = instance;
     return error.NotImplemented;
 }

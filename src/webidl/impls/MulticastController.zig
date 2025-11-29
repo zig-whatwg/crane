@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for joinedGroups
-pub fn get_joinedGroups(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_joinedGroups(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: joinGroup
-pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = ipAddress;
     return error.NotImplemented;
 }
 
 /// Operation: leaveGroup
-pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = ipAddress;
     return error.NotImplemented;

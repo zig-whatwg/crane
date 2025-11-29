@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const GPUPipelineError = interfaces.GPUPipelineError;
 
 pub const State = GPUPipelineError.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: runtime.DOMString, options: dictionaries.GPUPipelineErrorInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), options: dictionaries.GPUPipelineErrorInit) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &GPUPipelineError.vtable, ctx);
     errdefer deinit(instance);
@@ -54,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 }
 
 /// Getter for reason
-pub fn get_reason(instance: *runtime.Instance) ImplError!enums.GPUPipelineErrorReason {
+pub fn get_reason(instance: *runtime.Instance) anyerror!enums.GPUPipelineErrorReason {
     _ = instance;
     return error.NotImplemented;
 }

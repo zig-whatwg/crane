@@ -40,76 +40,76 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: equals
-pub fn call_equals(instance: *runtime.Instance, value: typedefs.CSSNumberish) ImplError!bool {
+pub fn call_equals(instance: *runtime.Instance, value: []const typedefs.CSSNumberish) anyerror!bool {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: max
-pub fn call_max(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_max(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: sub
-pub fn call_sub(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_sub(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: min
-pub fn call_min(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_min(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: mul
-pub fn call_mul(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_mul(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: to
-pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) ImplError!*runtime.Instance {
+pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = unit;
     return error.NotImplemented;
 }
 
 /// Operation: toSum
-pub fn call_toSum(instance: *runtime.Instance, units: runtime.USVString) ImplError!*runtime.Instance {
+pub fn call_toSum(instance: *runtime.Instance, units: []const runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = units;
     return error.NotImplemented;
 }
 
 /// Operation: div
-pub fn call_div(instance: *runtime.Instance, values: typedefs.CSSNumberish) ImplError!*runtime.Instance {
+pub fn call_div(instance: *runtime.Instance, values: []const typedefs.CSSNumberish) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     return error.NotImplemented;
 }
 
 /// Operation: type
-pub fn call_type(instance: *runtime.Instance) ImplError!dictionaries.CSSNumericType {
+pub fn call_type(instance: *runtime.Instance) anyerror!dictionaries.CSSNumericType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) ImplError!*runtime.Instance {
+pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = cssText;
     return error.NotImplemented;

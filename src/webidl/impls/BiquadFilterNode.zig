@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const BiquadFilterNode = interfaces.BiquadFilterNode;
 
 pub const State = BiquadFilterNode.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.BiquadFilterOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.BiquadFilterOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &BiquadFilterNode.vtable, ctx);
     errdefer deinit(instance);
@@ -54,44 +55,44 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.BiquadFilterType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.BiquadFilterType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for frequency
-pub fn get_frequency(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_frequency(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for detune
-pub fn get_detune(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_detune(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for Q
-pub fn get_Q(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_Q(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for gain
-pub fn get_gain(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_gain(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for type
-pub fn set_type(instance: *runtime.Instance, value: enums.BiquadFilterType) ImplError!void {
+pub fn set_type(instance: *runtime.Instance, value: enums.BiquadFilterType) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getFrequencyResponse
-pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *const anyopaque, magResponse: *const anyopaque, phaseResponse: *const anyopaque) ImplError!void {
+pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *const anyopaque, magResponse: *const anyopaque, phaseResponse: *const anyopaque) anyerror!void {
     _ = instance;
     _ = frequencyHz;
     _ = magResponse;

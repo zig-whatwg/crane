@@ -15,6 +15,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ShadowRoot = interfaces.ShadowRoot;
 
 pub const State = ShadowRoot.State;
@@ -184,42 +185,42 @@ pub fn create(
 
 /// DOM §4.8.1 - ShadowRoot.mode
 /// Returns the mode of this shadow root ("open" or "closed").
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.ShadowRootMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.ShadowRootMode {
     const internal = getInternal(instance);
     return internal.shadow_mode;
 }
 
 /// DOM §4.8.1 - ShadowRoot.delegatesFocus
 /// Returns whether focus is delegated to the first focusable element.
-pub fn get_delegatesFocus(instance: *runtime.Instance) ImplError!bool {
+pub fn get_delegatesFocus(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance);
     return internal.delegates_focus_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.slotAssignment
 /// Returns how slottables are assigned to slots ("manual" or "named").
-pub fn get_slotAssignment(instance: *runtime.Instance) ImplError!enums.SlotAssignmentMode {
+pub fn get_slotAssignment(instance: *runtime.Instance) anyerror!enums.SlotAssignmentMode {
     const internal = getInternal(instance);
     return internal.slot_assignment_mode;
 }
 
 /// DOM §4.8.1 - ShadowRoot.clonable
 /// Returns whether this shadow root can be cloned.
-pub fn get_clonable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_clonable(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance);
     return internal.clonable_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.serializable
 /// Returns whether this shadow root can be serialized.
-pub fn get_serializable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_serializable(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance);
     return internal.serializable_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.host
 /// Returns the element that hosts this shadow root.
-pub fn get_host(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     return internal.host orelse return error.NotImplemented;
 }
@@ -230,7 +231,7 @@ pub fn get_host(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// DOM §4.8.1 - ShadowRoot.onslotchange getter
 /// Event handler for the slotchange event.
-pub fn get_onslotchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onslotchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance);
     if (internal.onslotchange) |handler| {
         _ = handler;
@@ -240,7 +241,7 @@ pub fn get_onslotchange(instance: *runtime.Instance) ImplError!typedefs.EventHan
 }
 
 /// DOM §4.8.1 - ShadowRoot.onslotchange setter
-pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance);
     // TODO: Proper event handler storage
     _ = value;
@@ -252,7 +253,7 @@ pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandle
 // ============================================================================
 
 /// InnerHTML.innerHTML getter
-pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // TODO: Implement HTML serialization
     _ = instance;
     // Return empty string as opaque pointer
@@ -261,7 +262,7 @@ pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// InnerHTML.innerHTML setter
-pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // TODO: Implement HTML parsing and fragment replacement
     _ = instance;
     _ = value;
@@ -274,28 +275,28 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplE
 
 /// DocumentOrShadowRoot.customElementRegistry getter
 /// Returns null if no custom element registry is associated
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.custom_element_registry;
 }
 
 /// DocumentOrShadowRoot.fullscreenElement getter
 /// Returns the element in this shadow tree that is currently in fullscreen mode, or null.
-pub fn get_fullscreenElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.fullscreen_element;
 }
 
 /// DocumentOrShadowRoot.pictureInPictureElement getter
 /// Returns the element in this shadow tree that is currently in picture-in-picture mode, or null.
-pub fn get_pictureInPictureElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.picture_in_picture_element;
 }
 
 /// DocumentOrShadowRoot.pointerLockElement getter
 /// Returns the element in this shadow tree that has pointer lock, or null.
-pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.pointer_lock_element;
 }
@@ -303,7 +304,7 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) ImplError!?*runtime.I
 /// DocumentOrShadowRoot.styleSheets getter
 /// Returns the StyleSheetList of stylesheets associated with this shadow root.
 /// Lazily creates an empty StyleSheetList on first access.
-pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance);
     if (internal.style_sheets) |sheets| {
         return sheets;
@@ -316,7 +317,7 @@ pub fn get_styleSheets(instance: *runtime.Instance) ImplError!*runtime.Instance 
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets getter
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
         return sheets;
@@ -327,7 +328,7 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) ImplError!*const anyo
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets setter
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     const internal = getInternal(instance);
     // TODO: Proper FrozenArray<CSSStyleSheet> handling
     internal.adopted_style_sheets = @constCast(value);
@@ -335,7 +336,7 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaq
 
 /// DocumentOrShadowRoot.activeElement getter
 /// Returns the deepest element in this shadow tree that has focus, or null.
-pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance);
     return internal.active_element;
 }
@@ -345,7 +346,7 @@ pub fn get_activeElement(instance: *runtime.Instance) ImplError!?*runtime.Instan
 // ============================================================================
 
 /// getHTML(options) - Serialize shadow tree to HTML
-pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOptions) ImplError!runtime.DOMString {
+pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) anyerror!runtime.DOMString {
     // TODO: Implement HTML serialization with options
     _ = instance;
     _ = options;
@@ -353,7 +354,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 }
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!void {
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!void {
     // TODO: Implement unsafe HTML parsing
     _ = instance;
     _ = html;
@@ -361,7 +362,7 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) I
 }
 
 /// getAnimations() - Get all animations in shadow tree
-pub fn call_getAnimations(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
     // TODO: Implement animation collection
     _ = instance;
     // Return empty array as opaque pointer

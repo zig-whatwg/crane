@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for navigationType
-pub fn get_navigationType(instance: *runtime.Instance) ImplError!?enums.NavigationType {
+pub fn get_navigationType(instance: *runtime.Instance) anyerror!?enums.NavigationType {
     _ = instance;
     return null;
 }
 
 /// Getter for from
-pub fn get_from(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

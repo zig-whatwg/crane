@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for aggregationServices
-pub fn get_aggregationServices(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_aggregationServices(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: measureConversion
-pub fn call_measureConversion(instance: *runtime.Instance, options: dictionaries.AttributionConversionOptions) ImplError!*const anyopaque {
+pub fn call_measureConversion(instance: *runtime.Instance, options: dictionaries.AttributionConversionOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: saveImpression
-pub fn call_saveImpression(instance: *runtime.Instance, options: dictionaries.AttributionImpressionOptions) ImplError!*const anyopaque {
+pub fn call_saveImpression(instance: *runtime.Instance, options: dictionaries.AttributionImpressionOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

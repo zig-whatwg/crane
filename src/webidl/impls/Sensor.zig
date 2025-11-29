@@ -40,70 +40,70 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for activated
-pub fn get_activated(instance: *runtime.Instance) ImplError!bool {
+pub fn get_activated(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hasReading
-pub fn get_hasReading(instance: *runtime.Instance) ImplError!bool {
+pub fn get_hasReading(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timestamp
-pub fn get_timestamp(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
+pub fn get_timestamp(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
     _ = instance;
     return null;
 }
 
 /// Getter for onreading
-pub fn get_onreading(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreading(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onactivate
-pub fn get_onactivate(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onactivate(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onreading
-pub fn set_onreading(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreading(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onactivate
-pub fn set_onactivate(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onactivate(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) ImplError!void {
+pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance) ImplError!void {
+pub fn call_start(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

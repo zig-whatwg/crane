@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const TrustedTypePolicyFactory = interfaces.TrustedTypePolicyFactory;
 
 pub const State = TrustedTypePolicyFactory.State;
@@ -40,25 +41,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for emptyHTML
-pub fn get_emptyHTML(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_emptyHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for emptyScript
-pub fn get_emptyScript(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_emptyScript(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for defaultPolicy
-pub fn get_defaultPolicy(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: createPolicy
-pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: dictionaries.TrustedTypePolicyOptions) ImplError!*runtime.Instance {
+pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: webidl.Opt(dictionaries.TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = policyName;
     _ = policyOptions;
@@ -66,21 +67,21 @@ pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMStr
 }
 
 /// Operation: isScript
-pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) ImplError!bool {
+pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: isScriptURL
-pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) ImplError!bool {
+pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getPropertyType
-pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString)) anyerror!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = property;
@@ -89,14 +90,14 @@ pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMStr
 }
 
 /// Operation: isHTML
-pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!bool {
+pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getAttributeType
-pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: runtime.DOMString, attrNs: runtime.DOMString) ImplError!?runtime.DOMString {
+pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString), attrNs: webidl.Opt(?runtime.DOMString)) anyerror!?runtime.DOMString {
     _ = instance;
     _ = tagName;
     _ = attribute;

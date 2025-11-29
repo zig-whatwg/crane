@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: resetTransform
-pub fn call_resetTransform(instance: *runtime.Instance) ImplError!void {
+pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setTransform
-pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) ImplError!void {
+pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
     _ = instance;
     _ = a;
     _ = b;
@@ -58,13 +58,13 @@ pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d:
 }
 
 /// Operation: getTransform
-pub fn call_getTransform(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: transform
-pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) ImplError!void {
+pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
     _ = instance;
     _ = a;
     _ = b;
@@ -76,14 +76,14 @@ pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f6
 }
 
 /// Operation: rotate
-pub fn call_rotate(instance: *runtime.Instance, angle: f64) ImplError!void {
+pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
     _ = instance;
     _ = angle;
     return error.NotImplemented;
 }
 
 /// Operation: scale
-pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -91,7 +91,7 @@ pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) ImplError!void {
+pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;

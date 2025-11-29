@@ -87,7 +87,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 6.1 "The new TransformStream(transformer, writableStrategy, readableStrategy) constructor steps"
 ///
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: *const anyopaque, writableStrategy: dictionaries.QueuingStrategy, readableStrategy: dictionaries.QueuingStrategy) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(*const anyopaque), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TransformStream.vtable, ctx);
     errdefer deinit(instance);
@@ -409,14 +409,14 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
 }
 
 /// Getter for readable
-pub fn get_readable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.readableStream orelse error.InvalidState;
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.writableStream orelse error.InvalidState;

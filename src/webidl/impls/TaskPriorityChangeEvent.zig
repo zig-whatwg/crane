@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for previousPriority
-pub fn get_previousPriority(instance: *runtime.Instance) ImplError!enums.TaskPriority {
+pub fn get_previousPriority(instance: *runtime.Instance) anyerror!enums.TaskPriority {
     _ = instance;
     return error.NotImplemented;
 }

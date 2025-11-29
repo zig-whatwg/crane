@@ -861,7 +861,7 @@ fn generateImplFile(
         defer if (name_was_sanitized) allocator.free(sanitized_name);
 
         try w.print("/// Getter for {s}\n", .{attr.name});
-        try w.print("pub fn get_{s}(instance: *runtime.Instance) ImplError!", .{sanitized_name});
+        try w.print("pub fn get_{s}(instance: *runtime.Instance) anyerror!", .{sanitized_name});
         // For nullable types, return ?T instead of T
         if (attr.idlType.nullable) {
             try w.writeAll("?");
@@ -889,7 +889,7 @@ fn generateImplFile(
             try w.print("/// Setter for {s}\n", .{attr.name});
             try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
             try writeTypeSimple(w, attr.idlType, type_reg);
-            try w.writeAll(") ImplError!void {\n");
+            try w.writeAll(") anyerror!void {\n");
             try w.writeAll("    _ = instance;\n");
             try w.writeAll("    _ = value;\n");
             try w.writeAll("    return error.NotImplemented;\n");
@@ -920,7 +920,7 @@ fn generateImplFile(
             try capitalized_name.appendSlice(allocator, op_name[1..]);
             try capitalized_name.appendSlice(allocator, "Args");
 
-            try w.print("{s}) ImplError!", .{capitalized_name.items});
+            try w.print("{s}) anyerror!", .{capitalized_name.items});
             // For nullable return types, return ?T instead of T
             if (is_nullable_return) {
                 try w.writeAll("?");
@@ -950,7 +950,7 @@ fn generateImplFile(
                 try w.writeAll(": ");
                 try writeParamType(w, arg, type_reg);
             }
-            try w.writeAll(") ImplError!");
+            try w.writeAll(") anyerror!");
             // For nullable return types, return ?T instead of T
             if (is_nullable_return) {
                 try w.writeAll("?");
@@ -984,7 +984,7 @@ fn generateImplFile(
 
     if (has_iterable) {
         try w.writeAll("/// Operation: forEach\n");
-        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {\n");
+        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {\n");
         try w.writeAll("    _ = instance;\n");
         try w.writeAll("    _ = callback;\n");
         try w.writeAll("    return error.NotImplemented;\n");

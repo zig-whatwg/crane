@@ -40,50 +40,50 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for inlineSize
-pub fn get_inlineSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inlineSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockSize
-pub fn get_blockSize(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_blockSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for inlineOffset
-pub fn get_inlineOffset(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_inlineOffset(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for blockOffset
-pub fn get_blockOffset(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_blockOffset(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for breakToken
-pub fn get_breakToken(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_breakToken(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Setter for inlineOffset
-pub fn set_inlineOffset(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_inlineOffset(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for blockOffset
-pub fn set_blockOffset(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_blockOffset(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

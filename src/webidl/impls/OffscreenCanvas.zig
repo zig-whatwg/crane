@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const OffscreenCanvas = interfaces.OffscreenCanvas;
 
 pub const State = OffscreenCanvas.State;
@@ -54,59 +55,59 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, widt
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_width(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_height(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncontextlost
-pub fn get_oncontextlost(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncontextlost(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncontextrestored
-pub fn get_oncontextrestored(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncontextrestored(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: u64) ImplError!void {
+pub fn set_width(instance: *runtime.Instance, value: u64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: u64) ImplError!void {
+pub fn set_height(instance: *runtime.Instance, value: u64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncontextlost
-pub fn set_oncontextlost(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncontextlost(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for oncontextrestored
-pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: *const anyopaque) ImplError!?typedefs.OffscreenRenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) anyerror!?typedefs.OffscreenRenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -114,14 +115,14 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRe
 }
 
 /// Operation: convertToBlob
-pub fn call_convertToBlob(instance: *runtime.Instance, options: dictionaries.ImageEncodeOptions) ImplError!*const anyopaque {
+pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageEncodeOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: transferToImageBitmap
-pub fn call_transferToImageBitmap(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

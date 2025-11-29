@@ -52,38 +52,38 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for max
-pub fn get_max(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_max(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for position
-pub fn get_position(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_position(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for labels
-pub fn get_labels(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for value
-pub fn set_value(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for max
-pub fn set_max(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_max(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

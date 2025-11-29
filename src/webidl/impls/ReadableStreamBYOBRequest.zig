@@ -88,7 +88,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for view
 ///
 /// Spec: § 4.8.2 "The view getter steps are:"
-pub fn get_view(instance: *runtime.Instance) ImplError!typedefs.ArrayBufferView {
+pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.ArrayBufferView {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -103,7 +103,7 @@ pub fn get_view(instance: *runtime.Instance) ImplError!typedefs.ArrayBufferView 
 /// Operation: respond
 ///
 /// Spec: § 4.8.3 "The respond(bytesWritten) method steps are:"
-pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!void {
+pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -133,7 +133,7 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) ImplError!vo
 /// Operation: respondWithNewView
 ///
 /// Spec: § 4.8.3 "The respondWithNewView(view) method steps are:"
-pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBufferView) ImplError!void {
+pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBufferView) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

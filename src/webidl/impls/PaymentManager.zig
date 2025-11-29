@@ -40,20 +40,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for userHint
-pub fn get_userHint(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_userHint(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for userHint
-pub fn set_userHint(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_userHint(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: enableDelegations
-pub fn call_enableDelegations(instance: *runtime.Instance, delegations: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_enableDelegations(instance: *runtime.Instance, delegations: *const anyopaque) anyerror!*const anyopaque {
     _ = instance;
     _ = delegations;
     return error.NotImplemented;

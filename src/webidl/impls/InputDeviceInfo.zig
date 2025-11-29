@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance) ImplError!dictionaries.MediaTrackCapabilities {
+pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!dictionaries.MediaTrackCapabilities {
     _ = instance;
     return error.NotImplemented;
 }

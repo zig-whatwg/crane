@@ -40,31 +40,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for sharedStorage
-pub fn get_sharedStorage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_sharedStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for privateAggregation
-pub fn get_privateAggregation(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_privateAggregation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for navigator
-pub fn get_navigator(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: interestGroups
-pub fn call_interestGroups(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_interestGroups(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, name: runtime.DOMString, operationCtor: callbacks.Function) ImplError!void {
+pub fn call_register(instance: *runtime.Instance, name: runtime.DOMString, operationCtor: callbacks.Function) anyerror!void {
     _ = instance;
     _ = name;
     _ = operationCtor;

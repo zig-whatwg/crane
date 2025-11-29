@@ -16,6 +16,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const Element = interfaces.Element;
 
@@ -240,7 +241,7 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
 
 /// Getter for namespaceURI
 /// DOM §4.8 - Returns the namespace URI of this element
-pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
         return ns;
@@ -250,7 +251,7 @@ pub fn get_namespaceURI(instance: *runtime.Instance) ImplError!?runtime.DOMStrin
 
 /// Getter for prefix
 /// DOM §4.8 - Returns the namespace prefix of this element
-pub fn get_prefix(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
         return p;
@@ -260,7 +261,7 @@ pub fn get_prefix(instance: *runtime.Instance) ImplError!?runtime.DOMString {
 
 /// Getter for localName
 /// DOM §4.8 - Returns the local name of this element
-pub fn get_localName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.local_name;
 }
@@ -268,7 +269,7 @@ pub fn get_localName(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Getter for tagName
 /// DOM §4.8 - Returns the qualified name of this element
 /// For HTML elements in HTML documents, this is uppercase
-pub fn get_tagName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If there's a prefix, return "prefix:localName"
@@ -286,14 +287,14 @@ pub fn get_tagName(instance: *runtime.Instance) ImplError!runtime.DOMString {
 
 /// Getter for id
 /// DOM §4.8 - Returns the value of the id attribute
-pub fn get_id(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.id;
 }
 
 /// Getter for className
 /// DOM §4.8 - Returns the value of the class attribute
-pub fn get_className(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_className(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.class_name;
 }
@@ -304,7 +305,7 @@ pub fn get_className(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// The classList getter steps are to return a DOMTokenList object whose
 /// associated element is this and whose associated attribute's local name is class.
-pub fn get_classList(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a new DOMTokenList
@@ -327,7 +328,7 @@ pub fn get_classList(instance: *runtime.Instance) ImplError!*runtime.Instance {
 
 /// Getter for slot
 /// DOM §4.8 - Returns the value of the slot attribute
-pub fn get_slot(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_slot(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.slot;
 }
@@ -337,7 +338,7 @@ pub fn get_slot(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Spec: https://dom.spec.whatwg.org/#dom-element-attributes
 ///
 /// The attributes getter steps are to return the associated NamedNodeMap.
-pub fn get_attributes(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a NamedNodeMap containing all attributes
@@ -382,7 +383,7 @@ pub fn get_attributes(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// 1. Let shadow be this's shadow root.
 /// 2. If shadow is null or its mode is "closed", then return null.
 /// 3. Return shadow.
-pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Let shadow be this's shadow root
@@ -407,7 +408,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) ImplError!?*runtime.Instance 
 ///
 /// Note: Returns null until Custom Element Registry is implemented.
 /// This is acceptable as custom elements are an optional feature.
-pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     // Custom Element Registry not implemented - return null
     return null;
@@ -418,7 +419,7 @@ pub fn get_customElementRegistry(instance: *runtime.Instance) ImplError!?*runtim
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
 ///
 /// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     // Return null event handler (no fullscreen support without browser)
     return null;
@@ -429,7 +430,7 @@ pub fn get_onfullscreenchange(instance: *runtime.Instance) ImplError!typedefs.Ev
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
 ///
 /// Note: Returns null - fullscreen API requires browser integration.
-pub fn get_onfullscreenerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     // Return null event handler (no fullscreen support without browser)
     return null;
@@ -440,7 +441,7 @@ pub fn get_onfullscreenerror(instance: *runtime.Instance) ImplError!typedefs.Eve
 /// Spec: https://wicg.github.io/element-timing/#dom-element-elementtiming
 ///
 /// The elementTiming getter returns the value of the elementtiming content attribute.
-pub fn get_elementTiming(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_elementTiming(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Look for elementtiming attribute
@@ -458,7 +459,7 @@ pub fn get_elementTiming(instance: *runtime.Instance) ImplError!runtime.DOMStrin
 /// Spec: https://drafts.csswg.org/css-shadow-parts/#dom-element-part
 ///
 /// The part getter returns a DOMTokenList reflecting the part attribute.
-pub fn get_part(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a DOMTokenList for the part attribute
@@ -489,7 +490,7 @@ pub fn get_part(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Spec: https://drafts.csswg.org/css-view-transitions-2/#dom-element-activeviewtransition
 ///
 /// Note: Returns null - View Transitions API requires rendering engine.
-pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     // View Transitions require rendering engine - return null
     return null;
@@ -501,7 +502,7 @@ pub fn get_activeViewTransition(instance: *runtime.Instance) ImplError!?*runtime
 ///
 /// Note: Simplified implementation - returns basic HTML structure.
 /// Full implementation requires complete HTML serialization algorithm.
-pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Build basic HTML from child elements using infra.List
@@ -528,7 +529,7 @@ pub fn get_innerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
 ///
 /// Note: Simplified implementation - returns basic HTML structure.
 /// Full implementation requires complete HTML serialization algorithm.
-pub fn get_outerHTML(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     var result = infra.List(u8).init(internal.allocator);
@@ -632,7 +633,7 @@ fn serializeNode(node: *runtime.Instance, result: *infra.List(u8), allocator: st
 /// Getter for scrollTop
 /// CSSOM View §3.1 - Returns scroll position from top
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_scrollTop(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_scrollTop(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return 0.0;
 }
@@ -640,7 +641,7 @@ pub fn get_scrollTop(instance: *runtime.Instance) ImplError!f64 {
 /// Getter for scrollLeft
 /// CSSOM View §3.1 - Returns scroll position from left
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_scrollLeft(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_scrollLeft(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return 0.0;
 }
@@ -648,7 +649,7 @@ pub fn get_scrollLeft(instance: *runtime.Instance) ImplError!f64 {
 /// Getter for scrollWidth
 /// CSSOM View §3.1 - Returns scroll width of element
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_scrollWidth(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_scrollWidth(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -656,7 +657,7 @@ pub fn get_scrollWidth(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for scrollHeight
 /// CSSOM View §3.1 - Returns scroll height of element
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_scrollHeight(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_scrollHeight(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -664,7 +665,7 @@ pub fn get_scrollHeight(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for clientTop
 /// CSSOM View §3.1 - Returns top border width
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_clientTop(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_clientTop(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -672,7 +673,7 @@ pub fn get_clientTop(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for clientLeft
 /// CSSOM View §3.1 - Returns left border width
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_clientLeft(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_clientLeft(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -680,7 +681,7 @@ pub fn get_clientLeft(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for clientWidth
 /// CSSOM View §3.1 - Returns inner width of element
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_clientWidth(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_clientWidth(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -688,7 +689,7 @@ pub fn get_clientWidth(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for clientHeight
 /// CSSOM View §3.1 - Returns inner height of element
 /// Returns 0 for non-rendered elements (no layout engine)
-pub fn get_clientHeight(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_clientHeight(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return 0;
 }
@@ -696,14 +697,14 @@ pub fn get_clientHeight(instance: *runtime.Instance) ImplError!i32 {
 /// Getter for currentCSSZoom
 /// CSSOM View - Returns current CSS zoom level
 /// Returns 1.0 (no zoom) for non-rendered elements
-pub fn get_currentCSSZoom(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_currentCSSZoom(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return 1.0;
 }
 
 /// Getter for role
 /// ARIAMixin - Reflects the role attribute
-pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_role(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "role");
 }
 
@@ -712,67 +713,67 @@ pub fn get_role(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Spec: https://w3c.github.io/aria/#aria-activedescendant
 ///
 /// Returns the element referenced by aria-activedescendant, or null if not set
-pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_ariaActiveDescendantElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return getAriaElementRef(instance, "aria-activedescendant");
 }
 
 /// Getter for ariaAtomic
 /// ARIAMixin - Reflects the aria-atomic attribute
-pub fn get_ariaAtomic(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaAtomic(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-atomic");
 }
 
 /// Getter for ariaAutoComplete
 /// ARIAMixin - Reflects the aria-autocomplete attribute
-pub fn get_ariaAutoComplete(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaAutoComplete(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-autocomplete");
 }
 
 /// Getter for ariaBrailleLabel
 /// ARIAMixin - Reflects the aria-braillelabel attribute
-pub fn get_ariaBrailleLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBrailleLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-braillelabel");
 }
 
 /// Getter for ariaBrailleRoleDescription
 /// ARIAMixin - Reflects the aria-brailleroledescription attribute
-pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBrailleRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-brailleroledescription");
 }
 
 /// Getter for ariaBusy
 /// ARIAMixin - Reflects the aria-busy attribute
-pub fn get_ariaBusy(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaBusy(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-busy");
 }
 
 /// Getter for ariaChecked
 /// ARIAMixin - Reflects the aria-checked attribute
-pub fn get_ariaChecked(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaChecked(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-checked");
 }
 
 /// Getter for ariaColCount
 /// ARIAMixin - Reflects the aria-colcount attribute
-pub fn get_ariaColCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-colcount");
 }
 
 /// Getter for ariaColIndex
 /// ARIAMixin - Reflects the aria-colindex attribute
-pub fn get_ariaColIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-colindex");
 }
 
 /// Getter for ariaColIndexText
 /// ARIAMixin - Reflects the aria-colindextext attribute
-pub fn get_ariaColIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-colindextext");
 }
 
 /// Getter for ariaColSpan
 /// ARIAMixin - Reflects the aria-colspan attribute
-pub fn get_ariaColSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-colspan");
 }
 
@@ -782,7 +783,7 @@ pub fn get_ariaColSpan(instance: *runtime.Instance) ImplError!runtime.DOMString 
 ///
 /// Returns a frozen array of elements referenced by space-separated IDs in aria-controls.
 /// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaControlsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -790,7 +791,7 @@ pub fn get_ariaControlsElements(instance: *runtime.Instance) ImplError!*const an
 
 /// Getter for ariaCurrent
 /// ARIAMixin - Reflects the aria-current attribute
-pub fn get_ariaCurrent(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-current");
 }
 
@@ -800,7 +801,7 @@ pub fn get_ariaCurrent(instance: *runtime.Instance) ImplError!runtime.DOMString 
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-describedby
 /// Note: Returns empty array - full implementation requires FrozenArray support
-pub fn get_ariaDescribedByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -808,7 +809,7 @@ pub fn get_ariaDescribedByElements(instance: *runtime.Instance) ImplError!*const
 
 /// Getter for ariaDescription
 /// ARIAMixin - Reflects the aria-description attribute
-pub fn get_ariaDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-description");
 }
 
@@ -818,7 +819,7 @@ pub fn get_ariaDescription(instance: *runtime.Instance) ImplError!runtime.DOMStr
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-details
 /// Note: Returns empty array - full implementation requires FrozenArray support
-pub fn get_ariaDetailsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -826,7 +827,7 @@ pub fn get_ariaDetailsElements(instance: *runtime.Instance) ImplError!*const any
 
 /// Getter for ariaDisabled
 /// ARIAMixin - Reflects the aria-disabled attribute
-pub fn get_ariaDisabled(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-disabled");
 }
 
@@ -836,7 +837,7 @@ pub fn get_ariaDisabled(instance: *runtime.Instance) ImplError!runtime.DOMString
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-errormessage
 /// Note: Returns empty array - full implementation requires FrozenArray support
-pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel
     return @ptrFromInt(1);
@@ -844,7 +845,7 @@ pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) ImplError!*cons
 
 /// Getter for ariaExpanded
 /// ARIAMixin - Reflects the aria-expanded attribute
-pub fn get_ariaExpanded(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-expanded");
 }
 
@@ -854,7 +855,7 @@ pub fn get_ariaExpanded(instance: *runtime.Instance) ImplError!runtime.DOMString
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-flowto.
 /// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaFlowToElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -862,31 +863,31 @@ pub fn get_ariaFlowToElements(instance: *runtime.Instance) ImplError!*const anyo
 
 /// Getter for ariaHasPopup
 /// ARIAMixin - Reflects the aria-haspopup attribute
-pub fn get_ariaHasPopup(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaHasPopup(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-haspopup");
 }
 
 /// Getter for ariaHidden
 /// ARIAMixin - Reflects the aria-hidden attribute
-pub fn get_ariaHidden(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaHidden(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-hidden");
 }
 
 /// Getter for ariaInvalid
 /// ARIAMixin - Reflects the aria-invalid attribute
-pub fn get_ariaInvalid(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaInvalid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-invalid");
 }
 
 /// Getter for ariaKeyShortcuts
 /// ARIAMixin - Reflects the aria-keyshortcuts attribute
-pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaKeyShortcuts(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-keyshortcuts");
 }
 
 /// Getter for ariaLabel
 /// ARIAMixin - Reflects the aria-label attribute
-pub fn get_ariaLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-label");
 }
 
@@ -896,7 +897,7 @@ pub fn get_ariaLabel(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-labelledby.
 /// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaLabelledByElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -904,37 +905,37 @@ pub fn get_ariaLabelledByElements(instance: *runtime.Instance) ImplError!*const 
 
 /// Getter for ariaLevel
 /// ARIAMixin - Reflects the aria-level attribute
-pub fn get_ariaLevel(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLevel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-level");
 }
 
 /// Getter for ariaLive
 /// ARIAMixin - Reflects the aria-live attribute
-pub fn get_ariaLive(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaLive(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-live");
 }
 
 /// Getter for ariaModal
 /// ARIAMixin - Reflects the aria-modal attribute
-pub fn get_ariaModal(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaModal(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-modal");
 }
 
 /// Getter for ariaMultiLine
 /// ARIAMixin - Reflects the aria-multiline attribute
-pub fn get_ariaMultiLine(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaMultiLine(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-multiline");
 }
 
 /// Getter for ariaMultiSelectable
 /// ARIAMixin - Reflects the aria-multiselectable attribute
-pub fn get_ariaMultiSelectable(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaMultiSelectable(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-multiselectable");
 }
 
 /// Getter for ariaOrientation
 /// ARIAMixin - Reflects the aria-orientation attribute
-pub fn get_ariaOrientation(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-orientation");
 }
 
@@ -944,7 +945,7 @@ pub fn get_ariaOrientation(instance: *runtime.Instance) ImplError!runtime.DOMStr
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-owns.
 /// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaOwnsElements(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // Return empty array sentinel - full implementation requires resolving space-separated IDs
     return @ptrFromInt(1);
@@ -952,109 +953,109 @@ pub fn get_ariaOwnsElements(instance: *runtime.Instance) ImplError!*const anyopa
 
 /// Getter for ariaPlaceholder
 /// ARIAMixin - Reflects the aria-placeholder attribute
-pub fn get_ariaPlaceholder(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPlaceholder(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-placeholder");
 }
 
 /// Getter for ariaPosInSet
 /// ARIAMixin - Reflects the aria-posinset attribute
-pub fn get_ariaPosInSet(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPosInSet(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-posinset");
 }
 
 /// Getter for ariaPressed
 /// ARIAMixin - Reflects the aria-pressed attribute
-pub fn get_ariaPressed(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaPressed(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-pressed");
 }
 
 /// Getter for ariaReadOnly
 /// ARIAMixin - Reflects the aria-readonly attribute
-pub fn get_ariaReadOnly(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaReadOnly(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-readonly");
 }
 
 /// Getter for ariaRelevant
 /// ARIAMixin - Reflects the aria-relevant attribute
-pub fn get_ariaRelevant(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRelevant(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-relevant");
 }
 
 /// Getter for ariaRequired
 /// ARIAMixin - Reflects the aria-required attribute
-pub fn get_ariaRequired(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRequired(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-required");
 }
 
 /// Getter for ariaRoleDescription
 /// ARIAMixin - Reflects the aria-roledescription attribute
-pub fn get_ariaRoleDescription(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRoleDescription(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-roledescription");
 }
 
 /// Getter for ariaRowCount
 /// ARIAMixin - Reflects the aria-rowcount attribute
-pub fn get_ariaRowCount(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowCount(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-rowcount");
 }
 
 /// Getter for ariaRowIndex
 /// ARIAMixin - Reflects the aria-rowindex attribute
-pub fn get_ariaRowIndex(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowIndex(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-rowindex");
 }
 
 /// Getter for ariaRowIndexText
 /// ARIAMixin - Reflects the aria-rowindextext attribute
-pub fn get_ariaRowIndexText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowIndexText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-rowindextext");
 }
 
 /// Getter for ariaRowSpan
 /// ARIAMixin - Reflects the aria-rowspan attribute
-pub fn get_ariaRowSpan(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaRowSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-rowspan");
 }
 
 /// Getter for ariaSelected
 /// ARIAMixin - Reflects the aria-selected attribute
-pub fn get_ariaSelected(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSelected(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-selected");
 }
 
 /// Getter for ariaSetSize
 /// ARIAMixin - Reflects the aria-setsize attribute
-pub fn get_ariaSetSize(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSetSize(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-setsize");
 }
 
 /// Getter for ariaSort
 /// ARIAMixin - Reflects the aria-sort attribute
-pub fn get_ariaSort(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaSort(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-sort");
 }
 
 /// Getter for ariaValueMax
 /// ARIAMixin - Reflects the aria-valuemax attribute
-pub fn get_ariaValueMax(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueMax(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-valuemax");
 }
 
 /// Getter for ariaValueMin
 /// ARIAMixin - Reflects the aria-valuemin attribute
-pub fn get_ariaValueMin(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueMin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-valuemin");
 }
 
 /// Getter for ariaValueNow
 /// ARIAMixin - Reflects the aria-valuenow attribute
-pub fn get_ariaValueNow(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueNow(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-valuenow");
 }
 
 /// Getter for ariaValueText
 /// ARIAMixin - Reflects the aria-valuetext attribute
-pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     return getAriaAttribute(instance, "aria-valuetext");
 }
 
@@ -1064,7 +1065,7 @@ pub fn get_ariaValueText(instance: *runtime.Instance) ImplError!runtime.DOMStrin
 ///
 /// Note: CSS Regions is deprecated/removed from most browsers.
 /// Returns empty string as no region flow is active.
-pub fn get_regionOverset(instance: *runtime.Instance) ImplError!typedefs.CSSOMString {
+pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     // CSS Regions not supported - return empty string
     return .{ .empty = {} };
@@ -1073,7 +1074,7 @@ pub fn get_regionOverset(instance: *runtime.Instance) ImplError!typedefs.CSSOMSt
 /// Getter for children
 /// ParentNode mixin - Returns an HTMLCollection of child elements
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
-pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
         return switch (err) {
@@ -1086,35 +1087,35 @@ pub fn get_children(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for firstElementChild
 /// ParentNode mixin - Returns the first child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
-pub fn get_firstElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return ParentNode.firstElementChild(instance);
 }
 
 /// Getter for lastElementChild
 /// ParentNode mixin - Returns the last child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
-pub fn get_lastElementChild(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return ParentNode.lastElementChild(instance);
 }
 
 /// Getter for childElementCount
 /// ParentNode mixin - Returns the number of child elements
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
-pub fn get_childElementCount(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
     return ParentNode.childElementCount(instance);
 }
 
 /// Getter for previousElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the previous sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
-pub fn get_previousElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return NonDocumentTypeChildNode.previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the next sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
-pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return NonDocumentTypeChildNode.nextElementSibling(instance);
 }
 
@@ -1128,7 +1129,7 @@ pub fn get_nextElementSibling(instance: *runtime.Instance) ImplError!?*runtime.I
 /// Returns null if:
 /// - Element is not assigned to any slot
 /// - Element is assigned to a slot in a closed shadow root
-pub fn get_assignedSlot(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get the assigned slot
@@ -1148,7 +1149,7 @@ pub fn get_assignedSlot(instance: *runtime.Instance) ImplError!?*runtime.Instanc
 
 /// Setter for id
 /// DOM §4.8 - Sets the id attribute value
-pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Free old value
@@ -1163,7 +1164,7 @@ pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) ImplError!v
 
 /// Setter for className
 /// DOM §4.8 - Sets the class attribute value
-pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Free old value
@@ -1178,7 +1179,7 @@ pub fn set_className(instance: *runtime.Instance, value: runtime.DOMString) Impl
 
 /// Setter for slot
 /// DOM §4.8 - Sets the slot attribute value
-pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Free old value
@@ -1573,7 +1574,7 @@ fn collectElementsByClassName(
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenchange
 ///
 /// Note: No-op without fullscreen API support
-pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - fullscreen API requires browser integration
@@ -1584,7 +1585,7 @@ pub fn set_onfullscreenchange(instance: *runtime.Instance, value: typedefs.Event
 /// Spec: https://fullscreen.spec.whatwg.org/#handler-document-onfullscreenerror
 ///
 /// Note: No-op without fullscreen API support
-pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - fullscreen API requires browser integration
@@ -1595,7 +1596,7 @@ pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventH
 /// Spec: https://wicg.github.io/element-timing/#sec-modifications-dom
 ///
 /// Sets the element's timing identifier for performance monitoring
-pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // Set the elementtiming attribute
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const value_slice = value.asSlice();
@@ -1630,7 +1631,7 @@ pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) 
 ///
 /// Note: Full HTML parsing not implemented - this is a stub.
 /// TODO: Implement HTML fragment parsing algorithm
-pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     // TODO: Requires HTML fragment parsing algorithm
@@ -1649,7 +1650,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplE
 ///
 /// Note: Full HTML parsing not implemented - this is a stub.
 /// TODO: Implement HTML fragment parsing algorithm
-pub fn set_outerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_outerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     // TODO: Requires HTML fragment parsing algorithm
@@ -1660,7 +1661,7 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: *const anyopaque) ImplE
 /// Setter for scrollTop
 /// CSSOM View §3.1 - Sets scroll position from top
 /// No-op for non-rendered elements (no layout engine)
-pub fn set_scrollTop(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_scrollTop(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would require layout engine to scroll
@@ -1669,7 +1670,7 @@ pub fn set_scrollTop(instance: *runtime.Instance, value: f64) ImplError!void {
 /// Setter for scrollLeft
 /// CSSOM View §3.1 - Sets scroll position from left
 /// No-op for non-rendered elements (no layout engine)
-pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would require layout engine to scroll
@@ -1677,7 +1678,7 @@ pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) ImplError!void {
 
 /// Setter for role
 /// ARIAMixin - Sets the role attribute
-pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "role", value);
 }
 
@@ -1689,7 +1690,7 @@ pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 /// aria-activedescendant to the target element's ID.
 /// Note: No-op - full implementation requires getting target element's ID
 /// and setting aria-activedescendant attribute.
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to get value's ID and set aria-activedescendant
@@ -1698,61 +1699,61 @@ pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runt
 
 /// Setter for ariaAtomic
 /// ARIAMixin - Sets the aria-atomic attribute
-pub fn set_ariaAtomic(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaAtomic(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-atomic", value);
 }
 
 /// Setter for ariaAutoComplete
 /// ARIAMixin - Sets the aria-autocomplete attribute
-pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-autocomplete", value);
 }
 
 /// Setter for ariaBrailleLabel
 /// ARIAMixin - Sets the aria-braillelabel attribute
-pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-braillelabel", value);
 }
 
 /// Setter for ariaBrailleRoleDescription
 /// ARIAMixin - Sets the aria-brailleroledescription attribute
-pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-brailleroledescription", value);
 }
 
 /// Setter for ariaBusy
 /// ARIAMixin - Sets the aria-busy attribute
-pub fn set_ariaBusy(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaBusy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-busy", value);
 }
 
 /// Setter for ariaChecked
 /// ARIAMixin - Sets the aria-checked attribute
-pub fn set_ariaChecked(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaChecked(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-checked", value);
 }
 
 /// Setter for ariaColCount
 /// ARIAMixin - Sets the aria-colcount attribute
-pub fn set_ariaColCount(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaColCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colcount", value);
 }
 
 /// Setter for ariaColIndex
 /// ARIAMixin - Sets the aria-colindex attribute
-pub fn set_ariaColIndex(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaColIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colindex", value);
 }
 
 /// Setter for ariaColIndexText
 /// ARIAMixin - Sets the aria-colindextext attribute
-pub fn set_ariaColIndexText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaColIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colindextext", value);
 }
 
 /// Setter for ariaColSpan
 /// ARIAMixin - Sets the aria-colspan attribute
-pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colspan", value);
 }
 
@@ -1763,7 +1764,7 @@ pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) Im
 /// Sets the elements that this element controls. This should set
 /// aria-controls to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-controls
@@ -1771,7 +1772,7 @@ pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyop
 
 /// Setter for ariaCurrent
 /// ARIAMixin - Sets the aria-current attribute
-pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-current", value);
 }
 
@@ -1782,7 +1783,7 @@ pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) Im
 /// Sets the elements that describe this element. This should set
 /// aria-describedby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-describedby
@@ -1790,7 +1791,7 @@ pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const an
 
 /// Setter for ariaDescription
 /// ARIAMixin - Sets the aria-description attribute
-pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-description", value);
 }
 
@@ -1801,7 +1802,7 @@ pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that provide details for this element. This should set
 /// aria-details to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-details
@@ -1809,7 +1810,7 @@ pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopa
 
 /// Setter for ariaDisabled
 /// ARIAMixin - Sets the aria-disabled attribute
-pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-disabled", value);
 }
 
@@ -1820,7 +1821,7 @@ pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) I
 /// Sets the elements that contain error messages for this element. This should set
 /// aria-errormessage to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-errormessage
@@ -1828,7 +1829,7 @@ pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const a
 
 /// Setter for ariaExpanded
 /// ARIAMixin - Sets the aria-expanded attribute
-pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-expanded", value);
 }
 
@@ -1839,7 +1840,7 @@ pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) I
 /// Sets the elements that are the next in reading order. This should set
 /// aria-flowto to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-flowto
@@ -1847,31 +1848,31 @@ pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaq
 
 /// Setter for ariaHasPopup
 /// ARIAMixin - Sets the aria-haspopup attribute
-pub fn set_ariaHasPopup(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaHasPopup(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-haspopup", value);
 }
 
 /// Setter for ariaHidden
 /// ARIAMixin - Sets the aria-hidden attribute
-pub fn set_ariaHidden(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaHidden(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-hidden", value);
 }
 
 /// Setter for ariaInvalid
 /// ARIAMixin - Sets the aria-invalid attribute
-pub fn set_ariaInvalid(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaInvalid(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-invalid", value);
 }
 
 /// Setter for ariaKeyShortcuts
 /// ARIAMixin - Sets the aria-keyshortcuts attribute
-pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-keyshortcuts", value);
 }
 
 /// Setter for ariaLabel
 /// ARIAMixin - Sets the aria-label attribute
-pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-label", value);
 }
 
@@ -1882,7 +1883,7 @@ pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) Impl
 /// Sets the elements that label this element. This should set
 /// aria-labelledby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-labelledby
@@ -1890,37 +1891,37 @@ pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const any
 
 /// Setter for ariaLevel
 /// ARIAMixin - Sets the aria-level attribute
-pub fn set_ariaLevel(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaLevel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-level", value);
 }
 
 /// Setter for ariaLive
 /// ARIAMixin - Sets the aria-live attribute
-pub fn set_ariaLive(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaLive(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-live", value);
 }
 
 /// Setter for ariaModal
 /// ARIAMixin - Sets the aria-modal attribute
-pub fn set_ariaModal(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaModal(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-modal", value);
 }
 
 /// Setter for ariaMultiLine
 /// ARIAMixin - Sets the aria-multiline attribute
-pub fn set_ariaMultiLine(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaMultiLine(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-multiline", value);
 }
 
 /// Setter for ariaMultiSelectable
 /// ARIAMixin - Sets the aria-multiselectable attribute
-pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-multiselectable", value);
 }
 
 /// Setter for ariaOrientation
 /// ARIAMixin - Sets the aria-orientation attribute
-pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-orientation", value);
 }
 
@@ -1931,7 +1932,7 @@ pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that are owned by this element. This should set
 /// aria-owns to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) ImplError!void {
+pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-owns
@@ -1939,116 +1940,116 @@ pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque
 
 /// Setter for ariaPlaceholder
 /// ARIAMixin - Sets the aria-placeholder attribute
-pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-placeholder", value);
 }
 
 /// Setter for ariaPosInSet
 /// ARIAMixin - Sets the aria-posinset attribute
-pub fn set_ariaPosInSet(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaPosInSet(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-posinset", value);
 }
 
 /// Setter for ariaPressed
 /// ARIAMixin - Sets the aria-pressed attribute
-pub fn set_ariaPressed(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaPressed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-pressed", value);
 }
 
 /// Setter for ariaReadOnly
 /// ARIAMixin - Sets the aria-readonly attribute
-pub fn set_ariaReadOnly(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaReadOnly(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-readonly", value);
 }
 
 /// Setter for ariaRelevant
 /// ARIAMixin - Sets the aria-relevant attribute
-pub fn set_ariaRelevant(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRelevant(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-relevant", value);
 }
 
 /// Setter for ariaRequired
 /// ARIAMixin - Sets the aria-required attribute
-pub fn set_ariaRequired(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRequired(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-required", value);
 }
 
 /// Setter for ariaRoleDescription
 /// ARIAMixin - Sets the aria-roledescription attribute
-pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-roledescription", value);
 }
 
 /// Setter for ariaRowCount
 /// ARIAMixin - Sets the aria-rowcount attribute
-pub fn set_ariaRowCount(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRowCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowcount", value);
 }
 
 /// Setter for ariaRowIndex
 /// ARIAMixin - Sets the aria-rowindex attribute
-pub fn set_ariaRowIndex(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRowIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowindex", value);
 }
 
 /// Setter for ariaRowIndexText
 /// ARIAMixin - Sets the aria-rowindextext attribute
-pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowindextext", value);
 }
 
 /// Setter for ariaRowSpan
 /// ARIAMixin - Sets the aria-rowspan attribute
-pub fn set_ariaRowSpan(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaRowSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowspan", value);
 }
 
 /// Setter for ariaSelected
 /// ARIAMixin - Sets the aria-selected attribute
-pub fn set_ariaSelected(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaSelected(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-selected", value);
 }
 
 /// Setter for ariaSetSize
 /// ARIAMixin - Sets the aria-setsize attribute
-pub fn set_ariaSetSize(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaSetSize(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-setsize", value);
 }
 
 /// Setter for ariaSort
 /// ARIAMixin - Sets the aria-sort attribute
-pub fn set_ariaSort(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaSort(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-sort", value);
 }
 
 /// Setter for ariaValueMax
 /// ARIAMixin - Sets the aria-valuemax attribute
-pub fn set_ariaValueMax(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaValueMax(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuemax", value);
 }
 
 /// Setter for ariaValueMin
 /// ARIAMixin - Sets the aria-valuemin attribute
-pub fn set_ariaValueMin(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaValueMin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuemin", value);
 }
 
 /// Setter for ariaValueNow
 /// ARIAMixin - Sets the aria-valuenow attribute
-pub fn set_ariaValueNow(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaValueNow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuenow", value);
 }
 
 /// Setter for ariaValueText
 /// ARIAMixin - Sets the aria-valuetext attribute
-pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuetext", value);
 }
 
 /// Operation: getAttributeNS
 /// DOM §4.8 - Returns the value of the attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
-pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2064,7 +2065,7 @@ pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 
 /// Operation: getAttribute
 /// DOM §4.8 - Returns the value of the named attribute, or null if not found
-pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!runtime.DOMString {
+pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2083,7 +2084,7 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
 /// Operation: hasAttribute
 /// DOM §4.8 - Returns true if the element has an attribute with the given name
-pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!bool {
+pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2101,7 +2102,7 @@ pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 /// Operation: matches
 /// DOM §4.10.4 - Returns true if element matches the given selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-matches
-pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!bool {
+pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2120,7 +2121,7 @@ pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) I
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-releasepointercapture
 ///
 /// Without pointer event support, this is a no-op
-pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) ImplError!void {
+pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
     _ = instance;
     _ = pointerId;
     // No-op without pointer event support
@@ -2131,7 +2132,7 @@ pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) I
 /// Spec: https://drafts.css-houdini.org/css-typed-om-1/#dom-element-computedstylemap
 ///
 /// Note: Returns null - requires CSSOM and layout engine
-pub fn call_computedStyleMap(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     // Requires CSSOM and layout engine - return null
     return error.NotImplemented;
@@ -2142,7 +2143,7 @@ pub fn call_computedStyleMap(instance: *runtime.Instance) ImplError!*runtime.Ins
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scroll
 ///
 /// Without a layout engine, this is a no-op (returns resolved promise with undefined)
-pub fn call_scroll(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
@@ -2155,7 +2156,7 @@ pub fn call_scroll(instance: *runtime.Instance, options: dictionaries.ScrollToOp
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getclientrects
 ///
 /// Without a layout engine, returns an empty DOMRectList
-pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return empty DOMRectList (no layout = no client rects)
@@ -2167,7 +2168,7 @@ pub fn call_getClientRects(instance: *runtime.Instance) ImplError!*runtime.Insta
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollby
 ///
 /// Without a layout engine, this is a no-op (returns resolved promise with undefined)
-pub fn call_scrollBy(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
@@ -2180,7 +2181,7 @@ pub fn call_scrollBy(instance: *runtime.Instance, options: dictionaries.ScrollTo
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // For simplified implementation, treat nodes as a single Node pointer
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
@@ -2205,7 +2206,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: *const anyopaque) ImplEr
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Get parent - if null, return (per spec)
     const parent = NodeImpl.getParent(instance) orelse return;
 
@@ -2223,7 +2224,7 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) Im
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertquadfromnode
 ///
 /// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -2240,7 +2241,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 /// setting an attribute given attr and this.
 ///
 /// Returns the old Attr node if replaced, or null if newly added.
-pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     // setAttributeNodeNS and setAttributeNode have identical behavior per spec
     // They both call the "set an attribute" algorithm
     return call_setAttributeNode(instance, attr);
@@ -2249,7 +2250,7 @@ pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Insta
 /// Operation: getAttributeNodeNS
 /// DOM §4.8 - Returns the Attr node with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenodens
-pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2279,7 +2280,7 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: runtime.D
 /// Operation: setAttributeNS
 /// DOM §4.8 - Sets the attribute with the given namespace and qualified name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
-pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, qualifiedName: runtime.DOMString, value: *const anyopaque) ImplError!void {
+pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const qname_slice = qualifiedName.asSlice();
@@ -2308,7 +2309,7 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 ///
 /// The setAttributeNode(attr) method steps are to return the result of
 /// setting an attribute given attr and this.
-pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
@@ -2349,7 +2350,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollto
 ///
 /// Without a layout engine, this is a no-op (returns resolved promise with undefined)
-pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollToOptions) ImplError!*const anyopaque {
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
@@ -2360,7 +2361,7 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: dictionaries.ScrollTo
 /// Operation: getElementsByTagNameNS
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with matching namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
-pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2391,7 +2392,7 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: runti
 /// 3. Replace all with node within this
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // First, remove all existing children
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
@@ -2416,7 +2417,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: *const anyopaque
 /// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-getregionflowranges
 ///
 /// Note: CSS Regions is deprecated - returns null (empty array)
-pub fn call_getRegionFlowRanges(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     // CSS Regions is deprecated - return empty array sentinel
     return @ptrFromInt(1);
@@ -2427,7 +2428,7 @@ pub fn call_getRegionFlowRanges(instance: *runtime.Instance) ImplError!*const an
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getboxquads
 ///
 /// Note: Returns empty array - requires layout engine
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) ImplError!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // Requires layout engine - return empty array sentinel
@@ -2439,7 +2440,7 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQu
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-focusableareas
 ///
 /// Note: Returns empty array - spatial navigation not implemented
-pub fn call_focusableAreas(instance: *runtime.Instance, option: dictionaries.FocusableAreasOption) ImplError!*const anyopaque {
+pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dictionaries.FocusableAreasOption)) anyerror!*const anyopaque {
     _ = instance;
     _ = option;
     // Spatial navigation not implemented - return empty array sentinel
@@ -2451,7 +2452,7 @@ pub fn call_focusableAreas(instance: *runtime.Instance, option: dictionaries.Foc
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertpointfromnode
 ///
 /// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;
@@ -2465,7 +2466,7 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
 ///
 /// Returns an empty array (no animations without rendering engine)
-pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.GetAnimationsOptions) ImplError!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // Returns empty array - no animations without rendering engine
@@ -2476,7 +2477,7 @@ pub fn call_getAnimations(instance: *runtime.Instance, options: dictionaries.Get
 /// Operation: getElementsByClassName
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with all given class names
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
-pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const names_slice = classNames.asSlice();
 
@@ -2508,7 +2509,7 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// - "afterbegin": Inside this element, before first child
 /// - "beforeend": Inside this element, after last child
 /// - "afterend": After this element (as a sibling)
-pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
     const result = insertAdjacent(instance, where.asSlice(), element) catch |err| {
         return switch (err) {
             error.SyntaxError => error.SyntaxError,
@@ -2523,7 +2524,7 @@ pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DO
 /// Operation: webkitMatchesSelector
 /// Legacy alias for matches() - Returns true if element matches the given selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-webkitmatchesselector
-pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!bool {
+pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
     // webkitMatchesSelector is an alias for matches()
     return call_matches(instance, selectors);
 }
@@ -2533,7 +2534,7 @@ pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: runtim
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-spatialnavigationsearch
 ///
 /// Note: Returns null - spatial navigation not implemented without layout engine
-pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: dictionaries.SpatialNavigationSearchOptions) ImplError!?*runtime.Instance {
+pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.SpatialNavigationDirection, options: webidl.Opt(dictionaries.SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
     _ = instance;
     _ = dir;
     _ = options;
@@ -2544,7 +2545,7 @@ pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.Spat
 /// Operation: getElementsByTagName
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with matching tag name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
-pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name_slice = qualifiedName.asSlice();
 
@@ -2567,7 +2568,7 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 /// Operation: querySelector
 /// ParentNode mixin - Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
-pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2586,7 +2587,7 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
 /// Operation: closest
 /// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-closest
-pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -2607,7 +2608,7 @@ pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) I
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-getspatialnavigationcontainer
 ///
 /// Note: Returns null - spatial navigation not implemented
-pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     // Spatial navigation not implemented - return null
     return error.NotImplemented;
@@ -2616,7 +2617,7 @@ pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) ImplError
 /// Operation: remove
 /// ChildNode mixin - Removes this element from its parent
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
-pub fn call_remove(instance: *runtime.Instance) ImplError!void {
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     ChildNode.remove(instance) catch |err| {
         return switch (err) {
             error.HierarchyRequestError => error.InvalidStateError,
@@ -2627,7 +2628,7 @@ pub fn call_remove(instance: *runtime.Instance) ImplError!void {
 
 /// Operation: removeAttribute
 /// DOM §4.8 - Removes the named attribute
-pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!void {
+pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2670,7 +2671,7 @@ pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: runtime.
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-convertrectfromnode
 ///
 /// Note: Returns null - requires layout engine for coordinate transformations
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) ImplError!*runtime.Instance {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
@@ -2687,7 +2688,7 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 /// 1. If this's attribute list does not contain attr, then throw a "NotFoundError" DOMException.
 /// 2. Remove attr.
 /// 3. Return attr.
-pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
@@ -2730,7 +2731,7 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
 /// Operation: removeAttributeNS
 /// DOM §4.8 - Removes the attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
-pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!void {
+pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -2746,7 +2747,7 @@ pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: runtime.DO
 /// The insertAdjacentText(where, data) method steps are:
 /// 1. Let text be a new Text node whose data is data and node document is this's node document.
 /// 2. Run the insert adjacent algorithm given this, where, and text.
-pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) ImplError!void {
+pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create a new Text node with the given data
@@ -2767,7 +2768,7 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen
 ///
 /// Note: Returns rejected promise - fullscreen requires browser integration
-pub fn call_requestFullscreen(instance: *runtime.Instance, options: dictionaries.FullscreenOptions) ImplError!*const anyopaque {
+pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // Fullscreen requires browser integration - return sentinel for rejected promise
@@ -2780,7 +2781,7 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: dictionaries
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
 ///
 /// Note: Returns null - requires Web Animations API and rendering engine
-pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, options: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;
@@ -2793,7 +2794,7 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: *const anyopaque, op
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // For simplified implementation, treat nodes as a single Node pointer
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
@@ -2808,7 +2809,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: *const anyopaque) ImplErr
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
 ///
 /// This is a newer DOM method for moving nodes atomically
-pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) ImplError!void {
+pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
     // Use insertBefore as a fallback (doesn't suppress callbacks but same tree result)
     _ = NodeImpl.call_insertBefore(instance, node, child) catch |err| {
         return switch (err) {
@@ -2824,7 +2825,7 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 /// Spec: https://wicg.github.io/sanitizer-api/#dom-element-gethtml
 ///
 /// Returns the innerHTML with optional shadow roots serialized
-pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOptions) ImplError!runtime.DOMString {
+pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetHTMLOptions)) anyerror!runtime.DOMString {
     _ = options;
     // get_innerHTML returns *const anyopaque which is a DOMString union
     // We need to call the serialization directly here
@@ -2854,7 +2855,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: dictionaries.GetHTMLOp
 ///
 /// The getAttributeNode(qualifiedName) method steps are to return the result of
 /// getting an attribute given qualifiedName and this.
-pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -2889,7 +2890,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
 /// Spec: https://drafts.csswg.org/css-view-transitions-1/#dom-document-startviewtransition
 ///
 /// Note: Returns null - View Transitions require rendering engine
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     // View Transitions require rendering engine - return null
@@ -2901,7 +2902,7 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: *c
 /// Spec: https://wicg.github.io/sanitizer-api/#dom-element-sethtmlunsafe
 ///
 /// Note: Requires HTML fragment parsing algorithm (not implemented)
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) ImplError!void {
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = html;
     // TODO: Requires HTML fragment parsing algorithm
@@ -2913,7 +2914,7 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: *const anyopaque) I
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview
 ///
 /// Without a layout engine, this is a no-op (returns resolved promise with undefined)
-pub fn call_scrollIntoView(instance: *runtime.Instance, arg: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = arg;
     // No-op without layout engine - returns sentinel for undefined
@@ -2924,7 +2925,7 @@ pub fn call_scrollIntoView(instance: *runtime.Instance, arg: *const anyopaque) I
 /// Operation: hasAttributes
 /// DOM §4.8 - Returns true if the element has any attributes
 /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributes
-pub fn call_hasAttributes(instance: *runtime.Instance) ImplError!bool {
+pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.attributes.items.len > 0;
 }
@@ -2934,7 +2935,7 @@ pub fn call_hasAttributes(instance: *runtime.Instance) ImplError!bool {
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-haspointercapture
 ///
 /// Without pointer event support, always returns false
-pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplError!bool {
+pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!bool {
     _ = instance;
     _ = pointerId;
     // No pointer capture without pointer event support
@@ -2951,7 +2952,7 @@ pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplE
 /// 3. If attribute exists and force is not true, remove it and return false
 /// 4. If attribute doesn't exist and force is not false, add it with empty value and return true
 /// 5. Return whether attribute now exists
-pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: bool) ImplError!bool {
+pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -3015,7 +3016,7 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-pseudo
 ///
 /// Note: Returns null - requires CSSOM and pseudo-element support
-pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) ImplError!*runtime.Instance {
+pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = @"type";
     // Requires CSSOM and pseudo-element support - return null
@@ -3028,7 +3029,7 @@ pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) I
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
 /// Full implementation would need to handle variadic Node or DOMString arguments.
-pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Get parent - if null, return (per spec)
     const parent = NodeImpl.getParent(instance) orelse return;
 
@@ -3047,7 +3048,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) ImplErr
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
 ///
 /// Note: This is a simplified implementation that handles the common single-node case.
-pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) ImplError!void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // Get parent - if null, return (per spec)
     const parent = NodeImpl.getParent(instance) orelse return;
 
@@ -3073,7 +3074,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) ImplErro
 /// Operation: setAttribute
 /// DOM §4.8 - Sets the value of the named attribute
 /// TODO: value is typed as anyopaque due to codegen - should be DOMString
-pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: *const anyopaque) ImplError!void {
+pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const name = qualifiedName.asSlice();
 
@@ -3112,7 +3113,7 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 /// - "afterend": After the element itself
 ///
 /// Note: Requires HTML fragment parsing algorithm (not implemented)
-pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: *const anyopaque) ImplError!void {
+pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = position;
     _ = string;
@@ -3126,7 +3127,7 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
 ///
 /// Returns true if the element is potentially visible (connected, rendered, not hidden).
 /// Without a layout engine, we assume elements are visible if they exist.
-pub fn call_checkVisibility(instance: *runtime.Instance, options: dictionaries.CheckVisibilityOptions) ImplError!bool {
+pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CheckVisibilityOptions)) anyerror!bool {
     _ = instance;
     _ = options; // Layout-related options can't be checked without a layout engine
 
@@ -3145,7 +3146,7 @@ pub fn call_checkVisibility(instance: *runtime.Instance, options: dictionaries.C
 ///
 /// Returns a sequence of DOMStrings (the qualified names of attributes).
 /// Note: These are not guaranteed to be unique.
-pub fn call_getAttributeNames(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a NodeList to hold the attribute names as a sequence
@@ -3187,7 +3188,7 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) ImplError!*const anyo
 ///
 /// Note: Simplified implementation - full implementation requires ShadowRoot to support
 /// mode/options initialization after creation.
-pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) ImplError!*runtime.Instance {
+pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = init_data; // TODO: Use init options when ShadowRoot supports them
 
@@ -3230,7 +3231,7 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
 /// Spec: https://w3c.github.io/pointerlock/#dom-element-requestpointerlock
 ///
 /// Note: Returns rejected promise - pointer lock requires browser integration
-pub fn call_requestPointerLock(instance: *runtime.Instance, options: dictionaries.PointerLockOptions) ImplError!*const anyopaque {
+pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PointerLockOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // Pointer lock requires browser integration - return sentinel for rejected promise
@@ -3241,7 +3242,7 @@ pub fn call_requestPointerLock(instance: *runtime.Instance, options: dictionarie
 /// Operation: hasAttributeNS
 /// DOM §4.8 - Returns true if the element has an attribute with the given namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
-pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMString, localName: runtime.DOMString) ImplError!bool {
+pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ns_slice = namespace.asSlice();
     const name_slice = localName.asSlice();
@@ -3255,7 +3256,7 @@ pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: runtime.DOMSt
 ///
 /// Returns a DOMRect representing the smallest rectangle containing the entire element.
 /// Without a layout engine, returns a DOMRect with zero dimensions at origin.
-pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Without a layout engine, return a zero-sized rect at origin
@@ -3265,7 +3266,7 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) ImplError!*runtim
 /// Operation: querySelectorAll
 /// ParentNode mixin - Returns all elements matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
-pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const selectors_str = selectors.asSlice();
 
@@ -3284,7 +3285,7 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-setpointercapture
 ///
 /// Without pointer event support, this is a no-op
-pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) ImplError!void {
+pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
     _ = instance;
     _ = pointerId;
     // No-op without pointer event support

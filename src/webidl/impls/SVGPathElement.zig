@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGPathElement = interfaces.SVGPathElement;
 
 pub const State = SVGPathElement.State;
@@ -40,40 +41,40 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for pathLength
-pub fn get_pathLength(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setPathData
-pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) ImplError!void {
+pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
     _ = instance;
     _ = pathData;
     return error.NotImplemented;
 }
 
 /// Operation: getTotalLength
-pub fn call_getTotalLength(instance: *runtime.Instance) ImplError!f32 {
+pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPointAtLength
-pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) ImplError!*runtime.Instance {
+pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
     _ = instance;
     _ = distance;
     return error.NotImplemented;
 }
 
 /// Operation: getPathData
-pub fn call_getPathData(instance: *runtime.Instance, settings: dictionaries.SVGPathDataSettings) ImplError!*const anyopaque {
+pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!*const anyopaque {
     _ = instance;
     _ = settings;
     return error.NotImplemented;
 }
 
 /// Operation: getPathSegmentAtLength
-pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) ImplError!?*runtime.Instance {
+pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!?*runtime.Instance {
     _ = instance;
     _ = distance;
     return null;

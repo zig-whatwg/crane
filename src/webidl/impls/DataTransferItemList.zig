@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, data: runtime.DOMString, @"type": runtime.DOMString) ImplError!?*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, data: runtime.DOMString, @"type": runtime.DOMString) anyerror!?*runtime.Instance {
     _ = instance;
     _ = data;
     _ = @"type";
@@ -54,14 +54,14 @@ pub fn call_add(instance: *runtime.Instance, data: runtime.DOMString, @"type": r
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance, index: u32) ImplError!void {
+pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!void {
+pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

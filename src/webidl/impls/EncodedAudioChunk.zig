@@ -53,31 +53,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.EncodedAudioChunkType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.EncodedAudioChunkType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for timestamp
-pub fn get_timestamp(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_timestamp(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!?u64 {
+pub fn get_duration(instance: *runtime.Instance) anyerror!?u64 {
     _ = instance;
     return null;
 }
 
 /// Getter for byteLength
-pub fn get_byteLength(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_byteLength(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: copyTo
-pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource) ImplError!void {
+pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource) anyerror!void {
     _ = instance;
     _ = destination;
     return error.NotImplemented;

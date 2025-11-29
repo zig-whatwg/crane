@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
 
 pub const State = ServiceWorkerContainer.State;
@@ -40,77 +41,77 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for controller
-pub fn get_controller(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_controller(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for oncontrollerchange
-pub fn get_oncontrollerchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncontrollerchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onmessage
-pub fn get_onmessage(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onmessageerror
-pub fn get_onmessageerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for oncontrollerchange
-pub fn set_oncontrollerchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncontrollerchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onmessage
-pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onmessageerror
-pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: startMessages
-pub fn call_startMessages(instance: *runtime.Instance) ImplError!void {
+pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegistrations
-pub fn call_getRegistrations(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegistration
-pub fn call_getRegistration(instance: *runtime.Instance, clientURL: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
     _ = instance;
     _ = clientURL;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, scriptURL: *const anyopaque, options: dictionaries.RegistrationOptions) ImplError!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = scriptURL;
     _ = options;

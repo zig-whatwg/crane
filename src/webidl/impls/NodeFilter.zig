@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: acceptNode
-pub fn call_acceptNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u16 {
+pub fn call_acceptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!u16 {
     _ = instance;
     _ = node;
     return error.NotImplemented;

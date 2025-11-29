@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onadvertisementreceived
-pub fn get_onadvertisementreceived(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onadvertisementreceived(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ongattserverdisconnected
-pub fn get_ongattserverdisconnected(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ongattserverdisconnected(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onadvertisementreceived
-pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onadvertisementreceived(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ongattserverdisconnected
-pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

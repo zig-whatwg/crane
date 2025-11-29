@@ -40,83 +40,83 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for rawId
-pub fn get_rawId(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_rawId(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for response
-pub fn get_response(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_response(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for authenticatorAttachment
-pub fn get_authenticatorAttachment(instance: *runtime.Instance) ImplError!?runtime.DOMString {
+pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
 
 /// Operation: isUserVerifyingPlatformAuthenticatorAvailable
-pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isConditionalMediationAvailable
-pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: signalUnknownCredential
-pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: dictionaries.UnknownCredentialOptions) ImplError!*const anyopaque {
+pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: dictionaries.UnknownCredentialOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: signalCurrentUserDetails
-pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: dictionaries.CurrentUserDetailsOptions) ImplError!*const anyopaque {
+pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: dictionaries.CurrentUserDetailsOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: parseRequestOptionsFromJSON
-pub fn call_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialRequestOptionsJSON) ImplError!dictionaries.PublicKeyCredentialRequestOptions {
+pub fn call_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialRequestOptionsJSON) anyerror!dictionaries.PublicKeyCredentialRequestOptions {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!typedefs.PublicKeyCredentialJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!typedefs.PublicKeyCredentialJSON {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getClientCapabilities
-pub fn call_getClientCapabilities(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getClientExtensionResults
-pub fn call_getClientExtensionResults(instance: *runtime.Instance) ImplError!dictionaries.AuthenticationExtensionsClientOutputs {
+pub fn call_getClientExtensionResults(instance: *runtime.Instance) anyerror!dictionaries.AuthenticationExtensionsClientOutputs {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: signalAllAcceptedCredentials
-pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: dictionaries.AllAcceptedCredentialsOptions) ImplError!*const anyopaque {
+pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: dictionaries.AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: parseCreationOptionsFromJSON
-pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialCreationOptionsJSON) ImplError!dictionaries.PublicKeyCredentialCreationOptions {
+pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: dictionaries.PublicKeyCredentialCreationOptionsJSON) anyerror!dictionaries.PublicKeyCredentialCreationOptions {
     _ = instance;
     _ = options;
     return error.NotImplemented;

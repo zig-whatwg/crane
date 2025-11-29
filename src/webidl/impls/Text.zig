@@ -15,6 +15,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const infra = @import("infra");
 const Text = interfaces.Text;
 
@@ -98,7 +99,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: runtime.DOMString) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     const instance = try init(allocator, State, &Text.vtable, ctx);
     errdefer deinit(instance);
 
@@ -122,7 +123,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data
 ///
 /// A contiguous Text node is a Text node whose previous sibling is also a Text node,
 /// and the chain continues until we find a non-Text node or the start of the parent.
-pub fn get_wholeText(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     var result = infra.List(u8).init(internal.allocator);
@@ -158,7 +159,7 @@ pub fn get_wholeText(instance: *runtime.Instance) !runtime.DOMString {
 /// Getter for assignedSlot (from Slottable mixin)
 /// Returns the slot this node is assigned to, or null if not assigned.
 /// https://dom.spec.whatwg.org/#dom-slottable-assignedslot
-pub fn get_assignedSlot(instance: *runtime.Instance) !?*runtime.Instance {
+pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.assigned_slot;
 }
@@ -181,7 +182,7 @@ pub fn get_assignedSlot(instance: *runtime.Instance) !?*runtime.Instance {
 ///    6.2-6.5. Update live ranges
 /// 7. Replace data with node, offset, count, and empty string.
 /// 8. Return new node.
-pub fn call_splitText(instance: *runtime.Instance, offset: u32) !*runtime.Instance {
+pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Get length from CharacterData
@@ -233,7 +234,7 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) !*runtime.Instan
 ///
 /// Returns a sequence of DOMQuads representing the CSS boxes for this element.
 /// Note: Returns empty array - requires CSSOM/layout integration
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQuadOptions) !*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // Return empty array sentinel - layout engine required for actual box computation
@@ -245,7 +246,7 @@ pub fn call_getBoxQuads(instance: *runtime.Instance, options: dictionaries.BoxQu
 ///
 /// Converts a DOMQuadInit from another node's coordinate system to this node's.
 /// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
+pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.DOMQuadInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = quad;
     _ = from;
@@ -259,7 +260,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 ///
 /// Converts a DOMRectReadOnly from another node's coordinate system to this node's.
 /// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
+pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = rect;
     _ = from;
@@ -273,7 +274,7 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 ///
 /// Converts a DOMPointInit from another node's coordinate system to this node's.
 /// Note: Returns null - requires CSSOM/layout integration for coordinate transforms
-pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: dictionaries.ConvertCoordinateOptions) !*runtime.Instance {
+pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionaries.DOMPointInit, from: typedefs.GeometryNode, options: webidl.Opt(dictionaries.ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = point;
     _ = from;

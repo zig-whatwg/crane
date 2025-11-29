@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const NDEFReader = interfaces.NDEFReader;
 
 pub const State = NDEFReader.State;
@@ -52,40 +53,40 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for onreading
-pub fn get_onreading(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreading(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onreadingerror
-pub fn get_onreadingerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onreadingerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onreading
-pub fn set_onreading(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreading(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onreadingerror
-pub fn set_onreadingerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onreadingerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: scan
-pub fn call_scan(instance: *runtime.Instance, options: dictionaries.NDEFScanOptions) ImplError!*const anyopaque {
+pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFScanOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: dictionaries.NDEFWriteOptions) ImplError!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: webidl.Opt(dictionaries.NDEFWriteOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = message;
     _ = options;
@@ -93,7 +94,7 @@ pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSour
 }
 
 /// Operation: makeReadOnly
-pub fn call_makeReadOnly(instance: *runtime.Instance, options: dictionaries.NDEFMakeReadOnlyOptions) ImplError!*const anyopaque {
+pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

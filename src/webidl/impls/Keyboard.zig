@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const Keyboard = interfaces.Keyboard;
 
 pub const State = Keyboard.State;
@@ -40,33 +41,33 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onlayoutchange
-pub fn get_onlayoutchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onlayoutchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onlayoutchange
-pub fn set_onlayoutchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onlayoutchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: unlock
-pub fn call_unlock(instance: *runtime.Instance) ImplError!void {
+pub fn call_unlock(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: lock
-pub fn call_lock(instance: *runtime.Instance, keyCodes: *const anyopaque) ImplError!*const anyopaque {
+pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = keyCodes;
     return error.NotImplemented;
 }
 
 /// Operation: getLayoutMap
-pub fn call_getLayoutMap(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,91 +40,91 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for startTime
-pub fn get_startTime(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_startTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for duration
-pub fn get_duration(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_duration(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for entryType
-pub fn get_entryType(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_entryType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for invokerType
-pub fn get_invokerType(instance: *runtime.Instance) ImplError!enums.ScriptInvokerType {
+pub fn get_invokerType(instance: *runtime.Instance) anyerror!enums.ScriptInvokerType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for invoker
-pub fn get_invoker(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_invoker(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for executionStart
-pub fn get_executionStart(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_executionStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceURL
-pub fn get_sourceURL(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sourceURL(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceFunctionName
-pub fn get_sourceFunctionName(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sourceFunctionName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sourceCharPosition
-pub fn get_sourceCharPosition(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_sourceCharPosition(instance: *runtime.Instance) anyerror!i64 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pauseDuration
-pub fn get_pauseDuration(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_pauseDuration(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for forcedStyleAndLayoutDuration
-pub fn get_forcedStyleAndLayoutDuration(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn get_forcedStyleAndLayoutDuration(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for window
-pub fn get_window(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_window(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for windowAttribution
-pub fn get_windowAttribution(instance: *runtime.Instance) ImplError!enums.ScriptWindowAttribution {
+pub fn get_windowAttribution(instance: *runtime.Instance) anyerror!enums.ScriptWindowAttribution {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

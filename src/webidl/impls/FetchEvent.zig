@@ -54,43 +54,43 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for request
-pub fn get_request(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_request(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for preloadResponse
-pub fn get_preloadResponse(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for clientId
-pub fn get_clientId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_clientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for resultingClientId
-pub fn get_resultingClientId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_resultingClientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for replacesClientId
-pub fn get_replacesClientId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_replacesClientId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for handled
-pub fn get_handled(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_handled(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: respondWith
-pub fn call_respondWith(instance: *runtime.Instance, r: *const anyopaque) ImplError!void {
+pub fn call_respondWith(instance: *runtime.Instance, r: *const anyopaque) anyerror!void {
     _ = instance;
     _ = r;
     return error.NotImplemented;

@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CredentialsContainer = interfaces.CredentialsContainer;
 
 pub const State = CredentialsContainer.State;
@@ -40,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: store
-pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = credential;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, options: dictionaries.CredentialRequestOptions) ImplError!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialRequestOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: preventSilentAccess
-pub fn call_preventSilentAccess(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: dictionaries.CredentialCreationOptions) ImplError!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialCreationOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

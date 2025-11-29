@@ -12,6 +12,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const AbortSignal = interfaces.AbortSignal;
 
 pub const State = AbortSignal.State;
@@ -80,7 +81,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for aborted
 ///
 /// Spec: § 3.3.1 "The aborted getter steps are to return this's abort reason if it exists; otherwise false"
-pub fn get_aborted(instance: *runtime.Instance) ImplError!bool {
+pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.aborted;
@@ -90,7 +91,7 @@ pub fn get_aborted(instance: *runtime.Instance) ImplError!bool {
 ///
 /// Spec: § 3.3.1 "The reason getter steps are to return this's abort reason"
 /// Note: Returns InvalidState when reason is not set (undefined in JS)
-pub fn get_reason(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_reason(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // Return reason (or InvalidState if not set - represents undefined)
@@ -98,14 +99,14 @@ pub fn get_reason(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onabort orelse return error.InvalidState;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onabort = value;
@@ -115,7 +116,7 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 ///
 /// Spec: § 3.3.2 "Returns a signal that is aborted when any of the given signals are aborted"
 /// Note: Full implementation requires DOM event infrastructure
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     // Requires iteration over signals and event listener setup
@@ -126,7 +127,7 @@ pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) ImplErr
 /// Static operation: abort(reason)
 ///
 /// Spec: § 3.3.2 "Returns an immediately aborted signal"
-pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = reason;
     // Static method that creates a new AbortSignal and immediately aborts it
@@ -137,7 +138,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: *const anyopaque) ImplErr
 /// Static operation: timeout(milliseconds)
 ///
 /// Spec: § 3.3.2 "Returns a signal that will abort after the given milliseconds"
-pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) ImplError!*runtime.Instance {
+pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
     _ = instance;
     _ = milliseconds;
     // Requires timer/scheduling infrastructure
@@ -147,7 +148,7 @@ pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) ImplError!*r
 /// Operation: throwIfAborted
 ///
 /// Spec: § 3.3.3 "Throws this's abort reason if this is aborted"
-pub fn call_throwIfAborted(instance: *runtime.Instance) ImplError!void {
+pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

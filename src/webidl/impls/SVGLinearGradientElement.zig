@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for x1
-pub fn get_x1(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y1
-pub fn get_y1(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for x2
-pub fn get_x2(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_x2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for y2
-pub fn get_y2(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_y2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

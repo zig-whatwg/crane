@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for space
-pub fn get_space(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for orientation
-pub fn get_orientation(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onredraw
-pub fn get_onredraw(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onredraw(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for space
-pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_space(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for orientation
-pub fn set_orientation(instance: *runtime.Instance, value: *runtime.Instance) ImplError!void {
+pub fn set_orientation(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onredraw
-pub fn set_onredraw(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onredraw(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

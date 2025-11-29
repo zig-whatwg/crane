@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for released
-pub fn get_released(instance: *runtime.Instance) ImplError!bool {
+pub fn get_released(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.WakeLockType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.WakeLockType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onrelease
-pub fn get_onrelease(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onrelease(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onrelease
-pub fn set_onrelease(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onrelease(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: release
-pub fn call_release(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_release(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

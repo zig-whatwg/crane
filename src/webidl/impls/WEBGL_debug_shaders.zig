@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getTranslatedShaderSource
-pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     _ = shader;
     return error.NotImplemented;

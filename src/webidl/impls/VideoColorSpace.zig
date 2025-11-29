@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const VideoColorSpace = interfaces.VideoColorSpace;
 
 pub const State = VideoColorSpace.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.VideoColorSpaceInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.VideoColorSpaceInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &VideoColorSpace.vtable, ctx);
     errdefer deinit(instance);
@@ -53,31 +54,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for primaries
-pub fn get_primaries(instance: *runtime.Instance) ImplError!?enums.VideoColorPrimaries {
+pub fn get_primaries(instance: *runtime.Instance) anyerror!?enums.VideoColorPrimaries {
     _ = instance;
     return null;
 }
 
 /// Getter for transfer
-pub fn get_transfer(instance: *runtime.Instance) ImplError!?enums.VideoTransferCharacteristics {
+pub fn get_transfer(instance: *runtime.Instance) anyerror!?enums.VideoTransferCharacteristics {
     _ = instance;
     return null;
 }
 
 /// Getter for matrix
-pub fn get_matrix(instance: *runtime.Instance) ImplError!?enums.VideoMatrixCoefficients {
+pub fn get_matrix(instance: *runtime.Instance) anyerror!?enums.VideoMatrixCoefficients {
     _ = instance;
     return null;
 }
 
 /// Getter for fullRange
-pub fn get_fullRange(instance: *runtime.Instance) ImplError!?bool {
+pub fn get_fullRange(instance: *runtime.Instance) anyerror!?bool {
     _ = instance;
     return null;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!dictionaries.VideoColorSpaceInit {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.VideoColorSpaceInit {
     _ = instance;
     return error.NotImplemented;
 }

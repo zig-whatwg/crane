@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for presentationArea
-pub fn get_presentationArea(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_presentationArea(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Operation: updateInkTrailStartPoint
-pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtime.Instance, style: dictionaries.InkTrailStyle) ImplError!void {
+pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtime.Instance, style: dictionaries.InkTrailStyle) anyerror!void {
     _ = instance;
     _ = event;
     _ = style;

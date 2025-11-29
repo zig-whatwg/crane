@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for rtcIdentityProvider
-pub fn get_rtcIdentityProvider(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_rtcIdentityProvider(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,67 +40,67 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for city
-pub fn get_city(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_city(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for country
-pub fn get_country(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_country(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for dependentLocality
-pub fn get_dependentLocality(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_dependentLocality(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for organization
-pub fn get_organization(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_organization(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for phone
-pub fn get_phone(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_phone(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for postalCode
-pub fn get_postalCode(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_postalCode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for recipient
-pub fn get_recipient(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_recipient(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for region
-pub fn get_region(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_region(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for sortingCode
-pub fn get_sortingCode(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_sortingCode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for addressLine
-pub fn get_addressLine(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_addressLine(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

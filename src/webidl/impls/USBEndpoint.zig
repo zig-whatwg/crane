@@ -55,25 +55,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, alte
 }
 
 /// Getter for endpointNumber
-pub fn get_endpointNumber(instance: *runtime.Instance) ImplError!u8 {
+pub fn get_endpointNumber(instance: *runtime.Instance) anyerror!u8 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for direction
-pub fn get_direction(instance: *runtime.Instance) ImplError!enums.USBDirection {
+pub fn get_direction(instance: *runtime.Instance) anyerror!enums.USBDirection {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.USBEndpointType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.USBEndpointType {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for packetSize
-pub fn get_packetSize(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_packetSize(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }

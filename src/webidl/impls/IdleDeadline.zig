@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for didTimeout
-pub fn get_didTimeout(instance: *runtime.Instance) ImplError!bool {
+pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: timeRemaining
-pub fn call_timeRemaining(instance: *runtime.Instance) ImplError!typedefs.DOMHighResTimeStamp {
+pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
     _ = instance;
     return error.NotImplemented;
 }

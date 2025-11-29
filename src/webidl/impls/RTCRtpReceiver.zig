@@ -40,70 +40,70 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for transport
-pub fn get_transport(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_transport(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for jitterBufferTarget
-pub fn get_jitterBufferTarget(instance: *runtime.Instance) ImplError!?typedefs.DOMHighResTimeStamp {
+pub fn get_jitterBufferTarget(instance: *runtime.Instance) anyerror!?typedefs.DOMHighResTimeStamp {
     _ = instance;
     return null;
 }
 
 /// Getter for transform
-pub fn get_transform(instance: *runtime.Instance) ImplError!?typedefs.RTCRtpTransform {
+pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpTransform {
     _ = instance;
     return null;
 }
 
 /// Setter for jitterBufferTarget
-pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: typedefs.DOMHighResTimeStamp) ImplError!void {
+pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: typedefs.DOMHighResTimeStamp) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransform) ImplError!void {
+pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransform) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getContributingSources
-pub fn call_getContributingSources(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) ImplError!?dictionaries.RTCRtpCapabilities {
+pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;
     return null;
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getParameters
-pub fn call_getParameters(instance: *runtime.Instance) ImplError!dictionaries.RTCRtpReceiveParameters {
+pub fn call_getParameters(instance: *runtime.Instance) anyerror!dictionaries.RTCRtpReceiveParameters {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSynchronizationSources
-pub fn call_getSynchronizationSources(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

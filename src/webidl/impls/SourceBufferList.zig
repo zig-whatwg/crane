@@ -40,32 +40,32 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onaddsourcebuffer
-pub fn get_onaddsourcebuffer(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onaddsourcebuffer(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onremovesourcebuffer
-pub fn get_onremovesourcebuffer(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onremovesourcebuffer(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onaddsourcebuffer
-pub fn set_onaddsourcebuffer(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onaddsourcebuffer(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onremovesourcebuffer
-pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

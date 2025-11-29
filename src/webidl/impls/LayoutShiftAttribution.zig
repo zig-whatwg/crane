@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for node
-pub fn get_node(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_node(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for previousRect
-pub fn get_previousRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_previousRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for currentRect
-pub fn get_currentRect(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_currentRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }

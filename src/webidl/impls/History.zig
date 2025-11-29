@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const History = interfaces.History;
 
 pub const State = History.State;
@@ -40,38 +41,38 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for length
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for scrollRestoration
-pub fn get_scrollRestoration(instance: *runtime.Instance) ImplError!enums.ScrollRestoration {
+pub fn get_scrollRestoration(instance: *runtime.Instance) anyerror!enums.ScrollRestoration {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for state
-pub fn get_state(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_state(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for scrollRestoration
-pub fn set_scrollRestoration(instance: *runtime.Instance, value: enums.ScrollRestoration) ImplError!void {
+pub fn set_scrollRestoration(instance: *runtime.Instance, value: enums.ScrollRestoration) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: forward
-pub fn call_forward(instance: *runtime.Instance) ImplError!void {
+pub fn call_forward(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: pushState
-pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: runtime.USVString) ImplError!void {
+pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
     _ = instance;
     _ = data;
     _ = unused;
@@ -80,20 +81,20 @@ pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unuse
 }
 
 /// Operation: go
-pub fn call_go(instance: *runtime.Instance, delta: i32) ImplError!void {
+pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
     _ = instance;
     _ = delta;
     return error.NotImplemented;
 }
 
 /// Operation: back
-pub fn call_back(instance: *runtime.Instance) ImplError!void {
+pub fn call_back(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: replaceState
-pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: runtime.USVString) ImplError!void {
+pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
     _ = instance;
     _ = data;
     _ = unused;

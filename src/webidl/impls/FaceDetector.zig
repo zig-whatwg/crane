@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FaceDetector = interfaces.FaceDetector;
 
 pub const State = FaceDetector.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, faceDetectorOptions: dictionaries.FaceDetectorOptions) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, faceDetectorOptions: webidl.Opt(dictionaries.FaceDetectorOptions)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &FaceDetector.vtable, ctx);
     errdefer deinit(instance);
@@ -53,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, face
 }
 
 /// Operation: detect
-pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) ImplError!*const anyopaque {
+pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) anyerror!*const anyopaque {
     _ = instance;
     _ = image;
     return error.NotImplemented;

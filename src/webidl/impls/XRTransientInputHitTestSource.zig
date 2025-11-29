@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: cancel
-pub fn call_cancel(instance: *runtime.Instance) ImplError!void {
+pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

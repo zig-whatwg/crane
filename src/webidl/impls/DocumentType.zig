@@ -98,21 +98,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for name
 /// DOM §4.7 - Returns this's name.
-pub fn get_name(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.name);
 }
 
 /// Getter for publicId
 /// DOM §4.7 - Returns this's public ID.
-pub fn get_publicId(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_publicId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.public_id);
 }
 
 /// Getter for systemId
 /// DOM §4.7 - Returns this's system ID.
-pub fn get_systemId(instance: *runtime.Instance) !runtime.DOMString {
+pub fn get_systemId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return runtime.DOMString.initInterned(internal.system_id);
 }
@@ -128,7 +128,7 @@ const ChildNode = mixins.ChildNode;
 /// Operation: remove (from ChildNode mixin)
 /// Removes this doctype from its parent
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
-pub fn call_remove(instance: *runtime.Instance) !void {
+pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     // Step 1: If this's parent is null, return
     const parent = NodeImpl.getParent(instance) orelse return;
 
@@ -139,7 +139,7 @@ pub fn call_remove(instance: *runtime.Instance) !void {
 /// Operation: before (from ChildNode mixin)
 /// Inserts nodes just before this doctype
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-before
-pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -160,7 +160,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: *const anyopaque) !void {
 /// Operation: after (from ChildNode mixin)
 /// Inserts nodes just after this doctype
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-after
-pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;
@@ -180,7 +180,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: *const anyopaque) !void {
 /// Operation: replaceWith (from ChildNode mixin)
 /// Replaces this doctype with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: *const anyopaque) !void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = internal;

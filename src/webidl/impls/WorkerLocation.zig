@@ -40,55 +40,55 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for href
-pub fn get_href(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for origin
-pub fn get_origin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for protocol
-pub fn get_protocol(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for host
-pub fn get_host(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hostname
-pub fn get_hostname(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for port
-pub fn get_port(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for pathname
-pub fn get_pathname(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for search
-pub fn get_search(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for hash
-pub fn get_hash(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }

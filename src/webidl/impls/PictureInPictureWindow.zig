@@ -40,25 +40,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for width
-pub fn get_width(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_width(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for height
-pub fn get_height(instance: *runtime.Instance) ImplError!i32 {
+pub fn get_height(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onresize
-pub fn get_onresize(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onresize(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onresize
-pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

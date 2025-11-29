@@ -40,39 +40,39 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onconnect
-pub fn get_onconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ondisconnect
-pub fn get_ondisconnect(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_ondisconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onconnect
-pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ondisconnect
-pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getDevices
-pub fn call_getDevices(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.HIDDeviceRequestOptions) ImplError!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.HIDDeviceRequestOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

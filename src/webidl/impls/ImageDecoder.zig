@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ImageDecoder = interfaces.ImageDecoder;
 
 pub const State = ImageDecoder.State;
@@ -53,51 +54,51 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for complete
-pub fn get_complete(instance: *runtime.Instance) ImplError!bool {
+pub fn get_complete(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for completed
-pub fn get_completed(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_completed(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for tracks
-pub fn get_tracks(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_tracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: decode
-pub fn call_decode(instance: *runtime.Instance, options: dictionaries.ImageDecodeOptions) ImplError!*const anyopaque {
+pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageDecodeOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isTypeSupported
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*const anyopaque {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

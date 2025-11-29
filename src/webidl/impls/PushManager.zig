@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const PushManager = interfaces.PushManager;
 
 pub const State = PushManager.State;
@@ -40,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for supportedContentEncodings
-pub fn get_supportedContentEncodings(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: permissionState
-pub fn call_permissionState(instance: *runtime.Instance, options: dictionaries.PushSubscriptionOptionsInit) ImplError!*const anyopaque {
+pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: subscribe
-pub fn call_subscribe(instance: *runtime.Instance, options: dictionaries.PushSubscriptionOptionsInit) ImplError!*const anyopaque {
+pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getSubscription
-pub fn call_getSubscription(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

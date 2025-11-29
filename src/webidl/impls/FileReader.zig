@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const FileReader = interfaces.FileReader;
 
 pub const State = FileReader.State;
@@ -52,130 +53,130 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for readyState
-pub fn get_readyState(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for result
-pub fn get_result(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_result(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for error
-pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
 
 /// Getter for onloadstart
-pub fn get_onloadstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onloadstart(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onprogress
-pub fn get_onprogress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onprogress(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onload
-pub fn get_onload(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onload(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for onloadend
-pub fn get_onloadend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onloadend(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for onloadstart
-pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onprogress
-pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onload
-pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for onloadend
-pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: readAsArrayBuffer
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsBinaryString
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: readAsDataURL
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     _ = instance;
     _ = blob;
     return error.NotImplemented;
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: readAsText
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: runtime.DOMString) ImplError!void {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!void {
     _ = instance;
     _ = blob;
     _ = encoding;

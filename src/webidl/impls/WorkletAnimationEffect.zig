@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for localTime
-pub fn get_localTime(instance: *runtime.Instance) ImplError!?f64 {
+pub fn get_localTime(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
 
 /// Setter for localTime
-pub fn set_localTime(instance: *runtime.Instance, value: f64) ImplError!void {
+pub fn set_localTime(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getTiming
-pub fn call_getTiming(instance: *runtime.Instance) ImplError!dictionaries.EffectTiming {
+pub fn call_getTiming(instance: *runtime.Instance) anyerror!dictionaries.EffectTiming {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getComputedTiming
-pub fn call_getComputedTiming(instance: *runtime.Instance) ImplError!dictionaries.ComputedEffectTiming {
+pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries.ComputedEffectTiming {
     _ = instance;
     return error.NotImplemented;
 }

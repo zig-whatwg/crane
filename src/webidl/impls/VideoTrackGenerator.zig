@@ -52,25 +52,25 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Getter for writable
-pub fn get_writable(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for muted
-pub fn get_muted(instance: *runtime.Instance) ImplError!bool {
+pub fn get_muted(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for track
-pub fn get_track(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for muted
-pub fn set_muted(instance: *runtime.Instance, value: bool) ImplError!void {
+pub fn set_muted(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

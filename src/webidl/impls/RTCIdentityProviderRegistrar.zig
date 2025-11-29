@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, idp: dictionaries.RTCIdentityProvider) ImplError!void {
+pub fn call_register(instance: *runtime.Instance, idp: dictionaries.RTCIdentityProvider) anyerror!void {
     _ = instance;
     _ = idp;
     return error.NotImplemented;

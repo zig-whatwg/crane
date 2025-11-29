@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const ExtendableMessageEvent = interfaces.ExtendableMessageEvent;
 
 pub const State = ExtendableMessageEvent.State;
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.ExtendableMessageEventInit) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableMessageEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ExtendableMessageEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -54,31 +55,31 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for origin
-pub fn get_origin(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for lastEventId
-pub fn get_lastEventId(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for source
-pub fn get_source(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_source(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ports
-pub fn get_ports(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
