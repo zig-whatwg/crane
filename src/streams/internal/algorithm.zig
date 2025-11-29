@@ -126,23 +126,11 @@ fn jsCallbackInvoke(
         return promise;
     };
 
-    // Get the controller's V8 wrapper from cache
-    // The wrapper cache is stored in the context data
+    // Get the controller's V8 wrapper from cache using engine interface
     const controller_v8: ?*anyopaque = blk: {
-        if (controller.ctx.getV8WrapperCacheStorage()) |cache_storage| {
-            // Import WrapperCache type - we need to use comptime import trick
-            // since we can't import V8-specific code directly
-            const WrapperCachePtr = *anyopaque;
-            const cache: WrapperCachePtr = cache_storage;
-
-            // The wrapper cache has a get() method that takes *runtime.Instance
-            // We need to call it through the generic cache interface
-            // For now, we'll pass null for controller and let the callback handle it
-            // TODO: Add getWrapperForInstance to EngineInterface or Context
-            _ = cache;
-            break :blk null;
-        }
-        break :blk null;
+        const get_wrapper_fn = engine.getWrapperForInstance orelse break :blk null;
+        const cache_storage = controller.ctx.getV8WrapperCacheStorage() orelse break :blk null;
+        break :blk get_wrapper_fn(engine_ctx, cache_storage, @ptrCast(controller));
     };
 
     // Invoke the JavaScript callback through the engine

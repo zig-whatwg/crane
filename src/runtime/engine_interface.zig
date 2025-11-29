@@ -320,6 +320,45 @@ pub const EngineInterface = struct {
         arg: ?*const anyopaque,
     ) EngineError!?*anyopaque,
 
+    /// Get the JS wrapper for a Zig runtime instance
+    ///
+    /// Used to retrieve the V8/JSC wrapper object for a Zig instance.
+    /// This is needed when invoking JS callbacks that expect the wrapper.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - wrapper_cache: Opaque pointer to the wrapper cache
+    ///   - instance: The Zig runtime instance
+    ///
+    /// Returns:
+    ///   - Opaque pointer to JS wrapper object, or null if not cached
+    getWrapperForInstance: ?*const fn (
+        engine_ctx: *anyopaque,
+        wrapper_cache: *anyopaque,
+        instance: *anyopaque,
+    ) ?*anyopaque,
+
+    /// Chain a fulfillment/rejection handler to a JS Promise
+    ///
+    /// Used to bridge JS Promises to Zig AsyncPromise. When the JS Promise
+    /// settles, the appropriate handler is called with fulfillment context.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - js_promise: Opaque pointer to JS Promise
+    ///   - on_fulfill_ctx: Context pointer passed to fulfillment callback
+    ///   - on_reject_ctx: Context pointer passed to rejection callback
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError on failure
+    chainPromiseHandlers: ?*const fn (
+        engine_ctx: *anyopaque,
+        js_promise: *anyopaque,
+        on_fulfill_ctx: *anyopaque,
+        on_reject_ctx: *anyopaque,
+    ) EngineError!void,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -345,6 +384,8 @@ pub const stub_engine: EngineInterface = .{
     .requestGarbageCollection = stubRequestGarbageCollection,
     .scheduleOnMainThread = stubScheduleOnMainThread,
     .invokeStreamCallback = stubInvokeStreamCallback,
+    .getWrapperForInstance = stubGetWrapperForInstance,
+    .chainPromiseHandlers = stubChainPromiseHandlers,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -393,6 +434,25 @@ fn stubInvokeStreamCallback(
     _: ?*const anyopaque,
 ) EngineError!?*anyopaque {
     // Stub: No JS engine available, can't invoke callback
+    return EngineError.NoEngine;
+}
+
+fn stubGetWrapperForInstance(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: *anyopaque,
+) ?*anyopaque {
+    // Stub: No wrapper cache available
+    return null;
+}
+
+fn stubChainPromiseHandlers(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No JS engine available
     return EngineError.NoEngine;
 }
 

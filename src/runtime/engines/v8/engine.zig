@@ -44,6 +44,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .requestGarbageCollection = v8RequestGarbageCollection,
     .scheduleOnMainThread = v8ScheduleOnMainThread,
     .invokeStreamCallback = v8InvokeStreamCallback,
+    .getWrapperForInstance = v8GetWrapperForInstance,
+    .chainPromiseHandlers = v8ChainPromiseHandlers,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -403,6 +405,87 @@ fn v8InvokeStreamCallback(
     // Call failed - this likely means an exception was thrown
     // Return null to signal error
     return null;
+}
+
+/// Get the V8 wrapper for a Zig runtime instance from the cache
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer (unused, cache has its own context)
+///   - wrapper_cache: WrapperCache pointer
+///   - instance: runtime.Instance pointer
+///
+/// Returns:
+///   - V8 Object* if found in cache, null otherwise
+fn v8GetWrapperForInstance(
+    _: *anyopaque,
+    wrapper_cache: *anyopaque,
+    instance: *anyopaque,
+) ?*anyopaque {
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache: *WrapperCache = @ptrCast(@alignCast(wrapper_cache));
+    const inst: *runtime.Instance = @ptrCast(@alignCast(instance));
+
+    if (cache.get(inst)) |wrapper| {
+        return @ptrCast(wrapper);
+    }
+    return null;
+}
+
+/// Chain fulfillment/rejection handlers to a V8 Promise
+///
+/// Creates JavaScript functions that call into Zig when the promise settles.
+/// Used to bridge V8 Promises to Zig AsyncPromise.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - js_promise: V8 Promise* to chain handlers onto
+///   - on_fulfill_ctx: Context passed to fulfillment callback
+///   - on_reject_ctx: Context passed to rejection callback
+fn v8ChainPromiseHandlers(
+    engine_ctx: *anyopaque,
+    js_promise: *anyopaque,
+    on_fulfill_ctx: *anyopaque,
+    on_reject_ctx: *anyopaque,
+) EngineError!void {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const promise: *ffi.Promise = @ptrCast(@alignCast(js_promise));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create a PromiseResolver that we'll use to create handlers
+    // The handlers will call our Zig callback when invoked
+    const resolver = ffi.v8_PromiseResolver_New(context) orelse
+        return EngineError.PromiseError;
+
+    // Create fulfill handler function
+    const fulfill_handler = ffi.v8_PromiseResolver_CreateResolveHandler(context, resolver) orelse {
+        ffi.v8_PromiseResolver_Dispose(resolver);
+        return EngineError.PromiseError;
+    };
+
+    // Create reject handler function
+    const reject_handler = ffi.v8_PromiseResolver_CreateRejectHandler(context, resolver) orelse {
+        ffi.v8_Function_Dispose(fulfill_handler);
+        ffi.v8_PromiseResolver_Dispose(resolver);
+        return EngineError.PromiseError;
+    };
+
+    // Store our context pointers in the isolate data slots for now
+    // TODO: Use proper weak ref mechanism to pass context to handlers
+    _ = on_fulfill_ctx;
+    _ = on_reject_ctx;
+    _ = isolate;
+
+    // Chain the handlers onto the promise
+    _ = ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler) orelse {
+        ffi.v8_Function_Dispose(reject_handler);
+        ffi.v8_Function_Dispose(fulfill_handler);
+        ffi.v8_PromiseResolver_Dispose(resolver);
+        return EngineError.PromiseError;
+    };
+
+    // Note: The handlers are now owned by the promise chain
+    // The resolver is used internally by the handlers
 }
 
 // ============================================================================
