@@ -54,45 +54,74 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+// =============================================================================
+// Registry Pattern for DOM Inheritance
+// =============================================================================
+// DocumentFragment inherits from Node, which inherits from EventTarget.
+// Each class in the inheritance chain needs its own internal state.
+// We use a global registry keyed by instance pointer to store each class's state.
+
+var doc_frag_registry: ?std.AutoHashMap(usize, *InternalState) = null;
+
+fn ensureRegistry() void {
+    if (doc_frag_registry == null) {
+        doc_frag_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) void {
+    ensureRegistry();
+    doc_frag_registry.?.put(@intFromPtr(instance), internal) catch {};
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    if (doc_frag_registry) |*reg| {
+        return reg.get(@intFromPtr(instance));
+    }
+    return null;
+}
+
+/// Get the internal state from an instance using registry
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
+}
+
+/// Public function to get internal state (for other impls that need it)
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to NodeImpl.init() to properly initialize the inheritance chain.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // Chain to Node's init which chains to EventTarget
+    // This properly initializes the entire inheritance chain
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
 
-    // Initialize Node's internal state (DocumentFragment inherits from Node)
-    // With embedded inheritance, Node.State is in state.base
-    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
-    node_internal.* = NodeImpl.InternalState.init(allocator);
-    node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
-    state.base.own._internal = node_internal;
+    // Set the node type for this DocumentFragment
+    if (NodeImpl.getInternalState(instance)) |node_internal| {
+        node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+    }
 
-    // Initialize DocumentFragment's own internal state
+    // Initialize DocumentFragment's own internal state and register it
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
 /// Get the Node internal state from a DocumentFragment instance
-/// With embedded inheritance, Node.State is in state.base
 pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-    const state = instance.getState(State);
-    return state.base.own._internal;
+    return NodeImpl.getInternalState(instance);
 }
 
 /// Deinitialize instance

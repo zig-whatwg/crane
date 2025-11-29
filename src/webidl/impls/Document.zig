@@ -244,52 +244,78 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Get the Node internal state from a Document instance
-/// With embedded inheritance, Node.State is in state.base
+/// Uses the registry pattern for proper inheritance chain
 pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-    const state = instance.getState(State);
-    return state.base.own._internal;
+    return NodeImpl.getInternalState(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: Node -> EventTarget
+///
+/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
+/// in a global registry rather than in the State struct.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
-    const state = instance.getState(StateType);
+    // Set node type to DOCUMENT_NODE
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
+
+    // Initialize Document's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-
-    // Initialize Node's internal state (Document inherits from Node)
-    // With embedded inheritance, Node.State is in state.base
-    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
-    node_internal.* = NodeImpl.InternalState.init(allocator);
-    node_internal.node_type = NodeImpl.NodeType.DOCUMENT_NODE;
-    state.base.own._internal = node_internal;
-
-    // Initialize Document's own internal state
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
+/// Global registry for Document internal state
+var doc_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var doc_registry_initialized: bool = false;
+
+fn ensureDocRegistry() void {
+    if (!doc_registry_initialized) {
+        doc_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        doc_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureDocRegistry();
+    try doc_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureDocRegistry();
+    return doc_registry.get(@intFromPtr(instance));
+}
+
+/// Get Document's internal state from the registry
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
+    // Clean up from registry
+    ensureDocRegistry();
+    if (doc_registry.get(@intFromPtr(instance))) |internal| {
         internal.deinit();
     }
-    runtime.Instance.deinit(instance);
+    _ = doc_registry.remove(@intFromPtr(instance));
+    // Node cleanup happens via inheritance chain
+    NodeImpl.deinit(instance);
 }
 
 /// Constructor implementation

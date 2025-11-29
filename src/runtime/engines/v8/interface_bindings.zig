@@ -180,11 +180,14 @@ pub fn setupConstructorInheritance(
             };
             if (is_mixin) continue;
 
-            // Check if this interface has a parent (BaseType)
-            const has_parent = comptime @hasDecl(InterfaceType.Meta, "BaseType");
+            // Check if this interface has a parent (ParentInterface)
+            // ParentInterface is the actual interface type (e.g., Node), while
+            // BaseType is the state type (e.g., Node.State). We need ParentInterface
+            // to get the interface name for constructor prototype chain setup.
+            const has_parent = comptime @hasDecl(InterfaceType.Meta, "ParentInterface");
 
             if (has_parent) {
-                const ParentTypeRaw = InterfaceType.Meta.BaseType;
+                const ParentTypeRaw = InterfaceType.Meta.ParentInterface;
 
                 // Dereference pointer types (*Element -> Element)
                 const ParentType = comptime blk: {
@@ -196,7 +199,7 @@ pub fn setupConstructorInheritance(
                 };
 
                 // Only proceed if ParentType is an actual interface (struct type)
-                // Some interfaces have BaseType = ?*anyopaque which means no parent
+                // Some interfaces have ParentInterface = ?*anyopaque which means no parent
                 const parent_is_interface = comptime blk: {
                     const type_info = @typeInfo(ParentType);
                     if (type_info != .@"struct") break :blk false;
