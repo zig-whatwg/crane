@@ -131,6 +131,37 @@ pub fn invokeAbortAlgorithm(
 // ReadableStream Callbacks
 // ============================================================================
 
+/// Invoke a ReadableStream start algorithm
+///
+/// WHATWG Streams spec: start(controller) → undefined or Promise<undefined>
+///
+/// Reference: https://streams.spec.whatwg.org/#readablestream-set-up
+///
+/// Example:
+/// ```zig
+/// const result = try invokeStartAlgorithm(isolate, context, start_algorithm, controller);
+/// defer result.deinit();
+/// ```
+pub fn invokeStartAlgorithm(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    start_fn: *v8.Function,
+    controller: *v8.Object,
+) !Promise(void) {
+    const args = [_]*v8.Value{
+        @as(*v8.Value, @ptrCast(controller)),
+    };
+
+    return promise.invokeCallback(
+        void,
+        isolate,
+        context,
+        start_fn,
+        null, // no 'this'
+        &args,
+    );
+}
+
 /// Invoke a ReadableStream pull algorithm
 ///
 /// WHATWG Streams spec: pull(controller) → Promise<undefined>
