@@ -106,6 +106,34 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
             internal.response.status_message = status_text;
             status_text_provided = true;
         }
+
+        // Handle headers from init
+        if (init_data.value.headers) |headers_init| {
+            const Headers = @import("Headers.zig");
+            switch (headers_init) {
+                .pairs => |pairs| {
+                    for (pairs) |pair| {
+                        try internal.response.header_list.append(pair[0], pair[1]);
+                    }
+                },
+                .record => |entries| {
+                    for (entries) |entry| {
+                        try internal.response.header_list.append(entry.name, entry.value);
+                    }
+                },
+                .headers_ptr => |ptr| {
+                    const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
+                    if (Headers.getEntriesInternal(other_instance)) |entries| {
+                        for (entries) |entry| {
+                            try internal.response.header_list.append(entry.name, entry.value);
+                        }
+                    }
+                },
+                .v8_value => {
+                    // V8 value fallback - should be handled by V8 layer
+                },
+            }
+        }
     }
 
     // Set default statusText based on status if not explicitly provided
