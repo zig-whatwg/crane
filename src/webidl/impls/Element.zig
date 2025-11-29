@@ -3229,12 +3229,8 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyop
 /// Throws NotSupportedError if:
 /// - Element already has a shadow root
 /// - Element is not a valid shadow host (must be custom element or certain HTML elements)
-///
-/// Note: Simplified implementation - full implementation requires ShadowRoot to support
-/// mode/options initialization after creation.
 pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = init_data; // TODO: Use init options when ShadowRoot supports them
 
     // Check if element already has a shadow root
     if (internal.shadow_root != null) {
@@ -3247,27 +3243,81 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // header, main, nav, p, section, span, or any custom element
     // For now, we allow any element
 
-    // Create the ShadowRoot
-    const ShadowRootImpl = @import("ShadowRoot.zig");
-    const shadow_root = ShadowRootImpl.init(
-        internal.allocator,
-        interfaces.ShadowRoot.State,
-        &interfaces.ShadowRoot.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    // Parse mode from the dictionary (it's passed as *const anyopaque from V8)
+    // The conversion layer passes through V8 values for enum types
+    const mode = parseShadowRootMode(init_data.mode);
 
-    // TODO: Initialize the shadow root with init options when ShadowRoot supports:
-    // - setMode(init_data.mode)
-    // - setDelegatesFocus(init_data.delegatesFocus)
-    // - setSlotAssignment(init_data.slotAssignment)
-    // - setClonable(init_data.clonable)
-    // - setSerializable(init_data.serializable)
-    // - setHost(instance)
+    // Parse slotAssignment if provided
+    const slot_assignment = if (init_data.slotAssignment) |sa|
+        parseSlotAssignmentMode(sa)
+    else
+        enums.SlotAssignmentMode._named_;
+
+    // Create the ShadowRoot using the factory function which properly initializes all state
+    const ShadowRootImpl = @import("ShadowRoot.zig");
+    const shadow_root = ShadowRootImpl.create(
+        internal.allocator,
+        instance.ctx,
+        instance, // host element
+        mode,
+        init_data.delegatesFocus orelse false,
+        slot_assignment,
+        init_data.clonable orelse false,
+        init_data.serializable orelse false,
+    ) catch return error.OutOfMemory;
 
     // Store reference in element's internal state
     internal.shadow_root = shadow_root;
 
     return shadow_root;
+}
+
+/// Parse ShadowRootMode from V8 value
+fn parseShadowRootMode(ptr: *const anyopaque) enums.ShadowRootMode {
+    // The V8 conversion layer passes enum values as strings via anyopaque pointer
+    // For now, try to extract the string and match
+    const v8 = @import("v8");
+
+    // Check if this is a V8 string value
+    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
+    if (v8.ffi.v8_Value_IsString(v8_value)) {
+        // Get string length and content
+        const str_len = v8.ffi.v8_Value_StringLength_Raw(ptr);
+        if (str_len > 0 and str_len <= 10) {
+            var buf: [10]u8 = undefined;
+            const written = v8.ffi.v8_Value_StringWriteUtf8_Raw(ptr, &buf, @intCast(str_len));
+            if (written > 0) {
+                const mode_str = buf[0..@intCast(written)];
+                if (std.mem.eql(u8, mode_str, "closed")) {
+                    return ._closed_;
+                }
+            }
+        }
+    }
+    // Default to open
+    return ._open_;
+}
+
+/// Parse SlotAssignmentMode from V8 value
+fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
+    const v8 = @import("v8");
+
+    const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
+    if (v8.ffi.v8_Value_IsString(v8_value)) {
+        const str_len = v8.ffi.v8_Value_StringLength_Raw(ptr);
+        if (str_len > 0 and str_len <= 10) {
+            var buf: [10]u8 = undefined;
+            const written = v8.ffi.v8_Value_StringWriteUtf8_Raw(ptr, &buf, @intCast(str_len));
+            if (written > 0) {
+                const mode_str = buf[0..@intCast(written)];
+                if (std.mem.eql(u8, mode_str, "manual")) {
+                    return ._manual_;
+                }
+            }
+        }
+    }
+    // Default to named
+    return ._named_;
 }
 
 /// Operation: requestPointerLock

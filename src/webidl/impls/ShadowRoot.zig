@@ -111,52 +111,80 @@ pub const InternalState = struct {
     }
 };
 
-/// Helper to access internal state from instance
+/// Helper to access internal state from instance using registry
 fn getInternal(instance: *runtime.Instance) *InternalState {
-    const state = instance.getState(State);
-    return @ptrCast(@alignCast(state.own._internal));
+    return getInternalFromRegistry(instance) orelse {
+        // Fallback to direct state access for backwards compatibility
+        const state = instance.getState(State);
+        return @ptrCast(@alignCast(state.own._internal));
+    };
+}
+
+// =============================================================================
+// Registry Pattern for DOM Inheritance
+// =============================================================================
+// ShadowRoot inherits from DocumentFragment, which inherits from Node, which inherits from EventTarget.
+// Each class in the inheritance chain needs its own internal state.
+// We use a global registry keyed by instance pointer to store each class's state.
+
+var shadow_root_registry: ?std.AutoHashMap(usize, *InternalState) = null;
+
+fn ensureRegistry() void {
+    if (shadow_root_registry == null) {
+        shadow_root_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) void {
+    ensureRegistry();
+    shadow_root_registry.?.put(@intFromPtr(instance), internal) catch {};
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    if (shadow_root_registry) |*reg| {
+        return reg.get(@intFromPtr(instance));
+    }
+    return null;
+}
+
+/// Public function to get internal state (for other impls that need it)
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to DocumentFragmentImpl.init() to properly initialize the inheritance chain.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    const NodeImpl = @import("Node.zig");
+
+    // Chain to DocumentFragment's init which chains to Node which chains to EventTarget
+    // This properly initializes the entire inheritance chain using registries
+    const instance = try DocumentFragmentImpl.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const NodeImpl = @import("Node.zig");
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    // Set the node type for ShadowRoot (same as DocumentFragment per spec)
+    if (NodeImpl.getInternalState(instance)) |node_internal| {
+        node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+    }
 
-    // Initialize Node's internal state (ShadowRoot → DocumentFragment → Node)
-    // With embedded inheritance: state.base = DocumentFragment.State, state.base.base = Node.State
-    const node_internal = try ArenaAllocator.get().create(NodeImpl.InternalState);
-    node_internal.* = NodeImpl.InternalState.init(allocator);
-    node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
-    state.base.base.own._internal = node_internal;
-
-    // Initialize DocumentFragment's internal state
-    const df_internal = try ArenaAllocator.get().create(DocumentFragmentImpl.InternalState);
-    df_internal.* = DocumentFragmentImpl.InternalState.init(allocator);
-    state.base.own._internal = df_internal;
-
-    // Initialize ShadowRoot's own internal state
+    // Initialize ShadowRoot's own internal state and register it
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
 /// Get the Node internal state from a ShadowRoot instance
-/// With embedded inheritance: state.base.base = Node.State
 pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").InternalState {
-    const state = instance.getState(State);
-    return state.base.base.own._internal;
+    const NodeImpl = @import("Node.zig");
+    return NodeImpl.getInternalState(instance);
 }
 
 /// Deinitialize instance
