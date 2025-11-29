@@ -6,23 +6,23 @@
 // ============================================================================
 
 // ReadableStream exists
-typeof ReadableStream === "function"
+assert.isFunction(ReadableStream, "ReadableStream should be a function")
 
 // ReadableStream has values method
-typeof ReadableStream.prototype.values === "function"
+assert.isFunction(ReadableStream.prototype.values, "ReadableStream.prototype.values should be a function")
 
 // ReadableStream has Symbol.asyncIterator
-typeof ReadableStream.prototype[Symbol.asyncIterator] === "function"
+assert.isFunction(ReadableStream.prototype[Symbol.asyncIterator], "ReadableStream.prototype[Symbol.asyncIterator] should be a function")
 
 // ReadableStreamIteratorOptions dictionary can be created
-typeof Object({ preventCancel: false }) === "object"
+assert.strictEqual(typeof Object({ preventCancel: false }), "object", "Options object should be creatable")
 
 // ============================================================================
 // Async Iterator Creation
 // ============================================================================
 
 // Create a simple stream
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue("chunk1");
@@ -31,44 +31,44 @@ typeof Object({ preventCancel: false }) === "object"
     }
   });
   return stream instanceof ReadableStream;
-})()
+})(), "Created stream should be instanceof ReadableStream")
 
 // values() returns an async iterator
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iterator = stream.values();
   return typeof iterator === "object" && typeof iterator.next === "function";
-})()
+})(), "values() should return an async iterator with next()")
 
 // Symbol.asyncIterator returns an async iterator
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iterator = stream[Symbol.asyncIterator]();
   return typeof iterator === "object" && typeof iterator.next === "function";
-})()
+})(), "Symbol.asyncIterator should return an async iterator")
 
 // values() and Symbol.asyncIterator return same type
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iter1 = stream.values();
   const iter2 = stream[Symbol.asyncIterator]();
   return iter1.constructor === iter2.constructor;
-})()
+})(), "values() and Symbol.asyncIterator should return same type")
 
 // ============================================================================
 // Promise Chaining - Basic Iteration
 // ============================================================================
 
 // next() returns a promise
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iterator = stream.values();
   const result = iterator.next();
   return result instanceof Promise;
-})()
+})(), "next() should return a Promise")
 
 // Iteration over chunks (async test)
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(1);
@@ -87,10 +87,10 @@ typeof Object({ preventCancel: false }) === "object"
          chunks[0] === 1 && 
          chunks[1] === 2 && 
          chunks[2] === 3;
-})()
+})(), "for-await-of should iterate over all chunks")
 
 // Manual iteration with next()
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue("a");
@@ -108,10 +108,10 @@ typeof Object({ preventCancel: false }) === "object"
   return result1.value === "a" && !result1.done &&
          result2.value === "b" && !result2.done &&
          result3.done === true;
-})()
+})(), "Manual iteration with next() should work correctly")
 
 // Stream closes properly after iteration
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.close();
@@ -122,14 +122,14 @@ typeof Object({ preventCancel: false }) === "object"
   const result = await iterator.next();
   
   return result.done === true && result.value === undefined;
-})()
+})(), "Closed stream should return done: true")
 
 // ============================================================================
 // Promise Chaining - preventCancel Option
 // ============================================================================
 
 // preventCancel: false (default) - stream cancels on break
-(async () => {
+assert.isTrue((async () => {
   let cancelCalled = false;
   
   const stream = new ReadableStream({
@@ -148,10 +148,10 @@ typeof Object({ preventCancel: false }) === "object"
   }
   
   return cancelCalled === true;
-})()
+})(), "preventCancel: false should cancel stream on break")
 
 // preventCancel: true - stream does NOT cancel on break
-(async () => {
+assert.isTrue((async () => {
   let cancelCalled = false;
   
   const stream = new ReadableStream({
@@ -170,14 +170,14 @@ typeof Object({ preventCancel: false }) === "object"
   }
   
   return cancelCalled === false;
-})()
+})(), "preventCancel: true should NOT cancel stream on break")
 
 // ============================================================================
 // Error Propagation - Stream Errors
 // ============================================================================
 
 // Error during iteration propagates to iterator
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(1);
@@ -193,10 +193,10 @@ typeof Object({ preventCancel: false }) === "object"
   } catch (error) {
     return error.message === "Stream error";
   }
-})()
+})(), "Error during iteration should propagate")
 
 // Error in pull algorithm propagates
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     pull(controller) {
       throw new Error("Pull failed");
@@ -210,10 +210,10 @@ typeof Object({ preventCancel: false }) === "object"
   } catch (error) {
     return error.message === "Pull failed";
   }
-})()
+})(), "Error in pull algorithm should propagate")
 
 // Error with custom error type
-(async () => {
+assert.isTrue((async () => {
   class CustomError extends Error {
     constructor(message) {
       super(message);
@@ -233,14 +233,14 @@ typeof Object({ preventCancel: false }) === "object"
   } catch (error) {
     return error instanceof CustomError && error.message === "Custom";
   }
-})()
+})(), "Custom error type should propagate correctly")
 
 // ============================================================================
 // Error Propagation - TypeError Cases
 // ============================================================================
 
 // Locked stream throws when getting iterator
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream();
   const reader = stream.getReader(); // Lock the stream
   
@@ -251,14 +251,14 @@ typeof Object({ preventCancel: false }) === "object"
     reader.releaseLock();
     return error instanceof TypeError;
   }
-})()
+})(), "Locked stream should throw TypeError when getting iterator")
 
 // ============================================================================
 // Promise Chaining - Multiple Sequential Iterations
 // ============================================================================
 
 // Can iterate twice if reader released
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(1);
@@ -276,29 +276,29 @@ typeof Object({ preventCancel: false }) === "object"
   // Note: In reality, you can't iterate twice over same stream
   // This test validates that first iteration completed
   return chunks1.length === 2;
-})()
+})(), "First iteration should complete successfully")
 
 // ============================================================================
 // Promise Chaining - Early Return
 // ============================================================================
 
 // return() method exists
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iterator = stream.values();
   return typeof iterator.return === "function";
-})()
+})(), "return() method should exist on iterator")
 
 // return() returns a promise
-(() => {
+assert.isTrue((() => {
   const stream = new ReadableStream();
   const iterator = stream.values();
   const result = iterator.return();
   return result instanceof Promise;
-})()
+})(), "return() should return a Promise")
 
 // return() with preventCancel: false cancels stream
-(async () => {
+assert.isTrue((async () => {
   let cancelCalled = false;
   
   const stream = new ReadableStream({
@@ -314,10 +314,10 @@ typeof Object({ preventCancel: false }) === "object"
   await iterator.return();
   
   return cancelCalled === true;
-})()
+})(), "return() with preventCancel: false should cancel stream")
 
 // return() with preventCancel: true does NOT cancel
-(async () => {
+assert.isTrue((async () => {
   let cancelCalled = false;
   
   const stream = new ReadableStream({
@@ -333,14 +333,14 @@ typeof Object({ preventCancel: false }) === "object"
   await iterator.return();
   
   return cancelCalled === false;
-})()
+})(), "return() with preventCancel: true should NOT cancel stream")
 
 // ============================================================================
 // Promise Chaining - Complex Scenarios
 // ============================================================================
 
 // Async iteration with async processing
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     async start(controller) {
       controller.enqueue(1);
@@ -356,10 +356,10 @@ typeof Object({ preventCancel: false }) === "object"
   }
   
   return results.length === 2 && results[0] === 2 && results[1] === 4;
-})()
+})(), "Async iteration with async processing should work")
 
 // Promise chaining with transformation
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       for (let i = 0; i < 5; i++) {
@@ -377,10 +377,10 @@ typeof Object({ preventCancel: false }) === "object"
   return squares.length === 5 && 
          squares[0] === 0 && 
          squares[4] === 16;
-})()
+})(), "Transformation during iteration should work")
 
 // Nested async iteration (multiple streams)
-(async () => {
+assert.isTrue((async () => {
   const stream1 = new ReadableStream({
     start(controller) {
       controller.enqueue("a");
@@ -406,14 +406,14 @@ typeof Object({ preventCancel: false }) === "object"
   }
   
   return results.length === 2 && results[0] === "a" && results[1] === "b";
-})()
+})(), "Nested async iteration should work")
 
 // ============================================================================
 // Error Propagation - Reader Release on Error
 // ============================================================================
 
 // Reader is released when iteration errors
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.error(new Error("Test"));
@@ -429,10 +429,10 @@ typeof Object({ preventCancel: false }) === "object"
   }
   
   return false;
-})()
+})(), "Reader should be released when iteration errors")
 
 // Reader is released when iteration completes
-(async () => {
+assert.isTrue((async () => {
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(1);
@@ -447,4 +447,4 @@ typeof Object({ preventCancel: false }) === "object"
   // After iteration, stream should be unlocked
   // Note: Can't test this directly as stream is closed
   return true;
-})()
+})(), "Reader should be released when iteration completes")

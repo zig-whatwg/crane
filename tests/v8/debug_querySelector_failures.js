@@ -18,63 +18,45 @@ var a = doc.createElement("a");
 var button = doc.createElement("button");
 var input = doc.createElement("input");
 
-body.appendChild(header);
-body.appendChild(main);
-main.appendChild(section1);
-main.appendChild(section2);
-section1.appendChild(div1);
-section1.appendChild(div2);
-section2.appendChild(div3);
-section2.appendChild(article);
-article.appendChild(p);
-p.appendChild(span);
-div1.appendChild(a);
-div2.appendChild(button);
-div3.appendChild(input);
-body.appendChild(footer);
+var _1 = body.appendChild(header);
+var _2 = body.appendChild(main);
+var _3 = main.appendChild(section1);
+var _4 = main.appendChild(section2);
+var _5 = section1.appendChild(div1);
+var _6 = section1.appendChild(div2);
+var _7 = section2.appendChild(div3);
+var _8 = section2.appendChild(article);
+var _9 = article.appendChild(p);
+var _10 = p.appendChild(span);
+var _11 = div1.appendChild(a);
+var _12 = div2.appendChild(button);
+var _13 = div3.appendChild(input);
+var _14 = body.appendChild(footer);
 
 // Test child combinator
-var test1 = body.querySelector("body > header");
-console.log("Test: body > header === header:", test1 === header);
+console.log("Testing child combinator selectors...")
 
-var test2 = body.querySelector("body > main");
-console.log("Test: body > main === main:", test2 === main);
-
-var test3 = body.querySelector("body > footer");
-console.log("Test: body > footer === footer:", test3 === footer);
-
-var test4 = body.querySelector("main > section");
-console.log("Test: main > section === section1:", test4 === section1);
-
-var test5 = body.querySelector("section > div");
-console.log("Test: section > div === div1:", test5 === div1);
-
-var test6 = body.querySelector("article > p");
-console.log("Test: article > p === p:", test6 === p);
-
-var test7 = body.querySelector("p > span");
-console.log("Test: p > span === span:", test7 === span);
+assert.strictEqual(body.querySelector("body > header"), header, "body > header === header")
+assert.strictEqual(body.querySelector("body > main"), main, "body > main === main")
+assert.strictEqual(body.querySelector("body > footer"), footer, "body > footer === footer")
+assert.strictEqual(body.querySelector("main > section"), section1, "main > section === section1")
+assert.strictEqual(body.querySelector("section > div"), div1, "section > div === div1")
+assert.strictEqual(body.querySelector("article > p"), p, "article > p === p")
+assert.strictEqual(body.querySelector("p > span"), span, "p > span === span")
 
 // Multi-level child
-var test8 = body.querySelector("main > section > div");
-console.log("Test: main > section > div === div1:", test8 === div1);
-
-var test9 = body.querySelector("section > article > p");
-console.log("Test: section > article > p === p:", test9 === p);
+assert.strictEqual(body.querySelector("main > section > div"), div1, "main > section > div === div1")
+assert.strictEqual(body.querySelector("section > article > p"), p, "section > article > p === p")
 
 // Child vs descendant
-var test10 = body.querySelector("body > section");
-console.log("Test: body > section === null:", test10 === null);
+assert.strictEqual(body.querySelector("body > section"), null, "body > section === null")
 
 // querySelectorAll tests
-var sections = body.querySelectorAll("section");
-console.log("Test: querySelectorAll('section').length === 2:", sections.length === 2);
+console.log("Testing querySelectorAll...")
 
-var divs = body.querySelectorAll("div");
-console.log("Test: querySelectorAll('div').length === 3:", divs.length === 3);
+assert.strictEqual(body.querySelectorAll("section").length, 2, "querySelectorAll('section').length === 2")
+assert.strictEqual(body.querySelectorAll("div").length, 3, "querySelectorAll('div').length === 3")
+assert.strictEqual(body.querySelectorAll("main section").length, 2, "querySelectorAll('main section').length === 2")
+assert.strictEqual(body.querySelectorAll("section, div").length, 5, "querySelectorAll('section, div').length === 5")
 
-var mainSections = body.querySelectorAll("main section");
-console.log("Test: querySelectorAll('main section').length === 2:", mainSections.length === 2);
-
-var multiType = body.querySelectorAll("section, div");
-console.log("Test: querySelectorAll('section, div').length === 5:", multiType.length === 5);
+console.log("All debug querySelector tests complete")
