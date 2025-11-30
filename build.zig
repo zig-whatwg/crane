@@ -230,6 +230,7 @@ pub fn build(b: *std.Build) void {
             "fs",
             "fetch",
             "trusted_types",
+            "csp",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -240,7 +241,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp\n", .{});
             std.process.exit(1);
         }
     }
@@ -1136,6 +1137,12 @@ pub fn build(b: *std.Build) void {
     // Add trusted_types to impls for TrustedHTML, TrustedScript, etc. implementations
     impls_mod.addImport("trusted_types", trusted_types_mod);
 
+    // CSP module (W3C Content Security Policy Level 3)
+    const csp_mod = b.addModule("csp", .{
+        .root_source_file = b.path("src/csp/root.zig"),
+        .target = target,
+    });
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1154,6 +1161,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("fs", fs_mod);
     whatwg_mod.addImport("fetch", fetch_mod);
     whatwg_mod.addImport("trusted_types", trusted_types_mod);
+    whatwg_mod.addImport("csp", csp_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1412,6 +1420,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add trusted_types test files: {}\n", .{err});
+        };
+    }
+
+    // CSP tests (W3C Content Security Policy Level 3)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "csp")) {
+        const csp_tests = b.addTest(.{ .root_module = csp_mod });
+        const run_csp_tests = b.addRunArtifact(csp_tests);
+        test_step.dependOn(&run_csp_tests.step);
+
+        // Add dedicated test files from tests/csp/ when they exist
+        const csp_imports = [_]std.Build.Module.Import{
+            .{ .name = "csp", .module = csp_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add csp test files: {}\n", .{err});
         };
     }
 

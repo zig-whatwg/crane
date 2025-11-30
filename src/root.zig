@@ -11,6 +11,7 @@
 //! - Streams (streaming data)
 //! - MIME Sniff (MIME type detection)
 //! - Trusted Types (W3C Trusted Types for DOM XSS prevention)
+//! - CSP (W3C Content Security Policy Level 3)
 
 const std = @import("std");
 
@@ -27,6 +28,7 @@ pub const mimesniff = @import("mimesniff");
 pub const interfaces = @import("interfaces");
 pub const impls = @import("impls");
 pub const trusted_types = @import("trusted_types");
+pub const csp = @import("csp");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -47,6 +49,7 @@ test {
     _ = interfaces;
     _ = impls;
     _ = trusted_types;
+    _ = csp;
     _ = v8;
     _ = js_bindings;
     _ = codegen;
