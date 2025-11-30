@@ -50,12 +50,15 @@ pub fn main() !void {
 
         const result = try runTest(allocator, repl_exe, test_file);
 
+        // Always display assertion results from stdout
+        if (result.output) |output| {
+            defer allocator.free(output);
+            std.debug.print("{s}", .{output});
+        }
+
         if (!result.success) {
             failed_count += 1;
             std.debug.print("❌ FAILED: {s}\n", .{test_file});
-            if (result.output) |output| {
-                std.debug.print("{s}\n", .{output});
-            }
         } else {
             std.debug.print("✅ PASSED: {s}\n", .{test_file});
         }
@@ -149,14 +152,15 @@ fn runTest(allocator: std.mem.Allocator, repl_exe: []const u8, test_file: []cons
         .Unknown => false,
     };
 
-    const output = if (!success) blk: {
-        if (result.stderr.len > 0) {
-            break :blk try allocator.dupe(u8, result.stderr);
-        } else if (result.stdout.len > 0) {
+    // Always capture and return stdout - it contains individual assertion results
+    const output = blk: {
+        if (result.stdout.len > 0) {
             break :blk try allocator.dupe(u8, result.stdout);
+        } else if (result.stderr.len > 0) {
+            break :blk try allocator.dupe(u8, result.stderr);
         }
         break :blk null;
-    } else null;
+    };
 
     return .{
         .success = success,
