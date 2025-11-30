@@ -683,6 +683,17 @@ pub fn V8Interface(comptime Interface: type) type {
                                     // Opaque pointer is already a V8 value - just cast it
                                     // This is used for WebIDL 'any' type and pre-converted values
                                     break :comptime_convert @ptrCast(@constCast(result));
+                                } else if (PayloadType == ?*runtime.CallbackWrapper) {
+                                    // EventHandler (callback wrapper) - extract V8 function from wrapper
+                                    if (result) |wrapper| {
+                                        const cb_wrapper = @import("callback_wrapper.zig");
+                                        const v8_wrapper: *cb_wrapper.CallbackWrapper = @ptrCast(@alignCast(wrapper));
+                                        if (v8_wrapper.callback_function) |func| {
+                                            break :comptime_convert @ptrCast(func);
+                                        }
+                                    }
+                                    // No callback or no function stored - return null
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                 } else {
                                     // For complex types (interfaces, objects, etc.), return undefined for now
                                     // TODO: Implement proper object/interface conversions
@@ -2601,9 +2612,8 @@ pub fn V8Interface(comptime Interface: type) type {
             } else if (T == f32 or T == runtime.Float) {
                 return try conv.fromV8Float(context, v8_value);
             } else {
-                // For complex types, we'd need more sophisticated conversion
-                // For now, return an error
-                return error.TypeError;
+                // For complex types (callbacks, optionals, etc.), use the generic converter
+                return try conv.fromV8Value(T, allocator, isolate, context, v8_value);
             }
         }
 

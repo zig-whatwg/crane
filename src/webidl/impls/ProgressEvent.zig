@@ -71,15 +71,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://xhr.spec.whatwg.org/#dom-progressevent-progressevent
 ///
 /// The ProgressEvent(type, eventInitDict) constructor steps are:
-/// 1. Set this's initialized flag via Event constructor (handled by V8 prototype chain)
-/// 2. Set lengthComputable, loaded, total from eventInitDict
+/// 1. Set this's initialized flag via Event constructor
+/// 2. Initialize inherited Event fields (type, bubbles, cancelable, composed)
+/// 3. Set lengthComputable, loaded, total from eventInitDict
 ///
-/// Note: ProgressEvent inherits from Event via prototype chain (BaseType = *Event).
-/// The Event properties (type, bubbles, cancelable, etc.) are handled at the V8/JS level.
-/// We only need to initialize ProgressEvent's own properties here.
+/// Note: ProgressEvent inherits from Event. We must initialize both inherited
+/// Event fields AND ProgressEvent's own fields.
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
-    _ = @"type"; // Event type is handled by V8 Event prototype chain
-
     // Create instance through init()
     const instance = try init(allocator, State, &ProgressEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -108,6 +106,30 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     state.own.lengthComputable = internal.length_computable;
     state.own.loaded = internal.loaded;
     state.own.total = internal.total;
+
+    // Initialize inherited Event fields
+    // Clone the type string to ensure we own it
+    state.base.own.type = try @"type".clone(allocator);
+
+    // Get EventInit base values from ProgressEventInit
+    const bubbles = if (eventInitDict.wasPassed()) eventInitDict.value.base.bubbles orelse false else false;
+    const cancelable = if (eventInitDict.wasPassed()) eventInitDict.value.base.cancelable orelse false else false;
+    const composed = if (eventInitDict.wasPassed()) eventInitDict.value.base.composed orelse false else false;
+
+    state.base.own.bubbles = bubbles;
+    state.base.own.cancelable = cancelable;
+    state.base.own.composed = composed;
+
+    // Initialize other Event attributes to defaults
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = Event.get_NONE(); // NONE = 0
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true; // !canceled_flag
+    state.base.own.defaultPrevented = false;
+    state.base.own.isTrusted = false;
+    state.base.own.timeStamp = @as(f64, @floatFromInt(std.time.milliTimestamp()));
 
     return instance;
 }

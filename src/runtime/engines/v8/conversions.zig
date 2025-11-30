@@ -1324,6 +1324,18 @@ pub fn toV8Value(
         return toV8Undefined(isolate);
     }
 
+    // Handle CallbackWrapper types (EventHandler, etc.)
+    // Extract the V8 Function from the wrapper for getters
+    if (T == *runtime.CallbackWrapper) {
+        // Cast to V8-specific CallbackWrapper to access the V8 function
+        const v8_wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(value));
+        if (v8_wrapper.callback_function) |func| {
+            return @ptrCast(func);
+        }
+        // If no function stored, return undefined
+        return toV8Undefined(isolate);
+    }
+
     // Handle pointers (convert to Any)
     if (type_info == .pointer) {
         return toV8Any(@ptrCast(@constCast(value)));
