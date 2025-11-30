@@ -828,19 +828,29 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
-        // Cleanup singleton instances
-        if (self.indexeddb_instance) |instance| {
-            const IDBFactory = @import("interfaces").IDBFactory;
-            IDBFactory.deinit(instance);
-            self.indexeddb_instance = null;
-        }
+        // NOTE: Don't explicitly deinit singleton instances here!
+        // They are in the wrapper cache and will be cleaned up when
+        // context_manager.deinit() iterates the cache. Explicit deinit
+        // would cause double-free since wrapper cache also calls deinit.
+        self.indexeddb_instance = null;
 
-        // Cleanup context manager
+        // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
         context_manager.deinit();
 
-        // Cleanup V8
+        // Exit and dispose V8 context first to break JavaScript references
+        // This makes objects unreachable so GC can collect them
         v8.ffi.v8_Context_Exit(self.context);
         v8.ffi.v8_Context_Dispose(self.context);
+
+        // Force V8 garbage collection to trigger weak callbacks
+        // This ensures all Instance deinit functions are called before we exit
+        // Call multiple times to ensure full collection
+        v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+        // Cleanup V8 isolate
         v8.ffi.v8_Isolate_Exit(self.isolate);
         v8.ffi.v8_Isolate_Dispose(self.isolate);
 
@@ -1860,11 +1870,14 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var repl = try Repl.init(allocator);
-    defer repl.deinit();
+    // Note: We manage deinit manually below because std.process.exit() doesn't run defers
+    errdefer repl.deinit();
 
     // Check for command-line arguments
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
+
+    var exit_code: u8 = 0;
 
     if (args.len > 1) {
         // Run test file(s) instead of interactive mode
@@ -1887,12 +1900,20 @@ pub fn main() !void {
             try stdout.writeAll(summary);
         }
 
-        // Exit with error if any tests failed
+        // Set exit code if any tests failed
         if (total_failed > 0 or total_errors > 0) {
-            std.process.exit(1);
+            exit_code = 1;
         }
     } else {
         // Interactive mode
         try repl.run();
+    }
+
+    // Always clean up REPL before exiting
+    repl.deinit();
+
+    // Exit with appropriate code
+    if (exit_code != 0) {
+        std.process.exit(exit_code);
     }
 }

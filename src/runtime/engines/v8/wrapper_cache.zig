@@ -152,11 +152,29 @@ pub const WrapperCache = struct {
     ///
     /// Disposes all cached Global handles and frees the HashMap.
     /// Should be called when the V8 Context is destroyed.
+    /// This also calls gc.onObjectFreed for each instance to ensure
+    /// type-specific deinit is called (since weak callbacks may not fire
+    /// during shutdown).
     pub fn deinit(self: *Self) void {
-        // Dispose all cached Global handles
+        // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
+        // during cleanup. This must happen before any cleanup to avoid races
+        // where a weak callback tries to free an already-freed entry.
+        {
+            var iter = self.cache.valueIterator();
+            while (iter.next()) |entry_ptr| {
+                const entry = entry_ptr.*;
+                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+            }
+        }
+
+        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
+
+            // Call GC integration to invoke type-specific deinit
+            // This is essential for cleanup since weak callbacks may not fire during shutdown
+            runtime.gc.onObjectFreed(entry.instance);
 
             // Dispose the Global<Object>* handle
             v8.v8_Object_Dispose(@ptrCast(entry.wrapper));

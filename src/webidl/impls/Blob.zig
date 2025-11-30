@@ -57,14 +57,20 @@ pub fn init(
     return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance - clean up owned resources only
+/// NOTE: Do NOT call runtime.Instance.deinit() here!
+/// The GC integration layer (gc_integration.onObjectFreed) handles:
+/// 1. Calling this deinit function (via vtable.deinit)
+/// 2. Freeing the Instance handle back to the SlabAllocator
+/// Calling Instance.deinit from here would cause infinite recursion.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit(instance) here!
+    // The GC integration layer handles slab freeing after this returns.
 }
 
 /// Constructor implementation

@@ -22,17 +22,16 @@ pub const IDBFactory = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 1 },
@@ -40,7 +39,7 @@ pub const IDBFactory = struct {
             .{ "databases", "call_databases", 0 },
             .{ "cmp", "call_cmp", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -48,19 +47,16 @@ pub const IDBFactory = struct {
             "databases",
             "cmp",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -73,13 +69,12 @@ pub const IDBFactory = struct {
     );
 
     const delegates = .{
-
         .call_cmp = &call_cmp,
         .call_databases = &call_databases,
         .call_deleteDatabase = &call_deleteDatabase,
         .call_open = &call_open,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &deinit);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -96,7 +91,7 @@ pub const IDBFactory = struct {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on version
         if (!runtime.isInRange(u64, version)) return error.TypeError;
-        
+
         return try IDBFactoryImpl.call_open(instance, name, version);
     }
 
@@ -107,13 +102,11 @@ pub const IDBFactory = struct {
     /// Extended attributes: [NewObject]
     pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBFactoryImpl.call_deleteDatabase(instance, name);
     }
 
     pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) anyerror!i16 {
-        
         return try IDBFactoryImpl.call_cmp(instance, first, second);
     }
-
 };
