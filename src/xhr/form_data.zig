@@ -43,15 +43,20 @@ const Blob = struct {
     data: []const u8,
 };
 
-/// FormData entry value (string or file)
+/// FormData entry value (string, file, or blob instance)
 pub const FormDataEntryValue = union(enum) {
     string: []const u8,
     file: *File,
+    /// Blob/File instance from V8 (stored as opaque pointer)
+    /// This is a *runtime.Instance that wraps a Blob or File
+    blob_instance: *anyopaque,
 
     pub fn deinit(self: *FormDataEntryValue, allocator: Allocator) void {
         switch (self.*) {
             .string => |s| allocator.free(s),
             .file => |f| f.deinit(allocator),
+            // blob_instance is owned by V8/GC, we don't free it
+            .blob_instance => {},
         }
     }
 
@@ -59,6 +64,8 @@ pub const FormDataEntryValue = union(enum) {
         return switch (self) {
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
             .file => |f| .{ .file = try f.clone(allocator) },
+            // blob_instance is a reference, just copy the pointer
+            .blob_instance => |ptr| .{ .blob_instance = ptr },
         };
     }
 };
@@ -165,6 +172,63 @@ pub const FormData = struct {
         errdefer file.deinit(self.allocator);
 
         try self.appendFile(name, file, filename);
+    }
+
+    /// Append a Blob/File instance from V8
+    ///
+    /// This stores a reference to a V8 Blob or File instance.
+    /// The instance is owned by V8's GC and should not be freed here.
+    pub fn appendBlobInstance(
+        self: *FormData,
+        name: []const u8,
+        blob_instance: *anyopaque,
+        filename: ?[]const u8,
+    ) !void {
+        const entry = FormDataEntry{
+            .name = try self.allocator.dupe(u8, name),
+            .value = .{ .blob_instance = blob_instance },
+            .filename = if (filename) |f| try self.allocator.dupe(u8, f) else null,
+        };
+        try self.entries.append(self.allocator, entry);
+    }
+
+    /// Set a Blob/File instance from V8 (replaces all existing entries with same name)
+    pub fn setBlobInstance(
+        self: *FormData,
+        name: []const u8,
+        blob_instance: *anyopaque,
+        filename: ?[]const u8,
+    ) !void {
+        var found_first = false;
+        var i: usize = 0;
+
+        while (i < self.entries.items.len) {
+            if (std.mem.eql(u8, self.entries.items[i].name, name)) {
+                if (!found_first) {
+                    // Replace first occurrence
+                    var entry = &self.entries.items[i];
+                    entry.value.deinit(self.allocator);
+                    entry.value = .{ .blob_instance = blob_instance };
+                    if (entry.filename) |f| {
+                        self.allocator.free(f);
+                    }
+                    entry.filename = if (filename) |f| try self.allocator.dupe(u8, f) else null;
+                    found_first = true;
+                    i += 1;
+                } else {
+                    // Remove subsequent occurrences
+                    var entry = self.entries.orderedRemove(i);
+                    entry.deinit(self.allocator);
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        // If no entry found, append new one
+        if (!found_first) {
+            try self.appendBlobInstance(name, blob_instance, filename);
+        }
     }
 
     /// Delete all entries with given name

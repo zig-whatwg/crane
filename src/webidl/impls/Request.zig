@@ -1064,6 +1064,9 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!runtime.Promise(*run
                         .file => |f| fd.appendFile(entry.name, f, entry.filename) catch {
                             return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
                         },
+                        .blob_instance => |ptr| fd.appendBlobInstance(entry.name, ptr, entry.filename) catch {
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                        },
                     }
                 }
 

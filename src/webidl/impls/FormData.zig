@@ -118,13 +118,119 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// Operation: append
+/// Operation: append (string overload)
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-append
 /// Appends a new value to an existing key, or adds the key if it doesn't exist.
 pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.appendString(name, value);
+}
+
+/// Operation: append (Blob overload)
+///
+/// Spec: https://xhr.spec.whatwg.org/#dom-formdata-append
+/// Appends a Blob/File to an existing key, or adds the key if it doesn't exist.
+pub fn call_appendBlob(instance: *runtime.Instance, name: runtime.USVString, blob_instance: *runtime.Instance, filename: ?runtime.USVString) ImplError!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+
+    // Store the Blob instance reference
+    // We need to store it in a way that can be retrieved later
+    // For now, create an entry that holds the blob instance pointer
+    try internal.form_data.appendBlobInstance(name, blob_instance, filename);
+}
+
+/// Dispatch method for append - handles overload resolution at runtime
+///
+/// This receives the raw V8 value as `any` and determines whether to:
+/// - Store as string (if it's a string or coercible to string)
+/// - Store as Blob instance (if it's a Blob/File object)
+pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+
+    // Import V8 FFI types for runtime type checking
+    const v8 = @import("v8");
+
+    // Cast the any pointer to V8 Value
+    const value: *v8.ffi.Value = @ptrCast(@alignCast(value_v8));
+
+    // Check if this is a wrapped instance (Blob/File)
+    if (v8.ffi.v8_Value_IsObject(value)) {
+        const obj: *v8.ffi.Object = @ptrCast(value);
+        // Try to get a wrapped instance from internal field
+        const ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(obj, 0);
+        if (ptr != null) {
+            // This is a wrapped instance - store as blob
+            const blob_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+            try internal.form_data.appendBlobInstance(name, blob_instance, null);
+            return;
+        }
+    }
+
+    // Not a Blob instance - convert to string
+    // Get context for string conversion
+    const engine_ctx = instance.ctx.engine_ctx orelse return error.InvalidState;
+    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Convert to string using V8's ToString
+    if (v8.ffi.v8_Value_ToString(value, context)) |str| {
+        const len = v8.ffi.v8_String_Utf8Length(str);
+        if (len <= 0) {
+            try internal.form_data.appendString(name, "");
+            return;
+        }
+
+        // Allocate buffer and copy string
+        const buffer = internal.allocator.alloc(u8, @intCast(len)) catch return error.OutOfMemory;
+        defer internal.allocator.free(buffer);
+
+        _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+        try internal.form_data.appendString(name, buffer);
+    } else {
+        // Fallback to empty string
+        try internal.form_data.appendString(name, "");
+    }
+}
+
+/// Dispatch method for set - handles overload resolution at runtime
+pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+
+    // Import V8 FFI types
+    const v8 = @import("v8");
+    const value: *v8.ffi.Value = @ptrCast(@alignCast(value_v8));
+
+    // Check if this is a wrapped instance (Blob/File)
+    if (v8.ffi.v8_Value_IsObject(value)) {
+        const obj: *v8.ffi.Object = @ptrCast(value);
+        const ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(obj, 0);
+        if (ptr != null) {
+            // This is a wrapped instance - set as blob
+            const blob_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+            try internal.form_data.setBlobInstance(name, blob_instance, null);
+            return;
+        }
+    }
+
+    // Not a Blob instance - convert to string
+    const engine_ctx = instance.ctx.engine_ctx orelse return error.InvalidState;
+    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    if (v8.ffi.v8_Value_ToString(value, context)) |str| {
+        const len = v8.ffi.v8_String_Utf8Length(str);
+        if (len <= 0) {
+            try internal.form_data.setString(name, "");
+            return;
+        }
+
+        const buffer = internal.allocator.alloc(u8, @intCast(len)) catch return error.OutOfMemory;
+        defer internal.allocator.free(buffer);
+
+        _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+        try internal.form_data.setString(name, buffer);
+    } else {
+        try internal.form_data.setString(name, "");
+    }
 }
 
 /// Operation: delete
@@ -148,6 +254,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!
     return switch (entry) {
         .string => |s| .{ .variant_1 = s }, // USVString is []const u8
         .file => |f| .{ .variant_0 = @ptrCast(f) }, // Cast File to anyopaque
+        .blob_instance => |ptr| .{ .variant_0 = ptr }, // Return the stored Blob/File instance
     };
 }
 
@@ -172,6 +279,11 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplErr
             .file => {
                 // For files, return "[object File]" as the string representation
                 string_values.append(internal.allocator, "[object File]") catch continue;
+            },
+            .blob_instance => {
+                // For blob instances, return "[object Blob]" as the string representation
+                // Note: In a real implementation, we should return the actual Blob objects
+                string_values.append(internal.allocator, "[object Blob]") catch continue;
             },
         }
     }
@@ -257,6 +369,7 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
             .value = switch (entry.value) {
                 .string => |s| s,
                 .file => "[object File]",
+                .blob_instance => "[object Blob]",
             },
         };
     }

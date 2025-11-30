@@ -36,28 +36,24 @@ pub const FormData = struct {
         pub const properties = .{};
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
+        /// Note: "append" uses call_appendDispatch which handles overload resolution at runtime
         pub const methods = .{
-            .{ "append", "call_append", 2 },
-            .{ "append", "call_append", 2 },
+            .{ "append", "call_appendDispatch", 2 },
             .{ "delete", "call_delete", 1 },
             .{ "get", "call_get", 1 },
             .{ "getAll", "call_getAll", 1 },
             .{ "has", "call_has", 1 },
-            .{ "set", "call_set", 2 },
-            .{ "set", "call_set", 2 },
-            .{ "forEach", "call_forEach", 1 },
+            .{ "set", "call_setDispatch", 2 },
             .{ "forEach", "call_forEach", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
-            "append",
             "delete",
             "get",
             "getAll",
             "has",
-            "set",
             "set",
             "forEach",
         };
@@ -121,6 +117,23 @@ pub const FormData = struct {
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
         return try FormDataImpl.call_append(instance, name, value);
+    }
+
+    /// Blob overload: append(name, Blob, filename?)
+    /// This is called from V8 when second argument is detected as a Blob instance
+    pub fn call_appendBlob(instance: *runtime.Instance, name: runtime.USVString, blob: *runtime.Instance, filename: ?runtime.USVString) anyerror!void {
+        return try FormDataImpl.call_appendBlob(instance, name, blob, filename);
+    }
+
+    /// Dispatch method for append - handles overload resolution
+    /// The second parameter is raw V8 value to allow runtime type checking
+    pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString, value_or_blob: runtime.Any) anyerror!void {
+        return try FormDataImpl.call_appendDispatch(instance, name, value_or_blob);
+    }
+
+    /// Dispatch method for set - handles overload resolution
+    pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, value_or_blob: runtime.Any) anyerror!void {
+        return try FormDataImpl.call_setDispatch(instance, name, value_or_blob);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
