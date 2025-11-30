@@ -1036,11 +1036,9 @@ pub fn toV8Boolean(
     isolate: *v8.Isolate,
     value: runtime.Boolean,
 ) *v8.Boolean {
-    // TODO: Add v8_Boolean_New to FFI wrapper
-    // For now, cast number to boolean (V8 treats 0 as false, non-zero as true)
-    const num_val: f64 = if (value) 1.0 else 0.0;
-    const num = v8.v8_Number_New(isolate, num_val);
-    return @ptrCast(num);
+    // Use v8_Boolean_New to create a proper V8 Boolean
+    const v8_bool = v8.v8_Boolean_New(isolate, value) orelse unreachable;
+    return @ptrCast(v8_bool);
 }
 
 /// Convert Zig i32 (long) to V8 Number

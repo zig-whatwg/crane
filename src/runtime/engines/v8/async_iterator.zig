@@ -220,9 +220,10 @@ const VoidPromiseBridge = struct {
     }
 };
 
-/// Convert Zig AsyncPromise(void) to V8 Promise
+/// Convert Zig AsyncPromise(void) to V8 Promise that resolves to iterator result
 ///
-/// Creates a V8 Promise that resolves to undefined when Zig promise settles.
+/// Creates a V8 Promise that resolves to { value: undefined, done: true } when Zig promise settles.
+/// This is specifically for async iterator return() which expects an iterator result object.
 fn convertVoidPromiseToV8(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -230,20 +231,57 @@ fn convertVoidPromiseToV8(
 ) !*v8.Promise {
     const allocator = std.heap.c_allocator; // Temporary - should come from context
 
-    // Create bridge
-    const bridge = try VoidPromiseBridge.init(allocator, isolate, context);
+    // Create bridge that will return { value: undefined, done: true }
+    const bridge = try IteratorReturnBridge.init(allocator, isolate, context);
     errdefer bridge.deinit();
 
     // Register callback
     try zig_promise.onSettleCtx(
-        VoidPromiseBridge.onFulfilled,
-        VoidPromiseBridge.onRejected,
+        IteratorReturnBridge.onFulfilled,
+        IteratorReturnBridge.onRejected,
         bridge,
     );
 
     // Return V8 promise
     return bridge.v8_promise.getPromise();
 }
+
+/// Bridge for iterator return() that creates { value: undefined, done: true }
+const IteratorReturnBridge = struct {
+    v8_promise: V8Promise(IteratorResult),
+    allocator: std.mem.Allocator,
+
+    fn init(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context) !*IteratorReturnBridge {
+        const bridge = try allocator.create(IteratorReturnBridge);
+        errdefer allocator.destroy(bridge);
+
+        bridge.* = .{
+            .v8_promise = try V8Promise(IteratorResult).init(isolate, context),
+            .allocator = allocator,
+        };
+
+        return bridge;
+    }
+
+    fn deinit(self: *IteratorReturnBridge) void {
+        // NOTE: Do NOT call self.v8_promise.deinit() here!
+        // JavaScript owns the V8 Promise and V8's GC will manage it.
+        self.allocator.destroy(self);
+    }
+
+    fn onFulfilled(ctx: *anyopaque, _: void) anyerror!void {
+        const self: *IteratorReturnBridge = @ptrCast(@alignCast(ctx));
+        // Resolve with { value: undefined (null), done: true }
+        self.v8_promise.resolve(.{ .value = null, .done = true }) catch {};
+        self.deinit();
+    }
+
+    fn onRejected(ctx: *anyopaque, err_value: webidl.errors.Exception) anyerror!void {
+        const self: *IteratorReturnBridge = @ptrCast(@alignCast(ctx));
+        self.v8_promise.reject(err_value) catch {};
+        self.deinit();
+    }
+};
 
 /// Create a rejected V8 Promise with error message
 fn createRejectedPromise(

@@ -277,6 +277,123 @@ fn readableStreamDefaultControllerClearAlgorithms(internal: *InternalState) void
     internal.strategy_size_algorithm = null;
 }
 
+/// ReadableStreamDefaultController.[[CancelSteps]](reason)
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-cancel-steps
+///
+/// Steps:
+/// 1. Perform ! ResetQueue(controller)
+/// 2. Let result be the result of performing controller.[[cancelAlgorithm]], passing reason
+/// 3. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller)
+/// 4. Return result
+///
+/// Returns: A promise resolved when the cancel algorithm completes
+pub fn cancelSteps(controller: *runtime.Instance, reason: *const anyopaque) !*AsyncPromise(void) {
+    const state = controller.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Reset queue
+    internal.queue.resetQueue();
+    internal.queue_total_size = 0.0;
+
+    // Step 2: Perform cancel algorithm
+    const cancel_result: ?*AsyncPromise(void) = if (internal.cancel_algorithm) |algo| blk: {
+        // Invoke the cancel algorithm with the reason
+        const result = algo.invokeWithArg(controller, reason) catch {
+            // On error, create a rejected promise
+            const stream_instance_for_loop = internal.stream orelse return error.InvalidState;
+            const loop = stream_instance_for_loop.ctx.getEventLoop() catch return error.InvalidState;
+            const promise = try AsyncPromise(void).init(internal.allocator, loop);
+            const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cancel algorithm failed");
+            promise.reject(exception);
+            break :blk promise;
+        };
+        break :blk result;
+    } else null;
+
+    // Step 3: Clear algorithms (but don't free cancel_algorithm yet since we might be using it)
+    // Note: We need to clear AFTER the cancel algorithm runs per spec
+    if (internal.pull_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    internal.pull_algorithm = null;
+    internal.strategy_size_algorithm = null;
+
+    // Now clear cancel_algorithm since we've finished using it
+    if (internal.cancel_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    internal.cancel_algorithm = null;
+
+    // Step 4: Return result
+    if (cancel_result) |result| {
+        return result;
+    }
+
+    // No cancel algorithm - return a resolved promise
+    const stream_instance_for_promise = internal.stream orelse return error.InvalidState;
+    const loop = stream_instance_for_promise.ctx.getEventLoop() catch return error.InvalidState;
+    const promise = try AsyncPromise(void).init(internal.allocator, loop);
+    promise.fulfill({});
+    return promise;
+}
+
+/// ReadableStreamDefaultController.[[CancelSteps]](reason) - optional reason version
+///
+/// Same as cancelSteps but accepts optional reason (null = undefined in JS)
+pub fn cancelStepsWithOptReason(controller: *runtime.Instance, reason: ?*anyopaque) !*AsyncPromise(void) {
+    const state = controller.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Reset queue
+    internal.queue.resetQueue();
+    internal.queue_total_size = 0.0;
+
+    // Step 2: Perform cancel algorithm (with optional reason)
+    const cancel_result: ?*AsyncPromise(void) = if (internal.cancel_algorithm) |algo| blk: {
+        // Invoke the cancel algorithm with the optional reason
+        // Note: invokeWithOptArg handles null by not passing the arg to V8
+        const result = algo.invokeWithOptArg(controller, reason) catch {
+            // On error, create a rejected promise
+            const stream_instance_for_loop = internal.stream orelse return error.InvalidState;
+            const loop = stream_instance_for_loop.ctx.getEventLoop() catch return error.InvalidState;
+            const promise = try AsyncPromise(void).init(internal.allocator, loop);
+            const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cancel algorithm failed");
+            promise.reject(exception);
+            break :blk promise;
+        };
+        break :blk result;
+    } else null;
+
+    // Step 3: Clear algorithms
+    if (internal.pull_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    internal.pull_algorithm = null;
+    internal.strategy_size_algorithm = null;
+
+    if (internal.cancel_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    internal.cancel_algorithm = null;
+
+    // Step 4: Return result
+    if (cancel_result) |result| {
+        return result;
+    }
+
+    // No cancel algorithm - return a resolved promise
+    const stream_instance_for_promise = internal.stream orelse return error.InvalidState;
+    const loop = stream_instance_for_promise.ctx.getEventLoop() catch return error.InvalidState;
+    const promise = try AsyncPromise(void).init(internal.allocator, loop);
+    promise.fulfill({});
+    return promise;
+}
+
 /// Operation: enqueue
 ///
 /// Spec: https://streams.spec.whatwg.org/#rsdfc-enqueue

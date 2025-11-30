@@ -196,6 +196,11 @@ pub fn readableStreamDefaultReaderRelease(reader: *runtime.Instance) !void {
 /// 2. Assert: stream is not undefined
 /// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
+/// Note: This calls the internal ReadableStreamCancel algorithm directly,
+/// NOT the public cancel() method. The public method has a lock check that
+/// would fail because the reader holds the lock. The internal algorithm
+/// bypasses this check as intended by the spec.
+///
 /// Returns: Promise<void> that fulfills when cancellation completes
 pub fn readableStreamReaderGenericCancel(
     reader: *runtime.Instance,
@@ -209,11 +214,12 @@ pub fn readableStreamReaderGenericCancel(
 
     // Step 2: Assert stream is not undefined (checked above)
 
-    // Step 3: Cancel the stream
-    // If reason is null, use a sentinel undefined value
-    const reason_ptr: *const anyopaque = reason orelse @ptrFromInt(0x1);
-    const opt_reason = webidl.Opt(*const anyopaque).passed(reason_ptr);
-    const cancel_promise_ptr = try interfaces.ReadableStream.call_cancel(stream, opt_reason);
+    // Step 3: Cancel the stream using internal algorithm (bypasses lock check)
+    // Use the internal cancel function that bypasses the lock check
+    // This is correct per spec: ReadableStreamReaderGenericCancel calls
+    // ReadableStreamCancel directly, not the public cancel() method
+    const impls = @import("impls");
+    const cancel_promise_ptr = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason);
 
     // Cast the returned pointer to AsyncPromise(void)
     const cancel_promise: *AsyncPromise(void) = @ptrCast(@alignCast(@constCast(cancel_promise_ptr)));

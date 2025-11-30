@@ -2365,18 +2365,58 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (fn_info.params.len == 1) {
                         // call_values(instance) - no options
                         break :blk Interface.call_values(instance) catch |err| {
-                            const err_name = @errorName(err);
-                            conv.throwError(isolate, err_name);
+                            // Throw appropriate error type based on Zig error
+                            switch (err) {
+                                error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
+                                else => {
+                                    const err_name = @errorName(err);
+                                    conv.throwError(isolate, err_name);
+                                },
+                            }
                             return;
                         };
                     } else if (fn_info.params.len == 2) {
                         // call_values(instance, options) - has options
+                        // Parse options from JavaScript argument
                         const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
-                        const options: OptionsType = .{ .preventCancel = false };
+                        var options: OptionsType = .{};
+
+                        // Check if options argument was passed (arg 0)
+                        const argc = info.length();
+                        if (argc > 0) {
+                            const options_v8 = info.get(0);
+                            // Only parse if it's an object (not undefined/null)
+                            if (!v8.v8_Value_IsNullOrUndefined(options_v8) and v8.v8_Value_IsObject(options_v8)) {
+                                const options_obj: *v8.Object = @ptrCast(options_v8);
+                                const ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                                    conv.throwError(isolate, "No context available");
+                                    return;
+                                };
+
+                                // Get preventCancel property
+                                const key = v8.v8_String_NewFromUtf8(isolate, "preventCancel", 13) orelse {
+                                    conv.throwError(isolate, "Failed to create property key");
+                                    return;
+                                };
+
+                                if (v8.v8_Object_Get(options_obj, ctx, @ptrCast(key))) |prevent_cancel_val| {
+                                    if (!v8.v8_Value_IsNullOrUndefined(prevent_cancel_val)) {
+                                        options.preventCancel = v8.v8_Value_BooleanValue(prevent_cancel_val, isolate);
+                                    }
+                                }
+                            }
+                        }
+
                         const opt_options = webidl.Opt(OptionsType).passed(options);
                         break :blk Interface.call_values(instance, opt_options) catch |err| {
-                            const err_name = @errorName(err);
-                            conv.throwError(isolate, err_name);
+                            // Throw appropriate error type based on Zig error
+                            switch (err) {
+                                error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
+                                else => {
+                                    const err_name = @errorName(err);
+                                    conv.throwError(isolate, err_name);
+                                },
+                            }
                             return;
                         };
                     } else {

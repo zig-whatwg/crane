@@ -2246,6 +2246,18 @@ Global<Object>* v8_AsyncIterator_New(
     Local<Function> return_fn_obj = return_tpl->GetFunction(ctx).ToLocalChecked();
     obj->Set(ctx, return_name, return_fn_obj).Check();
     
+    // Add Symbol.asyncIterator that returns this object
+    // This makes the object both an async iterator AND async iterable
+    // so that `for await...of` works directly on the iterator object
+    Local<Symbol> async_iterator_symbol = Symbol::GetAsyncIterator(isolate);
+    Local<FunctionTemplate> self_tpl = FunctionTemplate::New(isolate, 
+        [](const FunctionCallbackInfo<Value>& info) {
+            // Return the iterator object itself (this)
+            info.GetReturnValue().Set(info.This());
+        });
+    Local<Function> self_fn = self_tpl->GetFunction(ctx).ToLocalChecked();
+    obj->Set(ctx, async_iterator_symbol, self_fn).Check();
+    
     // Return as Global handle
     return new Global<Object>(isolate, obj);
 }

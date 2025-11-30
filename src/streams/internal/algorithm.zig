@@ -67,6 +67,21 @@ pub const Algorithm = struct {
         return self.vtable.invoke_with_arg(controller, self.context, arg);
     }
 
+    /// Invoke with optional argument
+    /// If arg is null, invokes without an argument (undefined in JS)
+    pub fn invokeWithOptArg(
+        self: *const Algorithm,
+        controller: *runtime.Instance,
+        arg: ?*anyopaque,
+    ) !*AsyncPromise(void) {
+        if (arg) |a| {
+            return self.vtable.invoke_with_arg(controller, self.context, a);
+        } else {
+            // No argument - invoke without arg (will pass undefined to JS)
+            return jsCallbackInvokeWithOptArg(controller, self.context, null);
+        }
+    }
+
     pub fn deinit(self: *Algorithm) void {
         self.vtable.destroy(self.context, self.allocator);
     }
@@ -218,6 +233,81 @@ fn jsCallbackInvokeWithArg(
         js_callback,
         null, // Controller not needed for cancel
         arg, // Pass the cancel reason
+    ) catch {
+        // Invocation failed - return rejected promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback invocation failed",
+        } });
+        return promise;
+    };
+
+    // If invocation returned null, callback threw - return rejected promise
+    if (result == null) {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback threw an exception",
+        } });
+        return promise;
+    }
+
+    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
+    // For now, return a resolved promise since we can't chain V8 promises easily
+    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    promise.fulfill({});
+    return promise;
+}
+
+/// jsCallbackInvokeWithOptArg - Same as jsCallbackInvokeWithArg but arg is optional
+/// If arg is null, the JS function is called without arguments (receives undefined)
+fn jsCallbackInvokeWithOptArg(
+    controller: *runtime.Instance,
+    context: ?*anyopaque,
+    arg: ?*const anyopaque,
+) !*AsyncPromise(void) {
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    // Get engine interface for invoking JavaScript callbacks
+    const engine = controller.ctx.getEngine() orelse {
+        // No engine - return resolved promise (fallback for testing)
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Check if engine supports stream callback invocation
+    const invoke_fn = engine.invokeStreamCallback orelse {
+        // Engine doesn't support stream callbacks - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Get the engine context (V8 Context)
+    const engine_ctx = controller.ctx.getEngineContext() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Invoke the JavaScript callback through the engine
+    const js_callback = context orelse {
+        // No callback stored - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Note: arg may be null here, which invoke_fn should handle by not passing the arg
+    const result = invoke_fn(
+        engine_ctx,
+        js_callback,
+        null, // Controller not needed for cancel
+        arg, // Pass the optional cancel reason (may be null)
     ) catch {
         // Invocation failed - return rejected promise
         const promise = try AsyncPromise(void).init(allocator, event_loop);

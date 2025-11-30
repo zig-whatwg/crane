@@ -654,21 +654,11 @@ fn readableStreamCancel(
     }
 
     // Step 7: Call controller.[[CancelSteps]](reason)
-    // Step 7: Call controller.[[CancelSteps]](reason)
-    // Future: Implement controller.[[CancelSteps]] for cleanup
-    // For now, assume immediate success
-    _ = reason;
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    const cancel_promise = try ReadableStreamDefaultControllerImpl.cancelSteps(internal.controller, reason);
 
-    const promise = try AsyncPromise(void).init(
-        internal.allocator,
-        internal.event_loop,
-    );
-
-    // Step 8: React to sourceCancelPromise with fulfillment returning undefined
-    // Future: Chain promises when controller.[[CancelSteps]] is implemented
-    promise.*.fulfill({});
-
-    return @ptrCast(promise);
+    // Step 8: Return the cancel promise (already handles fulfillment)
+    return @ptrCast(cancel_promise);
 }
 
 /// ReadableStreamCancel called from a reader
@@ -678,6 +668,67 @@ pub fn readableStreamCancelFromReader(stream: *runtime.Instance, reason: *const 
     const state = stream.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return readableStreamCancel(stream, internal, reason);
+}
+
+/// ReadableStreamCancel called from a reader with optional reason
+/// This version handles the case where reason may be null (undefined in JS)
+pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, reason: ?*anyopaque) ImplError!*const anyopaque {
+    const state = stream.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Step 1: Set stream.[[disturbed]] to true
+    internal.disturbed = true;
+
+    // Step 2: If stream.[[state]] is "closed", return resolved promise
+    if (internal.state == .closed) {
+        const promise = AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        ) catch return error.OutOfMemory;
+        promise.*.fulfill({});
+        return @ptrCast(promise);
+    }
+
+    // Step 3: If stream.[[state]] is "errored", return rejected promise
+    if (internal.state == .errored) {
+        const promise = AsyncPromise(void).init(
+            internal.allocator,
+            internal.event_loop,
+        ) catch return error.OutOfMemory;
+        const exception = if (internal.stored_error != null)
+            webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)") catch return error.OutOfMemory
+        else
+            webidl.errors.Exception.typeError(internal.allocator, "Stream is errored") catch return error.OutOfMemory;
+        promise.*.reject(exception);
+        return @ptrCast(promise);
+    }
+
+    // Step 4: Perform ReadableStreamClose(stream)
+    readableStreamClose(internal);
+
+    // Step 5: Get reader
+    const reader = internal.reader;
+
+    // Step 6: If reader is BYOB reader, handle readIntoRequests
+    if (reader == .byob) {
+        const byob_reader = reader.byob;
+        const byob_reader_state = byob_reader.getState(interfaces.ReadableStreamBYOBReader.State);
+        if (byob_reader_state.own._internal) |byob_internal| {
+            for (byob_internal.read_into_requests.items) |request_ptr| {
+                const ReadIntoRequest = @import("streams_read_into_request").ReadIntoRequest;
+                const request: *const ReadIntoRequest = @ptrCast(@alignCast(request_ptr));
+                request.executeCloseSteps();
+            }
+            byob_internal.read_into_requests.clearRetainingCapacity();
+        }
+    }
+
+    // Step 7: Call controller.[[CancelSteps]](reason)
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    const cancel_promise = ReadableStreamDefaultControllerImpl.cancelStepsWithOptReason(internal.controller, reason) catch return error.OutOfMemory;
+
+    // Step 8: Return the cancel promise
+    return @ptrCast(cancel_promise);
 }
 
 /// ReadableStreamClose algorithm
