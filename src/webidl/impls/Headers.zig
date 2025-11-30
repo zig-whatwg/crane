@@ -36,6 +36,10 @@ pub const InternalState = struct {
     guard: HeaderGuard,
     /// Cached sorted HeaderList for iteration (per Fetch spec, Headers iterate in sorted order)
     sorted_list: ?HeaderList = null,
+    /// If true, we own the header_list and should deinit it.
+    /// If false, we're wrapping another object's header_list (e.g., Response/Request)
+    /// and should NOT deinit it (the owner will).
+    owns_headers: bool = true,
 };
 
 /// Initialize instance
@@ -66,6 +70,8 @@ pub fn init(
 }
 
 /// Initialize with existing HeaderList and guard (for Request/Response)
+/// NOTE: This creates a Headers wrapper that does NOT own the header_list.
+/// The owner (Response/Request) is responsible for freeing the header strings.
 pub fn initWithHeaderList(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
@@ -81,8 +87,9 @@ pub fn initWithHeaderList(
 
     internal.* = .{
         .allocator = allocator,
-        .header_list = header_list.*, // Copy the header list
+        .header_list = header_list.*, // Copy the header list struct (pointers to strings)
         .guard = guard,
+        .owns_headers = false, // We don't own the headers - Response/Request does
     };
 
     // Store in instance
@@ -102,11 +109,16 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
-        // Free cached sorted list if any
+        // Free cached sorted list if any (we always own this)
         if (internal.sorted_list) |*sorted| {
             sorted.deinit();
         }
-        internal.header_list.deinit();
+        // Only free header_list if we own it
+        // When created via initWithHeaderList, we don't own the headers -
+        // the Response/Request does and will free them in its deinit
+        if (internal.owns_headers) {
+            internal.header_list.deinit();
+        }
         allocator.destroy(internal);
     }
     // NOTE: Do NOT call runtime.Instance.deinit(instance) here!

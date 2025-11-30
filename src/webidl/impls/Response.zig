@@ -77,11 +77,14 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
-        // Clean up cached headers if exists
-        if (internal.headers_cache) |headers| {
-            const Headers = @import("Headers.zig");
-            Headers.deinit(headers);
-        }
+        // NOTE: The cached Headers wrapper (if any) was created via initWithHeaderList
+        // which sets owns_headers=false. This means Headers.deinit won't free the
+        // header strings - Response.response.deinit() will. The Headers instance
+        // itself is in the wrapper cache and will be cleaned up by GC.
+        // We don't explicitly call Headers.deinit here to avoid order-of-destruction
+        // issues - let the wrapper cache handle it.
+        internal.headers_cache = null;
+
         internal.response.deinit();
         allocator.destroy(internal);
     }
