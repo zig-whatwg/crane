@@ -86,6 +86,13 @@ pub const HttpMockServer = struct {
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
+        // /api/posts (GET)
+        try self.mock.addRoute("/api/posts", .{
+            .status = 200,
+            .body = "[{\"id\": 1, \"title\": \"First Post\"}]",
+            .headers = &.{.{ "Content-Type", "application/json" }},
+        });
+
         // /api/posts (POST)
         try self.mock.addRouteWithMethod("POST", "/api/posts", .{
             .status = 201,
@@ -97,6 +104,13 @@ pub const HttpMockServer = struct {
         try self.mock.addPrefixRoute("/api/posts/", .{
             .status = 200,
             .body = "{\"message\": \"Post updated\"}",
+            .headers = &.{.{ "Content-Type", "application/json" }},
+        });
+
+        // /api/comments (GET)
+        try self.mock.addRoute("/api/comments", .{
+            .status = 200,
+            .body = "[{\"id\": 1, \"body\": \"Great post!\"}]",
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
