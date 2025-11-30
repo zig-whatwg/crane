@@ -418,6 +418,24 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "TransformStreamDefaultController";
     }
 
+    // XHR types
+    if (inst_vtable == &interfaces.XMLHttpRequest.vtable) {
+        return "XMLHttpRequest";
+    }
+
+    if (inst_vtable == &interfaces.XMLHttpRequestUpload.vtable) {
+        return "XMLHttpRequestUpload";
+    }
+
+    if (inst_vtable == &interfaces.XMLHttpRequestEventTarget.vtable) {
+        return "XMLHttpRequestEventTarget";
+    }
+
+    // Progress events
+    if (inst_vtable == &interfaces.ProgressEvent.vtable) {
+        return "ProgressEvent";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

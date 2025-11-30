@@ -17,10 +17,11 @@ assert.strictEqual(Node.DOCUMENT_NODE, 9, "Node.DOCUMENT_NODE should be 9")
 assert.strictEqual(Node.DOCUMENT_TYPE_NODE, 10, "Node.DOCUMENT_TYPE_NODE should be 10")
 assert.strictEqual(Node.DOCUMENT_FRAGMENT_NODE, 11, "Node.DOCUMENT_FRAGMENT_NODE should be 11")
 
-// Constants are NOT on prototype
-assert.strictEqual(typeof Node.prototype.ELEMENT_NODE, "undefined", "Node.prototype.ELEMENT_NODE should be undefined")
-assert.strictEqual(typeof Node.prototype.TEXT_NODE, "undefined", "Node.prototype.TEXT_NODE should be undefined")
-assert.strictEqual(typeof Node.prototype.DOCUMENT_NODE, "undefined", "Node.prototype.DOCUMENT_NODE should be undefined")
+// Per WebIDL spec, constants ARE on prototype (so instances can access them)
+// https://webidl.spec.whatwg.org/#interface-prototype-object
+assert.strictEqual(Node.prototype.ELEMENT_NODE, 1, "Node.prototype.ELEMENT_NODE should be 1")
+assert.strictEqual(Node.prototype.TEXT_NODE, 3, "Node.prototype.TEXT_NODE should be 3")
+assert.strictEqual(Node.prototype.DOCUMENT_NODE, 9, "Node.prototype.DOCUMENT_NODE should be 9")
 
 // Constants ARE accessible on derived constructors (inherited via __proto__)
 // Element.__proto__ === Node, so Element inherits Node's constants

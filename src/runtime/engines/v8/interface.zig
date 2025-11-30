@@ -709,6 +709,40 @@ pub fn V8Interface(comptime Interface: type) type {
                 );
             }
 
+            // Register constants on prototype template
+            // This allows instance.CONSTANT to work (e.g., xhr.UNSENT)
+            // Per WebIDL spec, constants must be available on both constructor AND instances
+            if (@hasDecl(Meta, "constants")) {
+                inline for (Meta.constants) |proto_const| {
+                    const proto_const_name: []const u8 = proto_const[0];
+                    const proto_getter_name: []const u8 = proto_const[1];
+
+                    // Get constant value at comptime
+                    const proto_const_value = @field(Interface, proto_getter_name)();
+
+                    // Create V8 number for constant value
+                    const proto_v8_value = v8.v8_Number_New(isolate, @floatFromInt(proto_const_value));
+
+                    // Create string for constant name
+                    const proto_name_str = v8.v8_String_NewFromUtf8(
+                        isolate,
+                        proto_const_name.ptr,
+                        @intCast(proto_const_name.len),
+                    );
+
+                    if (proto_name_str) |proto_const_name_v8| {
+                        // Set constant on prototype template with ReadOnly attribute
+                        // Attributes: ReadOnly (1) | DontDelete (2) = 3
+                        v8.v8_ObjectTemplate_SetWithAttributes(
+                            proto_tmpl,
+                            @ptrCast(proto_const_name_v8),
+                            @ptrCast(proto_v8_value),
+                            3, // ReadOnly | DontDelete
+                        );
+                    }
+                }
+            }
+
             // Register lazy property handler if there are lazy properties
             // This allows properties to be defined on first access instead of upfront
             if (lazy_properties.len > 0) {

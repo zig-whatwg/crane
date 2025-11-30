@@ -148,10 +148,18 @@ pub fn get_withCredentials(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for upload
-/// TODO: Implement when XMLHttpRequestUpload is ready
+///
+/// Spec: "The upload getter steps are to return this's upload object."
+/// Note: The upload object is lazily created and cached via [SameObject] in the interface.
 pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance);
+
+    // Create XMLHttpRequestUpload instance
+    // The caching is handled by [SameObject] in the interface layer (cached_upload)
+    const XMLHttpRequestUpload = interfaces.XMLHttpRequestUpload;
+    const upload = try XMLHttpRequestUpload.init(internal.allocator, instance.ctx);
+
+    return upload;
 }
 
 /// Getter for responseURL
