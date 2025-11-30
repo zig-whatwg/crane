@@ -324,17 +324,24 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes
+/// The [SameObject] extended attribute means the same object must be returned
+/// on every access, which is achieved by caching in child_nodes_list.
 pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return cached NodeList if it exists
+    // Return cached NodeList if it exists ([SameObject] semantics)
     if (internal.child_nodes_list) |list| {
         return list;
     }
 
-    // TODO: Create a live NodeList for this node's children
-    // This requires NodeList implementation with live collection support
-    return error.NotImplemented;
+    // Create a live NodeList for this node's children
+    const NodeListImpl = @import("NodeList.zig");
+    const list = try NodeListImpl.createLiveChildNodes(internal.allocator, instance.ctx, instance);
+
+    // Cache for [SameObject] semantics
+    internal.child_nodes_list = list;
+
+    return list;
 }
 
 /// Getter for firstChild
