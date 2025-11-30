@@ -177,8 +177,24 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
         .variant_1 => |url_string| {
             // Step 5.1: Parse URL
             const api_parser = @import("api_parser");
-            var parsed_url = api_parser.parseURL(allocator, url_string, null) catch {
-                return error.TypeError; // Step 5.2: If parsedURL is failure, throw TypeError
+
+            // Per spec, we should use the API base URL from the environment.
+            // For REPL/testing without a document context, we try:
+            // 1. First try parsing as absolute URL (no base needed)
+            // 2. If that fails, use "about:blank" as fallback base URL
+            //
+            // This matches browser behavior where relative URLs like "flowers.jpg"
+            // are resolved against the document URL. In REPL, we use about:blank.
+            var parsed_url = api_parser.parseURL(allocator, url_string, null) catch blk: {
+                // Try with fallback base URL (about:blank)
+                var base_url = api_parser.parseURL(allocator, "about:blank", null) catch {
+                    return error.TypeError;
+                };
+                defer base_url.deinit();
+
+                break :blk api_parser.parseURL(allocator, url_string, &base_url) catch {
+                    return error.TypeError; // Step 5.2: If parsedURL is failure, throw TypeError
+                };
             };
             defer parsed_url.deinit();
 
