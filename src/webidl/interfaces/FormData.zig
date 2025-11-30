@@ -25,17 +25,16 @@ pub const FormData = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "append", "call_append", 2 },
@@ -49,7 +48,7 @@ pub const FormData = struct {
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
@@ -62,21 +61,18 @@ pub const FormData = struct {
             "set",
             "forEach",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -93,7 +89,6 @@ pub const FormData = struct {
     );
 
     const delegates = .{
-
         .call_append = &call_append,
         .call_delete = &call_delete,
         .call_forEach = &call_forEach,
@@ -121,38 +116,43 @@ pub const FormData = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
-        
         return try FormDataImpl.call_delete(instance, name);
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
-        
         return try FormDataImpl.call_append(instance, name, value);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
-        
         return try FormDataImpl.call_getAll(instance, name);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!bool {
-        
         return try FormDataImpl.call_has(instance, name);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
-        
         return try FormDataImpl.call_forEach(instance, callback);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
-        
         return try FormDataImpl.call_set(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?FormDataEntryValue {
-        
         return try FormDataImpl.call_get(instance, name);
     }
 
+    /// Entry type for iterable protocol
+    /// Used by V8Interface to iterate over FormData entries
+    pub const IterableEntry = struct {
+        name: []const u8,
+        value: []const u8,
+    };
+
+    /// Get entries for iterable protocol (used by V8Interface's collectPairIterableEntries)
+    /// Returns an array of entries that can be iterated
+    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry {
+        return FormDataImpl.getEntriesForIterable(instance);
+    }
 };

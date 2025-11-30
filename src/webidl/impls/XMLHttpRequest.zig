@@ -359,6 +359,8 @@ pub fn call_setAttributionReporting(instance: *runtime.Instance, options: dictio
 /// Operation: open
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-open()-method
+/// Step 15: "Set this's state to opened"
+/// Step 16: "Fire an event named readystatechange at this."
 pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
     const xhr_state = getXHRState(instance);
 
@@ -379,6 +381,43 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
             open_algo.OpenError.OutOfMemory => error.OutOfMemory,
         };
     };
+
+    // Step 16: Fire readystatechange event
+    // Per spec, after state changes to OPENED, fire readystatechange event
+    fireReadyStateChangeEvent(instance);
+}
+
+/// Fire the readystatechange event by invoking the onreadystatechange handler
+/// Per WHATWG XHR spec, this is fired whenever the readyState attribute changes
+fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+
+    // Get the onreadystatechange handler
+    const handler = state.own.onreadystatechange;
+
+    // If handler is set (not null), invoke it
+    // The handler is stored as a runtime.CallbackWrapper pointer but is actually
+    // a V8-specific CallbackWrapper that was cast during conversion
+    if (handler) |callback_wrapper_ptr| {
+        // Get V8 context from the instance's runtime context
+        // engine_ctx is the V8 Context (not Isolate) per context_manager.zig
+        const engine_ctx = instance.ctx.engine_ctx orelse return;
+
+        // Import V8-specific types
+        const v8 = @import("v8");
+
+        // Cast to V8-specific callback wrapper
+        // This works because the conversion code in interface.zig casts the
+        // v8.CallbackWrapper* to runtime.CallbackWrapper* for storage
+        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper_ptr));
+
+        // engine_ctx is the V8 Context
+        const context: *v8.Context = @ptrCast(@alignCast(engine_ctx));
+
+        // Call the callback with no arguments
+        // The readystatechange event doesn't pass an event object in typical XHR usage
+        _ = v8_wrapper.call0(context);
+    }
 }
 
 /// Operation: abort

@@ -26,6 +26,9 @@ pub const ImplError = error{
     InvalidState,
 };
 
+/// Entry type for iterable protocol - uses the interface's type
+pub const IterableEntry = FormData.IterableEntry;
+
 /// Internal state for FormData implementation
 ///
 /// Holds the internal FormData pointer which stores the actual entries.
@@ -34,8 +37,14 @@ pub const InternalState = struct {
     form_data: *InternalFormData,
     /// Allocator for memory management
     allocator: std.mem.Allocator,
+    /// Cached iterable entries for iteration protocol
+    iterable_cache: ?[]IterableEntry = null,
 
     pub fn deinit(self: *InternalState) void {
+        // Free iterable cache
+        if (self.iterable_cache) |cache| {
+            self.allocator.free(cache);
+        }
         self.form_data.deinit();
         // Don't destroy self here - let the caller handle it
     }
@@ -219,4 +228,41 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) Imp
     _ = internal;
 
     return error.NotImplemented;
+}
+
+/// Get entries for iterable protocol (used by V8Interface)
+///
+/// Returns entries that can be iterated by entries(), keys(), values(), Symbol.iterator.
+/// For file entries, returns "[object File]" as the string representation.
+pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry {
+    const internal = getInternal(instance) orelse return null;
+
+    // Build array of IterableEntry from internal form data entries
+    // We need to store these in InternalState since the slice must outlive this call
+    const entries = internal.form_data.entries.items;
+
+    // Allocate space for iterable entries (cached in internal state)
+    // Free previous cache if any
+    if (internal.iterable_cache) |cache| {
+        internal.allocator.free(cache);
+        internal.iterable_cache = null;
+    }
+
+    const iterable_entries = internal.allocator.alloc(IterableEntry, entries.len) catch return null;
+    errdefer internal.allocator.free(iterable_entries);
+
+    for (entries, 0..) |entry, i| {
+        iterable_entries[i] = .{
+            .name = entry.name,
+            .value = switch (entry.value) {
+                .string => |s| s,
+                .file => "[object File]",
+            },
+        };
+    }
+
+    // Cache for lifetime management
+    internal.iterable_cache = iterable_entries;
+
+    return iterable_entries;
 }

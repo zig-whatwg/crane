@@ -526,24 +526,29 @@ pub fn fromV8Value(
     if (type_info == .pointer and type_info.pointer.size == .slice) {
         const ElemType = type_info.pointer.child;
 
-        // Special case: []const u8 (ByteString) - convert from V8 string
+        // Special case: []const u8 (ByteString/USVString) - convert using ToString
+        // Per WebIDL spec, USVString and DOMString use ToString coercion on any value
+        // except Symbol (which throws TypeError).
+        // https://webidl.spec.whatwg.org/#idl-USVString
         if (ElemType == u8) {
-            if (v8.v8_Value_IsString(value)) {
-                // Convert V8 string to []const u8
-                const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
-                const length = v8.v8_String_Utf8Length(string);
-                if (length < 0) return ConversionError.StringError;
-                if (length == 0) return &[_]u8{};
-
-                const buffer = try allocator.alloc(u8, @intCast(length));
-                const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
-                if (written != length) {
-                    allocator.free(buffer);
-                    return ConversionError.StringError;
-                }
-                return buffer;
+            // Check for Symbol - throws TypeError per WebIDL spec
+            if (v8.v8_Value_IsSymbol(value)) {
+                return ConversionError.TypeError;
             }
-            // If not a string, might be an array - fall through to sequence handling
+            // Use ToString coercion for everything else (numbers, booleans, objects, etc.)
+            // This matches browser behavior where formData.append('key', 123) stores "123"
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            const length = v8.v8_String_Utf8Length(string);
+            if (length < 0) return ConversionError.StringError;
+            if (length == 0) return &[_]u8{};
+
+            const buffer = try allocator.alloc(u8, @intCast(length));
+            const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+            if (written != length) {
+                allocator.free(buffer);
+                return ConversionError.StringError;
+            }
+            return buffer;
         }
 
         // Generic sequence handling - value must be an array
