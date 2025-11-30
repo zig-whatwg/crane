@@ -1543,38 +1543,41 @@ const Repl = struct {
     };
 
     /// Minimal assertion library injected into test files
+    /// Results are stored in _assertResults array and queried by the Zig test runner
     const assert_library =
         \\(function(g){
         \\  class AssertionError extends Error { constructor(m,a,e,o){super(m);this.name='AssertionError';this.actual=a;this.expected=e;this.operator=o;} }
         \\  function fmt(v){if(v===null)return'null';if(v===undefined)return'undefined';if(typeof v==='string')return JSON.stringify(v);if(typeof v==='object')try{return JSON.stringify(v)}catch(e){return Object.prototype.toString.call(v)}return String(v);}
         \\  function isPromise(v){return v&&typeof v==='object'&&typeof v.then==='function';}
-        \\  g._pendingAsserts=[];g._assertsPassed=0;g._assertsFailed=0;
-        \\  const assert=function(v,m){if(!v)throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');return true;};
+        \\  g._pendingAsserts=[];g._assertsPassed=0;g._assertsFailed=0;g._assertTotal=0;g._assertResults=[];
+        \\  function logPass(m){g._assertTotal++;g._assertResults.push({passed:true,name:m});}
+        \\  function logFail(m){g._assertTotal++;g._assertResults.push({passed:false,name:m});}
+        \\  const assert=function(v,m){g._assertTotal++;if(!v){logFail(m||'assert');throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');}logPass(m||'assert');return true;};
         \\  assert.ok=assert;
-        \\  assert.isTrue=function(v,m){if(isPromise(v)){g._pendingAsserts.push(v.then(function(r){if(r!==true)throw new AssertionError(m||'Expected true, got '+fmt(r),r,true,'===true');g._assertsPassed++;return true;}).catch(function(e){g._assertsFailed++;throw e;}));return true;}if(v!==true)throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');return true;};
-        \\  assert.isFalse=function(v,m){if(v!==false)throw new AssertionError(m||'Expected false, got '+fmt(v),v,false,'===false');return true;};
-        \\  assert.equal=function(a,e,m){if(a!=e)throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');return true;};
-        \\  assert.strictEqual=function(a,e,m){if(a!==e)throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');return true;};
-        \\  assert.notEqual=function(a,e,m){if(a==e)throw new AssertionError(m||'Expected '+fmt(a)+' to not equal '+fmt(e),a,e,'!=');return true;};
-        \\  assert.notStrictEqual=function(a,e,m){if(a===e)throw new AssertionError(m||'Expected '+fmt(a)+' to not strictly equal '+fmt(e),a,e,'!==');return true;};
-        \\  assert.deepEqual=function(a,e,m){if(JSON.stringify(a)!==JSON.stringify(e))throw new AssertionError(m||'Deep equal failed',a,e,'deepEqual');return true;};
-        \\  assert.throws=function(fn,ee,m){let threw=false,err;try{fn()}catch(e){threw=true;err=e}if(!threw)throw new AssertionError(m||'Expected function to throw',undefined,ee||'error','throws');if(ee&&typeof ee==='function'&&!(err instanceof ee))throw new AssertionError(m||'Wrong error type',err,ee,'throws');if(ee instanceof RegExp&&!ee.test(err.message))throw new AssertionError(m||'Error message mismatch',err.message,ee,'throws');return true;};
-        \\  assert.doesNotThrow=function(fn,m){try{fn()}catch(e){throw new AssertionError(m||'Expected no throw, got: '+e.message,e,undefined,'doesNotThrow')}return true;};
-        \\  assert.isNull=function(v,m){if(v!==null)throw new AssertionError(m||'Expected null, got '+fmt(v),v,null,'===null');return true;};
-        \\  assert.isNotNull=function(v,m){if(v===null)throw new AssertionError(m||'Expected non-null',v,'non-null','!==null');return true;};
-        \\  assert.isUndefined=function(v,m){if(v!==undefined)throw new AssertionError(m||'Expected undefined, got '+fmt(v),v,undefined,'===undefined');return true;};
-        \\  assert.isDefined=function(v,m){if(v===undefined)throw new AssertionError(m||'Expected defined value',v,'defined','!==undefined');return true;};
-        \\  assert.isFunction=function(v,m){if(typeof v!=='function')throw new AssertionError(m||'Expected function, got '+typeof v,typeof v,'function','typeof');return true;};
-        \\  assert.isObject=function(v,m){if(typeof v!=='object'||v===null)throw new AssertionError(m||'Expected object',typeof v,'object','typeof');return true;};
-        \\  assert.isString=function(v,m){if(typeof v!=='string')throw new AssertionError(m||'Expected string, got '+typeof v,typeof v,'string','typeof');return true;};
-        \\  assert.isNumber=function(v,m){if(typeof v!=='number')throw new AssertionError(m||'Expected number, got '+typeof v,typeof v,'number','typeof');return true;};
-        \\  assert.isBoolean=function(v,m){if(typeof v!=='boolean')throw new AssertionError(m||'Expected boolean, got '+typeof v,typeof v,'boolean','typeof');return true;};
-        \\  assert.isArray=function(v,m){if(!Array.isArray(v))throw new AssertionError(m||'Expected array, got '+typeof v,typeof v,'array','isArray');return true;};
-        \\  assert.instanceOf=function(v,c,m){if(!(v instanceof c))throw new AssertionError(m||'Expected instance of '+c.name,v,c,'instanceof');return true;};
-        \\  assert.match=function(v,r,m){if(!r.test(v))throw new AssertionError(m||'Expected "'+v+'" to match '+r,v,r,'match');return true;};
-        \\  assert.includes=function(h,n,m){if(!(Array.isArray(h)?h.includes(n):String(h).includes(n)))throw new AssertionError(m||'Expected to include '+fmt(n),h,n,'includes');return true;};
-        \\  assert.greaterThan=function(a,b,m){if(!(a>b))throw new AssertionError(m||'Expected '+a+' > '+b,a,b,'>');return true;};
-        \\  assert.lessThan=function(a,b,m){if(!(a<b))throw new AssertionError(m||'Expected '+a+' < '+b,a,b,'<');return true;};
+        \\  assert.isTrue=function(v,m){if(isPromise(v)){g._pendingAsserts.push(v.then(function(r){if(r!==true){logFail(m||'isTrue');throw new AssertionError(m||'Expected true, got '+fmt(r),r,true,'===true');}g._assertsPassed++;logPass(m||'isTrue');return true;}).catch(function(e){g._assertsFailed++;throw e;}));return true;}if(v!==true){logFail(m||'isTrue');throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');}logPass(m||'isTrue');return true;};
+        \\  assert.isFalse=function(v,m){if(v!==false){logFail(m||'isFalse');throw new AssertionError(m||'Expected false, got '+fmt(v),v,false,'===false');}logPass(m||'isFalse');return true;};
+        \\  assert.equal=function(a,e,m){if(a!=e){logFail(m||'equal');throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');}logPass(m||'equal');return true;};
+        \\  assert.strictEqual=function(a,e,m){if(a!==e){logFail(m||'strictEqual');throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');}logPass(m||'strictEqual');return true;};
+        \\  assert.notEqual=function(a,e,m){if(a==e){logFail(m||'notEqual');throw new AssertionError(m||'Expected '+fmt(a)+' to not equal '+fmt(e),a,e,'!=');}logPass(m||'notEqual');return true;};
+        \\  assert.notStrictEqual=function(a,e,m){if(a===e){logFail(m||'notStrictEqual');throw new AssertionError(m||'Expected '+fmt(a)+' to not strictly equal '+fmt(e),a,e,'!==');}logPass(m||'notStrictEqual');return true;};
+        \\  assert.deepEqual=function(a,e,m){if(JSON.stringify(a)!==JSON.stringify(e)){logFail(m||'deepEqual');throw new AssertionError(m||'Deep equal failed',a,e,'deepEqual');}logPass(m||'deepEqual');return true;};
+        \\  assert.throws=function(fn,ee,m){let threw=false,err;try{fn()}catch(e){threw=true;err=e}if(!threw){logFail(m||'throws');throw new AssertionError(m||'Expected function to throw',undefined,ee||'error','throws');}if(ee&&typeof ee==='function'&&!(err instanceof ee)){logFail(m||'throws');throw new AssertionError(m||'Wrong error type',err,ee,'throws');}if(ee instanceof RegExp&&!ee.test(err.message)){logFail(m||'throws');throw new AssertionError(m||'Error message mismatch',err.message,ee,'throws');}logPass(m||'throws');return true;};
+        \\  assert.doesNotThrow=function(fn,m){try{fn()}catch(e){logFail(m||'doesNotThrow');throw new AssertionError(m||'Expected no throw, got: '+e.message,e,undefined,'doesNotThrow')}logPass(m||'doesNotThrow');return true;};
+        \\  assert.isNull=function(v,m){if(v!==null){logFail(m||'isNull');throw new AssertionError(m||'Expected null, got '+fmt(v),v,null,'===null');}logPass(m||'isNull');return true;};
+        \\  assert.isNotNull=function(v,m){if(v===null){logFail(m||'isNotNull');throw new AssertionError(m||'Expected non-null',v,'non-null','!==null');}logPass(m||'isNotNull');return true;};
+        \\  assert.isUndefined=function(v,m){if(v!==undefined){logFail(m||'isUndefined');throw new AssertionError(m||'Expected undefined, got '+fmt(v),v,undefined,'===undefined');}logPass(m||'isUndefined');return true;};
+        \\  assert.isDefined=function(v,m){if(v===undefined){logFail(m||'isDefined');throw new AssertionError(m||'Expected defined value',v,'defined','!==undefined');}logPass(m||'isDefined');return true;};
+        \\  assert.isFunction=function(v,m){if(typeof v!=='function'){logFail(m||'isFunction');throw new AssertionError(m||'Expected function, got '+typeof v,typeof v,'function','typeof');}logPass(m||'isFunction');return true;};
+        \\  assert.isObject=function(v,m){if(typeof v!=='object'||v===null){logFail(m||'isObject');throw new AssertionError(m||'Expected object',typeof v,'object','typeof');}logPass(m||'isObject');return true;};
+        \\  assert.isString=function(v,m){if(typeof v!=='string'){logFail(m||'isString');throw new AssertionError(m||'Expected string, got '+typeof v,typeof v,'string','typeof');}logPass(m||'isString');return true;};
+        \\  assert.isNumber=function(v,m){if(typeof v!=='number'){logFail(m||'isNumber');throw new AssertionError(m||'Expected number, got '+typeof v,typeof v,'number','typeof');}logPass(m||'isNumber');return true;};
+        \\  assert.isBoolean=function(v,m){if(typeof v!=='boolean'){logFail(m||'isBoolean');throw new AssertionError(m||'Expected boolean, got '+typeof v,typeof v,'boolean','typeof');}logPass(m||'isBoolean');return true;};
+        \\  assert.isArray=function(v,m){if(!Array.isArray(v)){logFail(m||'isArray');throw new AssertionError(m||'Expected array, got '+typeof v,typeof v,'array','isArray');}logPass(m||'isArray');return true;};
+        \\  assert.instanceOf=function(v,c,m){if(!(v instanceof c)){logFail(m||'instanceOf');throw new AssertionError(m||'Expected instance of '+c.name,v,c,'instanceof');}logPass(m||'instanceOf');return true;};
+        \\  assert.match=function(v,r,m){if(!r.test(v)){logFail(m||'match');throw new AssertionError(m||'Expected "'+v+'" to match '+r,v,r,'match');}logPass(m||'match');return true;};
+        \\  assert.includes=function(h,n,m){if(!(Array.isArray(h)?h.includes(n):String(h).includes(n))){logFail(m||'includes');throw new AssertionError(m||'Expected to include '+fmt(n),h,n,'includes');}logPass(m||'includes');return true;};
+        \\  assert.greaterThan=function(a,b,m){if(!(a>b)){logFail(m||'greaterThan');throw new AssertionError(m||'Expected '+a+' > '+b,a,b,'>');}logPass(m||'greaterThan');return true;};
+        \\  assert.lessThan=function(a,b,m){if(!(a<b)){logFail(m||'lessThan');throw new AssertionError(m||'Expected '+a+' < '+b,a,b,'<');}logPass(m||'lessThan');return true;};
         \\  assert.AssertionError=AssertionError;
         \\  g.assert=assert;g.AssertionError=AssertionError;
         \\})(globalThis);
@@ -1681,9 +1684,53 @@ const Repl = struct {
             } else |_| {}
         } else |_| {}
 
+        // Get assertion results from JavaScript and display each one
+        // Format: [{passed: true/false, name: "assertion name"}, ...]
+        const results_code =
+            \\(function() {
+            \\  var r = globalThis._assertResults || [];
+            \\  var out = [];
+            \\  for (var i = 0; i < r.length; i++) {
+            \\    out.push((r[i].passed ? 'P' : 'F') + ':' + (r[i].name || 'unnamed'));
+            \\  }
+            \\  return out.join('\n');
+            \\})()
+        ;
+        if (self.eval(results_code)) |results_str| {
+            defer self.allocator.free(results_str);
+            if (results_str.len > 0) {
+                // Strip surrounding quotes added by formatValueForDisplay
+                // Format is: 'P:name1\nP:name2\n...'
+                var results_content = results_str;
+                if (results_content.len >= 2 and results_content[0] == '\'' and results_content[results_content.len - 1] == '\'') {
+                    results_content = results_content[1 .. results_content.len - 1];
+                }
+                if (results_content.len == 0) {
+                    // No assertions were recorded
+                } else {
+                    var result_lines = std.mem.splitScalar(u8, results_content, '\n');
+                    // Reset counters - we'll count from the results
+                    passed = 0;
+                    failed = 0;
+                    while (result_lines.next()) |result_line| {
+                        if (result_line.len < 2) continue;
+                        const is_pass = result_line[0] == 'P';
+                        const name = if (result_line.len > 2) result_line[2..] else "unnamed";
+                        if (is_pass) {
+                            try print(self.allocator, stdout, "  \x1b[32m✓\x1b[0m {s}\n", .{name});
+                            passed += 1;
+                        } else {
+                            try print(self.allocator, stdout, "  \x1b[31m✗\x1b[0m {s}\n", .{name});
+                            failed += 1;
+                        }
+                    }
+                }
+            }
+        } else |_| {}
+
         // Print summary for this file
         const total = passed + failed + errors;
-        try print(self.allocator, stdout, "  {d}/{d} passed\n", .{ passed, total });
+        try print(self.allocator, stdout, "\n  {d}/{d} passed\n", .{ passed, total });
 
         return .{ .passed = passed, .failed = failed, .errors = errors };
     }
