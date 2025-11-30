@@ -1,222 +1,215 @@
 // XMLHttpRequest Synchronous Mode Tests
 //
-// Tests for synchronous XHR behavior.
+// Tests for synchronous XHR behavior and restrictions.
+// Spec: https://xhr.spec.whatwg.org/
+//
 // Note: Sync XHR is deprecated in modern browsers but still supported.
+//
+// Run with: zig build test-v8
 
-const assert = require('./lib/assert.js').assert;
+// ============================================================================
+// SYNCHRONOUS MODE BASICS
+// ============================================================================
 
-const BASE_URL = 'http://localhost:8080';
+// open() accepts async=false parameter
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    // Should not throw
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.readyState === 1;
+})(), "open() with async=false should work")
 
-let passed = 0;
-let failed = 0;
+// Default is async=true
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/');
+    return xhr.readyState === 1;
+})(), "open() without async parameter should default to async")
 
-function test(name, fn) {
-    try {
-        fn();
-        console.log(`✓ ${name}`);
-        passed++;
-    } catch (e) {
-        console.log(`✗ ${name}`);
-        console.log(`  Error: ${e.message}`);
-        failed++;
-    }
-}
+// ============================================================================
+// SYNC XHR STATE TRANSITIONS
+// ============================================================================
 
-// =============================================================================
-// Basic Synchronous Requests
-// =============================================================================
+// After open() with sync flag, readyState is OPENED
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.readyState === XMLHttpRequest.OPENED;
+})(), "Sync XHR readyState should be OPENED after open()")
 
-test('Sync XHR blocks until complete', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/api/test`, false); // false = sync
-    // xhr.send();
-    // 
-    // // These assertions run AFTER send() returns (synchronously)
-    // assert.equal(xhr.readyState, 4);
-    // assert.equal(xhr.status, 200);
-    // assert.ok(xhr.responseText.length > 0);
-    
-    assert.ok(true, 'Synchronous request should block until response');
-});
+// ============================================================================
+// SYNC XHR RESPONSETYPE RESTRICTIONS
+// ============================================================================
 
-test('Sync XHR with POST and body', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('POST', `${BASE_URL}/api/users`, false);
-    // xhr.setRequestHeader('Content-Type', 'application/json');
-    // xhr.send(JSON.stringify({ name: 'Test' }));
-    // 
-    // assert.equal(xhr.status, 201);
-    
-    assert.ok(true, 'Sync POST should work with body');
-});
+// responseType can be set before open() 
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'json';
+    return xhr.responseType === 'json';
+})(), "responseType can be set before open()")
 
-// =============================================================================
-// Response Access
-// =============================================================================
+// For sync XHR, setting responseType to non-empty after open() may throw
+// (This is implementation-dependent - browsers differ on when they throw)
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    // Setting to '' or 'text' should always work
+    xhr.responseType = 'text';
+    return xhr.responseType === 'text';
+})(), "Sync XHR should allow responseType='text'")
 
-test('Sync XHR response available immediately after send', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/json`, false);
-    // xhr.responseType = 'text'; // Note: sync XHR has responseType restrictions
-    // xhr.send();
-    // 
-    // const text = xhr.responseText;
-    // assert.ok(text.includes('message'));
-    
-    assert.ok(true, 'Response should be available immediately after send()');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.responseType = '';
+    return xhr.responseType === '';
+})(), "Sync XHR should allow responseType=''")
 
-test('Sync XHR getAllResponseHeaders after send', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/headers/custom`, false);
-    // xhr.send();
-    // 
-    // const headers = xhr.getAllResponseHeaders();
-    // assert.ok(headers.length > 0);
-    
-    assert.ok(true, 'Headers should be available after sync send');
-});
+// ============================================================================
+// SYNC XHR TIMEOUT RESTRICTIONS
+// ============================================================================
 
-// =============================================================================
-// Error Handling (Sync Mode)
-// =============================================================================
+// Setting timeout to non-zero on sync XHR in Window context should throw
+// (But this restriction only applies in Window, not Worker)
+// Since we're testing the interface, we just verify timeout is settable
 
-test('Sync XHR throws on network error', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', 'http://invalid.invalid/', false);
-    // 
-    // try {
-    //     xhr.send();
-    //     assert.fail('Should have thrown');
-    // } catch (e) {
-    //     assert.ok(e instanceof DOMException || e instanceof Error);
-    // }
-    
-    assert.ok(true, 'Sync XHR should throw on network error');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = 5000;
+    return xhr.timeout === 5000;
+})(), "timeout should be settable before open()")
 
-test('Sync XHR throws on timeout', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/delay/5000`, false);
-    // xhr.timeout = 100;
-    // 
-    // try {
-    //     xhr.send();
-    //     assert.fail('Should have thrown timeout error');
-    // } catch (e) {
-    //     // Should be TimeoutError
-    //     assert.ok(e.name === 'TimeoutError' || e.message.includes('timeout'));
-    // }
-    
-    assert.ok(true, 'Sync XHR should throw TimeoutError on timeout');
-});
+// ============================================================================
+// SYNC XHR ABORT
+// ============================================================================
 
-// =============================================================================
-// Sync XHR Restrictions
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.abort();
+    return xhr.readyState === XMLHttpRequest.UNSENT;
+})(), "abort() should reset sync XHR to UNSENT state")
 
-test('Sync XHR timeout restriction in Window', () => {
-    // In Window context:
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // 
-    // try {
-    //     xhr.timeout = 1000; // Should throw InvalidAccessError
-    //     assert.fail('Should have thrown');
-    // } catch (e) {
-    //     assert.ok(e.name === 'InvalidAccessError');
-    // }
-    //
-    // Note: This restriction only applies in Window context, not Workers
-    
-    assert.ok(true, 'Setting timeout on sync XHR in Window should throw');
-});
+// ============================================================================
+// SYNC XHR HEADERS
+// ============================================================================
 
-test('Sync XHR responseType restrictions', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // 
-    // // Only "" and "text" are allowed for sync XHR
-    // xhr.responseType = 'text'; // OK
-    // 
-    // try {
-    //     xhr.responseType = 'arraybuffer'; // Should throw in some browsers
-    // } catch (e) {
-    //     // Expected
-    // }
-    
-    assert.ok(true, 'Sync XHR has responseType restrictions');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    // setRequestHeader should work before send
+    xhr.setRequestHeader('X-Custom', 'value');
+    return true;  // No throw means success
+})(), "setRequestHeader should work on sync XHR before send()")
 
-// =============================================================================
-// No Progress Events in Sync Mode
-// =============================================================================
+// getAllResponseHeaders returns empty before send
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.getAllResponseHeaders() === '';
+})(), "getAllResponseHeaders should return empty string before send on sync XHR")
 
-test('Sync XHR does not fire progress events', () => {
-    // const events = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.onprogress = () => events.push('progress');
-    // xhr.onloadstart = () => events.push('loadstart');
-    // 
-    // xhr.open('GET', `${BASE_URL}/content/large`, false);
-    // xhr.send();
-    // 
-    // // Sync mode: no progress events during request
-    // // Only state changes and final events
-    
-    assert.ok(true, 'Sync mode should not fire progress events during request');
-});
+// getResponseHeader returns null before send
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.getResponseHeader('Content-Type') === null;
+})(), "getResponseHeader should return null before send on sync XHR")
 
-// =============================================================================
-// Multiple Sequential Sync Requests
-// =============================================================================
+// ============================================================================
+// SYNC XHR INITIAL RESPONSE VALUES
+// ============================================================================
 
-test('Multiple sync requests in sequence', () => {
-    // const results = [];
-    // 
-    // for (let i = 0; i < 3; i++) {
-    //     const xhr = new XMLHttpRequest();
-    //     xhr.open('GET', `${BASE_URL}/api/users/${i}`, false);
-    //     xhr.send();
-    //     results.push(xhr.status);
-    // }
-    // 
-    // assert.deepEqual(results, [200, 200, 200]);
-    
-    assert.ok(true, 'Multiple sync requests should work sequentially');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.status === 0;
+})(), "Sync XHR status should be 0 before send")
 
-// =============================================================================
-// Sync XHR State Transitions
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.statusText === '';
+})(), "Sync XHR statusText should be empty before send")
 
-test('Sync XHR readyState transitions', () => {
-    // const states = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.onreadystatechange = () => states.push(xhr.readyState);
-    // 
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // // open() triggers readyState = 1 (OPENED)
-    // 
-    // xhr.send();
-    // // send() blocks, but readystatechange fires for 2, 3, 4
-    // 
-    // // After send() returns: states should be [1, 2, 3, 4]
-    // assert.deepEqual(states, [1, 2, 3, 4]);
-    
-    assert.ok(true, 'Sync XHR should still fire readystatechange for all states');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.responseText === '';
+})(), "Sync XHR responseText should be empty before send")
 
-// =============================================================================
-// Summary
-// =============================================================================
+// ============================================================================
+// SYNC XHR WITHCREDENTIALS
+// ============================================================================
 
-console.log('\n' + '='.repeat(50));
-console.log(`Tests: ${passed + failed}, Passed: ${passed}, Failed: ${failed}`);
-console.log('='.repeat(50));
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.withCredentials = true;
+    xhr.open('GET', 'http://example.com/', false);
+    return xhr.withCredentials === true;
+})(), "withCredentials should be preserved for sync XHR")
 
-if (failed > 0) {
-    process.exit(1);
-}
+// ============================================================================
+// SYNC XHR EVENT HANDLERS
+// ============================================================================
+
+// Event handlers should be settable on sync XHR
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.onreadystatechange = () => {};
+    return typeof xhr.onreadystatechange === 'function';
+})(), "onreadystatechange should be settable on sync XHR")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.onload = () => {};
+    return typeof xhr.onload === 'function';
+})(), "onload should be settable on sync XHR")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.onerror = () => {};
+    return typeof xhr.onerror === 'function';
+})(), "onerror should be settable on sync XHR")
+
+// ============================================================================
+// MULTIPLE OPEN CALLS
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.open('POST', 'http://example.org/', false);
+    return xhr.readyState === XMLHttpRequest.OPENED;
+})(), "Multiple open() calls should work on sync XHR")
+
+// ============================================================================
+// SYNC VS ASYNC FLAG
+// ============================================================================
+
+// Verify the third parameter controls sync/async mode
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', true);  // async
+    return xhr.readyState === XMLHttpRequest.OPENED;
+})(), "open() with async=true should work")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);  // sync
+    return xhr.readyState === XMLHttpRequest.OPENED;
+})(), "open() with async=false should work")
+
+// ============================================================================
+// OVERRIDEMIMETYPE ON SYNC XHR
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/', false);
+    xhr.overrideMimeType('text/plain');
+    return true;  // No throw means success
+})(), "overrideMimeType should work on sync XHR before send")

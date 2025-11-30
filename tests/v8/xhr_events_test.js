@@ -1,253 +1,243 @@
 // XMLHttpRequest Event Tests
 //
-// Tests for XHR event ordering and progress events.
-// These tests verify that events fire in the correct order per spec.
+// Tests for XHR events and XMLHttpRequestEventTarget.
+// Spec: https://xhr.spec.whatwg.org/
+//
+// Run with: zig build test-v8
 
-const assert = require('./lib/assert.js').assert;
+// ============================================================================
+// XMLHttpRequestEventTarget INTERFACE TESTS
+// ============================================================================
 
-const BASE_URL = 'http://localhost:8080';
+// XMLHttpRequestEventTarget exists
+assert.isFunction(XMLHttpRequestEventTarget, "XMLHttpRequestEventTarget should be a function")
+assert.isNotNull(XMLHttpRequestEventTarget.prototype, "XMLHttpRequestEventTarget.prototype should exist")
 
-let passed = 0;
-let failed = 0;
+// XMLHttpRequestEventTarget extends EventTarget
+assert.strictEqual(XMLHttpRequestEventTarget.prototype.__proto__, EventTarget.prototype,
+    "XMLHttpRequestEventTarget should extend EventTarget")
 
-function test(name, fn) {
-    try {
-        fn();
-        console.log(`✓ ${name}`);
-        passed++;
-    } catch (e) {
-        console.log(`✗ ${name}`);
-        console.log(`  Error: ${e.message}`);
-        failed++;
-    }
-}
+// ============================================================================
+// XMLHttpRequestUpload INTERFACE TESTS
+// ============================================================================
 
-// =============================================================================
-// Event Ordering
-// =============================================================================
+// XMLHttpRequestUpload exists
+assert.isFunction(XMLHttpRequestUpload, "XMLHttpRequestUpload should be a function")
+assert.isNotNull(XMLHttpRequestUpload.prototype, "XMLHttpRequestUpload.prototype should exist")
 
-test('XHR event order - successful request', () => {
-    // const events = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.onloadstart = () => events.push('loadstart');
-    // xhr.onprogress = () => events.push('progress');
-    // xhr.onload = () => events.push('load');
-    // xhr.onloadend = () => events.push('loadend');
-    // xhr.onreadystatechange = () => events.push(`readystate:${xhr.readyState}`);
-    // 
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // xhr.send();
-    // 
-    // Expected order per spec:
-    // - readystatechange (OPENED)
-    // - loadstart
-    // - readystatechange (HEADERS_RECEIVED)
-    // - readystatechange (LOADING)
-    // - progress (may fire multiple times)
-    // - readystatechange (DONE)
-    // - load
-    // - loadend
-    
-    assert.ok(true, 'Events should fire in spec order');
-});
+// XMLHttpRequestUpload extends XMLHttpRequestEventTarget
+assert.strictEqual(XMLHttpRequestUpload.prototype.__proto__, XMLHttpRequestEventTarget.prototype,
+    "XMLHttpRequestUpload should extend XMLHttpRequestEventTarget")
 
-test('XHR event order - upload events before download', () => {
-    // const events = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.upload.onloadstart = () => events.push('upload:loadstart');
-    // xhr.upload.onprogress = () => events.push('upload:progress');
-    // xhr.upload.onload = () => events.push('upload:load');
-    // xhr.upload.onloadend = () => events.push('upload:loadend');
-    // 
-    // xhr.onloadstart = () => events.push('xhr:loadstart');
-    // xhr.onload = () => events.push('xhr:load');
-    // xhr.onloadend = () => events.push('xhr:loadend');
-    // 
-    // xhr.open('POST', `${BASE_URL}/api/users`, false);
-    // xhr.send('test body');
-    // 
-    // Upload events should complete before download events start
-    
-    assert.ok(true, 'Upload events should complete before download events');
-});
+// ============================================================================
+// PROGRESSEVENT INTERFACE TESTS
+// ============================================================================
 
-// =============================================================================
-// Progress Events
-// =============================================================================
+// ProgressEvent constructor exists
+assert.isFunction(ProgressEvent, "ProgressEvent should be a function")
+assert.isNotNull(ProgressEvent.prototype, "ProgressEvent.prototype should exist")
 
-test('XHR progress event has correct properties', () => {
-    // const xhr = new XMLHttpRequest();
-    // let progressEvent = null;
-    // 
-    // xhr.onprogress = (e) => {
-    //     progressEvent = e;
-    //     assert.ok('lengthComputable' in e);
-    //     assert.ok('loaded' in e);
-    //     assert.ok('total' in e);
-    // };
-    // 
-    // xhr.open('GET', `${BASE_URL}/content/large`, false);
-    // xhr.send();
-    
-    assert.ok(true, 'Progress event should have lengthComputable, loaded, total');
-});
+// ProgressEvent extends Event
+assert.strictEqual(ProgressEvent.prototype.__proto__, Event.prototype,
+    "ProgressEvent should extend Event")
 
-test('XHR progress event - lengthComputable when Content-Length known', () => {
-    // const xhr = new XMLHttpRequest();
-    // let lengthComputable = null;
-    // 
-    // xhr.onprogress = (e) => {
-    //     lengthComputable = e.lengthComputable;
-    // };
-    // 
-    // xhr.open('GET', `${BASE_URL}/content/json`, false);
-    // xhr.send();
-    // 
-    // assert.ok(lengthComputable, 'lengthComputable should be true with Content-Length');
-    
-    assert.ok(true, 'lengthComputable should reflect Content-Length header presence');
-});
+// ProgressEvent constructor - creates instance
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress');
+    return event instanceof ProgressEvent;
+})(), "new ProgressEvent('progress') should create ProgressEvent instance")
 
-test('XHR upload progress events', () => {
-    // const events = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.upload.onloadstart = (e) => events.push({ type: 'loadstart', loaded: e.loaded });
-    // xhr.upload.onprogress = (e) => events.push({ type: 'progress', loaded: e.loaded });
-    // xhr.upload.onload = (e) => events.push({ type: 'load', loaded: e.loaded });
-    // xhr.upload.onloadend = (e) => events.push({ type: 'loadend', loaded: e.loaded });
-    // 
-    // xhr.open('POST', `${BASE_URL}/echo/body`, false);
-    // const largeBody = 'x'.repeat(10000);
-    // xhr.send(largeBody);
-    // 
-    // // Should see: loadstart -> progress... -> load -> loadend
-    // assert.ok(events.length >= 3, 'Should have at least loadstart, load, loadend');
-    
-    assert.ok(true, 'Upload should fire progress events');
-});
+// ProgressEvent has correct type
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress');
+    return event.type === 'progress';
+})(), "ProgressEvent type should match constructor argument")
 
-// =============================================================================
-// Error Events
-// =============================================================================
+// ProgressEvent default values
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress');
+    return event.lengthComputable === false;
+})(), "ProgressEvent lengthComputable should default to false")
 
-test('XHR error event on network failure', () => {
-    // const xhr = new XMLHttpRequest();
-    // let errorFired = false;
-    // let loadendFired = false;
-    // 
-    // xhr.onerror = () => { errorFired = true; };
-    // xhr.onloadend = () => { loadendFired = true; };
-    // 
-    // xhr.open('GET', 'http://invalid.invalid/', false);
-    // try { xhr.send(); } catch (e) { /* sync throws */ }
-    // 
-    // // Error followed by loadend
-    // assert.ok(errorFired || loadendFired, 'Error or loadend should fire');
-    
-    assert.ok(true, 'Network error should trigger onerror then onloadend');
-});
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress');
+    return event.loaded === 0;
+})(), "ProgressEvent loaded should default to 0")
 
-test('XHR abort event', () => {
-    // const xhr = new XMLHttpRequest();
-    // const events = [];
-    // 
-    // xhr.onabort = () => events.push('abort');
-    // xhr.onloadend = () => events.push('loadend');
-    // 
-    // xhr.open('GET', `${BASE_URL}/delay/5000`, true);
-    // xhr.send();
-    // xhr.abort();
-    // 
-    // // abort followed by loadend
-    // assert.deepEqual(events, ['abort', 'loadend']);
-    
-    assert.ok(true, 'Abort should trigger onabort then onloadend');
-});
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress');
+    return event.total === 0;
+})(), "ProgressEvent total should default to 0")
 
-test('XHR timeout event', () => {
-    // const xhr = new XMLHttpRequest();
-    // let timeoutFired = false;
-    // let loadendFired = false;
-    // 
-    // xhr.ontimeout = () => { timeoutFired = true; };
-    // xhr.onloadend = () => { loadendFired = true; };
-    // 
-    // xhr.open('GET', `${BASE_URL}/delay/5000`, true);
-    // xhr.timeout = 100;
-    // xhr.send();
-    // 
-    // // After timeout: timeout event then loadend
-    // // Wait for completion...
-    
-    assert.ok(true, 'Timeout should trigger ontimeout then onloadend');
-});
+// ProgressEvent with options
+assert.isTrue((() => {
+    const event = new ProgressEvent('progress', {
+        lengthComputable: true,
+        loaded: 50,
+        total: 100
+    });
+    return event.lengthComputable === true && event.loaded === 50 && event.total === 100;
+})(), "ProgressEvent should accept options")
 
-// =============================================================================
-// Readystate Change
-// =============================================================================
+// ============================================================================
+// EVENT HANDLER PROPERTIES ON XHR
+// ============================================================================
 
-test('XHR readystatechange fires for each state', () => {
-    // const states = [];
-    // const xhr = new XMLHttpRequest();
-    // 
-    // xhr.onreadystatechange = () => {
-    //     states.push(xhr.readyState);
-    // };
-    // 
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // xhr.send();
-    // 
-    // // Should include: 1 (OPENED from open()), then 2, 3, 4 during send
-    // assert.ok(states.includes(1), 'Should include OPENED');
-    // assert.ok(states.includes(4), 'Should include DONE');
-    
-    assert.ok(true, 'readystatechange should fire for all state transitions');
-});
+// All event handlers should be settable
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    let called = false;
+    xhr.onloadstart = () => { called = true; };
+    return typeof xhr.onloadstart === 'function';
+})(), "onloadstart should be settable")
 
-// =============================================================================
-// Event Listeners vs Properties
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onprogress = () => {};
+    return typeof xhr.onprogress === 'function';
+})(), "onprogress should be settable")
 
-test('XHR addEventListener works', () => {
-    // const xhr = new XMLHttpRequest();
-    // let called = false;
-    // 
-    // xhr.addEventListener('load', () => { called = true; });
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // xhr.send();
-    // 
-    // assert.ok(called, 'addEventListener should work');
-    
-    assert.ok(true, 'addEventListener should work alongside event properties');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onabort = () => {};
+    return typeof xhr.onabort === 'function';
+})(), "onabort should be settable")
 
-test('XHR multiple listeners on same event', () => {
-    // const xhr = new XMLHttpRequest();
-    // let count = 0;
-    // 
-    // xhr.addEventListener('load', () => { count++; });
-    // xhr.addEventListener('load', () => { count++; });
-    // xhr.onload = () => { count++; };
-    // 
-    // xhr.open('GET', `${BASE_URL}/api/test`, false);
-    // xhr.send();
-    // 
-    // assert.equal(count, 3, 'All listeners should be called');
-    
-    assert.ok(true, 'Multiple listeners should all be called');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onerror = () => {};
+    return typeof xhr.onerror === 'function';
+})(), "onerror should be settable")
 
-// =============================================================================
-// Summary
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => {};
+    return typeof xhr.onload === 'function';
+})(), "onload should be settable")
 
-console.log('\n' + '='.repeat(50));
-console.log(`Tests: ${passed + failed}, Passed: ${passed}, Failed: ${failed}`);
-console.log('='.repeat(50));
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.ontimeout = () => {};
+    return typeof xhr.ontimeout === 'function';
+})(), "ontimeout should be settable")
 
-if (failed > 0) {
-    process.exit(1);
-}
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onloadend = () => {};
+    return typeof xhr.onloadend === 'function';
+})(), "onloadend should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = () => {};
+    return typeof xhr.onreadystatechange === 'function';
+})(), "onreadystatechange should be settable")
+
+// ============================================================================
+// EVENT HANDLER PROPERTIES ON UPLOAD
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onloadstart = () => {};
+    return typeof xhr.upload.onloadstart === 'function';
+})(), "upload.onloadstart should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = () => {};
+    return typeof xhr.upload.onprogress === 'function';
+})(), "upload.onprogress should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onabort = () => {};
+    return typeof xhr.upload.onabort === 'function';
+})(), "upload.onabort should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onerror = () => {};
+    return typeof xhr.upload.onerror === 'function';
+})(), "upload.onerror should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onload = () => {};
+    return typeof xhr.upload.onload === 'function';
+})(), "upload.onload should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.ontimeout = () => {};
+    return typeof xhr.upload.ontimeout === 'function';
+})(), "upload.ontimeout should be settable")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onloadend = () => {};
+    return typeof xhr.upload.onloadend === 'function';
+})(), "upload.onloadend should be settable")
+
+// ============================================================================
+// ADDEVENTLISTENER ON XHR
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.addEventListener === 'function';
+})(), "xhr should have addEventListener")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.removeEventListener === 'function';
+})(), "xhr should have removeEventListener")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.dispatchEvent === 'function';
+})(), "xhr should have dispatchEvent")
+
+// ============================================================================
+// ADDEVENTLISTENER ON UPLOAD
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.upload.addEventListener === 'function';
+})(), "upload should have addEventListener")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.upload.removeEventListener === 'function';
+})(), "upload should have removeEventListener")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return typeof xhr.upload.dispatchEvent === 'function';
+})(), "upload should have dispatchEvent")
+
+// ============================================================================
+// READYSTATECHANGE EVENT
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    let called = false;
+    xhr.onreadystatechange = () => { called = true; };
+    xhr.open('GET', 'http://example.com/');
+    return called;
+})(), "onreadystatechange should fire on open()")
+
+// ============================================================================
+// EVENT TYPES
+// ============================================================================
+
+// Verify all XHR event types are valid ProgressEvent types
+assert.isTrue((() => {
+    const types = ['loadstart', 'progress', 'abort', 'error', 'load', 'timeout', 'loadend'];
+    return types.every(type => {
+        const event = new ProgressEvent(type);
+        return event.type === type;
+    });
+})(), "All XHR event types should be valid ProgressEvent types")

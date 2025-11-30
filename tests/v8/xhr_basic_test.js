@@ -1,229 +1,250 @@
 // XMLHttpRequest Basic Tests
 //
-// These tests verify basic XHR functionality using the mock HTTP server.
-// Run: zig build run-mock-server (in another terminal)
-// Then: node xhr_basic_test.js
+// These tests verify basic XHR functionality.
+// Spec: https://xhr.spec.whatwg.org/
+//
+// Run with: zig build test-v8
 
-const assert = require('./lib/assert.js').assert;
+// ============================================================================
+// XMLHttpRequest INTERFACE TESTS
+// ============================================================================
 
-const BASE_URL = 'http://localhost:8080';
+// XMLHttpRequest constructor exists
+assert.isFunction(XMLHttpRequest, "XMLHttpRequest should be a function")
+assert.isNotNull(XMLHttpRequest.prototype, "XMLHttpRequest.prototype should exist")
 
-// Test results collection
-let passed = 0;
-let failed = 0;
+// XMLHttpRequest extends EventTarget
+assert.strictEqual(XMLHttpRequest.prototype.__proto__, XMLHttpRequestEventTarget.prototype, 
+    "XMLHttpRequest should extend XMLHttpRequestEventTarget")
 
-function test(name, fn) {
-    try {
-        fn();
-        console.log(`✓ ${name}`);
-        passed++;
-    } catch (e) {
-        console.log(`✗ ${name}`);
-        console.log(`  Error: ${e.message}`);
-        failed++;
-    }
-}
+// XMLHttpRequest constructor - creates instance
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr instanceof XMLHttpRequest;
+})(), "new XMLHttpRequest() should create XMLHttpRequest instance")
 
-// Note: These tests are designed to be run in a V8/browser environment
-// For now, they document the expected behavior
+// ============================================================================
+// READY STATE CONSTANTS
+// ============================================================================
 
-// =============================================================================
-// Basic GET Request
-// =============================================================================
+assert.strictEqual(XMLHttpRequest.UNSENT, 0, "XMLHttpRequest.UNSENT should be 0")
+assert.strictEqual(XMLHttpRequest.OPENED, 1, "XMLHttpRequest.OPENED should be 1")
+assert.strictEqual(XMLHttpRequest.HEADERS_RECEIVED, 2, "XMLHttpRequest.HEADERS_RECEIVED should be 2")
+assert.strictEqual(XMLHttpRequest.LOADING, 3, "XMLHttpRequest.LOADING should be 3")
+assert.strictEqual(XMLHttpRequest.DONE, 4, "XMLHttpRequest.DONE should be 4")
 
-test('XHR basic GET request', () => {
-    // In a real test:
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/api/test`, false); // synchronous
-    // xhr.send();
-    // assert.equal(xhr.status, 200);
-    // assert.equal(xhr.readyState, 4);
-    
-    // Document expected behavior:
-    assert.ok(true, 'GET request should complete successfully');
-});
+// Instance constants
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.UNSENT === 0 && xhr.OPENED === 1 && xhr.HEADERS_RECEIVED === 2 && 
+           xhr.LOADING === 3 && xhr.DONE === 4;
+})(), "Instance should have ready state constants")
 
-test('XHR GET with JSON response', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/json`, false);
-    // xhr.send();
-    // assert.equal(xhr.status, 200);
-    // const json = JSON.parse(xhr.responseText);
-    // assert.equal(json.message, 'success');
-    
-    assert.ok(true, 'JSON response should be parseable');
-});
+// ============================================================================
+// INITIAL STATE
+// ============================================================================
 
-// =============================================================================
-// POST Request
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.readyState === 0;
+})(), "Initial readyState should be UNSENT (0)")
 
-test('XHR POST request with body', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('POST', `${BASE_URL}/api/users`, false);
-    // xhr.setRequestHeader('Content-Type', 'application/json');
-    // xhr.send(JSON.stringify({ name: 'Test User' }));
-    // assert.equal(xhr.status, 201);
-    
-    assert.ok(true, 'POST request should return 201');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.status === 0;
+})(), "Initial status should be 0")
 
-// =============================================================================
-// Response Types
-// =============================================================================
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.statusText === "";
+})(), "Initial statusText should be empty string")
 
-test('XHR text responseType', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/text`, false);
-    // xhr.responseType = 'text';
-    // xhr.send();
-    // assert.equal(typeof xhr.response, 'string');
-    // assert.equal(xhr.responseText, 'Hello, World!');
-    
-    assert.ok(true, 'Text response should be a string');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.responseText === "";
+})(), "Initial responseText should be empty string")
 
-test('XHR arraybuffer responseType', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/binary`, false);
-    // xhr.responseType = 'arraybuffer';
-    // xhr.send();
-    // assert.ok(xhr.response instanceof ArrayBuffer);
-    
-    assert.ok(true, 'ArrayBuffer response should be an ArrayBuffer');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.responseType === "";
+})(), "Initial responseType should be empty string")
 
-test('XHR blob responseType', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/binary`, false);
-    // xhr.responseType = 'blob';
-    // xhr.send();
-    // assert.ok(xhr.response instanceof Blob);
-    
-    assert.ok(true, 'Blob response should be a Blob');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.timeout === 0;
+})(), "Initial timeout should be 0")
 
-test('XHR json responseType', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/content/json`, false);
-    // xhr.responseType = 'json';
-    // xhr.send();
-    // assert.equal(typeof xhr.response, 'object');
-    // assert.equal(xhr.response.message, 'success');
-    
-    assert.ok(true, 'JSON response should be parsed object');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.withCredentials === false;
+})(), "Initial withCredentials should be false")
 
-// =============================================================================
-// Headers
-// =============================================================================
+// ============================================================================
+// OPEN METHOD
+// ============================================================================
 
-test('XHR setRequestHeader', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('POST', `${BASE_URL}/echo/headers`, false);
-    // xhr.setRequestHeader('X-Custom-Header', 'custom-value');
-    // xhr.send();
-    // const headers = JSON.parse(xhr.responseText);
-    // assert.equal(headers['x-custom-header'], 'custom-value');
-    
-    assert.ok(true, 'Custom headers should be sent');
-});
+assert.isFunction(XMLHttpRequest.prototype.open, "XMLHttpRequest.prototype.open should exist")
 
-test('XHR getResponseHeader', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/headers/custom`, false);
-    // xhr.send();
-    // const customHeader = xhr.getResponseHeader('X-Custom-Header');
-    // assert.equal(customHeader, 'custom-value');
-    
-    assert.ok(true, 'Response headers should be readable');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/');
+    return xhr.readyState === 1;
+})(), "open() should set readyState to OPENED (1)")
 
-test('XHR getAllResponseHeaders', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/headers/custom`, false);
-    // xhr.send();
-    // const headers = xhr.getAllResponseHeaders();
-    // assert.ok(headers.includes('x-custom-header'));
-    
-    assert.ok(true, 'All response headers should be returned');
-});
+// ============================================================================
+// SEND METHOD
+// ============================================================================
 
-// =============================================================================
-// State Transitions
-// =============================================================================
+assert.isFunction(XMLHttpRequest.prototype.send, "XMLHttpRequest.prototype.send should exist")
 
-test('XHR readyState transitions', () => {
-    // const states = [];
-    // const xhr = new XMLHttpRequest();
-    // xhr.onreadystatechange = () => states.push(xhr.readyState);
-    // xhr.open('GET', `${BASE_URL}/api/test`, true);
-    // xhr.send();
-    // // After completion: states should be [1, 2, 3, 4]
-    
-    assert.ok(true, 'readyState should transition through all states');
-});
+// ============================================================================
+// ABORT METHOD
+// ============================================================================
 
-// =============================================================================
-// Timeout
-// =============================================================================
+assert.isFunction(XMLHttpRequest.prototype.abort, "XMLHttpRequest.prototype.abort should exist")
 
-test('XHR timeout setting', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/delay/5000`, true);
-    // xhr.timeout = 100;
-    // xhr.ontimeout = () => { /* called on timeout */ };
-    // xhr.send();
-    
-    assert.ok(true, 'Timeout should be configurable');
-});
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'http://example.com/');
+    xhr.abort();
+    return xhr.readyState === 0;
+})(), "abort() should reset readyState to UNSENT (0)")
 
-// =============================================================================
-// Abort
-// =============================================================================
+// ============================================================================
+// SETREQUESTHEADER METHOD
+// ============================================================================
 
-test('XHR abort', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/delay/5000`, true);
-    // xhr.onabort = () => { /* called on abort */ };
-    // xhr.send();
-    // xhr.abort();
-    // assert.equal(xhr.readyState, 0);
-    
-    assert.ok(true, 'Abort should cancel the request');
-});
+assert.isFunction(XMLHttpRequest.prototype.setRequestHeader, 
+    "XMLHttpRequest.prototype.setRequestHeader should exist")
 
-// =============================================================================
-// Error Handling
-// =============================================================================
+// ============================================================================
+// GETRESPONSEHEADER METHOD
+// ============================================================================
 
-test('XHR 404 error', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', `${BASE_URL}/nonexistent`, false);
-    // xhr.send();
-    // assert.equal(xhr.status, 404);
-    // // Note: 404 is NOT a network error, it's a successful HTTP response
-    
-    assert.ok(true, '404 should be received as status (not error)');
-});
+assert.isFunction(XMLHttpRequest.prototype.getResponseHeader,
+    "XMLHttpRequest.prototype.getResponseHeader should exist")
 
-test('XHR network error', () => {
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('GET', 'http://invalid.invalid/', true);
-    // xhr.onerror = () => { /* called on network error */ };
-    // xhr.send();
-    
-    assert.ok(true, 'Network errors should trigger onerror');
-});
+// ============================================================================
+// GETALLRESPONSEHEADERS METHOD
+// ============================================================================
 
-// =============================================================================
-// Summary
-// =============================================================================
+assert.isFunction(XMLHttpRequest.prototype.getAllResponseHeaders,
+    "XMLHttpRequest.prototype.getAllResponseHeaders should exist")
 
-console.log('\n' + '='.repeat(50));
-console.log(`Tests: ${passed + failed}, Passed: ${passed}, Failed: ${failed}`);
-console.log('='.repeat(50));
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.getAllResponseHeaders() === "";
+})(), "getAllResponseHeaders() should return empty string before request")
 
-if (failed > 0) {
-    process.exit(1);
-}
+// ============================================================================
+// OVERRIDEMIMETYPE METHOD
+// ============================================================================
+
+assert.isFunction(XMLHttpRequest.prototype.overrideMimeType,
+    "XMLHttpRequest.prototype.overrideMimeType should exist")
+
+// ============================================================================
+// UPLOAD PROPERTY
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.upload !== null && xhr.upload !== undefined;
+})(), "xhr.upload should exist")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return xhr.upload instanceof XMLHttpRequestUpload;
+})(), "xhr.upload should be an XMLHttpRequestUpload instance")
+
+// ============================================================================
+// RESPONSETYPE PROPERTY
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'text';
+    return xhr.responseType === 'text';
+})(), "responseType should be settable to 'text'")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'arraybuffer';
+    return xhr.responseType === 'arraybuffer';
+})(), "responseType should be settable to 'arraybuffer'")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'blob';
+    return xhr.responseType === 'blob';
+})(), "responseType should be settable to 'blob'")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = 'json';
+    return xhr.responseType === 'json';
+})(), "responseType should be settable to 'json'")
+
+// ============================================================================
+// EVENT HANDLER PROPERTIES
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onreadystatechange' in xhr;
+})(), "xhr should have onreadystatechange property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onloadstart' in xhr;
+})(), "xhr should have onloadstart property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onprogress' in xhr;
+})(), "xhr should have onprogress property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onabort' in xhr;
+})(), "xhr should have onabort property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onerror' in xhr;
+})(), "xhr should have onerror property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onload' in xhr;
+})(), "xhr should have onload property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'ontimeout' in xhr;
+})(), "xhr should have ontimeout property")
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    return 'onloadend' in xhr;
+})(), "xhr should have onloadend property")
+
+// ============================================================================
+// TIMEOUT PROPERTY
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = 5000;
+    return xhr.timeout === 5000;
+})(), "timeout should be settable")
+
+// ============================================================================
+// WITHCREDENTIALS PROPERTY
+// ============================================================================
+
+assert.isTrue((() => {
+    const xhr = new XMLHttpRequest();
+    xhr.withCredentials = true;
+    return xhr.withCredentials === true;
+})(), "withCredentials should be settable to true")

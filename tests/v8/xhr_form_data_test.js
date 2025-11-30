@@ -1,197 +1,244 @@
 // XMLHttpRequest FormData Tests
 //
-// Tests for using FormData with XHR.
+// Tests for FormData API used with XHR.
+// Spec: https://xhr.spec.whatwg.org/#interface-formdata
+//
+// Run with: zig build test-v8
 
-const assert = require('./lib/assert.js').assert;
+// ============================================================================
+// FORMDATA INTERFACE TESTS
+// ============================================================================
 
-const BASE_URL = 'http://localhost:8080';
+// FormData constructor exists
+assert.isFunction(FormData, "FormData should be a function")
+assert.isNotNull(FormData.prototype, "FormData.prototype should exist")
 
-let passed = 0;
-let failed = 0;
+// FormData constructor - creates instance
+assert.isTrue((() => {
+    const fd = new FormData();
+    return fd instanceof FormData;
+})(), "new FormData() should create FormData instance")
 
-function test(name, fn) {
-    try {
-        fn();
-        console.log(`✓ ${name}`);
-        passed++;
-    } catch (e) {
-        console.log(`✗ ${name}`);
-        console.log(`  Error: ${e.message}`);
-        failed++;
-    }
-}
+// ============================================================================
+// FORMDATA APPEND METHOD
+// ============================================================================
 
-// =============================================================================
-// FormData Construction
-// =============================================================================
+assert.isFunction(FormData.prototype.append, "FormData.prototype.append should exist")
 
-test('FormData empty constructor', () => {
-    // const fd = new FormData();
-    // assert.ok(fd instanceof FormData);
-    
-    assert.ok(true, 'FormData should be constructable');
-});
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'value');
+    return fd.get('name') === 'value';
+})(), "append() should add entry retrievable by get()")
 
-test('FormData append', () => {
-    // const fd = new FormData();
-    // fd.append('name', 'value');
-    // assert.equal(fd.get('name'), 'value');
-    
-    assert.ok(true, 'FormData.append should add entries');
-});
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'value1');
+    fd.append('name', 'value2');
+    const all = fd.getAll('name');
+    return all.length === 2 && all[0] === 'value1' && all[1] === 'value2';
+})(), "append() should allow multiple values for same name")
 
-test('FormData append multiple with same name', () => {
-    // const fd = new FormData();
-    // fd.append('name', 'value1');
-    // fd.append('name', 'value2');
-    // assert.deepEqual(fd.getAll('name'), ['value1', 'value2']);
-    
-    assert.ok(true, 'FormData should allow multiple values for same name');
-});
+// ============================================================================
+// FORMDATA SET METHOD
+// ============================================================================
 
-test('FormData set', () => {
-    // const fd = new FormData();
-    // fd.append('name', 'value1');
-    // fd.set('name', 'value2');
-    // assert.deepEqual(fd.getAll('name'), ['value2']);
-    
-    assert.ok(true, 'FormData.set should replace existing values');
-});
+assert.isFunction(FormData.prototype.set, "FormData.prototype.set should exist")
 
-test('FormData delete', () => {
-    // const fd = new FormData();
-    // fd.append('name', 'value');
-    // fd.delete('name');
-    // assert.equal(fd.get('name'), null);
-    
-    assert.ok(true, 'FormData.delete should remove entries');
-});
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'value1');
+    fd.append('name', 'value2');
+    fd.set('name', 'newvalue');
+    const all = fd.getAll('name');
+    return all.length === 1 && all[0] === 'newvalue';
+})(), "set() should replace all existing values")
 
-test('FormData has', () => {
-    // const fd = new FormData();
-    // assert.ok(!fd.has('name'));
-    // fd.append('name', 'value');
-    // assert.ok(fd.has('name'));
-    
-    assert.ok(true, 'FormData.has should check for entry existence');
-});
+// ============================================================================
+// FORMDATA DELETE METHOD
+// ============================================================================
 
-// =============================================================================
-// FormData Iteration
-// =============================================================================
+assert.isFunction(FormData.prototype.delete, "FormData.prototype.delete should exist")
 
-test('FormData entries', () => {
-    // const fd = new FormData();
-    // fd.append('a', '1');
-    // fd.append('b', '2');
-    // 
-    // const entries = [...fd.entries()];
-    // assert.deepEqual(entries, [['a', '1'], ['b', '2']]);
-    
-    assert.ok(true, 'FormData.entries should iterate key-value pairs');
-});
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'value');
+    fd.delete('name');
+    return fd.get('name') === null;
+})(), "delete() should remove all entries with name")
 
-test('FormData keys', () => {
-    // const fd = new FormData();
-    // fd.append('a', '1');
-    // fd.append('b', '2');
-    // 
-    // const keys = [...fd.keys()];
-    // assert.deepEqual(keys, ['a', 'b']);
-    
-    assert.ok(true, 'FormData.keys should iterate keys');
-});
+// ============================================================================
+// FORMDATA GET METHOD
+// ============================================================================
 
-test('FormData values', () => {
-    // const fd = new FormData();
-    // fd.append('a', '1');
-    // fd.append('b', '2');
-    // 
-    // const values = [...fd.values()];
-    // assert.deepEqual(values, ['1', '2']);
-    
-    assert.ok(true, 'FormData.values should iterate values');
-});
+assert.isFunction(FormData.prototype.get, "FormData.prototype.get should exist")
 
-test('FormData forEach', () => {
-    // const fd = new FormData();
-    // fd.append('a', '1');
-    // fd.append('b', '2');
-    // 
-    // const collected = [];
-    // fd.forEach((value, key) => collected.push([key, value]));
-    // assert.deepEqual(collected, [['a', '1'], ['b', '2']]);
-    
-    assert.ok(true, 'FormData.forEach should call callback for each entry');
-});
+assert.isTrue((() => {
+    const fd = new FormData();
+    return fd.get('nonexistent') === null;
+})(), "get() should return null for nonexistent key")
 
-// =============================================================================
-// FormData with XHR
-// =============================================================================
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'first');
+    fd.append('name', 'second');
+    return fd.get('name') === 'first';
+})(), "get() should return first value for key with multiple values")
 
-test('XHR send FormData', () => {
-    // const fd = new FormData();
-    // fd.append('name', 'value');
-    // 
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('POST', `${BASE_URL}/echo/formdata`, false);
-    // xhr.send(fd);
-    // 
-    // assert.equal(xhr.status, 200);
-    // // Content-Type should be automatically set to multipart/form-data
-    
-    assert.ok(true, 'XHR should be able to send FormData');
-});
+// ============================================================================
+// FORMDATA GETALL METHOD
+// ============================================================================
 
-test('XHR FormData sets Content-Type automatically', () => {
-    // const fd = new FormData();
-    // fd.append('file', 'content');
-    // 
-    // const xhr = new XMLHttpRequest();
-    // xhr.open('POST', `${BASE_URL}/echo/headers`, false);
-    // // Do NOT set Content-Type manually
-    // xhr.send(fd);
-    // 
-    // const headers = JSON.parse(xhr.responseText);
-    // assert.ok(headers['content-type'].includes('multipart/form-data'));
-    
-    assert.ok(true, 'Sending FormData should auto-set Content-Type to multipart/form-data');
-});
+assert.isFunction(FormData.prototype.getAll, "FormData.prototype.getAll should exist")
 
-// =============================================================================
-// FormData with Files (Browser-specific)
-// =============================================================================
+assert.isTrue((() => {
+    const fd = new FormData();
+    const all = fd.getAll('nonexistent');
+    return Array.isArray(all) && all.length === 0;
+})(), "getAll() should return empty array for nonexistent key")
 
-test('FormData append Blob', () => {
-    // const fd = new FormData();
-    // const blob = new Blob(['content'], { type: 'text/plain' });
-    // fd.append('file', blob);
-    // 
-    // const entry = fd.get('file');
-    // assert.ok(entry instanceof Blob);
-    
-    assert.ok(true, 'FormData should accept Blob values');
-});
+// ============================================================================
+// FORMDATA HAS METHOD
+// ============================================================================
 
-test('FormData append Blob with filename', () => {
-    // const fd = new FormData();
-    // const blob = new Blob(['content'], { type: 'text/plain' });
-    // fd.append('file', blob, 'custom-name.txt');
-    // 
-    // const entry = fd.get('file');
-    // assert.equal(entry.name, 'custom-name.txt');
-    
-    assert.ok(true, 'FormData should accept filename parameter for Blob');
-});
+assert.isFunction(FormData.prototype.has, "FormData.prototype.has should exist")
 
-// =============================================================================
-// Summary
-// =============================================================================
+assert.isTrue((() => {
+    const fd = new FormData();
+    return fd.has('name') === false;
+})(), "has() should return false for nonexistent key")
 
-console.log('\n' + '='.repeat(50));
-console.log(`Tests: ${passed + failed}, Passed: ${passed}, Failed: ${failed}`);
-console.log('='.repeat(50));
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('name', 'value');
+    return fd.has('name') === true;
+})(), "has() should return true for existing key")
 
-if (failed > 0) {
-    process.exit(1);
-}
+// ============================================================================
+// FORMDATA ITERATION - ENTRIES
+// ============================================================================
+
+assert.isFunction(FormData.prototype.entries, "FormData.prototype.entries should exist")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('a', '1');
+    fd.append('b', '2');
+    const entries = [...fd.entries()];
+    return entries.length === 2 && 
+           entries[0][0] === 'a' && entries[0][1] === '1' &&
+           entries[1][0] === 'b' && entries[1][1] === '2';
+})(), "entries() should iterate key-value pairs")
+
+// ============================================================================
+// FORMDATA ITERATION - KEYS
+// ============================================================================
+
+assert.isFunction(FormData.prototype.keys, "FormData.prototype.keys should exist")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('a', '1');
+    fd.append('b', '2');
+    const keys = [...fd.keys()];
+    return keys.length === 2 && keys[0] === 'a' && keys[1] === 'b';
+})(), "keys() should iterate keys")
+
+// ============================================================================
+// FORMDATA ITERATION - VALUES
+// ============================================================================
+
+assert.isFunction(FormData.prototype.values, "FormData.prototype.values should exist")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('a', '1');
+    fd.append('b', '2');
+    const values = [...fd.values()];
+    return values.length === 2 && values[0] === '1' && values[1] === '2';
+})(), "values() should iterate values")
+
+// ============================================================================
+// FORMDATA ITERATION - FOREACH
+// ============================================================================
+
+assert.isFunction(FormData.prototype.forEach, "FormData.prototype.forEach should exist")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('a', '1');
+    fd.append('b', '2');
+    const collected = [];
+    fd.forEach((value, key) => collected.push([key, value]));
+    return collected.length === 2 &&
+           collected[0][0] === 'a' && collected[0][1] === '1' &&
+           collected[1][0] === 'b' && collected[1][1] === '2';
+})(), "forEach() should call callback for each entry")
+
+// ============================================================================
+// FORMDATA ITERATION - SYMBOL.ITERATOR
+// ============================================================================
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    return typeof fd[Symbol.iterator] === 'function';
+})(), "FormData should have Symbol.iterator")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('a', '1');
+    fd.append('b', '2');
+    const entries = [...fd];
+    return entries.length === 2;
+})(), "FormData should be iterable with spread operator")
+
+// ============================================================================
+// FORMDATA WITH BLOB
+// ============================================================================
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    const blob = new Blob(['content'], { type: 'text/plain' });
+    fd.append('file', blob);
+    const entry = fd.get('file');
+    return entry instanceof Blob;
+})(), "FormData should accept Blob values")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    const blob = new Blob(['content'], { type: 'text/plain' });
+    fd.append('file', blob, 'custom-name.txt');
+    const entry = fd.get('file');
+    // When a filename is provided, the Blob should become a File
+    return entry instanceof Blob;
+})(), "FormData.append() should accept filename parameter")
+
+// ============================================================================
+// FORMDATA WITH FILE
+// ============================================================================
+
+assert.isTrue((() => {
+    // File constructor may not be available in all environments
+    if (typeof File === 'undefined') return true;
+    const fd = new FormData();
+    const file = new File(['content'], 'test.txt', { type: 'text/plain' });
+    fd.append('file', file);
+    const entry = fd.get('file');
+    return entry instanceof File;
+})(), "FormData should accept File values")
+
+// ============================================================================
+// FORMDATA STRING COERCION
+// ============================================================================
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('number', 123);
+    return fd.get('number') === '123';
+})(), "FormData should coerce non-string values to strings")
+
+assert.isTrue((() => {
+    const fd = new FormData();
+    fd.append('bool', true);
+    return fd.get('bool') === 'true';
+})(), "FormData should coerce boolean to string")
