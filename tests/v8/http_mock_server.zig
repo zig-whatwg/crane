@@ -21,6 +21,8 @@ pub const HttpMockServer = struct {
     server: std.net.Server,
     should_stop: std.atomic.Value(bool),
     large_content: ?[]u8,
+    /// Dynamically allocated paths that need to be freed on deinit
+    allocated_paths: std.ArrayListUnmanaged([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) !*HttpMockServer {
         const self = try allocator.create(HttpMockServer);
@@ -36,6 +38,7 @@ pub const HttpMockServer = struct {
             .server = server,
             .should_stop = std.atomic.Value(bool).init(false),
             .large_content = null,
+            .allocated_paths = .{},
         };
 
         // Setup default routes for fetch tests
@@ -48,6 +51,11 @@ pub const HttpMockServer = struct {
         if (self.large_content) |lc| {
             self.allocator.free(lc);
         }
+        // Free dynamically allocated paths
+        for (self.allocated_paths.items) |path| {
+            self.allocator.free(path);
+        }
+        self.allocated_paths.deinit(self.allocator);
         self.mock.deinit();
         self.server.deinit();
         self.allocator.destroy(self);
@@ -138,8 +146,8 @@ pub const HttpMockServer = struct {
         const status_codes = [_]u16{ 200, 201, 204, 400, 401, 403, 404, 500, 503 };
         for (status_codes) |code| {
             const path = try std.fmt.allocPrint(self.allocator, "/status/{d}", .{code});
-            // NOTE: Do NOT free path here - the mock server stores a reference to it
-            // The path will be cleaned up when the server is deinitialized
+            // Track allocated path for cleanup in deinit
+            try self.allocated_paths.append(self.allocator, path);
 
             const status_text = getStatusText(code);
             const body = if (code == 204) null else status_text;
@@ -299,12 +307,25 @@ pub const HttpMockServer = struct {
             self.allocator.free(parsed.headers);
         }
 
-        std.debug.print("{s} {s}\n", .{ parsed.method, parsed.path });
-
         // Handle echo endpoints specially
+        // Track dynamically allocated response data for cleanup
+        var allocated_body: ?[]const u8 = null;
+        var allocated_headers: ?[]const [2][]const u8 = null;
+        var allocated_header_strings: [2][]const u8 = .{ &.{}, &.{} };
+        defer {
+            if (allocated_body) |b| self.allocator.free(b);
+            if (allocated_headers) |h| self.allocator.free(h);
+            if (allocated_header_strings[0].len > 0) self.allocator.free(allocated_header_strings[0]);
+            if (allocated_header_strings[1].len > 0) self.allocator.free(allocated_header_strings[1]);
+        }
+
         var response: MockResponse = undefined;
         if (std.mem.startsWith(u8, parsed.path, "/echo/")) {
-            response = try self.handleEchoRequest(parsed);
+            const echo_result = try self.handleEchoRequest(parsed);
+            response = echo_result.response;
+            allocated_body = echo_result.allocated_body;
+            allocated_headers = echo_result.allocated_headers;
+            allocated_header_strings = echo_result.allocated_header_strings;
         } else if (std.mem.startsWith(u8, parsed.path, "/delay/")) {
             response = try self.handleDelayRequest(parsed);
         } else {
@@ -324,7 +345,14 @@ pub const HttpMockServer = struct {
         try self.sendHttpResponse(conn.stream, response);
     }
 
-    fn handleEchoRequest(self: *HttpMockServer, parsed: ParsedRequest) !MockResponse {
+    const EchoResult = struct {
+        response: MockResponse,
+        allocated_body: ?[]const u8 = null,
+        allocated_headers: ?[]const [2][]const u8 = null,
+        allocated_header_strings: [2][]const u8 = .{ &.{}, &.{} },
+    };
+
+    fn handleEchoRequest(self: *HttpMockServer, parsed: ParsedRequest) !EchoResult {
         if (std.mem.eql(u8, parsed.path, "/echo/headers")) {
             // Echo headers as JSON
             var json: std.ArrayList(u8) = .{};
@@ -337,10 +365,14 @@ pub const HttpMockServer = struct {
             }
             try json.appendSlice(self.allocator, "}");
 
+            const body = try self.allocator.dupe(u8, json.items);
             return .{
-                .status = 200,
-                .body = try self.allocator.dupe(u8, json.items),
-                .headers = &.{.{ "Content-Type", "application/json" }},
+                .response = .{
+                    .status = 200,
+                    .body = body,
+                    .headers = &.{.{ "Content-Type", "application/json" }},
+                },
+                .allocated_body = body,
             };
         } else if (std.mem.eql(u8, parsed.path, "/echo/body")) {
             // Echo body back
@@ -355,25 +387,35 @@ pub const HttpMockServer = struct {
 
             // Allocate headers array on heap so it lives long enough
             const headers_arr = try self.allocator.alloc([2][]const u8, 1);
-            headers_arr[0] = .{
-                try self.allocator.dupe(u8, "Content-Type"),
-                try self.allocator.dupe(u8, req_content_type),
-            };
+            const header_key = try self.allocator.dupe(u8, "Content-Type");
+            const header_val = try self.allocator.dupe(u8, req_content_type);
+            headers_arr[0] = .{ header_key, header_val };
+
+            const body = if (parsed.body) |b| try self.allocator.dupe(u8, b) else null;
 
             return .{
-                .status = 200,
-                .body = if (parsed.body) |b| try self.allocator.dupe(u8, b) else "",
-                .headers = headers_arr,
+                .response = .{
+                    .status = 200,
+                    .body = body orelse "",
+                    .headers = headers_arr,
+                },
+                .allocated_body = body,
+                .allocated_headers = headers_arr,
+                .allocated_header_strings = .{ header_key, header_val },
             };
         } else if (std.mem.eql(u8, parsed.path, "/echo/formdata")) {
             return .{
-                .status = 200,
-                .body = "{\"received\": \"formdata\"}",
-                .headers = &.{.{ "Content-Type", "application/json" }},
+                .response = .{
+                    .status = 200,
+                    .body = "{\"received\": \"formdata\"}",
+                    .headers = &.{.{ "Content-Type", "application/json" }},
+                },
             };
         }
 
-        return .{ .status = 404, .body = "Not Found" };
+        return .{
+            .response = .{ .status = 404, .body = "Not Found" },
+        };
     }
 
     fn handleDelayRequest(self: *HttpMockServer, parsed: ParsedRequest) !MockResponse {
