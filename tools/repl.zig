@@ -50,9 +50,12 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     const arg0 = info.v8_FunctionCallbackInfo_GetArgument(0);
 
-    // Extract URL string from the argument
+    // Extract URL string from the argument (can be string or Request object)
     var url_buf: [4096]u8 = undefined;
     var url_len: usize = 0;
+
+    // Also track if input is a Request object to extract other properties
+    var input_request_obj: ?*v8.ffi.Object = null;
 
     if (v8.ffi.v8_Value_IsString(arg0)) {
         const str = v8.ffi.v8_Value_ToString(arg0, context) orelse {
@@ -65,8 +68,20 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         url_len = @intCast(v8.ffi.v8_String_Utf8Length(str));
         if (url_len > url_buf.len) url_len = url_buf.len;
         _ = v8.ffi.v8_String_WriteUtf8(str, &url_buf, @intCast(url_buf.len));
+    } else if (v8.ffi.v8_Value_IsObject(arg0) and !v8.ffi.v8_Value_IsNull(arg0)) {
+        // Check if it's a Request object by looking for the 'url' property
+        const req_obj: *v8.ffi.Object = @ptrCast(arg0);
+        if (getStringProperty(isolate, context, req_obj, "url", &url_buf)) |url_from_request| {
+            url_len = url_from_request.len;
+            input_request_obj = req_obj;
+        } else {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() argument must be a URL string or Request object", 55) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            v8.ffi.v8_Isolate_ThrowException(isolate, err);
+            return;
+        }
     } else {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() requires a URL string", 29) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() argument must be a URL string or Request object", 55) orelse return;
         const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
         v8.ffi.v8_Isolate_ThrowException(isolate, err);
         return;
@@ -74,7 +89,7 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     const url_str = url_buf[0..url_len];
 
-    // Parse second argument (RequestInit) if present
+    // Parse second argument (RequestInit) if present, or use Request object properties
     var method: std.http.Method = .GET;
     var request_body: ?[]const u8 = null;
     var request_body_owned: ?[]u8 = null;
@@ -87,6 +102,29 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     // Redirect behavior: "follow" (default), "manual", "error"
     var redirect_behavior: std.http.Client.Request.RedirectBehavior = @enumFromInt(3); // default: follow 3 times
 
+    // If input was a Request object, extract method from it first
+    if (input_request_obj) |req_obj| {
+        var method_buf: [16]u8 = undefined;
+        if (getStringProperty(isolate, context, req_obj, "method", &method_buf)) |method_str| {
+            if (std.ascii.eqlIgnoreCase(method_str, "GET")) {
+                method = .GET;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "POST")) {
+                method = .POST;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "PUT")) {
+                method = .PUT;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "DELETE")) {
+                method = .DELETE;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "PATCH")) {
+                method = .PATCH;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "HEAD")) {
+                method = .HEAD;
+            } else if (std.ascii.eqlIgnoreCase(method_str, "OPTIONS")) {
+                method = .OPTIONS;
+            }
+        }
+    }
+
+    // Second argument (RequestInit) can override Request object properties
     if (argc >= 2) {
         const arg1 = info.v8_FunctionCallbackInfo_GetArgument(1);
         if (v8.ffi.v8_Value_IsObject(arg1) and !v8.ffi.v8_Value_IsNull(arg1)) {
