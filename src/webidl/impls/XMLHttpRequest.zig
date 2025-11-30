@@ -116,10 +116,11 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 }
 
 /// Getter for onreadystatechange
-/// TODO: Implement when event handler support is ready
+///
+/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
 pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    return state.own.onreadystatechange;
 }
 
 /// Getter for readyState
@@ -254,11 +255,11 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 }
 
 /// Setter for onreadystatechange
-/// TODO: Implement when event handler support is ready
+///
+/// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    state.own.onreadystatechange = value;
 }
 
 /// Setter for timeout
@@ -392,10 +393,12 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
         if (xhr_state.response) |r| r.deinit();
         xhr_state.response = null;
         // Fire readystatechange and abort events (TODO)
-    }
 
-    // Step 3: If state is done, set to unsent and response to network error
-    if (xhr_state.ready_state == .DONE) {
+        // Step 3: If state is done, set to unsent and response to network error
+        // (This is part of the same conditional block per spec)
+        xhr_state.ready_state = .UNSENT;
+    } else if (xhr_state.ready_state == .OPENED) {
+        // If OPENED but send flag not set, just reset to UNSENT
         xhr_state.ready_state = .UNSENT;
         if (xhr_state.response) |r| r.deinit();
         xhr_state.response = null;

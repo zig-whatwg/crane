@@ -233,6 +233,7 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             global_name: []const u8,
         ) void {
+            @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
             const global = v8.v8_Context_Global(context);
