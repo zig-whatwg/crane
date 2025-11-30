@@ -10,6 +10,7 @@
 //! - Console (console APIs)
 //! - Streams (streaming data)
 //! - MIME Sniff (MIME type detection)
+//! - Trusted Types (W3C Trusted Types for DOM XSS prevention)
 
 const std = @import("std");
 
@@ -25,6 +26,7 @@ pub const streams = @import("streams");
 pub const mimesniff = @import("mimesniff");
 pub const interfaces = @import("interfaces");
 pub const impls = @import("impls");
+pub const trusted_types = @import("trusted_types");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -44,6 +46,7 @@ test {
     _ = mimesniff;
     _ = interfaces;
     _ = impls;
+    _ = trusted_types;
     _ = v8;
     _ = js_bindings;
     _ = codegen;

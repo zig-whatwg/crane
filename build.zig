@@ -229,6 +229,7 @@ pub fn build(b: *std.Build) void {
             "file",
             "fs",
             "fetch",
+            "trusted_types",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -239,7 +240,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types\n", .{});
             std.process.exit(1);
         }
     }
@@ -1123,6 +1124,15 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
     impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
 
+    // Trusted Types module (W3C Trusted Types)
+    const trusted_types_mod = b.addModule("trusted_types", .{
+        .root_source_file = b.path("src/trusted_types/root.zig"),
+        .target = target,
+    });
+    // trusted_types_mod dependencies will be added as implementation progresses:
+    // trusted_types_mod.addImport("infra", infra_mod);
+    // trusted_types_mod.addImport("webidl", webidl_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1140,6 +1150,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("file", file_mod);
     whatwg_mod.addImport("fs", fs_mod);
     whatwg_mod.addImport("fetch", fetch_mod);
+    whatwg_mod.addImport("trusted_types", trusted_types_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1383,6 +1394,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add fs test files: {}\n", .{err});
+        };
+    }
+
+    // Trusted Types tests (W3C Trusted Types)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "trusted_types")) {
+        const trusted_types_tests = b.addTest(.{ .root_module = trusted_types_mod });
+        const run_trusted_types_tests = b.addRunArtifact(trusted_types_tests);
+        test_step.dependOn(&run_trusted_types_tests.step);
+
+        // Add dedicated test files from tests/trusted_types/ when they exist
+        const trusted_types_imports = [_]std.Build.Module.Import{
+            .{ .name = "trusted_types", .module = trusted_types_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add trusted_types test files: {}\n", .{err});
         };
     }
 
