@@ -265,8 +265,32 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     // Extract status and headers BEFORE reading body (body read invalidates head.bytes)
     const status = @intFromEnum(http_response.head.status);
-    const content_type = http_response.head.content_type;
-    const location = http_response.head.location;
+
+    // Copy all headers from the response (must be done before reading body)
+    // because iterateHeaders returns slices into redirect_buffer which gets reused
+    const HeaderCopy = struct { name: []u8, value: []u8 };
+    var headers_list: std.ArrayListUnmanaged(HeaderCopy) = .empty;
+    defer {
+        for (headers_list.items) |h| {
+            allocator.free(h.name);
+            allocator.free(h.value);
+        }
+        headers_list.deinit(allocator);
+    }
+
+    var header_iter = http_response.head.iterateHeaders();
+    while (header_iter.next()) |header| {
+        const name_copy = allocator.dupe(u8, header.name) catch continue;
+        const value_copy = allocator.dupe(u8, header.value) catch {
+            allocator.free(name_copy);
+            continue;
+        };
+        headers_list.append(allocator, .{ .name = name_copy, .value = value_copy }) catch {
+            allocator.free(name_copy);
+            allocator.free(value_copy);
+            continue;
+        };
+    }
 
     // Read response body (skip for HEAD requests)
     var transfer_buffer: [4096]u8 = undefined;
@@ -313,12 +337,9 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
             }
         }
 
-        // Set known headers from the parsed head (content_type and location are parsed fields)
-        if (content_type) |ct| {
-            internal.response.header_list.append("Content-Type", ct) catch {};
-        }
-        if (location) |loc| {
-            internal.response.header_list.append("Location", loc) catch {};
+        // Add all response headers
+        for (headers_list.items) |h| {
+            internal.response.header_list.append(h.name, h.value) catch {};
         }
     }
 
