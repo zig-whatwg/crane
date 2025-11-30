@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Fetch HTML from URL and convert to markdown using pandoc
+# Usage: ./get <url>
+
+set -e
+
+if [ -z "$1" ]; then
+    echo "Usage: ./get <url>"
+    echo "Example: ./get https://drafts.csswg.org/cssom"
+    exit 1
+fi
+
+url="$1"
+
+# Extract filename from URL path (last segment, without trailing slash)
+filename=$(echo "$url" | sed 's:/*$::' | awk -F/ '{print $NF}')
+
+# If filename is empty, use 'index'
+if [ -z "$filename" ]; then
+    filename="index"
+fi
+
+output_file="${filename}.md"
+
+echo "Fetching: $url"
+echo "Output: $output_file"
+
+# Fetch HTML and convert to markdown
+curl -sL "$url" | pandoc -f html -t markdown -o "$output_file"
+
+echo "Done: $output_file"
