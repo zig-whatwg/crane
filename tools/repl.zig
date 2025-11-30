@@ -348,8 +348,7 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     // Receive response headers
     var redirect_buffer: [4096]u8 = undefined;
-    var http_response = req.receiveHead(&redirect_buffer) catch |err| {
-        std.debug.print("receiveHead error: {}\n", .{err});
+    var http_response = req.receiveHead(&redirect_buffer) catch {
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: receive failed", 30) orelse return;
         const v8_err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
