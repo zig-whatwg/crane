@@ -103,6 +103,42 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
                 // "follow" is default, no change needed
             }
 
+            // Check for abort signal
+            const signal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "signal", 6);
+            if (signal_key) |sk| {
+                const signal_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(sk));
+                if (signal_value) |sv| {
+                    if (v8.ffi.v8_Value_IsObject(sv) and !v8.ffi.v8_Value_IsNull(sv)) {
+                        // Check if signal.aborted is true
+                        const signal_obj: *v8.ffi.Object = @ptrCast(sv);
+                        const aborted_key = v8.ffi.v8_String_NewFromUtf8(isolate, "aborted", 7);
+                        if (aborted_key) |ak| {
+                            const aborted_value = v8.ffi.v8_Object_Get(signal_obj, context, @ptrCast(ak));
+                            if (aborted_value) |av| {
+                                if (v8.ffi.v8_Value_BooleanValue(av, isolate)) {
+                                    // Signal is already aborted - reject with AbortError
+                                    const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+                                    const err_name = v8.ffi.v8_String_NewFromUtf8(isolate, "AbortError", 10) orelse return;
+                                    const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "The operation was aborted.", 26) orelse return;
+
+                                    // Create a DOMException-like error object
+                                    const err_obj = v8.ffi.v8_Object_New(isolate) orelse return;
+                                    const name_key = v8.ffi.v8_String_NewFromUtf8(isolate, "name", 4) orelse return;
+                                    const message_key = v8.ffi.v8_String_NewFromUtf8(isolate, "message", 7) orelse return;
+                                    _ = v8.ffi.v8_Object_Set(err_obj, context, @ptrCast(name_key), @ptrCast(err_name));
+                                    _ = v8.ffi.v8_Object_Set(err_obj, context, @ptrCast(message_key), @ptrCast(err_msg));
+
+                                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, @ptrCast(err_obj));
+                                    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+                                    info.setReturnValue(@ptrCast(promise));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Extract method
             var method_buf: [16]u8 = undefined;
             if (getStringProperty(isolate, context, init_obj, "method", &method_buf)) |method_str| {
