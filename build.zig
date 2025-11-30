@@ -1133,6 +1133,9 @@ pub fn build(b: *std.Build) void {
     // trusted_types_mod.addImport("infra", infra_mod);
     // trusted_types_mod.addImport("webidl", webidl_mod);
 
+    // Add trusted_types to impls for TrustedHTML, TrustedScript, etc. implementations
+    impls_mod.addImport("trusted_types", trusted_types_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
