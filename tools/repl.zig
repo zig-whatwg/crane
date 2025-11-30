@@ -278,6 +278,7 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     var req = client.request(method, uri, .{
         .extra_headers = extra_headers_storage[0..extra_headers_count],
         .redirect_behavior = redirect_behavior,
+        .keep_alive = false, // Don't try to reuse connections (simpler for mock server)
     }) catch {
         // Return rejected promise with network error
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
@@ -347,11 +348,12 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     // Receive response headers
     var redirect_buffer: [4096]u8 = undefined;
-    var http_response = req.receiveHead(&redirect_buffer) catch {
+    var http_response = req.receiveHead(&redirect_buffer) catch |err| {
+        std.debug.print("receiveHead error: {}\n", .{err});
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: receive failed", 30) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const v8_err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, v8_err);
         const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
         info.setReturnValue(@ptrCast(promise));
         return;
@@ -416,8 +418,76 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         // Set status from HTTP response
         internal.response.status = status;
 
-        // Set URL in URL list
-        const url_copy = allocator.dupe(u8, url_str) catch null;
+        // Get final URL after redirects (req.uri may have been updated)
+        // Manually construct URL since std.Uri.format requires a Writer pointer
+        var final_url_buf: [4096]u8 = undefined;
+        var final_url_len: usize = 0;
+
+        // Helper to get percent-encoded or raw string from Component
+        const getComponentStr = struct {
+            fn get(component: std.Uri.Component) []const u8 {
+                return switch (component) {
+                    .raw => |r| r,
+                    .percent_encoded => |p| p,
+                };
+            }
+        }.get;
+
+        // Build URL: scheme://host:port/path?query#fragment
+        if (req.uri.scheme.len > 0) {
+            @memcpy(final_url_buf[final_url_len..][0..req.uri.scheme.len], req.uri.scheme);
+            final_url_len += req.uri.scheme.len;
+            final_url_buf[final_url_len] = ':';
+            final_url_len += 1;
+        }
+        if (req.uri.host) |host| {
+            final_url_buf[final_url_len] = '/';
+            final_url_buf[final_url_len + 1] = '/';
+            final_url_len += 2;
+            const host_str = getComponentStr(host);
+            @memcpy(final_url_buf[final_url_len..][0..host_str.len], host_str);
+            final_url_len += host_str.len;
+        }
+        if (req.uri.port) |port| {
+            final_url_buf[final_url_len] = ':';
+            final_url_len += 1;
+            const port_str = std.fmt.bufPrint(final_url_buf[final_url_len..], "{d}", .{port}) catch "";
+            final_url_len += port_str.len;
+        }
+        const path_str = getComponentStr(req.uri.path);
+        if (path_str.len > 0) {
+            @memcpy(final_url_buf[final_url_len..][0..path_str.len], path_str);
+            final_url_len += path_str.len;
+        }
+        if (req.uri.query) |query| {
+            final_url_buf[final_url_len] = '?';
+            final_url_len += 1;
+            const query_str = getComponentStr(query);
+            @memcpy(final_url_buf[final_url_len..][0..query_str.len], query_str);
+            final_url_len += query_str.len;
+        }
+        if (req.uri.fragment) |fragment| {
+            final_url_buf[final_url_len] = '#';
+            final_url_len += 1;
+            const frag_str = getComponentStr(fragment);
+            @memcpy(final_url_buf[final_url_len..][0..frag_str.len], frag_str);
+            final_url_len += frag_str.len;
+        }
+        const final_url = final_url_buf[0..final_url_len];
+
+        // Check if redirect happened (original URL != final URL)
+        const was_redirected = !std.mem.eql(u8, url_str, final_url);
+
+        // Set URL in URL list - add original URL first if redirected
+        if (was_redirected) {
+            const orig_url_copy = allocator.dupe(u8, url_str) catch null;
+            if (orig_url_copy) |u| {
+                internal.response.url_list.append(allocator, u) catch {};
+            }
+        }
+
+        // Add final URL
+        const url_copy = allocator.dupe(u8, final_url) catch null;
         if (url_copy) |u| {
             internal.response.url_list.append(allocator, u) catch {};
         }

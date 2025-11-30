@@ -231,11 +231,20 @@ pub const HttpMockServer = struct {
                 continue;
             };
 
-            // Handle request
-            self.handleHttpRequest(conn) catch |err| {
-                std.debug.print("Error handling request: {}\n", .{err});
+            // Handle request in a detached thread to allow concurrent connections
+            const thread = std.Thread.spawn(.{}, handleConnectionThread, .{ self, conn }) catch |err| {
+                std.debug.print("Error spawning thread: {}\n", .{err});
+                conn.stream.close();
+                continue;
             };
+            thread.detach();
         }
+    }
+
+    fn handleConnectionThread(self: *HttpMockServer, conn: std.net.Server.Connection) void {
+        self.handleHttpRequest(conn) catch |err| {
+            std.debug.print("Error handling request: {}\n", .{err});
+        };
     }
 
     pub fn stop(self: *HttpMockServer) void {
