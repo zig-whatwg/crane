@@ -79,28 +79,48 @@ pub const HttpMockServer = struct {
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
-        // /api/users/:id
+        // /api/users/1 - specific route for user 1 (used in sequential test)
+        try self.mock.addRoute("/api/users/1", .{
+            .status = 200,
+            .body = "{\"id\": 1, \"name\": \"Alice\", \"email\": \"alice@example.com\"}",
+            .headers = &.{.{ "Content-Type", "application/json" }},
+        });
+
+        // /api/users/:id - fallback for other user IDs
         try self.mock.addPrefixRoute("/api/users/", .{
             .status = 200,
             .body = "{\"id\": 123, \"name\": \"User 123\", \"email\": \"user123@example.com\"}",
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
+        // /api/posts (POST) - must be before GET to ensure method matching
+        try self.mock.addRouteWithMethod("POST", "/api/posts", .{
+            .status = 201,
+            .body = "{\"id\": 1, \"message\": \"Post created\", \"title\": \"Test Post\"}",
+            .headers = &.{.{ "Content-Type", "application/json" }},
+        });
+
         // /api/posts (GET)
-        try self.mock.addRoute("/api/posts", .{
+        try self.mock.addRouteWithMethod("GET", "/api/posts", .{
             .status = 200,
             .body = "[{\"id\": 1, \"title\": \"First Post\"}]",
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
-        // /api/posts (POST)
-        try self.mock.addRouteWithMethod("POST", "/api/posts", .{
-            .status = 201,
-            .body = "{\"id\": 1, \"message\": \"Post created\"}",
+        // /api/posts/:id (DELETE) - specific route for DELETE
+        try self.mock.addRouteWithMethod("DELETE", "/api/posts/1", .{
+            .status = 204,
+            .body = null,
+        });
+
+        // /api/posts/:id (GET) - specific route for verifying created posts
+        try self.mock.addRouteWithMethod("GET", "/api/posts/1", .{
+            .status = 200,
+            .body = "{\"id\": 1, \"title\": \"Test Post\", \"content\": \"Content\"}",
             .headers = &.{.{ "Content-Type", "application/json" }},
         });
 
-        // /api/posts/:id (PUT/PATCH)
+        // /api/posts/:id (PUT/PATCH) - prefix route for updates
         try self.mock.addPrefixRoute("/api/posts/", .{
             .status = 200,
             .body = "{\"message\": \"Post updated\"}",
