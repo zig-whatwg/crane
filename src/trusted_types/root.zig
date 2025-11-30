@@ -60,13 +60,15 @@ pub const CreateHTMLCallback = policy.CreateHTMLCallback;
 pub const CreateScriptCallback = policy.CreateScriptCallback;
 pub const CreateScriptURLCallback = policy.CreateScriptURLCallback;
 
+// Policy factory module - manages policies and provides type checking
+pub const policy_factory = @import("policy_factory.zig");
+
+pub const TrustedTypePolicyFactory = policy_factory.TrustedTypePolicyFactory;
+pub const FactoryError = policy_factory.FactoryError;
+
 // TODO: Add these in subsequent tasks
-// pub const factory = @import("factory.zig");
-// pub const TrustedTypePolicyFactory = factory.TrustedTypePolicyFactory;
-//
 // pub const sink_types = @import("sink_types.zig");
-// pub const getAttributeType = sink_types.getAttributeType;
-// pub const getPropertyType = sink_types.getPropertyType;
+// Full sink type mapping table per spec
 
 test {
     std.testing.refAllDecls(@This());
