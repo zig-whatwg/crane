@@ -66,6 +66,30 @@ pub const policy_factory = @import("policy_factory.zig");
 pub const TrustedTypePolicyFactory = policy_factory.TrustedTypePolicyFactory;
 pub const FactoryError = policy_factory.FactoryError;
 
+// Enforcement module - core enforcement algorithms per spec §3.4-3.5, §4.3.4
+pub const enforcement = @import("enforcement.zig");
+
+pub const EnforcementError = enforcement.EnforcementError;
+pub const ExpectedType = enforcement.ExpectedType;
+pub const InputValue = enforcement.InputValue;
+pub const SinkMismatchResult = enforcement.SinkMismatchResult;
+pub const CspDisposition = enforcement.CspDisposition;
+pub const CspPolicyInfo = enforcement.CspPolicyInfo;
+pub const GlobalObject = enforcement.GlobalObject;
+
+// Core enforcement functions
+pub const getTrustedTypeCompliantString = enforcement.getTrustedTypeCompliantString;
+pub const processValueWithDefaultPolicy = enforcement.processValueWithDefaultPolicy;
+pub const shouldSinkTypeMismatchViolationBeBlockedByCSP = enforcement.shouldSinkTypeMismatchViolationBeBlockedByCSP;
+
+// Convenience helpers
+pub const isValidTrustedHTML = enforcement.isValidTrustedHTML;
+pub const isValidTrustedScript = enforcement.isValidTrustedScript;
+pub const isValidTrustedScriptURL = enforcement.isValidTrustedScriptURL;
+pub const getRequiredTypeForProperty = enforcement.getRequiredTypeForProperty;
+pub const getRequiredTypeForAttribute = enforcement.getRequiredTypeForAttribute;
+pub const createCspPolicyInfo = enforcement.createCspPolicyInfo;
+
 // TODO: Add these in subsequent tasks
 // pub const sink_types = @import("sink_types.zig");
 // Full sink type mapping table per spec
