@@ -2,29 +2,126 @@
 //!
 //! WHATWG XHR Standard: https://xhr.spec.whatwg.org/
 //!
-//! This implementation is a thin wrapper around the Fetch API infrastructure,
-//! providing the XMLHttpRequest interface for backward compatibility and
-//! synchronous request support.
+//! This module implements the XMLHttpRequest (XHR) API following the WHATWG
+//! XHR Standard. XHR provides a way to make HTTP requests from JavaScript
+//! without refreshing the page, enabling AJAX functionality.
+//!
+//! ## Overview
+//!
+//! XMLHttpRequest is a thin wrapper around the Fetch API infrastructure,
+//! providing the classic XHR interface for backward compatibility and
+//! synchronous request support (not available with Fetch).
 //!
 //! ## Architecture
 //!
-//! - algorithms/ - Spec algorithms (open, send, abort, response handling)
-//! - internal/ - Internal state and helpers
+//! ```
+//! JavaScript/V8 Layer
+//!        ↓
+//! WebIDL Interfaces (generated)
+//!        ↓
+//! XHR Implementation (this module)
+//!        ↓
+//! Fetch Internal APIs (reuse)
+//!        ↓
+//! Network Backend (reuse)
+//! ```
+//!
+//! ### Directory Structure
+//!
+//! - `algorithms/` - Spec algorithms (open, send, abort, headers, etc.)
+//! - `internal/` - Internal state, progress tracking, context abstraction
 //!
 //! ## Key Features
 //!
-//! - Full synchronous and asynchronous support
-//! - All response types (text, arraybuffer, blob, json, document*)
-//! - Progress tracking with 50ms throttling
-//! - Upload progress
-//! - Timeout and abort
-//! - CORS via Fetch
+//! ### Request Methods
+//!
+//! - `open()` - Initialize a request
+//! - `send()` - Send the request (async or sync)
+//! - `abort()` - Cancel an active request
+//! - `setRequestHeader()` - Set request headers
+//!
+//! ### Response Properties
+//!
+//! - `status` / `statusText` - HTTP status
+//! - `responseType` - Control response format (text, arraybuffer, blob, json)
+//! - `response` / `responseText` - Access response body
+//! - `getResponseHeader()` / `getAllResponseHeaders()` - Response headers
+//!
+//! ### Event Lifecycle
+//!
+//! ```
+//! loadstart → progress → load → loadend (success)
+//! loadstart → progress → error → loadend (error)
+//! loadstart → progress → abort → loadend (abort)
+//! loadstart → progress → timeout → loadend (timeout)
+//! ```
+//!
+//! ### Synchronous vs Asynchronous
+//!
+//! - **Async (default)**: Returns immediately, fires events as response arrives
+//! - **Sync**: Blocks until response complete, throws on errors
+//!
+//! Note: Sync XHR is deprecated in modern browsers but still required for
+//! backward compatibility.
+//!
+//! ## Usage Example
+//!
+//! ```zig
+//! const allocator = std.testing.allocator;
+//!
+//! // Create state
+//! var state = XMLHttpRequestState.init(allocator);
+//! defer state.deinit();
+//!
+//! // Open request
+//! try open.open(&state, "GET", "https://api.example.com/data", true, null, null);
+//!
+//! // Send request (async)
+//! try send.send(&state, null);
+//!
+//! // After completion, access response
+//! if (state.ready_state == .DONE) {
+//!     const response_val = try response.getResponse(&state);
+//!     // Use response_val.text, response_val.arraybuffer, etc.
+//! }
+//! ```
+//!
+//! ## Response Types
+//!
+//! | Type | Description | Available When |
+//! |------|-------------|----------------|
+//! | "" (empty) | Text or document based on MIME | DONE |
+//! | "text" | Decoded text string | LOADING, DONE |
+//! | "arraybuffer" | ArrayBuffer with raw bytes | DONE |
+//! | "blob" | Blob object | DONE |
+//! | "json" | Parsed JSON (null on error) | DONE |
+//! | "document" | DOM Document (stubbed) | DONE |
+//!
+//! ## Progress Events
+//!
+//! Progress events are throttled to 50ms to avoid overwhelming the event loop.
+//! Each event includes:
+//! - `lengthComputable` - true if total size is known
+//! - `loaded` - bytes received so far
+//! - `total` - total bytes (if known)
+//!
+//! ## CORS Integration
+//!
+//! XHR uses CORS mode by default. Key points:
+//! - `withCredentials` controls whether credentials are sent
+//! - Upload listeners trigger CORS preflight (even for simple requests)
 //!
 //! ## Known Limitations
 //!
-//! - Document response type stubbed (requires HTML/XML parsers)
-//! - FormData multipart encoding stubbed (requires HTML Standard algorithm)
-//! - Window/Worker context stubbed (requires HTML Standard)
+//! - **Document response type**: Stubbed (requires HTML/XML parsers)
+//! - **FormData multipart encoding**: Stubbed (requires HTML Standard algorithm)
+//! - **Window/Worker context detection**: Stubbed (requires HTML Standard)
+//!
+//! ## Spec References
+//!
+//! - XHR Standard: https://xhr.spec.whatwg.org/
+//! - Fetch Standard: https://fetch.spec.whatwg.org/
+//! - HTML Standard (events): https://html.spec.whatwg.org/
 
 const std = @import("std");
 
