@@ -98,6 +98,7 @@ pub const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 
 // Compile-time utilities
 pub const buildVTable = @import("vtable_builder.zig").buildVTable;
+pub const buildVTableWithDeinit = @import("vtable_builder.zig").buildVTableWithDeinit;
 pub const FlattenedState = @import("field_merger.zig").FlattenedState;
 
 // GC integration

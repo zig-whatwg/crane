@@ -14,7 +14,7 @@
 //!       .call_appendChild = &Node.call_appendChild,
 //!       .get_nodeType = &Node.get_nodeType,
 //!   };
-//!   const vtable = buildVTable(delegates, &Node.deinit_wrapper);
+//!   const vtable = buildVTable(&delegates, &Node.deinit);
 
 const std = @import("std");
 const Method = @import("instance.zig").Method;
@@ -23,7 +23,7 @@ const VTable = @import("instance.zig").VTable;
 
 /// Build a VTable from delegate functions using compile-time reflection
 ///
-/// Takes a pointer to a const delegates struct and builds a VTable.
+/// Takes a pointer to a const delegates struct and optional deinit function.
 /// Uses compile-time reflection - NO Method enum required!
 ///
 /// Example:
@@ -32,10 +32,17 @@ const VTable = @import("instance.zig").VTable;
 ///       .get_nodeType = &impl.getNodeType,
 ///       .set_textContent = &impl.setTextContent,
 ///   };
-///   const vtable = buildVTable(&delegates);
+///   const vtable = buildVTable(&delegates, &Node.deinit);
 ///
 /// The delegates must be const and have a stable address (global or static).
+/// The deinit function is called when the GC collects the JS wrapper object.
+/// If not provided, defaults to null (no cleanup).
 pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
+    return buildVTableWithDeinit(delegates_ptr, null);
+}
+
+/// Build a VTable with explicit deinit function
+pub fn buildVTableWithDeinit(comptime delegates_ptr: anytype, comptime deinit_fn: ?*const fn (*Instance) void) VTable {
     @setEvalBranchQuota(20000);
 
     const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
@@ -51,7 +58,7 @@ pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
     }
 
     return VTable{
-        .deinit = null,
+        .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };
 }

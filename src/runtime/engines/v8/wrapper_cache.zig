@@ -83,20 +83,34 @@ const CacheEntry = struct {
 /// Weak callback for GC cleanup
 ///
 /// Called by V8 when the wrapper object is garbage collected.
-/// Removes the entry from the cache and frees the Global handle.
+/// This is the critical GC integration point that ensures Zig memory
+/// is properly freed when JavaScript objects are collected.
+///
+/// The cleanup sequence is:
+/// 1. Call gc_integration.onObjectFreed() to invoke type-specific deinit
+///    (e.g., Response.deinit frees headers, body, URL list)
+/// 2. Remove entry from cache HashMap
+/// 3. Dispose the V8 Global<Object>* handle
+/// 4. Free the CacheEntry
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 
     if (data) |entry_ptr| {
         const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));
 
-        // Remove from cache HashMap
+        // Step 1: Clean up the Zig instance via GC integration
+        // This calls the type's deinit function (e.g., Response.deinit)
+        // which frees all owned resources (headers, body, URL list, etc.)
+        // and returns the Instance handle to the SlabAllocator
+        runtime.gc.onObjectFreed(entry.instance);
+
+        // Step 2: Remove from cache HashMap
         _ = entry.cache.cache.remove(entry.instance);
 
-        // Dispose the Global<Object>* handle
+        // Step 3: Dispose the Global<Object>* handle
         v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
 
-        // Free the CacheEntry
+        // Step 4: Free the CacheEntry
         entry.cache.allocator.destroy(entry);
     }
 }

@@ -13,10 +13,14 @@
 // - Redirect handling
 // - Various status codes
 
-// Simple async test runner
+// Simple async test runner that integrates with the REPL's assertion counting
 const tests = [];
 let passed = 0;
 let failed = 0;
+
+// Initialize global assertion counter if not present
+if (!globalThis._assertsPassed) globalThis._assertsPassed = 0;
+if (!globalThis._assertsFailed) globalThis._assertsFailed = 0;
 
 function test(name, fn) {
     tests.push({ name, fn });
@@ -31,12 +35,15 @@ async function runTests() {
             const result = await t.fn();
             if (result === true) {
                 passed++;
+                globalThis._assertsPassed++;  // Integrate with REPL
             } else {
                 failed++;
+                globalThis._assertsFailed++;
                 failures.push("FAIL: " + t.name + " (returned " + result + ")");
             }
         } catch (e) {
             failed++;
+            globalThis._assertsFailed++;
             failures.push("ERROR: " + t.name + " (" + e.message + ")");
         }
     }
@@ -558,5 +565,16 @@ test("fetch() handles large response", async () => {
     return text.length > 10000; // 10KB+
 });
 
-// Run all tests
-runTests();
+// Run all tests with proper async tracking
+// Wrap in IIFE to avoid intermediate values being counted as assertions
+(function() {
+    // Register the promise so REPL waits for completion
+    if (!globalThis._pendingAsserts) globalThis._pendingAsserts = [];
+    const testPromise = runTests();
+    globalThis._pendingAsserts.push(testPromise);
+    testPromise.then(() => {
+        // Remove from pending when done
+        const idx = globalThis._pendingAsserts.indexOf(testPromise);
+        if (idx >= 0) globalThis._pendingAsserts.splice(idx, 1);
+    });
+})();

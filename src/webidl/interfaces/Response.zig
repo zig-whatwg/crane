@@ -143,16 +143,16 @@ pub const Response = struct {
         .call_json = &call_json,
         .call_text = &call_text,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    /// Clean up instance resources - called by GC when JS wrapper is collected
+    pub fn deinit(instance: *runtime.Instance) void {
+        ResponseImpl.deinit(instance);
+    }
+
+    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &deinit);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return ResponseImpl.init(allocator, State, &vtable, ctx);
-    }
-
-    /// Clean up instance resources
-    pub fn deinit(instance: *runtime.Instance) void {
-        ResponseImpl.deinit(instance);
     }
 
     /// WebIDL constructor
