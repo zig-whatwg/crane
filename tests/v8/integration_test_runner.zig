@@ -45,10 +45,17 @@ pub fn main() !void {
 
     // Run each test file
     var failed_count: usize = 0;
+    var total_assertions_passed: usize = 0;
+    var total_assertions: usize = 0;
+
     for (test_files) |test_file| {
         std.debug.print("Running: {s}\n", .{test_file});
 
         const result = try runTest(allocator, repl_exe, test_file);
+
+        // Track assertion counts
+        total_assertions_passed += result.assertions_passed;
+        total_assertions += result.assertions_total;
 
         // Always display assertion results from stdout
         if (result.output) |output| {
@@ -69,9 +76,8 @@ pub fn main() !void {
     std.debug.print("================================================\n", .{});
     std.debug.print("Integration Test Summary\n", .{});
     std.debug.print("================================================\n", .{});
-    std.debug.print("Total tests:  {d}\n", .{test_files.len});
-    std.debug.print("Passed:       {d}\n", .{test_files.len - failed_count});
-    std.debug.print("Failed:       {d}\n", .{failed_count});
+    std.debug.print("Test files:   {d} passed, {d} failed\n", .{ test_files.len - failed_count, failed_count });
+    std.debug.print("Assertions:   {d}/{d} passed\n", .{ total_assertions_passed, total_assertions });
     std.debug.print("================================================\n", .{});
 
     // Stop the mock server
@@ -133,6 +139,8 @@ fn waitForServer(_: std.mem.Allocator) !void {
 const TestResult = struct {
     success: bool,
     output: ?[]const u8,
+    assertions_passed: usize,
+    assertions_total: usize,
 };
 
 fn runTest(allocator: std.mem.Allocator, repl_exe: []const u8, test_file: []const u8) !TestResult {
@@ -162,8 +170,43 @@ fn runTest(allocator: std.mem.Allocator, repl_exe: []const u8, test_file: []cons
         break :blk null;
     };
 
+    // Parse assertion counts from output
+    // Format: "  N/M passed" where N is passed and M is total
+    var assertions_passed: usize = 0;
+    var assertions_total: usize = 0;
+    if (output) |out| {
+        const counts = parseAssertionCounts(out);
+        assertions_passed = counts.passed;
+        assertions_total = counts.total;
+    }
+
     return .{
         .success = success,
         .output = output,
+        .assertions_passed = assertions_passed,
+        .assertions_total = assertions_total,
     };
+}
+
+/// Parse assertion counts from repl output
+/// Looks for lines like "  N/M passed"
+fn parseAssertionCounts(output: []const u8) struct { passed: usize, total: usize } {
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
+        // Look for "N/M passed" pattern
+        if (std.mem.endsWith(u8, trimmed, "passed")) {
+            // Find the "N/M" part before "passed"
+            const without_passed = std.mem.trimRight(u8, trimmed[0 .. trimmed.len - 6], &std.ascii.whitespace);
+            // Parse "N/M"
+            if (std.mem.indexOf(u8, without_passed, "/")) |slash_pos| {
+                const passed_str = without_passed[0..slash_pos];
+                const total_str = without_passed[slash_pos + 1 ..];
+                const passed = std.fmt.parseInt(usize, passed_str, 10) catch continue;
+                const total = std.fmt.parseInt(usize, total_str, 10) catch continue;
+                return .{ .passed = passed, .total = total };
+            }
+        }
+    }
+    return .{ .passed = 0, .total = 0 };
 }
