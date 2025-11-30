@@ -463,3 +463,15 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) any
     // For now, return NotImplemented
     return error.NotImplemented;
 }
+
+/// toString method (stringifier)
+/// Spec: https://url.spec.whatwg.org/#urlsearchparams-stringification-behavior
+/// Returns the serialization of the URLSearchParams' list
+pub fn call_toString(instance: *runtime.Instance) anyerror!runtime.USVString {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Use the form serializer to serialize the list
+    const serialized = try form_serializer.serialize(internal.allocator, internal.list.toSlice());
+    return serialized;
+}
