@@ -2204,6 +2204,22 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
 /// JavaScript Usage:
 ///   const result = await iterator.next(); // { value: ..., done: false }
 ///   await iterator.return(); // Cleanup
+
+// Cached async iterator template - ensures all iterators share the same constructor
+static Global<FunctionTemplate>* g_async_iterator_template = nullptr;
+
+/// Get or create the cached async iterator template
+static Local<FunctionTemplate> getAsyncIteratorTemplate(Isolate* isolate) {
+    if (g_async_iterator_template == nullptr) {
+        // Create the template once and cache it
+        Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate);
+        tpl->SetClassName(String::NewFromUtf8Literal(isolate, "ReadableStreamAsyncIterator"));
+        tpl->InstanceTemplate()->SetInternalFieldCount(1);
+        g_async_iterator_template = new Global<FunctionTemplate>(isolate, tpl);
+    }
+    return g_async_iterator_template->Get(isolate);
+}
+
 Global<Object>* v8_AsyncIterator_New(
     Isolate* isolate,
     Global<Context>* context,
@@ -2214,12 +2230,11 @@ Global<Object>* v8_AsyncIterator_New(
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
     
-    // Create object template with 1 internal field for AsyncIteratorData
-    Local<ObjectTemplate> tpl = ObjectTemplate::New(isolate);
-    tpl->SetInternalFieldCount(1);
+    // Get the cached template - all iterators share this template
+    Local<FunctionTemplate> tpl = getAsyncIteratorTemplate(isolate);
     
-    // Create object instance from template
-    Local<Object> obj = tpl->NewInstance(ctx).ToLocalChecked();
+    // Create object instance from template's instance template
+    Local<Object> obj = tpl->InstanceTemplate()->NewInstance(ctx).ToLocalChecked();
     
     // Allocate and store iterator data in internal field
     AsyncIteratorData* data = new AsyncIteratorData{

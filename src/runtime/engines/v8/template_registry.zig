@@ -385,6 +385,39 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "FormData";
     }
 
+    // Streams types
+    if (inst_vtable == &interfaces.ReadableStream.vtable) {
+        return "ReadableStream";
+    }
+
+    if (inst_vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
+        return "ReadableStreamDefaultReader";
+    }
+
+    if (inst_vtable == &interfaces.ReadableStreamDefaultController.vtable) {
+        return "ReadableStreamDefaultController";
+    }
+
+    if (inst_vtable == &interfaces.WritableStream.vtable) {
+        return "WritableStream";
+    }
+
+    if (inst_vtable == &interfaces.WritableStreamDefaultWriter.vtable) {
+        return "WritableStreamDefaultWriter";
+    }
+
+    if (inst_vtable == &interfaces.WritableStreamDefaultController.vtable) {
+        return "WritableStreamDefaultController";
+    }
+
+    if (inst_vtable == &interfaces.TransformStream.vtable) {
+        return "TransformStream";
+    }
+
+    if (inst_vtable == &interfaces.TransformStreamDefaultController.vtable) {
+        return "TransformStreamDefaultController";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

@@ -48,10 +48,12 @@ assert.isTrue((() => {
 })(), "Symbol.asyncIterator should return an async iterator")
 
 // values() and Symbol.asyncIterator return same type
+// NOTE: Uses two separate streams because values() locks the stream
 assert.isTrue((() => {
-  const stream = new ReadableStream();
-  const iter1 = stream.values();
-  const iter2 = stream[Symbol.asyncIterator]();
+  const stream1 = new ReadableStream();
+  const stream2 = new ReadableStream();
+  const iter1 = stream1.values();
+  const iter2 = stream2[Symbol.asyncIterator]();
   return iter1.constructor === iter2.constructor;
 })(), "values() and Symbol.asyncIterator should return same type")
 
