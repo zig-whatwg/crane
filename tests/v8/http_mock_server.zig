@@ -310,13 +310,17 @@ pub const HttpMockServer = struct {
                 }
             }
 
-            // Dupe the content-type so it lives long enough
-            const content_type_copy = try self.allocator.dupe(u8, req_content_type);
+            // Allocate headers array on heap so it lives long enough
+            const headers_arr = try self.allocator.alloc([2][]const u8, 1);
+            headers_arr[0] = .{
+                try self.allocator.dupe(u8, "Content-Type"),
+                try self.allocator.dupe(u8, req_content_type),
+            };
 
             return .{
                 .status = 200,
                 .body = if (parsed.body) |b| try self.allocator.dupe(u8, b) else "",
-                .headers = &.{.{ "Content-Type", content_type_copy }},
+                .headers = headers_arr,
             };
         } else if (std.mem.eql(u8, parsed.path, "/echo/formdata")) {
             return .{

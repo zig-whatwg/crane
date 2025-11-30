@@ -215,6 +215,10 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     defer req.deinit();
 
     // Send the request with or without body
+    // Methods that can have bodies: POST, PUT, PATCH
+    // Methods that cannot: GET, HEAD, DELETE, OPTIONS
+    const method_has_body = method == .POST or method == .PUT or method == .PATCH;
+
     if (request_body) |rb| {
         // Send with body
         req.transfer_encoding = .{ .content_length = rb.len };
@@ -238,8 +242,22 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         };
         body_writer.end() catch {};
         if (req.connection) |conn| conn.flush() catch {};
+    } else if (method_has_body) {
+        // Method can have body but none provided - send empty body
+        req.transfer_encoding = .{ .content_length = 0 };
+        var body_writer = req.sendBodyUnflushed(&.{}) catch {
+            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+            info.setReturnValue(@ptrCast(promise));
+            return;
+        };
+        body_writer.end() catch {};
+        if (req.connection) |conn| conn.flush() catch {};
     } else {
-        // Send without body
+        // Send without body (GET, HEAD, DELETE, OPTIONS)
         req.sendBodiless() catch {
             const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
             const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
