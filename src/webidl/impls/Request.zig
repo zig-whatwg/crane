@@ -181,13 +181,15 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
             // Per spec, we should use the API base URL from the environment.
             // For REPL/testing without a document context, we try:
             // 1. First try parsing as absolute URL (no base needed)
-            // 2. If that fails, use "about:blank" as fallback base URL
+            // 2. If that fails, use a synthetic base URL for relative resolution
             //
             // This matches browser behavior where relative URLs like "flowers.jpg"
-            // are resolved against the document URL. In REPL, we use about:blank.
+            // are resolved against the document URL. In REPL, we use a synthetic
+            // localhost URL since about:blank doesn't support relative resolution.
             var parsed_url = api_parser.parseURL(allocator, url_string, null) catch blk: {
-                // Try with fallback base URL (about:blank)
-                var base_url = api_parser.parseURL(allocator, "about:blank", null) catch {
+                // Try with fallback base URL (synthetic localhost)
+                // Note: about:blank doesn't support relative URL resolution per spec
+                var base_url = api_parser.parseURL(allocator, "http://localhost/", null) catch {
                     return error.TypeError;
                 };
                 defer base_url.deinit();

@@ -210,12 +210,23 @@ pub fn parseWithStateOverride(
     }
 
     // Main parsing loop (spec step 9)
+    // Use max value as sentinel for "reprocess current character from position 0"
+    // This handles the spec's "start over" semantics when scheme parsing fails
+    const REPROCESS_SENTINEL = std.math.maxInt(usize);
     while (ctx.pointer <= ctx.input.len) {
         const c = ctx.currentChar();
         try runStateMachine(&ctx, c);
 
         // Check if state override completed successfully
         if (ctx.state_override_complete) break;
+
+        // Handle reprocess sentinel (wrapping decrement from 0)
+        // When a state uses `pointer -%= 1` and pointer was 0, it wraps to maxInt
+        // This signals we should reprocess from position 0
+        if (ctx.pointer == REPROCESS_SENTINEL) {
+            ctx.pointer = 0;
+            continue; // Reprocess character at position 0
+        }
 
         // Check if we should continue
         if (ctx.pointer >= ctx.input.len) break;
@@ -467,7 +478,7 @@ fn schemeStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 2 (line 1065): Otherwise, if state override is not given
     if (!ctx.hasStateOverride()) {
         ctx.state = .no_scheme;
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
         return;
     }
 
@@ -565,10 +576,13 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 
     // Spec step 3 (line 1115): Otherwise, if state override is not given
+    // "start over (from the first code point in input)"
     if (!ctx.hasStateOverride()) {
         ctx.buffer.clear();
         ctx.state = .no_scheme;
-        ctx.pointer = 0;
+        // Set pointer to REPROCESS_SENTINEL to signal "start from position 0"
+        // The main loop will detect this and reset to 0
+        ctx.pointer = std.math.maxInt(usize);
         return;
     }
 
@@ -597,12 +611,15 @@ fn noSchemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const base_scheme = base.scheme();
     if (!std.mem.eql(u8, base_scheme, "file")) {
         ctx.state = .relative;
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        // Use wrapping subtraction - when pointer is 0, this wraps to max
+        // which the main loop treats as a sentinel to reprocess position 0
+        ctx.pointer -%= 1;
         return;
     }
 
     ctx.state = .file;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    // Same for file state
+    ctx.pointer -%= 1;
 }
 
 fn specialRelativeOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -612,7 +629,7 @@ fn specialRelativeOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void 
         return;
     }
     ctx.state = .relative;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn pathOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -621,7 +638,7 @@ fn pathOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
         return;
     }
     ctx.state = .path;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -690,7 +707,7 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
         ctx.allocator.free(last);
     }
     ctx.state = .path;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn relativeSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -714,7 +731,7 @@ fn relativeSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
     ctx.port = base.port;
     ctx.state = .path;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn specialAuthoritySlashesState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -724,13 +741,13 @@ fn specialAuthoritySlashesState(ctx: *ParserContext, c: ?u8) ParseError!void {
         return;
     }
     ctx.state = .special_authority_ignore_slashes;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn specialAuthorityIgnoreSlashesState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (c == null or (c.? != '/' and c.? != '\\')) {
         ctx.state = .authority;
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
         return;
     }
 }
@@ -817,7 +834,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1232): If state override is given and url's scheme is "file"
     if (ctx.hasStateOverride() and std.mem.eql(u8, ctx.scheme.items(), "file")) {
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
         ctx.state = .file_host;
         return;
     }
@@ -851,7 +868,7 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         (ctx.isSpecial() and c.? == '\\');
 
     if (is_terminator) {
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
 
         // Step 3.1 (line 1254): If url is special and buffer is empty, return failure
         if (ctx.isSpecial() and ctx.buffer.items().len == 0) {
@@ -944,7 +961,7 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
         // Step 2.3 (line 1302): Set state to path start, decrease pointer
         ctx.state = .path_start;
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
         return;
     }
 
@@ -1006,14 +1023,14 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
                     ctx.path_segments.clear();
                 }
                 ctx.state = .path;
-                if (ctx.pointer > 0) ctx.pointer -= 1;
+                ctx.pointer -%= 1;
                 return;
             }
         }
     }
 
     ctx.state = .path;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn fileSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -1042,14 +1059,14 @@ fn fileSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 
     ctx.state = .path;
-    if (ctx.pointer > 0) ctx.pointer -= 1;
+    ctx.pointer -%= 1;
 }
 
 fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const is_terminator = c == null or (c.? == '/' or c.? == '\\' or c.? == '?' or c.? == '#');
 
     if (is_terminator) {
-        if (ctx.pointer > 0) ctx.pointer -= 1;
+        ctx.pointer -%= 1;
 
         if (windows_drive.isWindowsDriveLetter(ctx.buffer.items())) {
             ctx.state = .path;
@@ -1083,7 +1100,7 @@ fn pathStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (ctx.isSpecial()) {
         ctx.state = .path;
         if (c == null or (c.? != '/' and c.? != '\\')) {
-            if (ctx.pointer > 0) ctx.pointer -= 1;
+            ctx.pointer -%= 1;
         }
         return;
     }
@@ -1106,7 +1123,7 @@ fn pathStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (c != null) {
         ctx.state = .path;
         if (c.? != '/') {
-            if (ctx.pointer > 0) ctx.pointer -= 1;
+            ctx.pointer -%= 1;
         }
         return;
     }
