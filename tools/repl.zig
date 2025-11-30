@@ -12,6 +12,20 @@ const v8 = @import("v8");
 const context_manager = @import("v8").context_manager;
 const runtime = @import("runtime");
 
+/// Helper to extract a string property from a V8 object
+fn getStringProperty(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, obj: *v8.ffi.Object, prop_name: []const u8, buf: []u8) ?[]const u8 {
+    const key = v8.ffi.v8_String_NewFromUtf8(isolate, prop_name.ptr, @intCast(prop_name.len)) orelse return null;
+    const value = v8.ffi.v8_Object_Get(obj, context, @ptrCast(key)) orelse return null;
+    if (v8.ffi.v8_Value_IsUndefined(value) or v8.ffi.v8_Value_IsNull(value)) return null;
+    if (!v8.ffi.v8_Value_IsString(value)) return null;
+
+    const str = v8.ffi.v8_Value_ToString(value, context) orelse return null;
+    const len: usize = @intCast(v8.ffi.v8_String_Utf8Length(str));
+    if (len > buf.len) return null;
+    _ = v8.ffi.v8_String_WriteUtf8(str, buf.ptr, @intCast(buf.len));
+    return buf[0..len];
+}
+
 /// Fetch callback that makes real HTTP requests using std.http.Client.
 /// Returns a Promise that resolves to a Response object.
 fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
@@ -60,6 +74,119 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
 
     const url_str = url_buf[0..url_len];
 
+    // Parse second argument (RequestInit) if present
+    var method: std.http.Method = .GET;
+    var request_body: ?[]const u8 = null;
+    var request_body_owned: ?[]u8 = null;
+    defer if (request_body_owned) |b| allocator.free(b);
+
+    // Storage for extra headers from RequestInit
+    var extra_headers_storage: [32]std.http.Header = undefined;
+    var extra_headers_count: usize = 0;
+
+    if (argc >= 2) {
+        const arg1 = info.v8_FunctionCallbackInfo_GetArgument(1);
+        if (v8.ffi.v8_Value_IsObject(arg1) and !v8.ffi.v8_Value_IsNull(arg1)) {
+            const init_obj: *v8.ffi.Object = @ptrCast(arg1);
+
+            // Extract method
+            var method_buf: [16]u8 = undefined;
+            if (getStringProperty(isolate, context, init_obj, "method", &method_buf)) |method_str| {
+                if (std.ascii.eqlIgnoreCase(method_str, "GET")) {
+                    method = .GET;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "POST")) {
+                    method = .POST;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "PUT")) {
+                    method = .PUT;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "DELETE")) {
+                    method = .DELETE;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "PATCH")) {
+                    method = .PATCH;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "HEAD")) {
+                    method = .HEAD;
+                } else if (std.ascii.eqlIgnoreCase(method_str, "OPTIONS")) {
+                    method = .OPTIONS;
+                }
+            }
+
+            // Extract body
+            const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "body", 4) orelse null;
+            if (body_key) |bk| {
+                const body_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(bk));
+                if (body_value) |bv| {
+                    if (!v8.ffi.v8_Value_IsUndefined(bv) and !v8.ffi.v8_Value_IsNull(bv)) {
+                        if (v8.ffi.v8_Value_IsString(bv)) {
+                            const body_str = v8.ffi.v8_Value_ToString(bv, context);
+                            if (body_str) |bs| {
+                                const body_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(bs));
+                                const body_buf = allocator.alloc(u8, body_len) catch null;
+                                if (body_buf) |bb| {
+                                    _ = v8.ffi.v8_String_WriteUtf8(bs, bb.ptr, @intCast(bb.len));
+                                    request_body = bb;
+                                    request_body_owned = bb;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Extract headers object
+            const headers_key = v8.ffi.v8_String_NewFromUtf8(isolate, "headers", 7) orelse null;
+            if (headers_key) |hk| {
+                const headers_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(hk));
+                if (headers_value) |hv| {
+                    if (v8.ffi.v8_Value_IsObject(hv) and !v8.ffi.v8_Value_IsNull(hv)) {
+                        const headers_obj: *v8.ffi.Object = @ptrCast(hv);
+                        // Get property names
+                        const prop_names = v8.ffi.v8_Object_GetPropertyNames(context, headers_obj);
+                        if (prop_names) |names| {
+                            const len = v8.ffi.v8_Array_Length(names);
+                            var i: u32 = 0;
+                            while (i < len and extra_headers_count < extra_headers_storage.len) : (i += 1) {
+                                const name_val = v8.ffi.v8_Array_Get(context, names, i) orelse continue;
+                                if (!v8.ffi.v8_Value_IsString(name_val)) continue;
+
+                                const name_str = v8.ffi.v8_Value_ToString(name_val, context) orelse continue;
+                                const name_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(name_str));
+
+                                const header_val = v8.ffi.v8_Object_Get(headers_obj, context, name_val) orelse continue;
+                                if (!v8.ffi.v8_Value_IsString(header_val)) continue;
+
+                                const value_str = v8.ffi.v8_Value_ToString(header_val, context) orelse continue;
+                                const value_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(value_str));
+
+                                // Allocate and copy header name and value
+                                const name_buf = allocator.alloc(u8, name_len) catch continue;
+                                const value_buf = allocator.alloc(u8, value_len) catch {
+                                    allocator.free(name_buf);
+                                    continue;
+                                };
+
+                                _ = v8.ffi.v8_String_WriteUtf8(name_str, name_buf.ptr, @intCast(name_buf.len));
+                                _ = v8.ffi.v8_String_WriteUtf8(value_str, value_buf.ptr, @intCast(value_buf.len));
+
+                                extra_headers_storage[extra_headers_count] = .{
+                                    .name = name_buf,
+                                    .value = value_buf,
+                                };
+                                extra_headers_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Cleanup extra headers on exit
+    defer {
+        for (extra_headers_storage[0..extra_headers_count]) |h| {
+            allocator.free(@constCast(h.name));
+            allocator.free(@constCast(h.value));
+        }
+    }
+
     // Parse URL
     const uri = std.Uri.parse(url_str) catch {
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Invalid URL", 11) orelse return;
@@ -73,7 +200,9 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     defer client.deinit();
 
     // Make the request using low-level API but with proper buffer management
-    var req = client.request(.GET, uri, .{}) catch {
+    var req = client.request(method, uri, .{
+        .extra_headers = extra_headers_storage[0..extra_headers_count],
+    }) catch {
         // Return rejected promise with network error
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
         const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: connection failed", 33) orelse return;
@@ -85,16 +214,42 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     };
     defer req.deinit();
 
-    // Send the request
-    req.sendBodiless() catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
+    // Send the request with or without body
+    if (request_body) |rb| {
+        // Send with body
+        req.transfer_encoding = .{ .content_length = rb.len };
+        var body_writer = req.sendBodyUnflushed(&.{}) catch {
+            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+            info.setReturnValue(@ptrCast(promise));
+            return;
+        };
+        body_writer.writer.writeAll(rb) catch {
+            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: body write failed", 32) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+            info.setReturnValue(@ptrCast(promise));
+            return;
+        };
+        body_writer.end() catch {};
+        if (req.connection) |conn| conn.flush() catch {};
+    } else {
+        // Send without body
+        req.sendBodiless() catch {
+            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
+            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+            info.setReturnValue(@ptrCast(promise));
+            return;
+        };
+    }
 
     // Receive response headers
     var redirect_buffer: [4096]u8 = undefined;
@@ -113,19 +268,19 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const content_type = http_response.head.content_type;
     const location = http_response.head.location;
 
-    // Read response body
+    // Read response body (skip for HEAD requests)
     var transfer_buffer: [4096]u8 = undefined;
-    const reader = http_response.reader(&transfer_buffer);
-    const body = reader.allocRemaining(allocator, std.Io.Limit.unlimited) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: body read failed", 31) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-    defer allocator.free(body);
+    var body: []const u8 = "";
+    var body_owned: ?[]u8 = null;
+    defer if (body_owned) |b| allocator.free(b);
+
+    if (method != .HEAD) {
+        const reader = http_response.reader(&transfer_buffer);
+        body_owned = reader.allocRemaining(allocator, std.Io.Limit.unlimited) catch null;
+        if (body_owned) |b| {
+            body = b;
+        }
+    }
 
     // Create Response object
     const Response = @import("interfaces").Response;
