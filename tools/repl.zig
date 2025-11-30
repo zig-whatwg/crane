@@ -84,10 +84,24 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     var extra_headers_storage: [32]std.http.Header = undefined;
     var extra_headers_count: usize = 0;
 
+    // Redirect behavior: "follow" (default), "manual", "error"
+    var redirect_behavior: std.http.Client.Request.RedirectBehavior = @enumFromInt(3); // default: follow 3 times
+
     if (argc >= 2) {
         const arg1 = info.v8_FunctionCallbackInfo_GetArgument(1);
         if (v8.ffi.v8_Value_IsObject(arg1) and !v8.ffi.v8_Value_IsNull(arg1)) {
             const init_obj: *v8.ffi.Object = @ptrCast(arg1);
+
+            // Extract redirect option
+            var redirect_buf: [16]u8 = undefined;
+            if (getStringProperty(isolate, context, init_obj, "redirect", &redirect_buf)) |redirect_str| {
+                if (std.ascii.eqlIgnoreCase(redirect_str, "manual")) {
+                    redirect_behavior = .unhandled; // Don't follow redirects
+                } else if (std.ascii.eqlIgnoreCase(redirect_str, "error")) {
+                    redirect_behavior = .not_allowed; // Error on redirect
+                }
+                // "follow" is default, no change needed
+            }
 
             // Extract method
             var method_buf: [16]u8 = undefined;
@@ -227,6 +241,7 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     // Make the request using low-level API but with proper buffer management
     var req = client.request(method, uri, .{
         .extra_headers = extra_headers_storage[0..extra_headers_count],
+        .redirect_behavior = redirect_behavior,
     }) catch {
         // Return rejected promise with network error
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
