@@ -48,11 +48,19 @@ pub const TrustedScript = types.TrustedScript;
 pub const TrustedScriptURL = types.TrustedScriptURL;
 pub const TrustedType = types.TrustedType;
 
+// Policy module - creates Trusted Types with callbacks
+pub const policy = @import("policy.zig");
+
+pub const TrustedTypePolicy = policy.TrustedTypePolicy;
+pub const TrustedTypePolicyOptions = policy.TrustedTypePolicyOptions;
+pub const PolicyError = policy.PolicyError;
+
+// Callback types
+pub const CreateHTMLCallback = policy.CreateHTMLCallback;
+pub const CreateScriptCallback = policy.CreateScriptCallback;
+pub const CreateScriptURLCallback = policy.CreateScriptURLCallback;
+
 // TODO: Add these in subsequent tasks
-// pub const policy = @import("policy.zig");
-// pub const TrustedTypePolicy = policy.TrustedTypePolicy;
-// pub const TrustedTypePolicyOptions = policy.TrustedTypePolicyOptions;
-//
 // pub const factory = @import("factory.zig");
 // pub const TrustedTypePolicyFactory = factory.TrustedTypePolicyFactory;
 //
