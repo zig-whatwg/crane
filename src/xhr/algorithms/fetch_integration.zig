@@ -116,7 +116,7 @@ fn createRequest(
     request.mode = .cors;
 
     // Set credentials based on withCredentials
-    request.credentials_mode = if (state.cross_origin_credentials) .include else .same_origin;
+    request.credentials_mode = if (state.with_credentials) .include else .same_origin;
 
     // Set timeout
     if (state.timeout > 0) {
