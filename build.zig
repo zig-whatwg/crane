@@ -1116,6 +1116,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
+    xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
 
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
