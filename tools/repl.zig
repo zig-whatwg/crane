@@ -109,22 +109,47 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
                 }
             }
 
-            // Extract body
+            // Extract body - handle string, URLSearchParams, and other objects
             const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "body", 4) orelse null;
             if (body_key) |bk| {
                 const body_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(bk));
                 if (body_value) |bv| {
                     if (!v8.ffi.v8_Value_IsUndefined(bv) and !v8.ffi.v8_Value_IsNull(bv)) {
+                        // For URLSearchParams and other objects, call toString()
+                        // For strings, use directly
+                        var body_str_to_use: ?*v8.ffi.String = null;
+
                         if (v8.ffi.v8_Value_IsString(bv)) {
-                            const body_str = v8.ffi.v8_Value_ToString(bv, context);
-                            if (body_str) |bs| {
-                                const body_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(bs));
-                                const body_buf = allocator.alloc(u8, body_len) catch null;
-                                if (body_buf) |bb| {
-                                    _ = v8.ffi.v8_String_WriteUtf8(bs, bb.ptr, @intCast(bb.len));
-                                    request_body = bb;
-                                    request_body_owned = bb;
+                            body_str_to_use = v8.ffi.v8_Value_ToString(bv, context);
+                        } else if (v8.ffi.v8_Value_IsObject(bv)) {
+                            // Check if it's URLSearchParams by calling toString() method
+                            const obj: *v8.ffi.Object = @ptrCast(bv);
+                            const to_string_key = v8.ffi.v8_String_NewFromUtf8(isolate, "toString", 8);
+                            if (to_string_key) |ts_key| {
+                                const to_string_fn = v8.ffi.v8_Object_Get(obj, context, @ptrCast(ts_key));
+                                if (to_string_fn) |ts_fn| {
+                                    if (v8.ffi.v8_Value_IsFunction(ts_fn)) {
+                                        // Call toString() on the body object
+                                        const func: *v8.ffi.Function = @ptrCast(ts_fn);
+                                        var empty_args: [0]*v8.ffi.Value = undefined;
+                                        const result = v8.ffi.v8_Function_Call(func, context, bv, 0, &empty_args);
+                                        if (result) |r| {
+                                            if (v8.ffi.v8_Value_IsString(r)) {
+                                                body_str_to_use = v8.ffi.v8_Value_ToString(r, context);
+                                            }
+                                        }
+                                    }
                                 }
+                            }
+                        }
+
+                        if (body_str_to_use) |bs| {
+                            const body_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(bs));
+                            const body_buf = allocator.alloc(u8, body_len) catch null;
+                            if (body_buf) |bb| {
+                                _ = v8.ffi.v8_String_WriteUtf8(bs, bb.ptr, @intCast(bb.len));
+                                request_body = bb;
+                                request_body_owned = bb;
                             }
                         }
                     }
