@@ -47,15 +47,15 @@ pub const open = @import("algorithms/open.zig");
 pub const send = @import("algorithms/send.zig");
 pub const response = @import("algorithms/response.zig");
 pub const upload = @import("algorithms/upload.zig");
+pub const headers = @import("algorithms/headers.zig");
+pub const abort = @import("algorithms/abort.zig");
+pub const timeout = @import("algorithms/timeout.zig");
 
 // FormData implementation
 pub const form_data = @import("form_data.zig");
 
 // Multipart parser (for FormData)
 pub const multipart_parser = @import("multipart_parser.zig");
-
-// TODO: Add in later phases
-// pub const abort = @import("algorithms/abort.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());
