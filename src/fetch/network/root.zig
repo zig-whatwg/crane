@@ -5,6 +5,7 @@
 //! ## Components
 //!
 //! - `backend.zig` - NetworkBackend trait and MockBackend for testing
+//! - `curl_ffi.zig` - FFI bindings for libcurl C API
 //!
 //! ## Usage
 //!
@@ -40,6 +41,8 @@
 const std = @import("std");
 
 pub const backend = @import("backend.zig");
+pub const curl_ffi = @import("curl_ffi.zig");
+pub const curl_error = @import("curl_error.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;

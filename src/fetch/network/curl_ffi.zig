@@ -1,0 +1,459 @@
+//! Libcurl FFI bindings for Zig
+//!
+//! Provides minimal bindings for the libcurl easy interface.
+//! Only exposes functions needed for WHATWG Fetch implementation.
+//!
+//! Reference: https://curl.se/libcurl/c/
+//!
+//! This module wraps the libcurl C API with type-safe Zig bindings,
+//! re-exporting only the constants and functions needed for HTTP/HTTPS
+//! network requests as required by the WHATWG Fetch specification.
+
+const std = @import("std");
+
+/// Import libcurl C API
+pub const c = @cImport({
+    @cInclude("curl/curl.h");
+});
+
+// =============================================================================
+// Type Re-exports
+// =============================================================================
+
+/// Opaque handle for an easy (single transfer) session
+pub const CURL = c.CURL;
+
+/// Return code for easy interface functions
+pub const CURLcode = c.CURLcode;
+
+/// Return code for multi interface functions
+pub const CURLMcode = c.CURLMcode;
+
+/// Linked list for headers and other string lists
+pub const curl_slist = c.struct_curl_slist;
+
+/// Information retrieval codes for curl_easy_getinfo
+pub const CURLINFO = c.CURLINFO;
+
+/// Option codes for curl_easy_setopt
+pub const CURLoption = c.CURLoption;
+
+// =============================================================================
+// Error Codes (CURLcode)
+// =============================================================================
+
+/// Success - no error
+pub const CURLE_OK = c.CURLE_OK;
+
+// DNS errors
+/// Failed to resolve proxy
+pub const CURLE_COULDNT_RESOLVE_PROXY = c.CURLE_COULDNT_RESOLVE_PROXY;
+/// Failed to resolve host
+pub const CURLE_COULDNT_RESOLVE_HOST = c.CURLE_COULDNT_RESOLVE_HOST;
+
+// Connection errors
+/// Failed to connect to host
+pub const CURLE_COULDNT_CONNECT = c.CURLE_COULDNT_CONNECT;
+/// Operation timed out
+pub const CURLE_OPERATION_TIMEDOUT = c.CURLE_OPERATION_TIMEDOUT;
+
+// TLS/SSL errors
+/// SSL connection error
+pub const CURLE_SSL_CONNECT_ERROR = c.CURLE_SSL_CONNECT_ERROR;
+/// SSL engine not found
+pub const CURLE_SSL_ENGINE_NOTFOUND = c.CURLE_SSL_ENGINE_NOTFOUND;
+/// SSL engine set failed
+pub const CURLE_SSL_ENGINE_SETFAILED = c.CURLE_SSL_ENGINE_SETFAILED;
+/// Problem with the local certificate
+pub const CURLE_SSL_CERTPROBLEM = c.CURLE_SSL_CERTPROBLEM;
+/// Problem with the CA cert
+pub const CURLE_SSL_CACERT = c.CURLE_SSL_CACERT;
+/// Peer certificate verification failed
+pub const CURLE_PEER_FAILED_VERIFICATION = c.CURLE_PEER_FAILED_VERIFICATION;
+/// Issuer check failed
+pub const CURLE_SSL_ISSUER_ERROR = c.CURLE_SSL_ISSUER_ERROR;
+/// Pinned public key mismatch
+pub const CURLE_SSL_PINNEDPUBKEYNOTMATCH = c.CURLE_SSL_PINNEDPUBKEYNOTMATCH;
+
+// Transfer errors
+/// Failure receiving network data
+pub const CURLE_RECV_ERROR = c.CURLE_RECV_ERROR;
+/// Failed sending network data
+pub const CURLE_SEND_ERROR = c.CURLE_SEND_ERROR;
+/// Server returned nothing
+pub const CURLE_GOT_NOTHING = c.CURLE_GOT_NOTHING;
+
+// Protocol errors
+/// Unsupported protocol
+pub const CURLE_UNSUPPORTED_PROTOCOL = c.CURLE_UNSUPPORTED_PROTOCOL;
+/// HTTP response code >= 400
+pub const CURLE_HTTP_RETURNED_ERROR = c.CURLE_HTTP_RETURNED_ERROR;
+/// Weird server reply
+pub const CURLE_WEIRD_SERVER_REPLY = c.CURLE_WEIRD_SERVER_REPLY;
+
+// Other errors
+/// Redirect loop or max redirects exceeded
+pub const CURLE_TOO_MANY_REDIRECTS = c.CURLE_TOO_MANY_REDIRECTS;
+/// URL malformed
+pub const CURLE_URL_MALFORMAT = c.CURLE_URL_MALFORMAT;
+/// Bad function argument
+pub const CURLE_BAD_FUNCTION_ARGUMENT = c.CURLE_BAD_FUNCTION_ARGUMENT;
+/// Transfer aborted by callback
+pub const CURLE_ABORTED_BY_CALLBACK = c.CURLE_ABORTED_BY_CALLBACK;
+/// Out of memory
+pub const CURLE_OUT_OF_MEMORY = c.CURLE_OUT_OF_MEMORY;
+
+// =============================================================================
+// Option Codes (CURLoption)
+// =============================================================================
+
+// URL and method
+/// URL to work with
+pub const CURLOPT_URL = c.CURLOPT_URL;
+/// Custom HTTP method (e.g., "DELETE", "PATCH")
+pub const CURLOPT_CUSTOMREQUEST = c.CURLOPT_CUSTOMREQUEST;
+
+// Headers
+/// Linked list of headers
+pub const CURLOPT_HTTPHEADER = c.CURLOPT_HTTPHEADER;
+
+// Request body
+/// POST data as string
+pub const CURLOPT_POSTFIELDS = c.CURLOPT_POSTFIELDS;
+/// Size of POST data
+pub const CURLOPT_POSTFIELDSIZE = c.CURLOPT_POSTFIELDSIZE;
+/// Size of POST data (large files)
+pub const CURLOPT_POSTFIELDSIZE_LARGE = c.CURLOPT_POSTFIELDSIZE_LARGE;
+
+// Response callbacks
+/// Write callback function
+pub const CURLOPT_WRITEFUNCTION = c.CURLOPT_WRITEFUNCTION;
+/// User data for write callback
+pub const CURLOPT_WRITEDATA = c.CURLOPT_WRITEDATA;
+/// Header callback function
+pub const CURLOPT_HEADERFUNCTION = c.CURLOPT_HEADERFUNCTION;
+/// User data for header callback
+pub const CURLOPT_HEADERDATA = c.CURLOPT_HEADERDATA;
+
+// Timeouts
+/// Total timeout in milliseconds
+pub const CURLOPT_TIMEOUT_MS = c.CURLOPT_TIMEOUT_MS;
+/// Connection timeout in milliseconds
+pub const CURLOPT_CONNECTTIMEOUT_MS = c.CURLOPT_CONNECTTIMEOUT_MS;
+
+// Redirects (WHATWG Fetch handles these manually)
+/// Follow redirects automatically
+pub const CURLOPT_FOLLOWLOCATION = c.CURLOPT_FOLLOWLOCATION;
+/// Maximum number of redirects
+pub const CURLOPT_MAXREDIRS = c.CURLOPT_MAXREDIRS;
+
+// TLS/SSL options
+/// Verify server's certificate
+pub const CURLOPT_SSL_VERIFYPEER = c.CURLOPT_SSL_VERIFYPEER;
+/// Verify server's hostname
+pub const CURLOPT_SSL_VERIFYHOST = c.CURLOPT_SSL_VERIFYHOST;
+/// Path to CA certificate bundle
+pub const CURLOPT_CAINFO = c.CURLOPT_CAINFO;
+/// Path to CA certificates directory
+pub const CURLOPT_CAPATH = c.CURLOPT_CAPATH;
+/// Client certificate file
+pub const CURLOPT_SSLCERT = c.CURLOPT_SSLCERT;
+/// Client private key file
+pub const CURLOPT_SSLKEY = c.CURLOPT_SSLKEY;
+/// SSL version to use
+pub const CURLOPT_SSLVERSION = c.CURLOPT_SSLVERSION;
+
+// Proxy options
+/// Proxy URL
+pub const CURLOPT_PROXY = c.CURLOPT_PROXY;
+/// Proxy user:password
+pub const CURLOPT_PROXYUSERPWD = c.CURLOPT_PROXYUSERPWD;
+/// Hosts to bypass proxy
+pub const CURLOPT_NOPROXY = c.CURLOPT_NOPROXY;
+
+// HTTP version
+/// HTTP version to use
+pub const CURLOPT_HTTP_VERSION = c.CURLOPT_HTTP_VERSION;
+
+// Encoding/compression
+/// Accept-Encoding header (empty = all supported)
+pub const CURLOPT_ACCEPT_ENCODING = c.CURLOPT_ACCEPT_ENCODING;
+
+// Debugging
+/// Verbose output
+pub const CURLOPT_VERBOSE = c.CURLOPT_VERBOSE;
+/// Debug callback function
+pub const CURLOPT_DEBUGFUNCTION = c.CURLOPT_DEBUGFUNCTION;
+/// User data for debug callback
+pub const CURLOPT_DEBUGDATA = c.CURLOPT_DEBUGDATA;
+
+// Progress/abort
+/// Disable progress meter
+pub const CURLOPT_NOPROGRESS = c.CURLOPT_NOPROGRESS;
+/// Progress callback function
+pub const CURLOPT_XFERINFOFUNCTION = c.CURLOPT_XFERINFOFUNCTION;
+/// User data for progress callback
+pub const CURLOPT_XFERINFODATA = c.CURLOPT_XFERINFODATA;
+
+// =============================================================================
+// Info Codes (CURLINFO) for curl_easy_getinfo
+// =============================================================================
+
+/// HTTP response code
+pub const CURLINFO_RESPONSE_CODE = c.CURLINFO_RESPONSE_CODE;
+/// Total time of transfer (seconds)
+pub const CURLINFO_TOTAL_TIME = c.CURLINFO_TOTAL_TIME;
+/// Time for name lookup (seconds)
+pub const CURLINFO_NAMELOOKUP_TIME = c.CURLINFO_NAMELOOKUP_TIME;
+/// Time to connect (seconds)
+pub const CURLINFO_CONNECT_TIME = c.CURLINFO_CONNECT_TIME;
+/// Time to SSL/TLS handshake (seconds)
+pub const CURLINFO_APPCONNECT_TIME = c.CURLINFO_APPCONNECT_TIME;
+/// Time until transfer began (seconds)
+pub const CURLINFO_PRETRANSFER_TIME = c.CURLINFO_PRETRANSFER_TIME;
+/// Time to first byte (seconds)
+pub const CURLINFO_STARTTRANSFER_TIME = c.CURLINFO_STARTTRANSFER_TIME;
+/// Time spent in redirects (seconds)
+pub const CURLINFO_REDIRECT_TIME = c.CURLINFO_REDIRECT_TIME;
+/// Number of redirects followed
+pub const CURLINFO_REDIRECT_COUNT = c.CURLINFO_REDIRECT_COUNT;
+/// Remote IP address
+pub const CURLINFO_PRIMARY_IP = c.CURLINFO_PRIMARY_IP;
+/// Remote port
+pub const CURLINFO_PRIMARY_PORT = c.CURLINFO_PRIMARY_PORT;
+/// Effective URL (after redirects)
+pub const CURLINFO_EFFECTIVE_URL = c.CURLINFO_EFFECTIVE_URL;
+/// HTTP version used
+pub const CURLINFO_HTTP_VERSION = c.CURLINFO_HTTP_VERSION;
+/// Content-Type from response
+pub const CURLINFO_CONTENT_TYPE = c.CURLINFO_CONTENT_TYPE;
+/// Content-Length from response
+pub const CURLINFO_CONTENT_LENGTH_DOWNLOAD_T = c.CURLINFO_CONTENT_LENGTH_DOWNLOAD_T;
+
+// =============================================================================
+// HTTP Version Constants
+// =============================================================================
+
+/// Use whatever version curl decides
+pub const CURL_HTTP_VERSION_NONE = c.CURL_HTTP_VERSION_NONE;
+/// HTTP/1.0
+pub const CURL_HTTP_VERSION_1_0 = c.CURL_HTTP_VERSION_1_0;
+/// HTTP/1.1
+pub const CURL_HTTP_VERSION_1_1 = c.CURL_HTTP_VERSION_1_1;
+/// HTTP/2 (with TLS, negotiated via ALPN)
+pub const CURL_HTTP_VERSION_2_0 = c.CURL_HTTP_VERSION_2_0;
+/// HTTP/2 over TLS only (falls back to 1.1 for plain HTTP)
+pub const CURL_HTTP_VERSION_2TLS = c.CURL_HTTP_VERSION_2TLS;
+/// HTTP/2 prior knowledge (no upgrade from 1.1)
+pub const CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE = c.CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE;
+/// HTTP/3 (QUIC)
+pub const CURL_HTTP_VERSION_3 = c.CURL_HTTP_VERSION_3;
+
+// =============================================================================
+// Global Init Flags
+// =============================================================================
+
+/// Default initialization (SSL + Win32)
+pub const CURL_GLOBAL_DEFAULT = c.CURL_GLOBAL_DEFAULT;
+/// Initialize SSL
+pub const CURL_GLOBAL_SSL = c.CURL_GLOBAL_SSL;
+/// Initialize Win32 sockets
+pub const CURL_GLOBAL_WIN32 = c.CURL_GLOBAL_WIN32;
+/// Initialize everything
+pub const CURL_GLOBAL_ALL = c.CURL_GLOBAL_ALL;
+/// Initialize nothing (manual setup)
+pub const CURL_GLOBAL_NOTHING = c.CURL_GLOBAL_NOTHING;
+
+// =============================================================================
+// Pause Flags
+// =============================================================================
+
+/// Pause receiving data
+pub const CURLPAUSE_RECV = c.CURLPAUSE_RECV;
+/// Pause sending data
+pub const CURLPAUSE_SEND = c.CURLPAUSE_SEND;
+/// Pause both directions
+pub const CURLPAUSE_ALL = c.CURLPAUSE_ALL;
+/// Unpause (continue transfer)
+pub const CURLPAUSE_CONT = c.CURLPAUSE_CONT;
+
+// =============================================================================
+// Global Functions
+// =============================================================================
+
+/// Initialize libcurl globally. Must be called before any other curl function.
+/// Thread-safe: NO - call once at program start.
+/// Returns CURLE_OK on success.
+pub fn global_init(flags: c_long) CURLcode {
+    return c.curl_global_init(flags);
+}
+
+/// Cleanup libcurl globally. Call at program exit.
+/// Thread-safe: NO - call once at program end.
+pub fn global_cleanup() void {
+    c.curl_global_cleanup();
+}
+
+/// Get libcurl version string (e.g., "libcurl/8.15.0")
+pub fn version() [*:0]const u8 {
+    return c.curl_version();
+}
+
+// =============================================================================
+// Easy Interface (single transfers)
+// =============================================================================
+
+/// Create a new easy handle for a single transfer.
+/// Returns null on failure (out of memory).
+pub fn easy_init() ?*CURL {
+    return c.curl_easy_init();
+}
+
+/// Cleanup an easy handle and free all associated resources.
+pub fn easy_cleanup(handle: *CURL) void {
+    c.curl_easy_cleanup(handle);
+}
+
+/// Reset an easy handle to initial state.
+/// Reuses the handle without reallocating - more efficient than init/cleanup.
+pub fn easy_reset(handle: *CURL) void {
+    c.curl_easy_reset(handle);
+}
+
+/// Duplicate an easy handle with all its options.
+/// Returns null on failure.
+pub fn easy_duphandle(handle: *CURL) ?*CURL {
+    return c.curl_easy_duphandle(handle);
+}
+
+/// Set an option on an easy handle.
+/// The value type depends on the option being set.
+pub fn easy_setopt(handle: *CURL, option: CURLoption, value: anytype) CURLcode {
+    return @call(.auto, c.curl_easy_setopt, .{ handle, option, value });
+}
+
+/// Perform the transfer (blocking).
+/// Returns CURLE_OK on success, error code on failure.
+pub fn easy_perform(handle: *CURL) CURLcode {
+    return c.curl_easy_perform(handle);
+}
+
+/// Get information about a completed transfer.
+/// The out parameter type depends on the info being retrieved.
+pub fn easy_getinfo(handle: *CURL, info: CURLINFO, out: anytype) CURLcode {
+    return @call(.auto, c.curl_easy_getinfo, .{ handle, info, out });
+}
+
+/// Pause or unpause a transfer.
+/// Use CURLPAUSE_* constants for the bitmask.
+pub fn easy_pause(handle: *CURL, bitmask: c_int) CURLcode {
+    return c.curl_easy_pause(handle, bitmask);
+}
+
+/// Get human-readable error message for a CURLcode.
+pub fn easy_strerror(code: CURLcode) [*:0]const u8 {
+    return c.curl_easy_strerror(code);
+}
+
+// =============================================================================
+// String List (for headers)
+// =============================================================================
+
+/// Append a string to a curl_slist.
+/// Pass null for list to create a new list.
+/// Returns null on failure (out of memory).
+pub fn slist_append(list: ?*curl_slist, string: [*:0]const u8) ?*curl_slist {
+    return c.curl_slist_append(list, string);
+}
+
+/// Free an entire curl_slist.
+/// Safe to call with null.
+pub fn slist_free_all(list: ?*curl_slist) void {
+    c.curl_slist_free_all(list);
+}
+
+// =============================================================================
+// Callback Types
+// =============================================================================
+
+/// Write callback function type.
+/// Called when data is received from the server.
+///
+/// Parameters:
+/// - data: pointer to received data
+/// - size: always 1
+/// - nmemb: number of bytes received
+/// - userdata: user-provided pointer from CURLOPT_WRITEDATA
+///
+/// Returns: number of bytes handled (should equal size * nmemb to continue)
+pub const WriteCallback = *const fn (
+    [*]u8, // data pointer
+    usize, // size (always 1)
+    usize, // nmemb (number of bytes)
+    *anyopaque, // userdata
+) callconv(.C) usize;
+
+/// Header callback function type.
+/// Called for each header line received.
+/// Same signature as WriteCallback.
+pub const HeaderCallback = WriteCallback;
+
+/// Progress callback function type.
+/// Called periodically during transfer to report progress.
+///
+/// Parameters:
+/// - userdata: user-provided pointer from CURLOPT_XFERINFODATA
+/// - dltotal: total bytes to download (0 if unknown)
+/// - dlnow: bytes downloaded so far
+/// - ultotal: total bytes to upload (0 if unknown)
+/// - ulnow: bytes uploaded so far
+///
+/// Returns: 0 to continue, non-zero to abort transfer
+pub const ProgressCallback = *const fn (
+    *anyopaque, // userdata
+    c_longlong, // dltotal
+    c_longlong, // dlnow
+    c_longlong, // ultotal
+    c_longlong, // ulnow
+) callconv(.C) c_int;
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Convert CURLcode to Zig error or success.
+pub fn checkCode(code: CURLcode) !void {
+    if (code != CURLE_OK) {
+        return error.CurlError;
+    }
+}
+
+/// Get error message as Zig slice.
+pub fn getErrorMessage(code: CURLcode) []const u8 {
+    return std.mem.span(easy_strerror(code));
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+test "curl_ffi - constants defined" {
+    // Verify key constants are available
+    try std.testing.expect(CURLE_OK == 0);
+    try std.testing.expect(CURL_HTTP_VERSION_1_1 != 0);
+    try std.testing.expect(CURLOPT_URL != 0);
+    try std.testing.expect(CURLINFO_RESPONSE_CODE != 0);
+}
+
+test "curl_ffi - version string" {
+    // Note: This test requires libcurl to be linked
+    // In a build without curl, this will fail to compile/link
+    const ver = version();
+    const version_str = std.mem.span(ver);
+    try std.testing.expect(std.mem.startsWith(u8, version_str, "libcurl/"));
+}
+
+test "curl_ffi - error message" {
+    const msg = getErrorMessage(CURLE_COULDNT_CONNECT);
+    try std.testing.expect(msg.len > 0);
+}
