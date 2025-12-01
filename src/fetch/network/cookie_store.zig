@@ -10,6 +10,7 @@ const Allocator = std.mem.Allocator;
 const curl_cookies = @import("curl_cookies.zig");
 const CurlCookieManager = curl_cookies.CurlCookieManager;
 const Cookie = curl_cookies.Cookie;
+const CookieChangeCallback = curl_cookies.CookieChangeCallback;
 
 /// CookieSameSite enum matching WebIDL
 pub const CookieSameSite = enum {
@@ -100,6 +101,111 @@ pub const CookieChangeEventInit = struct {
     deleted: []const CookieListItem = &[_]CookieListItem{},
 };
 
+/// CookieChangeEvent - event fired when cookies change
+/// Local implementation for fetch module (matches DOM version)
+pub const CookieChangeEvent = struct {
+    /// Event type (always "change")
+    event_type: []const u8,
+
+    /// Cookies that were added or modified
+    changed: []CookieListItem,
+
+    /// Cookies that were deleted
+    deleted: []CookieListItem,
+
+    /// Allocator for cleanup
+    allocator: Allocator,
+
+    const Self = @This();
+
+    /// Create a new CookieChangeEvent
+    pub fn init(
+        allocator: Allocator,
+        event_type_str: []const u8,
+        init_dict: CookieChangeEventInit,
+    ) !*Self {
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        // Copy event type
+        const type_copy = try allocator.dupe(u8, event_type_str);
+        errdefer allocator.free(type_copy);
+
+        // Copy changed cookies
+        var changed: []CookieListItem = &[_]CookieListItem{};
+        if (init_dict.changed.len > 0) {
+            changed = try allocator.alloc(CookieListItem, init_dict.changed.len);
+            errdefer allocator.free(changed);
+
+            for (init_dict.changed, 0..) |cookie, i| {
+                changed[i] = try cookie.clone(allocator);
+            }
+        }
+
+        // Copy deleted cookies
+        var deleted: []CookieListItem = &[_]CookieListItem{};
+        if (init_dict.deleted.len > 0) {
+            deleted = try allocator.alloc(CookieListItem, init_dict.deleted.len);
+            errdefer allocator.free(deleted);
+
+            for (init_dict.deleted, 0..) |cookie, i| {
+                deleted[i] = try cookie.clone(allocator);
+            }
+        }
+
+        self.* = .{
+            .event_type = type_copy,
+            .changed = changed,
+            .deleted = deleted,
+            .allocator = allocator,
+        };
+
+        return self;
+    }
+
+    /// Clean up
+    pub fn deinit(self: *Self) void {
+        // Free changed cookies
+        for (self.changed) |*cookie| {
+            cookie.deinit();
+        }
+        if (self.changed.len > 0) {
+            self.allocator.free(self.changed);
+        }
+
+        // Free deleted cookies
+        for (self.deleted) |*cookie| {
+            cookie.deinit();
+        }
+        if (self.deleted.len > 0) {
+            self.allocator.free(self.deleted);
+        }
+
+        // Free event type
+        self.allocator.free(self.event_type);
+
+        self.allocator.destroy(self);
+    }
+
+    /// Get the list of changed cookies
+    pub fn getChanged(self: *const Self) []const CookieListItem {
+        return self.changed;
+    }
+
+    /// Get the list of deleted cookies
+    pub fn getDeleted(self: *const Self) []const CookieListItem {
+        return self.deleted;
+    }
+
+    /// Get event type
+    pub fn getType(self: *const Self) []const u8 {
+        return self.event_type;
+    }
+};
+
+/// Event handler function type for CookieChangeEvent
+pub const EventHandler = *const fn (event: *CookieChangeEvent) void;
+
 /// CookieStore implementation
 /// Wraps CurlCookieManager to provide WebIDL-compliant cookie access
 pub const CookieStore = struct {
@@ -112,10 +218,14 @@ pub const CookieStore = struct {
     /// Allocator
     allocator: Allocator,
 
-    /// Change event listeners (simplified - full implementation would use EventTarget)
-    change_listeners: std.ArrayListUnmanaged(ChangeFn),
+    /// Change event listeners using CookieChangeEvent
+    change_listeners: std.ArrayListUnmanaged(EventHandler),
 
-    pub const ChangeFn = *const fn (event: CookieChangeEventInit) void;
+    /// onchange event handler attribute (IDL event handler)
+    onchange_handler: ?EventHandler,
+
+    /// Whether we're registered with the cookie manager
+    registered_with_manager: bool,
 
     /// Initialize CookieStore with a shared cookie manager
     pub fn init(
@@ -131,12 +241,23 @@ pub const CookieStore = struct {
             .context_url = if (context_url) |u| try allocator.dupe(u8, u) else null,
             .allocator = allocator,
             .change_listeners = .{},
+            .onchange_handler = null,
+            .registered_with_manager = false,
         };
+
+        // Register for cookie change notifications from the manager
+        try cookie_manager.addChangeListener(CookieStore.onCookieManagerChange, self);
+        self.registered_with_manager = true;
 
         return self;
     }
 
     pub fn deinit(self: *CookieStore) void {
+        // Unregister from cookie manager
+        if (self.registered_with_manager) {
+            self.cookie_manager.removeChangeListener(CookieStore.onCookieManagerChange);
+        }
+
         if (self.context_url) |url| {
             self.allocator.free(url);
         }
@@ -243,16 +364,8 @@ pub const CookieStore = struct {
             .allocator = self.allocator,
         };
 
+        // CurlCookieManager.set() will notify us via onCookieManagerChange callback
         try self.cookie_manager.set(cookie);
-
-        // Fire change event (only if listeners are registered)
-        if (self.change_listeners.items.len > 0) {
-            var item = try cookieToListItem(self.allocator, cookie);
-            defer item.deinit();
-            self.fireChangeEvent(.{
-                .changed = &[_]CookieListItem{item},
-            });
-        }
     }
 
     /// delete(USVString name) -> Promise<undefined>
@@ -262,35 +375,21 @@ pub const CookieStore = struct {
 
     /// delete(CookieStoreDeleteOptions options) -> Promise<undefined>
     pub fn deleteByOptions(self: *CookieStore, options: CookieStoreDeleteOptions) !void {
+        // CurlCookieManager.delete() will notify us via onCookieManagerChange callback
         try self.cookie_manager.delete(options.name, options.domain, options.path);
-
-        // Fire change event (only if listeners are registered)
-        if (self.change_listeners.items.len > 0) {
-            var item = CookieListItem{
-                .name = try self.allocator.dupe(u8, options.name),
-                .value = try self.allocator.dupe(u8, ""),
-                .domain = if (options.domain) |d| try self.allocator.dupe(u8, d) else null,
-                .path = try self.allocator.dupe(u8, options.path),
-                .allocator = self.allocator,
-            };
-            defer item.deinit();
-            self.fireChangeEvent(.{
-                .deleted = &[_]CookieListItem{item},
-            });
-        }
     }
 
     // ============================================================
-    // Event Handling (simplified)
+    // Event Handling
     // ============================================================
 
-    /// Add a change listener
-    pub fn addChangeListener(self: *CookieStore, listener: ChangeFn) !void {
+    /// Add a change listener (addEventListener("change", handler))
+    pub fn addChangeListener(self: *CookieStore, listener: EventHandler) !void {
         try self.change_listeners.append(self.allocator, listener);
     }
 
-    /// Remove a change listener
-    pub fn removeChangeListener(self: *CookieStore, listener: ChangeFn) void {
+    /// Remove a change listener (removeEventListener("change", handler))
+    pub fn removeChangeListener(self: *CookieStore, listener: EventHandler) void {
         for (self.change_listeners.items, 0..) |l, i| {
             if (l == listener) {
                 _ = self.change_listeners.orderedRemove(i);
@@ -299,10 +398,75 @@ pub const CookieStore = struct {
         }
     }
 
-    fn fireChangeEvent(self: *CookieStore, event: CookieChangeEventInit) void {
+    /// Set the onchange event handler attribute
+    pub fn setOnchange(self: *CookieStore, handler: ?EventHandler) void {
+        self.onchange_handler = handler;
+    }
+
+    /// Get the onchange event handler attribute
+    pub fn getOnchange(self: *const CookieStore) ?EventHandler {
+        return self.onchange_handler;
+    }
+
+    /// Fire a CookieChangeEvent to all listeners
+    fn fireChangeEventWithLists(
+        self: *CookieStore,
+        changed_cookies: []const Cookie,
+        deleted_cookies: []const Cookie,
+    ) void {
+        // Convert cookies to CookieListItems
+        var changed_items = std.ArrayListUnmanaged(CookieListItem){};
+        defer {
+            for (changed_items.items) |*item| {
+                item.deinit();
+            }
+            changed_items.deinit(self.allocator);
+        }
+
+        for (changed_cookies) |cookie| {
+            const item = cookieToListItem(self.allocator, cookie) catch continue;
+            changed_items.append(self.allocator, item) catch continue;
+        }
+
+        var deleted_items = std.ArrayListUnmanaged(CookieListItem){};
+        defer {
+            for (deleted_items.items) |*item| {
+                item.deinit();
+            }
+            deleted_items.deinit(self.allocator);
+        }
+
+        for (deleted_cookies) |cookie| {
+            const item = cookieToListItem(self.allocator, cookie) catch continue;
+            deleted_items.append(self.allocator, item) catch continue;
+        }
+
+        // Create and dispatch the event
+        const event = CookieChangeEvent.init(self.allocator, "change", .{
+            .changed = changed_items.items,
+            .deleted = deleted_items.items,
+        }) catch return;
+        defer event.deinit();
+
+        // Call onchange handler first
+        if (self.onchange_handler) |handler| {
+            handler(event);
+        }
+
+        // Call all registered listeners
         for (self.change_listeners.items) |listener| {
             listener(event);
         }
+    }
+
+    /// Callback function for CurlCookieManager change notifications
+    fn onCookieManagerChange(
+        changed: []const Cookie,
+        deleted: []const Cookie,
+        context: ?*anyopaque,
+    ) void {
+        const self: *CookieStore = @ptrCast(@alignCast(context.?));
+        self.fireChangeEventWithLists(changed, deleted);
     }
 };
 
@@ -463,4 +627,205 @@ test "CookieListItem - clone" {
     try std.testing.expectEqualStrings(original.name, cloned.name);
     try std.testing.expectEqualStrings(original.value, cloned.value);
     try std.testing.expectEqual(original.expires, cloned.expires);
+}
+
+test "CookieChangeEvent - lifecycle" {
+    const allocator = std.testing.allocator;
+
+    const event = try CookieChangeEvent.init(allocator, "change", .{});
+    defer event.deinit();
+
+    try std.testing.expectEqualStrings("change", event.getType());
+    try std.testing.expectEqual(@as(usize, 0), event.getChanged().len);
+    try std.testing.expectEqual(@as(usize, 0), event.getDeleted().len);
+}
+
+test "CookieChangeEvent - with changed cookies" {
+    const allocator = std.testing.allocator;
+
+    var cookie = CookieListItem{
+        .name = try allocator.dupe(u8, "session"),
+        .value = try allocator.dupe(u8, "abc123"),
+        .path = try allocator.dupe(u8, "/"),
+        .allocator = allocator,
+    };
+    defer cookie.deinit();
+
+    const event = try CookieChangeEvent.init(allocator, "change", .{
+        .changed = &[_]CookieListItem{cookie},
+    });
+    defer event.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), event.getChanged().len);
+    try std.testing.expectEqualStrings("session", event.getChanged()[0].name);
+    try std.testing.expectEqualStrings("abc123", event.getChanged()[0].value);
+}
+
+test "CookieChangeEvent - with deleted cookies" {
+    const allocator = std.testing.allocator;
+
+    var cookie = CookieListItem{
+        .name = try allocator.dupe(u8, "old_session"),
+        .value = try allocator.dupe(u8, ""),
+        .path = try allocator.dupe(u8, "/"),
+        .allocator = allocator,
+    };
+    defer cookie.deinit();
+
+    const event = try CookieChangeEvent.init(allocator, "change", .{
+        .deleted = &[_]CookieListItem{cookie},
+    });
+    defer event.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), event.getChanged().len);
+    try std.testing.expectEqual(@as(usize, 1), event.getDeleted().len);
+    try std.testing.expectEqualStrings("old_session", event.getDeleted()[0].name);
+}
+
+// Test state for change listener tests
+var test_change_count: usize = 0;
+var test_delete_count: usize = 0;
+var test_last_changed_name_buf: [64]u8 = undefined;
+var test_last_changed_name_len: usize = 0;
+var test_last_deleted_name_buf: [64]u8 = undefined;
+var test_last_deleted_name_len: usize = 0;
+
+fn testChangeHandler(event: *CookieChangeEvent) void {
+    test_change_count += event.getChanged().len;
+    test_delete_count += event.getDeleted().len;
+
+    if (event.getChanged().len > 0) {
+        const name = event.getChanged()[0].name;
+        const len = @min(name.len, test_last_changed_name_buf.len);
+        @memcpy(test_last_changed_name_buf[0..len], name[0..len]);
+        test_last_changed_name_len = len;
+    }
+    if (event.getDeleted().len > 0) {
+        const name = event.getDeleted()[0].name;
+        const len = @min(name.len, test_last_deleted_name_buf.len);
+        @memcpy(test_last_deleted_name_buf[0..len], name[0..len]);
+        test_last_deleted_name_len = len;
+    }
+}
+
+fn resetTestState() void {
+    test_change_count = 0;
+    test_delete_count = 0;
+    test_last_changed_name_len = 0;
+    test_last_deleted_name_len = 0;
+}
+
+fn getTestLastChangedName() ?[]const u8 {
+    if (test_last_changed_name_len > 0) {
+        return test_last_changed_name_buf[0..test_last_changed_name_len];
+    }
+    return null;
+}
+
+fn getTestLastDeletedName() ?[]const u8 {
+    if (test_last_deleted_name_len > 0) {
+        return test_last_deleted_name_buf[0..test_last_deleted_name_len];
+    }
+    return null;
+}
+
+test "CookieStore - change listener fires on set" {
+    const allocator = std.testing.allocator;
+    resetTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    const store = try CookieStore.init(allocator, manager, null);
+    defer store.deinit();
+
+    // Add change listener
+    try store.addChangeListener(testChangeHandler);
+
+    // Set a cookie - should trigger change event
+    try store.setOptions(.{ .name = "test_cookie", .value = "test_value", .domain = ".example.com" });
+
+    // Verify the listener was called
+    try std.testing.expect(test_change_count >= 1);
+    const changed_name = getTestLastChangedName();
+    try std.testing.expect(changed_name != null);
+    if (changed_name) |name| {
+        try std.testing.expectEqualStrings("test_cookie", name);
+    }
+}
+
+test "CookieStore - change listener fires on delete" {
+    const allocator = std.testing.allocator;
+    resetTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    const store = try CookieStore.init(allocator, manager, null);
+    defer store.deinit();
+
+    // First set a cookie (without listener)
+    try store.setOptions(.{ .name = "to_delete", .value = "value", .domain = ".example.com" });
+
+    // Reset and add listener
+    resetTestState();
+    try store.addChangeListener(testChangeHandler);
+
+    // Delete the cookie - should trigger change event with deleted
+    try store.deleteByOptions(.{ .name = "to_delete", .domain = ".example.com" });
+
+    // Verify the listener was called with deleted cookie
+    try std.testing.expect(test_delete_count >= 1);
+    const deleted_name = getTestLastDeletedName();
+    try std.testing.expect(deleted_name != null);
+    if (deleted_name) |name| {
+        try std.testing.expectEqualStrings("to_delete", name);
+    }
+}
+
+test "CookieStore - onchange handler works" {
+    const allocator = std.testing.allocator;
+    resetTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    const store = try CookieStore.init(allocator, manager, null);
+    defer store.deinit();
+
+    // Set onchange handler
+    store.setOnchange(testChangeHandler);
+    try std.testing.expect(store.getOnchange() != null);
+
+    // Set a cookie - should trigger onchange
+    try store.setOptions(.{ .name = "onchange_test", .value = "value", .domain = ".example.com" });
+
+    // Verify the handler was called
+    try std.testing.expect(test_change_count >= 1);
+
+    // Clear onchange handler
+    store.setOnchange(null);
+    try std.testing.expect(store.getOnchange() == null);
+}
+
+test "CookieStore - remove change listener" {
+    const allocator = std.testing.allocator;
+    resetTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    const store = try CookieStore.init(allocator, manager, null);
+    defer store.deinit();
+
+    // Add and then remove listener
+    try store.addChangeListener(testChangeHandler);
+    store.removeChangeListener(testChangeHandler);
+
+    // Set a cookie - should NOT trigger change event (listener removed)
+    try store.setOptions(.{ .name = "no_event", .value = "value", .domain = ".example.com" });
+
+    // Verify the listener was NOT called (no change event fired to removed listener)
+    // Note: The cookie manager still notifies, but CookieStore has no listeners
+    try std.testing.expect(test_change_count == 0);
 }

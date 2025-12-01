@@ -81,6 +81,19 @@ pub const Cookie = struct {
     }
 };
 
+/// Callback type for cookie change notifications
+pub const CookieChangeCallback = *const fn (
+    changed: []const Cookie,
+    deleted: []const Cookie,
+    context: ?*anyopaque,
+) void;
+
+/// Change listener registration
+pub const ChangeListener = struct {
+    callback: CookieChangeCallback,
+    context: ?*anyopaque,
+};
+
 /// Thread-safe cookie manager using libcurl's shared cookie engine.
 /// Provides unified cookie storage for Fetch API, WebSocket, and CookieStore API.
 pub const CurlCookieManager = struct {
@@ -99,6 +112,9 @@ pub const CurlCookieManager = struct {
 
     /// Whether to persist cookies to disk
     persist_path: ?[]const u8,
+
+    /// Registered change listeners
+    change_listeners: std.ArrayListUnmanaged(ChangeListener),
 
     /// Initialize a new CurlCookieManager
     /// @param allocator: Allocator for internal use
@@ -141,6 +157,7 @@ pub const CurlCookieManager = struct {
             .allocator = allocator,
             .mutex = .{},
             .persist_path = if (persist_path) |p| try allocator.dupe(u8, p) else null,
+            .change_listeners = .{},
         };
 
         return self;
@@ -160,7 +177,51 @@ pub const CurlCookieManager = struct {
             self.allocator.free(path);
         }
 
+        self.change_listeners.deinit(self.allocator);
+
         self.allocator.destroy(self);
+    }
+
+    // ============================================================
+    // Change Listener Management
+    // ============================================================
+
+    /// Register a callback for cookie changes
+    pub fn addChangeListener(
+        self: *CurlCookieManager,
+        callback: CookieChangeCallback,
+        context: ?*anyopaque,
+    ) !void {
+        try self.change_listeners.append(self.allocator, .{
+            .callback = callback,
+            .context = context,
+        });
+    }
+
+    /// Remove a change listener
+    pub fn removeChangeListener(
+        self: *CurlCookieManager,
+        callback: CookieChangeCallback,
+    ) void {
+        var i: usize = 0;
+        while (i < self.change_listeners.items.len) {
+            if (self.change_listeners.items[i].callback == callback) {
+                _ = self.change_listeners.orderedRemove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Notify all listeners of cookie changes (called without mutex held)
+    fn notifyListeners(
+        self: *CurlCookieManager,
+        changed: []const Cookie,
+        deleted: []const Cookie,
+    ) void {
+        for (self.change_listeners.items) |listener| {
+            listener.callback(changed, deleted, listener.context);
+        }
     }
 
     /// Attach this cookie manager to a CURL easy handle
@@ -255,39 +316,78 @@ pub const CurlCookieManager = struct {
 
     /// Set a cookie
     pub fn set(self: *CurlCookieManager, cookie: Cookie) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        // Check if cookie exists before setting (for change detection)
+        // Need to do this outside the mutex to avoid deadlock
+        const existing = try self.get(cookie.name, null);
+        var existing_mut = existing;
+        defer if (existing_mut) |*e| e.deinit();
 
-        const cookie_str = try formatSetCookieString(self.allocator, cookie);
-        defer self.allocator.free(cookie_str);
+        const is_change = existing == null or !cookiesEqual(existing.?, cookie);
 
-        // Need null-terminated string
-        const cookie_z = try self.allocator.dupeZ(u8, cookie_str);
-        defer self.allocator.free(cookie_z);
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
 
-        _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, cookie_z.ptr);
+            const cookie_str = try formatSetCookieString(self.allocator, cookie);
+            defer self.allocator.free(cookie_str);
+
+            // Need null-terminated string
+            const cookie_z = try self.allocator.dupeZ(u8, cookie_str);
+            defer self.allocator.free(cookie_z);
+
+            _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, cookie_z.ptr);
+        }
+
+        // Notify listeners if this was a change (outside mutex)
+        if (is_change and self.change_listeners.items.len > 0) {
+            const changed_array = [_]Cookie{cookie};
+            self.notifyListeners(&changed_array, &[_]Cookie{});
+        }
     }
 
     /// Delete a cookie by name, domain, and path
     pub fn delete(self: *CurlCookieManager, name: []const u8, domain: ?[]const u8, path: ?[]const u8) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        // Check if cookie exists before deleting (for change notification)
+        const existing = try self.get(name, null);
+        var existing_mut = existing;
+        defer if (existing_mut) |*e| e.deinit();
 
-        const delete_str = try formatDeleteCookie(
-            self.allocator,
-            name,
-            domain orelse "",
-            path orelse "/",
-        );
-        defer self.allocator.free(delete_str);
+        {
+            self.mutex.lock();
+            defer self.mutex.unlock();
 
-        // Need null-terminated string
-        const delete_z = try self.allocator.dupeZ(u8, delete_str);
-        defer self.allocator.free(delete_z);
+            const delete_str = try formatDeleteCookie(
+                self.allocator,
+                name,
+                domain orelse "",
+                path orelse "/",
+            );
+            defer self.allocator.free(delete_str);
 
-        _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, delete_z.ptr);
+            // Need null-terminated string
+            const delete_z = try self.allocator.dupeZ(u8, delete_str);
+            defer self.allocator.free(delete_z);
+
+            _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, delete_z.ptr);
+        }
+
+        // Notify listeners if cookie existed (outside mutex)
+        if (existing != null and self.change_listeners.items.len > 0) {
+            const deleted_array = [_]Cookie{existing.?};
+            self.notifyListeners(&[_]Cookie{}, &deleted_array);
+        }
     }
 };
+
+/// Compare two cookies for equality (value and attributes)
+fn cookiesEqual(a: Cookie, b: Cookie) bool {
+    return std.mem.eql(u8, a.value, b.value) and
+        std.mem.eql(u8, a.domain, b.domain) and
+        std.mem.eql(u8, a.path, b.path) and
+        a.expires == b.expires and
+        a.secure == b.secure and
+        a.same_site == b.same_site;
+}
 
 /// Parse a cookie from libcurl's Netscape format
 /// Format: domain\tsubdomain_flag\tpath\tsecure\texpiry\tname\tvalue
@@ -581,4 +681,174 @@ test "CurlCookieManager - delete cookie" {
             try std.testing.expect(c.expires != null and c.expires.? <= 1);
         }
     }
+}
+
+// Test state for change listener tests
+var manager_test_changed_count: usize = 0;
+var manager_test_deleted_count: usize = 0;
+var manager_test_last_changed_name_buf: [64]u8 = undefined;
+var manager_test_last_changed_name_len: usize = 0;
+var manager_test_last_deleted_name_buf: [64]u8 = undefined;
+var manager_test_last_deleted_name_len: usize = 0;
+
+fn managerTestChangeCallback(
+    changed: []const Cookie,
+    deleted: []const Cookie,
+    context: ?*anyopaque,
+) void {
+    _ = context;
+    manager_test_changed_count += changed.len;
+    manager_test_deleted_count += deleted.len;
+
+    if (changed.len > 0) {
+        const name = changed[0].name;
+        const len = @min(name.len, manager_test_last_changed_name_buf.len);
+        @memcpy(manager_test_last_changed_name_buf[0..len], name[0..len]);
+        manager_test_last_changed_name_len = len;
+    }
+    if (deleted.len > 0) {
+        const name = deleted[0].name;
+        const len = @min(name.len, manager_test_last_deleted_name_buf.len);
+        @memcpy(manager_test_last_deleted_name_buf[0..len], name[0..len]);
+        manager_test_last_deleted_name_len = len;
+    }
+}
+
+fn resetManagerTestState() void {
+    manager_test_changed_count = 0;
+    manager_test_deleted_count = 0;
+    manager_test_last_changed_name_len = 0;
+    manager_test_last_deleted_name_len = 0;
+}
+
+fn getLastChangedName() ?[]const u8 {
+    if (manager_test_last_changed_name_len > 0) {
+        return manager_test_last_changed_name_buf[0..manager_test_last_changed_name_len];
+    }
+    return null;
+}
+
+fn getLastDeletedName() ?[]const u8 {
+    if (manager_test_last_deleted_name_len > 0) {
+        return manager_test_last_deleted_name_buf[0..manager_test_last_deleted_name_len];
+    }
+    return null;
+}
+
+test "CurlCookieManager - change listener registration" {
+    const allocator = std.testing.allocator;
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    // Add listener
+    try manager.addChangeListener(managerTestChangeCallback, null);
+    try std.testing.expectEqual(@as(usize, 1), manager.change_listeners.items.len);
+
+    // Remove listener
+    manager.removeChangeListener(managerTestChangeCallback);
+    try std.testing.expectEqual(@as(usize, 0), manager.change_listeners.items.len);
+}
+
+test "CurlCookieManager - change listener fires on set" {
+    const allocator = std.testing.allocator;
+    resetManagerTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    // Add listener
+    try manager.addChangeListener(managerTestChangeCallback, null);
+
+    // Set a cookie - should trigger callback
+    const cookie = Cookie{
+        .name = "listener_test",
+        .value = "value123",
+        .domain = ".example.com",
+        .path = "/",
+        .expires = null,
+        .secure = false,
+        .same_site = .lax,
+        .http_only = false,
+        .allocator = allocator,
+    };
+
+    try manager.set(cookie);
+
+    // Verify the callback was called
+    try std.testing.expect(manager_test_changed_count >= 1);
+    const changed_name = getLastChangedName();
+    try std.testing.expect(changed_name != null);
+    if (changed_name) |name| {
+        try std.testing.expectEqualStrings("listener_test", name);
+    }
+}
+
+test "CurlCookieManager - change listener fires on delete" {
+    const allocator = std.testing.allocator;
+    resetManagerTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    // First set a cookie
+    const cookie = Cookie{
+        .name = "to_delete_listener",
+        .value = "temp",
+        .domain = ".example.com",
+        .path = "/",
+        .expires = null,
+        .secure = false,
+        .same_site = .lax,
+        .http_only = false,
+        .allocator = allocator,
+    };
+    try manager.set(cookie);
+
+    // Reset state and add listener
+    resetManagerTestState();
+    try manager.addChangeListener(managerTestChangeCallback, null);
+
+    // Delete the cookie - should trigger callback
+    try manager.delete("to_delete_listener", ".example.com", "/");
+
+    // Verify the callback was called with deleted
+    try std.testing.expect(manager_test_deleted_count >= 1);
+    const deleted_name = getLastDeletedName();
+    try std.testing.expect(deleted_name != null);
+    if (deleted_name) |name| {
+        try std.testing.expectEqualStrings("to_delete_listener", name);
+    }
+}
+
+test "CurlCookieManager - no callback when same value set" {
+    const allocator = std.testing.allocator;
+    resetManagerTestState();
+
+    const manager = try CurlCookieManager.init(allocator, null);
+    defer manager.deinit();
+
+    // Set initial cookie
+    const cookie = Cookie{
+        .name = "same_value",
+        .value = "unchanged",
+        .domain = ".example.com",
+        .path = "/",
+        .expires = null,
+        .secure = false,
+        .same_site = .lax,
+        .http_only = false,
+        .allocator = allocator,
+    };
+    try manager.set(cookie);
+
+    // Reset state and add listener
+    resetManagerTestState();
+    try manager.addChangeListener(managerTestChangeCallback, null);
+
+    // Set same cookie again - should NOT trigger callback (no change)
+    try manager.set(cookie);
+
+    // Verify the callback was NOT called (cookie unchanged)
+    try std.testing.expectEqual(@as(usize, 0), manager_test_changed_count);
 }
