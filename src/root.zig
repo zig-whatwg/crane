@@ -13,6 +13,7 @@
 //! - Trusted Types (W3C Trusted Types for DOM XSS prevention)
 //! - CSP (W3C Content Security Policy Level 3)
 //! - HR-Time (W3C High Resolution Time)
+//! - WebSocket (WHATWG WebSockets API)
 
 const std = @import("std");
 
@@ -31,6 +32,7 @@ pub const impls = @import("impls");
 pub const trusted_types = @import("trusted_types");
 pub const csp = @import("csp");
 pub const hr_time = @import("hr_time");
+pub const websocket = @import("websocket");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -52,6 +54,7 @@ test {
     _ = impls;
     _ = trusted_types;
     _ = csp;
+    _ = websocket;
     _ = v8;
     _ = js_bindings;
     _ = codegen;

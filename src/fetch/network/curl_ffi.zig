@@ -322,6 +322,51 @@ pub const CURLPAUSE_ALL = c.CURLPAUSE_ALL;
 pub const CURLPAUSE_CONT = c.CURLPAUSE_CONT;
 
 // =============================================================================
+// WebSocket Support (libcurl 7.86.0+)
+// =============================================================================
+// Reference: https://curl.se/libcurl/c/libcurl-ws.html
+
+/// WebSocket frame flags for curl_ws_send() and curl_ws_frame.flags
+/// Text frame (UTF-8 encoded data)
+pub const CURLWS_TEXT = c.CURLWS_TEXT;
+/// Binary frame (arbitrary data)
+pub const CURLWS_BINARY = c.CURLWS_BINARY;
+/// Continuation frame (fragment of a larger message)
+pub const CURLWS_CONT = c.CURLWS_CONT;
+/// Close frame (connection closing)
+pub const CURLWS_CLOSE = c.CURLWS_CLOSE;
+/// Ping frame (keepalive request)
+pub const CURLWS_PING = c.CURLWS_PING;
+/// Pong frame (keepalive response)
+pub const CURLWS_PONG = c.CURLWS_PONG;
+/// Frame offset info is valid in curl_ws_frame
+pub const CURLWS_OFFSET = c.CURLWS_OFFSET;
+/// Raw WebSocket mode (no automatic frame handling)
+pub const CURLWS_RAW_MODE = c.CURLWS_RAW_MODE;
+
+/// WebSocket frame metadata returned by curl_ws_recv() and curl_ws_meta()
+/// Reference: https://curl.se/libcurl/c/curl_ws_meta.html
+pub const curl_ws_frame = extern struct {
+    /// Age of this struct (for versioning)
+    age: c_int,
+    /// Frame flags (CURLWS_TEXT, CURLWS_BINARY, etc.)
+    flags: c_int,
+    /// Offset into the message (for fragmented messages, when CURLWS_OFFSET is set)
+    offset: c.curl_off_t,
+    /// Bytes remaining in this frame
+    bytesleft: c.curl_off_t,
+    /// Total message length (if known)
+    len: usize,
+};
+
+/// Connect-only mode values for CURLOPT_CONNECT_ONLY
+/// 0 = normal transfer, 1 = HTTP connect only, 2 = WebSocket connect only
+pub const CURL_CONNECT_ONLY_WEBSOCKET: c_long = 2;
+
+/// CURLOPT for connect-only mode
+pub const CURLOPT_CONNECT_ONLY = c.CURLOPT_CONNECT_ONLY;
+
+// =============================================================================
 // Global Functions
 // =============================================================================
 
@@ -454,6 +499,55 @@ pub fn multi_strerror(code: CURLMcode) [*:0]const u8 {
 }
 
 // =============================================================================
+// WebSocket Functions (libcurl 7.86.0+)
+// =============================================================================
+
+/// Send a WebSocket frame.
+/// Reference: https://curl.se/libcurl/c/curl_ws_send.html
+///
+/// Parameters:
+/// - handle: easy handle with established WebSocket connection
+/// - buffer: data to send
+/// - buflen: length of data
+/// - sent: output - number of bytes sent
+/// - fragsize: fragment size (0 = send as single frame)
+/// - flags: frame type (CURLWS_TEXT, CURLWS_BINARY, CURLWS_CLOSE, CURLWS_PING, CURLWS_PONG)
+///
+/// Returns: CURLE_OK on success, error code on failure
+/// Note: Use CURLOPT_CONNECT_ONLY=2 to establish WebSocket connection first
+pub fn ws_send(handle: *CURL, buffer: [*]const u8, buflen: usize, sent: *usize, fragsize: usize, flags: c_uint) CURLcode {
+    return c.curl_ws_send(handle, buffer, buflen, sent, fragsize, flags);
+}
+
+/// Receive a WebSocket frame.
+/// Reference: https://curl.se/libcurl/c/curl_ws_recv.html
+///
+/// Parameters:
+/// - handle: easy handle with established WebSocket connection
+/// - buffer: buffer to receive data into
+/// - buflen: size of buffer
+/// - recv: output - number of bytes received
+/// - meta: output - pointer to frame metadata (valid until next curl call)
+///
+/// Returns: CURLE_OK on success, CURLE_AGAIN if no data available, error code on failure
+/// Note: Call ws_meta() after recv to get frame information
+pub fn ws_recv(handle: *CURL, buffer: [*]u8, buflen: usize, recv_count: *usize, meta: *?*const curl_ws_frame) CURLcode {
+    return c.curl_ws_recv(handle, buffer, buflen, recv_count, @ptrCast(meta));
+}
+
+/// Get WebSocket frame metadata from the last received frame.
+/// Reference: https://curl.se/libcurl/c/curl_ws_meta.html
+///
+/// Parameters:
+/// - handle: easy handle with established WebSocket connection
+///
+/// Returns: pointer to frame metadata, or null if not in WebSocket mode
+/// Note: The returned pointer is only valid until the next curl_ws_recv() call
+pub fn ws_meta(handle: *CURL) ?*const curl_ws_frame {
+    return @ptrCast(c.curl_ws_meta(handle));
+}
+
+// =============================================================================
 // String List (for headers)
 // =============================================================================
 
@@ -554,4 +648,28 @@ test "curl_ffi - version string" {
 test "curl_ffi - error message" {
     const msg = getErrorMessage(CURLE_COULDNT_CONNECT);
     try std.testing.expect(msg.len > 0);
+}
+
+test "curl_ffi - websocket constants defined" {
+    // Verify WebSocket constants are available (libcurl 7.86.0+)
+    try std.testing.expect(CURLWS_TEXT != 0);
+    try std.testing.expect(CURLWS_BINARY != 0);
+    try std.testing.expect(CURLWS_CLOSE != 0);
+    try std.testing.expect(CURLWS_PING != 0);
+    try std.testing.expect(CURLWS_PONG != 0);
+    try std.testing.expect(CURL_CONNECT_ONLY_WEBSOCKET == 2);
+    try std.testing.expect(CURLOPT_CONNECT_ONLY != 0);
+}
+
+test "curl_ffi - websocket frame struct layout" {
+    // Verify curl_ws_frame struct is properly defined
+    const frame = curl_ws_frame{
+        .age = 0,
+        .flags = CURLWS_TEXT,
+        .offset = 0,
+        .bytesleft = 0,
+        .len = 0,
+    };
+    try std.testing.expectEqual(@as(c_int, 0), frame.age);
+    try std.testing.expectEqual(CURLWS_TEXT, @as(c_uint, @intCast(frame.flags)));
 }

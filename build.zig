@@ -1274,6 +1274,14 @@ pub fn build(b: *std.Build) void {
     // Add hr_time to impls for Performance implementation
     impls_mod.addImport("hr_time", hr_time_mod);
 
+    // WebSocket module (WHATWG WebSockets API)
+    const websocket_mod = b.addModule("websocket", .{
+        .root_source_file = b.path("src/websocket/root.zig"),
+        .target = target,
+    });
+    // WebSocket needs fetch for curl backend
+    websocket_mod.addImport("fetch", fetch_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1294,6 +1302,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("trusted_types", trusted_types_mod);
     whatwg_mod.addImport("csp", csp_mod);
     whatwg_mod.addImport("hr_time", hr_time_mod);
+    whatwg_mod.addImport("websocket", websocket_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
