@@ -54,6 +54,7 @@ pub const close_codes = @import("close_codes.zig");
 pub const connection = @import("connection.zig");
 pub const curl_backend = @import("curl_backend.zig");
 pub const send_buffer = @import("send_buffer.zig");
+pub const events = @import("events.zig");
 
 // Re-export common types
 pub const CloseCodes = close_codes.CloseCodes;
@@ -62,6 +63,14 @@ pub const WebSocketConnection = connection.WebSocketConnection;
 pub const SendBuffer = send_buffer.SendBuffer;
 pub const MessageType = send_buffer.MessageType;
 pub const QueuedMessage = send_buffer.QueuedMessage;
+
+// Event types
+pub const WebSocketEvent = events.WebSocketEvent;
+pub const WebSocketEventType = events.WebSocketEventType;
+pub const WebSocketEventTask = events.WebSocketEventTask;
+pub const OpenEventData = events.OpenEventData;
+pub const MessageEventData = events.MessageEventData;
+pub const CloseEventData = events.CloseEventData;
 
 // TODO: Export WebSocket interface once implemented
 // pub const WebSocket = @import("../webidl/impls/WebSocket.zig").WebSocket;
