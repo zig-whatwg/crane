@@ -69,7 +69,9 @@ pub fn deinit(instance: *runtime.Instance) void {
         instance.ctx.allocator.destroy(internal);
         state.own._internal = null;
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Don't call runtime.Instance.deinit(instance) here!
+    // The GC integration layer (gc.onObjectFreed) handles freeing the slab.
+    // Calling it here would cause a double-free.
 }
 
 /// Get internal state from instance

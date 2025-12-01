@@ -178,25 +178,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
             // Step 5.1: Parse URL
             const api_parser = @import("api_parser");
 
-            // Per spec, we should use the API base URL from the environment.
-            // For REPL/testing without a document context, we try:
-            // 1. First try parsing as absolute URL (no base needed)
-            // 2. If that fails, use a synthetic base URL for relative resolution
-            //
-            // This matches browser behavior where relative URLs like "flowers.jpg"
-            // are resolved against the document URL. In REPL, we use a synthetic
-            // localhost URL since about:blank doesn't support relative resolution.
-            var parsed_url = api_parser.parseURL(allocator, url_string, null) catch blk: {
-                // Try with fallback base URL (synthetic localhost)
-                // Note: about:blank doesn't support relative URL resolution per spec
-                var base_url = api_parser.parseURL(allocator, "http://localhost/", null) catch {
-                    return error.TypeError;
-                };
-                defer base_url.deinit();
-
-                break :blk api_parser.parseURL(allocator, url_string, &base_url) catch {
-                    return error.TypeError; // Step 5.2: If parsedURL is failure, throw TypeError
-                };
+            // Per Fetch spec §5.4, parsedURL is the result of parsing input with
+            // the relevant settings object's API base URL. Without a document or
+            // worker context (e.g., in REPL), only absolute URLs are valid.
+            // Step 5.2: If parsedURL is failure, throw TypeError.
+            var parsed_url = api_parser.parseURL(allocator, url_string, null) catch {
+                return error.TypeError;
             };
             defer parsed_url.deinit();
 
