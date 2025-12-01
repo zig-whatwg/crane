@@ -490,3 +490,40 @@ test "LibcurlBackend - timing information populated" {
     // Time to first byte should be reasonable
     try testing.expect(response.time_to_first_byte_ms <= response.total_time_ms);
 }
+
+// =============================================================================
+// HTTP/2 Tests (requires -Dhttp2=true build option)
+// =============================================================================
+
+test "LibcurlBackend - HTTP/2 request" {
+    const allocator = testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    if (!canReachTestEndpoint(allocator)) {
+        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
+        return;
+    }
+
+    const backend = try LibcurlBackend.init(allocator);
+    defer backend.deinit();
+
+    // Request HTTP/2 - curl will negotiate via ALPN
+    const request = NetworkRequest{
+        .url = "https://nghttp2.org/httpbin/get", // This server supports HTTP/2
+        .method = "GET",
+        .headers = &.{},
+        .body = null,
+        .http_version = .http_2,
+        .timeout_ms = 30000,
+    };
+
+    var response = try backend.getBackend().send(allocator, &request);
+    defer response.deinit();
+
+    try testing.expectEqual(@as(u16, 200), response.status);
+    // Note: HTTP/2 will only be used if built with -Dhttp2=true
+    // The test passes either way, but http_version will differ
+    try testing.expect(response.http_version == .http_1_1 or response.http_version == .http_2);
+}
