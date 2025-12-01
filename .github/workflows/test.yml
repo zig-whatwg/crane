@@ -26,3 +26,34 @@ jobs:
 
       - name: Run tests
         run: zig build test --summary all
+
+  # Fetch network tests - run separately with network access
+  fetch-network-tests:
+    name: Fetch Network Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Build with static libcurl
+        run: zig build
+
+      - name: Run fetch network integration tests
+        run: zig build test --summary all
+        env:
+          # Enable network tests
+          WHATWG_NETWORK_TESTS: "1"
+        # Allow network test failures as httpbin.org may be unavailable
+        continue-on-error: true
+
+      - name: Verify libcurl integration compiles
+        run: |
+          # Verify the fetch module with libcurl compiles correctly
+          zig build -Dsystem-curl=false
+          echo "Static libcurl build successful"
