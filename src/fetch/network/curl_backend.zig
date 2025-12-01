@@ -225,6 +225,26 @@ pub const LibcurlBackend = struct {
         var effective_url: [*c]const u8 = null;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
 
+        // Resource Timing API: Extract detailed timing information
+        var namelookup_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
+
+        var connect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
+
+        var appconnect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
+
+        var pretransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+
+        var redirect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_TIME, &redirect_time);
+
+        // Check if connection was reused (num_connects == 0 means reused)
+        var num_connects: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
+
         // Build response
         const http_version: HttpVersion = switch (http_version_raw) {
             curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
@@ -276,6 +296,13 @@ pub const LibcurlBackend = struct {
             .redirect_count = @intCast(redirect_count),
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
+            // Resource Timing API fields
+            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
+            .connect_time_ms = @intFromFloat(connect_time * 1000),
+            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
+            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .redirect_time_ms = @intFromFloat(redirect_time * 1000),
+            .connection_reused = (num_connects == 0),
         };
     }
 

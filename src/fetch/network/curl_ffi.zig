@@ -229,6 +229,8 @@ pub const CURLINFO_HTTP_VERSION = c.CURLINFO_HTTP_VERSION;
 pub const CURLINFO_CONTENT_TYPE = c.CURLINFO_CONTENT_TYPE;
 /// Content-Length from response
 pub const CURLINFO_CONTENT_LENGTH_DOWNLOAD_T = c.CURLINFO_CONTENT_LENGTH_DOWNLOAD_T;
+/// Number of new connections made (0 = connection reused)
+pub const CURLINFO_NUM_CONNECTS = c.CURLINFO_NUM_CONNECTS;
 
 // =============================================================================
 // HTTP Version Constants

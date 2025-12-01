@@ -131,6 +131,22 @@ pub const NetworkResponse = struct {
     /// Remote port
     remote_port: ?u16,
 
+    // === Resource Timing API fields ===
+    // All times are in milliseconds from request start
+
+    /// Time when DNS lookup completed
+    dns_lookup_time_ms: u64 = 0,
+    /// Time when TCP connection completed
+    connect_time_ms: u64 = 0,
+    /// Time when TLS handshake completed (0 for non-HTTPS)
+    app_connect_time_ms: u64 = 0,
+    /// Time when request was ready to transfer
+    pretransfer_time_ms: u64 = 0,
+    /// Time spent in redirects (when following redirects)
+    redirect_time_ms: u64 = 0,
+    /// Whether connection was reused from pool
+    connection_reused: bool = false,
+
     pub const Header = struct {
         name: []const u8,
         value: []const u8,
