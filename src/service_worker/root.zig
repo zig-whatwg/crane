@@ -42,7 +42,7 @@
 //! - [x] Core data structures (Phase 2)
 //! - [x] Client-side interfaces (Phase 3)
 //! - [x] ServiceWorkerGlobalScope (Phase 4)
-//! - [ ] Events (Phase 5)
+//! - [x] Events (Phase 5)
 //! - [ ] Cache API (Phase 6)
 //! - [ ] Core algorithms (Phase 7)
 //! - [ ] Fetch integration (Phase 8)
@@ -110,6 +110,17 @@ pub const global = @import("global/root.zig");
 // Re-export commonly used global types
 pub const ServiceWorkerGlobalScope = global.ServiceWorkerGlobalScope;
 pub const Clients = global.Clients;
+
+// Events (Phase 5)
+pub const events = @import("events/root.zig");
+
+// Re-export commonly used event types
+pub const ExtendableEvent = events.ExtendableEvent;
+pub const FetchEvent = events.FetchEvent;
+pub const InstallEvent = events.InstallEvent;
+pub const ExtendableMessageEvent = events.ExtendableMessageEvent;
+pub const Router = events.Router;
+pub const RouterRule = events.RouterRule;
 
 // =============================================================================
 // Tests
