@@ -84,18 +84,36 @@ pub fn httpFetch(
     // TODO: Implement service worker interception when service worker module is available
     // For now, skip service worker and proceed directly to network fetch
 
-    // Step 4: If response is null
+    // Step 4: If response is null, run HTTP-network-or-cache fetch
     if (response == null) {
-        if (request.redirect_mode == .follow) {
-            // Run HTTP-redirect fetch
-            response = try httpRedirectFetch(allocator, params, options);
-        } else {
-            // Run HTTP-network-or-cache fetch
-            response = try httpNetworkOrCacheFetch(allocator, params, options, false);
-        }
+        response = try httpNetworkOrCacheFetch(allocator, params, options, false);
     }
 
     var final_response = response.?;
+
+    // Step 5: If response's status is a redirect status, handle based on redirect mode
+    // Per WHATWG Fetch spec: check redirect status AFTER getting response
+    if (!isNetworkError(final_response) and internal_response.isRedirectStatus(final_response.status)) {
+        switch (request.redirect_mode) {
+            .@"error" => {
+                // Return a network error
+                final_response.deinit();
+                return try internal_response.networkError(allocator);
+            },
+            .manual => {
+                // Return an opaque-redirect filtered response
+                // For manual mode, we return the redirect response as-is
+                // but mark it as opaque-redirect type
+                final_response.response_type = .opaqueredirect;
+                return final_response;
+            },
+            .follow => {
+                // Run HTTP-redirect fetch (handles the redirect chain)
+                final_response.deinit();
+                return try httpRedirectFetch(allocator, params, options);
+            },
+        }
+    }
 
     // Step 5: CORS check
     if (options.cors_flag and !isNetworkError(final_response)) {
@@ -164,7 +182,24 @@ pub fn httpRedirectFetch(
             }
 
             // Recursive redirect fetch
-            return try httpRedirectFetch(allocator, params, options);
+            const final_response = try httpRedirectFetch(allocator, params, options);
+
+            // The request's url_list tracks the full redirect chain
+            // If there was a redirect, response needs multiple URLs for 'redirected' property
+            // (url_list.len > 1 means redirected)
+            if (request.url_list.items.len > 1) {
+                // Clear response's url_list and copy full chain from request
+                for (final_response.url_list.items) |url| {
+                    allocator.free(url);
+                }
+                final_response.url_list.clearRetainingCapacity();
+
+                for (request.url_list.items) |url| {
+                    final_response.addUrl(url) catch {};
+                }
+            }
+
+            return final_response;
         }
     }
 

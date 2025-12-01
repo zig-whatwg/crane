@@ -112,7 +112,7 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     var extra_headers_count: usize = 0;
 
     // Redirect behavior: "follow" (default), "manual", "error"
-    var redirect_behavior: std.http.Client.Request.RedirectBehavior = @enumFromInt(3); // default: follow 3 times
+    var redirect_mode: fetch_mod.internal.RedirectMode = .follow;
 
     // If input was a Request object, extract method from it first
     if (input_request_obj) |req_obj| {
@@ -146,9 +146,9 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
             var redirect_buf: [16]u8 = undefined;
             if (getStringProperty(isolate, context, init_obj, "redirect", &redirect_buf)) |redirect_str| {
                 if (std.ascii.eqlIgnoreCase(redirect_str, "manual")) {
-                    redirect_behavior = .unhandled; // Don't follow redirects
+                    redirect_mode = .manual;
                 } else if (std.ascii.eqlIgnoreCase(redirect_str, "error")) {
-                    redirect_behavior = .not_allowed; // Error on redirect
+                    redirect_mode = .@"error";
                 }
                 // "follow" is default, no change needed
             }
@@ -351,6 +351,9 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     // Set credentials mode to include (to enable cookies)
     internal_request.credentials_mode = .include;
 
+    // Set redirect mode from parsed option
+    internal_request.redirect_mode = redirect_mode;
+
     // Add headers
     for (extra_headers_storage[0..extra_headers_count]) |h| {
         internal_request.header_list.append(h.name, h.value) catch {};
@@ -419,6 +422,18 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         return;
     };
     defer internal_response.deinit();
+
+    // Check if the response is a network error (e.g., redirect with redirect:'error')
+    // Network errors have response_type == .@"error" or status == 0
+    if (internal_response.response_type == .@"error" or internal_response.status == 0) {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error", 13) orelse return;
+        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    }
 
     // Create Response object
     const Response = @import("interfaces").Response;
