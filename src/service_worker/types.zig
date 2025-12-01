@@ -382,6 +382,15 @@ pub const MultiCacheQueryOptions = struct {
 
     /// Specific cache name to search.
     cache_name: ?[]const u8 = null,
+
+    /// Convert to CacheQueryOptions.
+    pub fn toCacheQueryOptions(self: *const MultiCacheQueryOptions) CacheQueryOptions {
+        return .{
+            .ignore_search = self.ignore_search,
+            .ignore_method = self.ignore_method,
+            .ignore_vary = self.ignore_vary,
+        };
+    }
 };
 
 // =============================================================================

@@ -43,7 +43,7 @@
 //! - [x] Client-side interfaces (Phase 3)
 //! - [x] ServiceWorkerGlobalScope (Phase 4)
 //! - [x] Events (Phase 5)
-//! - [ ] Cache API (Phase 6)
+//! - [x] Cache API (Phase 6)
 //! - [ ] Core algorithms (Phase 7)
 //! - [ ] Fetch integration (Phase 8)
 
@@ -121,6 +121,17 @@ pub const InstallEvent = events.InstallEvent;
 pub const ExtendableMessageEvent = events.ExtendableMessageEvent;
 pub const Router = events.Router;
 pub const RouterRule = events.RouterRule;
+
+// Cache API (Phase 6)
+pub const cache = @import("cache/root.zig");
+
+// Re-export commonly used cache types
+pub const Cache = cache.Cache;
+pub const CacheStorage = cache.CacheStorage;
+pub const HeaderEntry = cache.HeaderEntry;
+pub const StoredRequest = cache.StoredRequest;
+pub const StoredResponse = cache.StoredResponse;
+pub const ResponseType = cache.ResponseType;
 
 // =============================================================================
 // Tests
