@@ -40,7 +40,7 @@
 //!
 //! This implementation is in progress. Currently implemented:
 //! - [x] Core data structures (Phase 2)
-//! - [ ] Client-side interfaces (Phase 3)
+//! - [x] Client-side interfaces (Phase 3)
 //! - [ ] ServiceWorkerGlobalScope (Phase 4)
 //! - [ ] Events (Phase 5)
 //! - [ ] Cache API (Phase 6)
@@ -92,6 +92,17 @@ pub const job = @import("job.zig");
 pub const Job = job.Job;
 pub const JobQueue = job.JobQueue;
 pub const ScopeToJobQueueMap = job.ScopeToJobQueueMap;
+
+// Client-side WebIDL interfaces (Phase 3)
+pub const interfaces = @import("interfaces/root.zig");
+
+// Re-export commonly used interface types
+pub const ServiceWorkerInterface = interfaces.ServiceWorkerInterface;
+pub const ServiceWorkerRegistrationInterface = interfaces.ServiceWorkerRegistrationInterface;
+pub const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
+pub const NavigationPreloadManager = interfaces.NavigationPreloadManager;
+pub const ClientInterface = interfaces.ClientInterface;
+pub const WindowClientInterface = interfaces.WindowClientInterface;
 
 // =============================================================================
 // Tests
