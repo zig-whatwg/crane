@@ -44,6 +44,7 @@ pub const backend = @import("backend.zig");
 pub const curl_ffi = @import("curl_ffi.zig");
 pub const curl_error = @import("curl_error.zig");
 pub const curl_backend = @import("curl_backend.zig");
+pub const curl_cookies = @import("curl_cookies.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
 
@@ -74,6 +75,11 @@ pub const StreamingSource = streaming_source.StreamingSource;
 pub const StreamingState = streaming_source.StreamingState;
 pub const ChunkIterator = streaming_source.ChunkIterator;
 pub const DEFAULT_CHUNK_SIZE = streaming_source.DEFAULT_CHUNK_SIZE;
+
+// Re-export cookie manager
+pub const CurlCookieManager = curl_cookies.CurlCookieManager;
+pub const Cookie = curl_cookies.Cookie;
+pub const CookieError = curl_cookies.CookieError;
 
 test {
     std.testing.refAllDecls(@This());
