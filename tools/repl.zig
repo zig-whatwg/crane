@@ -489,6 +489,70 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     info.setReturnValue(@ptrCast(promise));
 }
 
+/// Mock setTimeout callback for REPL testing.
+/// This is a simplified implementation that executes callbacks immediately
+/// since the REPL doesn't have an event loop. When the HTML spec is implemented,
+/// this should be replaced with proper timer queue handling.
+///
+/// Per HTML spec, setTimeout(handler, timeout?, ...arguments) returns a timer ID.
+/// This mock always returns 1 and executes the callback synchronously.
+fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        // No callback provided, just return a timer ID
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+
+    // Check if it's a function
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+
+    // Get the global object as 'this' for the callback
+    const global = v8.ffi.v8_Context_Global(context) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Note: We ignore the timeout (second argument) and execute immediately
+    // This is a mock for testing purposes only
+
+    // Execute the callback synchronously with no arguments
+    // A proper implementation would queue this for later execution
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Return a mock timer ID (always 1)
+    const result = v8.ffi.v8_Integer_New(isolate, 1);
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Mock clearTimeout callback for REPL testing.
+/// This is a no-op since setTimeout executes immediately.
+fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Return undefined (clearTimeout has no return value per spec)
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
 /// REPL state
 const Repl = struct {
     allocator: std.mem.Allocator,
@@ -787,6 +851,10 @@ const Repl = struct {
         // Register fetch stub (normally on WindowOrWorkerGlobalScope, but Window not implemented)
         // This is a temporary stub until Window is properly implemented
         try self.registerFetchStub(global_obj);
+
+        // Register setTimeout/clearTimeout stubs (normally on WindowOrWorkerGlobalScope)
+        // These are mock implementations for testing until HTML spec timer queue is implemented
+        try self.registerTimerStubs(global_obj);
     }
 
     /// Register fetch as a global function stub
@@ -803,6 +871,55 @@ const Repl = struct {
         // Set it as 'fetch' property on the global object
         const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse return error.StringCreateFailed;
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(fetch_fn));
+    }
+
+    /// Register setTimeout/clearTimeout as global function stubs
+    /// Per HTML spec, these are defined on WindowOrWorkerGlobalScope mixin.
+    /// These are mock implementations that execute callbacks immediately for testing.
+    fn registerTimerStubs(self: *Self, global_obj: *v8.ffi.Object) !void {
+        // Register setTimeout
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // setTimeout(handler, timeout?, ...arguments)
+
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
+
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearTimeout
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // clearTimeout(id)
+
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
+
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register setInterval (mock - just returns ID, doesn't actually repeat)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
+
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearInterval
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
+
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     pub fn deinit(self: *Self) void {
