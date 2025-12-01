@@ -70,6 +70,9 @@ pub const ServiceWorker = struct {
     /// Null until the worker has started, then success or error.
     start_status: ?StartStatus = null,
 
+    /// Script hash for byte-for-byte comparison during updates.
+    script_hash: ?[]const u8 = null,
+
     /// Counter for generating unique IDs.
     var next_id: u64 = 0;
 
@@ -108,6 +111,11 @@ pub const ServiceWorker = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.script_url);
+
+        // Free script hash if set
+        if (self.script_hash) |hash| {
+            self.allocator.free(hash);
+        }
 
         // Free script resource map values
         var script_iter = self.script_resource_map.iterator();
@@ -162,6 +170,27 @@ pub const ServiceWorker = struct {
     /// Check if the worker is in a terminal state.
     pub fn isTerminal(self: *const Self) bool {
         return self.state == .redundant;
+    }
+
+    /// Set the worker state directly (bypasses transition validation).
+    ///
+    /// Use this for algorithm implementations where the spec dictates
+    /// specific state changes.
+    pub fn setState(self: *Self, new_state: ServiceWorkerState) void {
+        self.state = new_state;
+    }
+
+    /// Set the running status.
+    ///
+    /// This controls whether the worker appears as "running" by
+    /// setting or clearing the global object pointer.
+    pub fn setRunning(self: *Self, running: bool) void {
+        if (running) {
+            // Use a sentinel value to indicate running
+            self.global_object = @ptrFromInt(1);
+        } else {
+            self.global_object = null;
+        }
     }
 
     // === Event Handling ===
@@ -253,6 +282,21 @@ pub const ServiceWorker = struct {
             };
         }
         return false;
+    }
+
+    // === Script Hash ===
+
+    /// Set the script hash for update comparison.
+    pub fn setScriptHash(self: *Self, hash: []const u8) !void {
+        if (self.script_hash) |old_hash| {
+            self.allocator.free(old_hash);
+        }
+        self.script_hash = try self.allocator.dupe(u8, hash);
+    }
+
+    /// Get the script hash.
+    pub fn getScriptHash(self: *const Self) ?[]const u8 {
+        return self.script_hash;
     }
 };
 

@@ -44,7 +44,7 @@
 //! - [x] ServiceWorkerGlobalScope (Phase 4)
 //! - [x] Events (Phase 5)
 //! - [x] Cache API (Phase 6)
-//! - [ ] Core algorithms (Phase 7)
+//! - [x] Core algorithms (Phase 7)
 //! - [ ] Fetch integration (Phase 8)
 
 const std = @import("std");
@@ -132,6 +132,20 @@ pub const HeaderEntry = cache.HeaderEntry;
 pub const StoredRequest = cache.StoredRequest;
 pub const StoredResponse = cache.StoredResponse;
 pub const ResponseType = cache.ResponseType;
+
+// Algorithms (Phase 7)
+pub const algorithms = @import("algorithms/root.zig");
+
+// Re-export commonly used algorithm functions
+pub const register = algorithms.register;
+pub const update = algorithms.update;
+pub const install = algorithms.install;
+pub const activate = algorithms.activate;
+pub const handleFetch = algorithms.handleFetch;
+pub const terminate = algorithms.terminate;
+pub const softUpdate = algorithms.softUpdate;
+pub const tryActivate = algorithms.tryActivate;
+pub const scheduleJob = algorithms.scheduleJob;
 
 // =============================================================================
 // Tests
