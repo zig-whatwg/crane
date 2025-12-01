@@ -29,6 +29,12 @@ pub const CURLcode = c.CURLcode;
 /// Return code for multi interface functions
 pub const CURLMcode = c.CURLMcode;
 
+/// Opaque handle for a multi (concurrent transfers) session
+pub const CURLM = c.CURLM;
+
+/// Message returned by curl_multi_info_read
+pub const CURLMsg = c.CURLMsg;
+
 /// Linked list for headers and other string lists
 pub const curl_slist = c.struct_curl_slist;
 
@@ -267,6 +273,42 @@ pub const CURL_GLOBAL_ALL = c.CURL_GLOBAL_ALL;
 pub const CURL_GLOBAL_NOTHING = c.CURL_GLOBAL_NOTHING;
 
 // =============================================================================
+// Multi Interface Error Codes (CURLMcode)
+// =============================================================================
+
+/// Success - no error
+pub const CURLM_OK = c.CURLM_OK;
+/// Bad handle passed to function
+pub const CURLM_BAD_HANDLE = c.CURLM_BAD_HANDLE;
+/// Bad easy handle passed
+pub const CURLM_BAD_EASY_HANDLE = c.CURLM_BAD_EASY_HANDLE;
+/// Out of memory
+pub const CURLM_OUT_OF_MEMORY = c.CURLM_OUT_OF_MEMORY;
+/// Internal error
+pub const CURLM_INTERNAL_ERROR = c.CURLM_INTERNAL_ERROR;
+/// Bad socket passed
+pub const CURLM_BAD_SOCKET = c.CURLM_BAD_SOCKET;
+/// Unknown option
+pub const CURLM_UNKNOWN_OPTION = c.CURLM_UNKNOWN_OPTION;
+/// Message returned (used by curl_multi_info_read)
+pub const CURLMSG_DONE = c.CURLMSG_DONE;
+
+// =============================================================================
+// Multi Interface Options (CURLMoption)
+// =============================================================================
+
+/// Max connections per host
+pub const CURLMOPT_MAX_HOST_CONNECTIONS = c.CURLMOPT_MAX_HOST_CONNECTIONS;
+/// Max total connections
+pub const CURLMOPT_MAX_TOTAL_CONNECTIONS = c.CURLMOPT_MAX_TOTAL_CONNECTIONS;
+/// Max pipeline length
+pub const CURLMOPT_MAX_PIPELINE_LENGTH = c.CURLMOPT_MAX_PIPELINE_LENGTH;
+/// Pipelining enabled (deprecated in HTTP/2)
+pub const CURLMOPT_PIPELINING = c.CURLMOPT_PIPELINING;
+/// Max connections in cache
+pub const CURLMOPT_MAXCONNECTS = c.CURLMOPT_MAXCONNECTS;
+
+// =============================================================================
 // Pause Flags
 // =============================================================================
 
@@ -355,6 +397,60 @@ pub fn easy_pause(handle: *CURL, bitmask: c_int) CURLcode {
 /// Get human-readable error message for a CURLcode.
 pub fn easy_strerror(code: CURLcode) [*:0]const u8 {
     return c.curl_easy_strerror(code);
+}
+
+// =============================================================================
+// Multi Interface (concurrent transfers)
+// =============================================================================
+
+/// Create a new multi handle.
+/// Returns null on failure.
+pub fn multi_init() ?*CURLM {
+    return c.curl_multi_init();
+}
+
+/// Cleanup a multi handle and all associated easy handles.
+pub fn multi_cleanup(multi_handle: *CURLM) CURLMcode {
+    return c.curl_multi_cleanup(multi_handle);
+}
+
+/// Add an easy handle to a multi handle.
+pub fn multi_add_handle(multi_handle: *CURLM, easy_handle: *CURL) CURLMcode {
+    return c.curl_multi_add_handle(multi_handle, easy_handle);
+}
+
+/// Remove an easy handle from a multi handle.
+pub fn multi_remove_handle(multi_handle: *CURLM, easy_handle: *CURL) CURLMcode {
+    return c.curl_multi_remove_handle(multi_handle, easy_handle);
+}
+
+/// Perform transfers on all easy handles attached to the multi handle.
+/// Non-blocking - call repeatedly until still_running reaches 0.
+pub fn multi_perform(multi_handle: *CURLM, still_running: *c_int) CURLMcode {
+    return c.curl_multi_perform(multi_handle, still_running);
+}
+
+/// Wait for activity on any of the curl handles.
+/// Blocks up to timeout_ms milliseconds.
+/// Note: extra_fds is not currently supported - pass null for extra_fds and 0 for extra_nfds.
+pub fn multi_poll(multi_handle: *CURLM, timeout_ms: c_int, numfds: *c_int) CURLMcode {
+    return c.curl_multi_poll(multi_handle, null, 0, timeout_ms, numfds);
+}
+
+/// Read information about completed transfers.
+/// Returns null when no more messages.
+pub fn multi_info_read(multi_handle: *CURLM, msgs_in_queue: *c_int) ?*CURLMsg {
+    return c.curl_multi_info_read(multi_handle, msgs_in_queue);
+}
+
+/// Set options on a multi handle.
+pub fn multi_setopt(multi_handle: *CURLM, option: c.CURLMoption, value: anytype) CURLMcode {
+    return @call(.auto, c.curl_multi_setopt, .{ multi_handle, option, value });
+}
+
+/// Get human-readable error message for a CURLMcode.
+pub fn multi_strerror(code: CURLMcode) [*:0]const u8 {
+    return c.curl_multi_strerror(code);
 }
 
 // =============================================================================

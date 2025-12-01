@@ -11,6 +11,7 @@ const testing = std.testing;
 const fetch = @import("fetch");
 const network = fetch.network;
 const LibcurlBackend = network.LibcurlBackend;
+const ConnectionPool = network.ConnectionPool;
 const NetworkRequest = network.NetworkRequest;
 const NetworkError = network.NetworkError;
 const globalInit = network.globalInit;
@@ -526,4 +527,78 @@ test "LibcurlBackend - HTTP/2 request" {
     // Note: HTTP/2 will only be used if built with -Dhttp2=true
     // The test passes either way, but http_version will differ
     try testing.expect(response.http_version == .http_1_1 or response.http_version == .http_2);
+}
+
+// =============================================================================
+// Connection Pool Tests
+// =============================================================================
+
+test "ConnectionPool - basic request" {
+    const allocator = testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    if (!canReachTestEndpoint(allocator)) {
+        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
+        return;
+    }
+
+    const pool = try ConnectionPool.init(allocator);
+    defer pool.deinit();
+
+    const request = NetworkRequest{
+        .url = "https://httpbin.org/get",
+        .method = "GET",
+        .headers = &.{},
+        .body = null,
+        .timeout_ms = 30000,
+    };
+
+    var response = try pool.send(allocator, &request);
+    defer response.deinit();
+
+    try testing.expectEqual(@as(u16, 200), response.status);
+    try testing.expect(response.body != null);
+}
+
+test "ConnectionPool - connection reuse" {
+    const allocator = testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    if (!canReachTestEndpoint(allocator)) {
+        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
+        return;
+    }
+
+    const pool = try ConnectionPool.init(allocator);
+    defer pool.deinit();
+
+    const request = NetworkRequest{
+        .url = "https://httpbin.org/get",
+        .method = "GET",
+        .headers = &.{},
+        .body = null,
+        .timeout_ms = 30000,
+    };
+
+    // First request - establishes connection
+    {
+        var response = try pool.send(allocator, &request);
+        defer response.deinit();
+        try testing.expectEqual(@as(u16, 200), response.status);
+        // First request should establish new connection
+        try testing.expect(!response.connection_reused);
+    }
+
+    // Second request - should reuse connection
+    {
+        var response = try pool.send(allocator, &request);
+        defer response.deinit();
+        try testing.expectEqual(@as(u16, 200), response.status);
+        // Second request should reuse connection (num_connects == 0)
+        try testing.expect(response.connection_reused);
+    }
 }

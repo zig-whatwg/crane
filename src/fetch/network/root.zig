@@ -44,6 +44,7 @@ pub const backend = @import("backend.zig");
 pub const curl_ffi = @import("curl_ffi.zig");
 pub const curl_error = @import("curl_error.zig");
 pub const curl_backend = @import("curl_backend.zig");
+pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
 
 // Re-export main types
@@ -62,6 +63,11 @@ pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
 pub const LibcurlBackend = curl_backend.LibcurlBackend;
 pub const globalInit = curl_backend.globalInit;
 pub const globalCleanup = curl_backend.globalCleanup;
+
+// Re-export connection pool
+pub const ConnectionPool = connection_pool.ConnectionPool;
+pub const getGlobalPool = connection_pool.getGlobalPool;
+pub const cleanupGlobalPool = connection_pool.cleanupGlobalPool;
 
 // Re-export streaming types
 pub const StreamingSource = streaming_source.StreamingSource;
