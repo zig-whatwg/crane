@@ -108,7 +108,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // internal.owner_document.?.unregisterRange(instance);
         _ = internal;
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation

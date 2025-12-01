@@ -37,7 +37,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance resources here
-    runtime.Instance.deinit(instance);
+    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Getter for cssRules

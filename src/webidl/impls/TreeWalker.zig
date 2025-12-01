@@ -113,7 +113,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
         internal.allocator.destroy(internal);
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Create a TreeWalker with the given parameters

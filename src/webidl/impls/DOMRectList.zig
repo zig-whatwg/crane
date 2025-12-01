@@ -86,7 +86,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (getInternal(instance)) |internal| {
         internal.deinit();
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Getter for length

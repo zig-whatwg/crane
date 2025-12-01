@@ -103,7 +103,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation

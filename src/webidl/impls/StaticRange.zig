@@ -114,7 +114,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Remove from our internal storage
     removeInternal(instance);
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation

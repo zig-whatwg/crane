@@ -761,10 +761,13 @@ fn generateImplFile(
     try w.writeAll("    return instance;\n");
     try w.writeAll("}\n\n");
 
-    try w.writeAll("/// Deinitialize instance\n");
+    try w.writeAll("/// Deinitialize instance - clean up owned resources only\n");
+    try w.writeAll("/// NOTE: Do NOT call runtime.Instance.deinit() here - the GC integration\n");
+    try w.writeAll("/// layer (gc_integration.onObjectFreed) handles freeing the slab after\n");
+    try w.writeAll("/// calling this deinit function. Calling it here causes double-free.\n");
     try w.writeAll("pub fn deinit(instance: *runtime.Instance) void {\n");
-    try w.writeAll("    // TODO: Clean up your instance resources here\n");
-    try w.writeAll("    runtime.Instance.deinit(instance);\n");
+    try w.writeAll("    _ = instance;\n");
+    try w.writeAll("    // TODO: Clean up your instance's owned resources here (strings, arrays, etc.)\n");
     try w.writeAll("}\n\n");
 
     // Collect ONLY own members (not inherited)

@@ -71,7 +71,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation

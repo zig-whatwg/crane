@@ -50,7 +50,7 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    runtime.Instance.deinit(instance);
+    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 // ============================================================================

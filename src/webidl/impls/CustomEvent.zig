@@ -51,7 +51,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // CustomEvent's detail is typically a JS value that doesn't need Zig cleanup
-    runtime.Instance.deinit(instance);
+    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Constructor implementation

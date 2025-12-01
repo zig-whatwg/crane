@@ -144,7 +144,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
         removeFromRegistry(instance);
     }
-    runtime.Instance.deinit(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation
