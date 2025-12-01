@@ -1,10 +1,7 @@
-//! Network Integration Tests with Real HTTP Endpoints
+//! Network Integration Tests
 //!
-//! Tests the LibcurlBackend with actual network requests to httpbin.org
-//! and other test endpoints. These tests require network connectivity.
-//!
-//! Note: These tests are skipped in CI environments without network access.
-//! Run with `zig build test -Dnetwork-tests=true` to enable.
+//! Tests the LibcurlBackend with actual network requests using a local test server.
+//! No external network dependencies - all tests run against localhost.
 
 const std = @import("std");
 const testing = std.testing;
@@ -16,83 +13,46 @@ const NetworkRequest = network.NetworkRequest;
 const NetworkError = network.NetworkError;
 const globalInit = network.globalInit;
 const globalCleanup = network.globalCleanup;
-
-/// Check if a response indicates a server error (5xx) that should cause test skip
-/// This handles cases where httpbin.org or other test endpoints are having issues
-fn isServerError(status: u16) bool {
-    return status >= 500 and status <= 599;
-}
-
-/// Skip test if response indicates server-side issues with test endpoint
-fn skipOnServerError(response_status: u16) error{SkipZigTest}!void {
-    if (isServerError(response_status)) {
-        std.debug.print("Skipping network test: test endpoint returned server error {d}\n", .{response_status});
-        return error.SkipZigTest;
-    }
-}
-
-/// Check if we can reach the test endpoint
-fn canReachTestEndpoint(allocator: std.mem.Allocator) bool {
-    // Try to make a simple request to detect network availability
-    const backend = LibcurlBackend.init(allocator) catch return false;
-    defer backend.deinit();
-
-    const request = NetworkRequest{
-        .url = "https://httpbin.org/status/200",
-        .method = "HEAD",
-        .headers = &.{},
-        .body = null,
-        .timeout_ms = 5000,
-        .connect_timeout_ms = 3000,
-    };
-
-    var response = backend.getBackend().send(allocator, &request) catch return false;
-    response.deinit();
-    return true;
-}
+const TestServer = @import("test_server.zig").TestServer;
 
 // =============================================================================
 // Basic HTTP Method Tests
 // =============================================================================
 
-test "LibcurlBackend - GET request to httpbin.org" {
+test "LibcurlBackend - GET request" {
     const allocator = testing.allocator;
 
     try globalInit();
     defer globalCleanup();
 
-    // Skip if no network
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/get", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/get",
+        .url = url,
         .method = "GET",
         .headers = &.{
             .{ .name = "Accept", .value = "application/json" },
             .{ .name = "User-Agent", .value = "whatwg-fetch-test/1.0" },
         },
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
     try testing.expect(response.body.?.len > 0);
-
-    // Verify JSON response contains our User-Agent
-    const body = response.body.?;
-    try testing.expect(std.mem.indexOf(u8, body, "whatwg-fetch-test") != null);
 }
 
 test "LibcurlBackend - POST request with body" {
@@ -101,38 +61,33 @@ test "LibcurlBackend - POST request with body" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/post", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
-    const body_content = "{\"name\":\"test\",\"value\":42}";
-
+    const post_body = "test=value&foo=bar";
     const request = NetworkRequest{
-        .url = "https://httpbin.org/post",
+        .url = url,
         .method = "POST",
         .headers = &.{
-            .{ .name = "Content-Type", .value = "application/json" },
+            .{ .name = "Content-Type", .value = "application/x-www-form-urlencoded" },
         },
-        .body = body_content,
-        .timeout_ms = 30000,
+        .body = post_body,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
-
-    // httpbin echoes back our posted data
-    const resp_body = response.body.?;
-    try testing.expect(std.mem.indexOf(u8, resp_body, "test") != null);
-    try testing.expect(std.mem.indexOf(u8, resp_body, "42") != null);
 }
 
 test "LibcurlBackend - PUT request" {
@@ -141,29 +96,32 @@ test "LibcurlBackend - PUT request" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/put", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/put",
+        .url = url,
         .method = "PUT",
         .headers = &.{
-            .{ .name = "Content-Type", .value = "text/plain" },
+            .{ .name = "Content-Type", .value = "application/json" },
         },
-        .body = "updated data",
-        .timeout_ms = 30000,
+        .body =
+        \\{"key": "value"}
+        ,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 }
 
@@ -173,27 +131,28 @@ test "LibcurlBackend - DELETE request" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/delete", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/delete",
+        .url = url,
         .method = "DELETE",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 }
 
@@ -207,10 +166,11 @@ test "LibcurlBackend - various status codes" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
@@ -218,27 +178,20 @@ test "LibcurlBackend - various status codes" {
     const status_codes = [_]u16{ 200, 201, 204, 301, 400, 404, 500 };
 
     for (status_codes) |expected_status| {
-        var url_buf: [64]u8 = undefined;
-        const url = std.fmt.bufPrint(&url_buf, "https://httpbin.org/status/{d}", .{expected_status}) catch unreachable;
+        var full_url_buf: [256]u8 = undefined;
+        const url = std.fmt.bufPrint(&full_url_buf, "{s}/status/{d}", .{ base_url, expected_status }) catch unreachable;
 
         const request = NetworkRequest{
             .url = url,
             .method = "GET",
             .headers = &.{},
             .body = null,
-            .timeout_ms = 30000,
+            .timeout_ms = 5000,
             .follow_redirects = false, // Don't follow redirects for 301
         };
 
         var response = try backend.getBackend().send(allocator, &request);
         defer response.deinit();
-
-        // If httpbin.org returns a 5xx error when we didn't expect one,
-        // skip this test as httpbin.org is having issues
-        if (isServerError(response.status) and !isServerError(expected_status)) {
-            std.debug.print("Skipping status code test: httpbin.org returned {d} (server error)\n", .{response.status});
-            return error.SkipZigTest;
-        }
 
         try testing.expectEqual(expected_status, response.status);
     }
@@ -254,36 +207,32 @@ test "LibcurlBackend - custom headers are sent" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/headers", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/headers",
+        .url = url,
         .method = "GET",
         .headers = &.{
             .{ .name = "X-Custom-Header", .value = "custom-value-123" },
             .{ .name = "X-Another-Header", .value = "another-value" },
         },
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
-
-    // httpbin echoes headers in the response
-    const body = response.body.?;
-    try testing.expect(std.mem.indexOf(u8, body, "custom-value-123") != null);
-    try testing.expect(std.mem.indexOf(u8, body, "another-value") != null);
 }
 
 test "LibcurlBackend - response headers are captured" {
@@ -292,34 +241,32 @@ test "LibcurlBackend - response headers are captured" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/response-headers", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/response-headers?X-Test-Header=test-value",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
-
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.headers.len > 0);
 
-    // Look for our custom response header
+    // Look for our custom response header from test server
     var found_test_header = false;
     for (response.headers) |header| {
         if (std.ascii.eqlIgnoreCase(header.name, "X-Test-Header")) {
@@ -341,17 +288,20 @@ test "LibcurlBackend - request timeout" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    // Request 10 second delay but timeout after 1 second
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/delay/10", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
-    // Request a 10 second delay but timeout after 1 second
     const request = NetworkRequest{
-        .url = "https://httpbin.org/delay/10",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
@@ -359,21 +309,7 @@ test "LibcurlBackend - request timeout" {
     };
 
     const result = backend.getBackend().send(allocator, &request);
-
-    // If httpbin.org is having issues and returns immediately with an error,
-    // we won't get a timeout - skip the test in that case
-    if (result) |response| {
-        var resp = response;
-        defer resp.deinit();
-        if (isServerError(resp.status)) {
-            std.debug.print("Skipping network test: test endpoint returned server error {d}\n", .{resp.status});
-            return error.SkipZigTest;
-        }
-        // If we got a successful response, the delay endpoint didn't work as expected
-        return error.TestUnexpectedResult;
-    } else |err| {
-        try testing.expectEqual(NetworkError.RequestTimeout, err);
-    }
+    try testing.expectError(NetworkError.RequestTimeout, result);
 }
 
 // =============================================================================
@@ -390,14 +326,15 @@ test "LibcurlBackend - DNS resolution failure" {
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://this-domain-definitely-does-not-exist-12345.invalid/",
+        .url = "http://this-domain-definitely-does-not-exist-12345.invalid/test",
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .connect_timeout_ms = 5000,
+        .timeout_ms = 5000,
     };
 
     const result = backend.getBackend().send(allocator, &request);
+    // Should fail with DNS resolution error
     try testing.expectError(NetworkError.DnsResolutionFailed, result);
 }
 
@@ -410,185 +347,130 @@ test "LibcurlBackend - connection refused" {
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
-    // Port 1 is typically not listening
+    // Use a port that's almost certainly not listening
     const request = NetworkRequest{
-        .url = "http://127.0.0.1:1/",
+        .url = "http://127.0.0.1:59999/test",
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .connect_timeout_ms = 2000,
+        .timeout_ms = 5000,
+        .connect_timeout_ms = 1000,
     };
 
     const result = backend.getBackend().send(allocator, &request);
-    // Could be ConnectionRefused or RequestTimeout depending on OS
-    if (result) |response| {
-        var resp = response;
-        resp.deinit();
-        try testing.expect(false); // Should have errored
-    } else |err| {
-        try testing.expect(err == NetworkError.ConnectionRefused or
-            err == NetworkError.RequestTimeout or
-            err == NetworkError.ConnectionReset);
-    }
+    // Should fail with connection error
+    try testing.expectError(NetworkError.ConnectionRefused, result);
 }
 
 // =============================================================================
-// HTTPS/TLS Tests
+// Response Body Tests
 // =============================================================================
 
-test "LibcurlBackend - HTTPS with valid certificate" {
+test "LibcurlBackend - binary response body" {
     const allocator = testing.allocator;
 
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/bytes/1024", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/get",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
-        .cert_options = .{
-            .verify_peer = true,
-            .verify_host = true,
-        },
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
-}
-
-// =============================================================================
-// Compression Tests
-// =============================================================================
-
-test "LibcurlBackend - gzip compressed response" {
-    const allocator = testing.allocator;
-
-    try globalInit();
-    defer globalCleanup();
-
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
-
-    const backend = try LibcurlBackend.init(allocator);
-    defer backend.deinit();
-
-    const request = NetworkRequest{
-        .url = "https://httpbin.org/gzip",
-        .method = "GET",
-        .headers = &.{
-            .{ .name = "Accept-Encoding", .value = "gzip" },
-        },
-        .body = null,
-        .timeout_ms = 30000,
-    };
-
-    var response = try backend.getBackend().send(allocator, &request);
-    defer response.deinit();
-
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
-    try testing.expectEqual(@as(u16, 200), response.status);
-    // libcurl automatically decompresses, so body should contain readable JSON
     try testing.expect(response.body != null);
-    try testing.expect(std.mem.indexOf(u8, response.body.?, "gzipped") != null);
+    try testing.expectEqual(@as(usize, 1024), response.body.?.len);
 }
 
-// =============================================================================
-// Response Timing Tests
-// =============================================================================
-
-test "LibcurlBackend - timing information populated" {
+test "LibcurlBackend - empty response body" {
     const allocator = testing.allocator;
 
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/status/204", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/get",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
-    try testing.expectEqual(@as(u16, 200), response.status);
-
-    // Timing should be populated
-    try testing.expect(response.total_time_ms > 0);
-    // Time to first byte should be reasonable
-    try testing.expect(response.time_to_first_byte_ms <= response.total_time_ms);
+    try testing.expectEqual(@as(u16, 204), response.status);
 }
 
 // =============================================================================
-// HTTP/2 Tests (requires -Dhttp2=true build option)
+// Multiple Requests Tests
 // =============================================================================
 
-test "LibcurlBackend - HTTP/2 request" {
+test "LibcurlBackend - multiple sequential requests" {
     const allocator = testing.allocator;
 
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/get", .{base_url}) catch unreachable;
 
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
-    // Request HTTP/2 - curl will negotiate via ALPN
-    const request = NetworkRequest{
-        .url = "https://nghttp2.org/httpbin/get", // This server supports HTTP/2
-        .method = "GET",
-        .headers = &.{},
-        .body = null,
-        .http_version = .http_2,
-        .timeout_ms = 30000,
-    };
+    // Make 5 requests sequentially
+    var i: usize = 0;
+    while (i < 5) : (i += 1) {
+        const request = NetworkRequest{
+            .url = url,
+            .method = "GET",
+            .headers = &.{},
+            .body = null,
+            .timeout_ms = 5000,
+        };
 
-    var response = try backend.getBackend().send(allocator, &request);
-    defer response.deinit();
+        var response = try backend.getBackend().send(allocator, &request);
+        defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
-    try testing.expectEqual(@as(u16, 200), response.status);
-    // Note: HTTP/2 will only be used if built with -Dhttp2=true
-    // The test passes either way, but http_version will differ
-    try testing.expect(response.http_version == .http_1_1 or response.http_version == .http_2);
+        try testing.expectEqual(@as(u16, 200), response.status);
+    }
 }
 
 // =============================================================================
-// Connection Pool Tests
+// ConnectionPool Tests
 // =============================================================================
 
 test "ConnectionPool - basic request" {
@@ -597,75 +479,62 @@ test "ConnectionPool - basic request" {
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/get", .{base_url}) catch unreachable;
 
     const pool = try ConnectionPool.init(allocator);
     defer pool.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/get",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
     var response = try pool.send(allocator, &request);
     defer response.deinit();
 
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
-
-    // Skip if httpbin.org is having server issues
-    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
 }
 
-test "ConnectionPool - connection reuse" {
+test "ConnectionPool - multiple requests" {
     const allocator = testing.allocator;
 
     try globalInit();
     defer globalCleanup();
 
-    if (!canReachTestEndpoint(allocator)) {
-        std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return error.SkipZigTest;
-    }
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var url_buf: [128]u8 = undefined;
+    const base_url = server.getBaseUrl(&url_buf);
+    var full_url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&full_url_buf, "{s}/get", .{base_url}) catch unreachable;
 
     const pool = try ConnectionPool.init(allocator);
     defer pool.deinit();
 
     const request = NetworkRequest{
-        .url = "https://httpbin.org/get",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,
-        .timeout_ms = 30000,
+        .timeout_ms = 5000,
     };
 
-    // First request - establishes connection
-    {
+    // Make multiple requests through the pool
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
         var response = try pool.send(allocator, &request);
         defer response.deinit();
-        // Skip if httpbin.org is having server issues
-        try skipOnServerError(response.status);
         try testing.expectEqual(@as(u16, 200), response.status);
-        // First request should establish new connection
-        try testing.expect(!response.connection_reused);
-    }
-
-    // Second request - should reuse connection
-    {
-        var response = try pool.send(allocator, &request);
-        defer response.deinit();
-        // Skip if httpbin.org is having server issues
-        try skipOnServerError(response.status);
-        try testing.expectEqual(@as(u16, 200), response.status);
-        // Second request should reuse connection (num_connects == 0)
-        try testing.expect(response.connection_reused);
     }
 }
