@@ -160,6 +160,37 @@ pub const RegistrationMap = struct {
         return best_match;
     }
 
+    /// Get registration by scope for a given origin and path.
+    ///
+    /// This is a convenience method that extracts the storage key from the origin
+    /// and uses matchRegistration to find the best matching registration.
+    ///
+    /// Used by fetch interception to find the controlling service worker.
+    pub fn getByScope(self: *Self, origin: []const u8, path: []const u8) ?*Registration {
+        // Construct full URL for matching
+        var full_url_buf: [2048]u8 = undefined;
+        const full_url = std.fmt.bufPrint(&full_url_buf, "{s}{s}", .{ origin, path }) catch return null;
+
+        // Use origin as storage key
+        return self.matchRegistration(origin, full_url);
+    }
+
+    /// Get or create a registration.
+    ///
+    /// If a registration exists for the key, returns it.
+    /// Otherwise creates a new one and adds it to the map.
+    pub fn getOrCreate(self: *Self, storage_key: []const u8, scope_url: []const u8) !*Registration {
+        if (self.get(storage_key, scope_url)) |existing| {
+            return existing;
+        }
+
+        const registration = try Registration.init(self.allocator, storage_key, scope_url);
+        errdefer registration.deinit();
+
+        try self.set(storage_key, scope_url, registration);
+        return registration;
+    }
+
     /// Get total number of registrations.
     pub fn count(self: *Self) usize {
         self.mutex.lock();

@@ -45,7 +45,8 @@
 //! - [x] Events (Phase 5)
 //! - [x] Cache API (Phase 6)
 //! - [x] Core algorithms (Phase 7)
-//! - [ ] Fetch integration (Phase 8)
+//! - [x] Fetch integration (Phase 8)
+//! - [ ] Testing and Documentation (Phase 9)
 
 const std = @import("std");
 
@@ -146,6 +147,15 @@ pub const terminate = algorithms.terminate;
 pub const softUpdate = algorithms.softUpdate;
 pub const tryActivate = algorithms.tryActivate;
 pub const scheduleJob = algorithms.scheduleJob;
+
+// Fetch Integration (Phase 8)
+pub const integration = @import("integration/root.zig");
+
+// Re-export commonly used integration types
+pub const interceptFetch = integration.interceptFetch;
+pub const shouldIntercept = integration.shouldIntercept;
+pub const InterceptionResult = integration.InterceptionResult;
+pub const ServiceWorkerTiming = integration.ServiceWorkerTiming;
 
 // =============================================================================
 // Tests
