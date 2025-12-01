@@ -2535,7 +2535,18 @@ pub fn V8Interface(comptime Interface: type) type {
                     const allocator = instance.ctx.allocator;
 
                     // Convert V8 value to Zig type
+                    // Per WebIDL spec, for enumeration types, if the value is not a valid
+                    // enum value, the setter should be a no-op (silently return without error).
+                    // https://webidl.spec.whatwg.org/#idl-enums
                     const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
+                        // For enum types, silently ignore invalid values (no-op)
+                        if (@typeInfo(ValueType) == .@"enum" and err == error.TypeError) {
+                            // Return undefined without calling setter - this is spec-compliant behavior
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
                         conv.throwError(isolate_inner, @errorName(err));
                         return;
                     };

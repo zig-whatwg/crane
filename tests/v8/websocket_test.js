@@ -151,7 +151,7 @@ assert.isTrue((() => {
     return type === "blob";
 })(), "binaryType can be set to 'blob'")
 
-// binaryType ignores invalid values
+// binaryType ignores invalid values (per WebIDL spec for enum attributes)
 assert.isTrue((() => {
     const ws = new WebSocket("ws://localhost:8080/ws/echo");
     ws.binaryType = "invalid";
