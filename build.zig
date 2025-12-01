@@ -109,6 +109,103 @@ fn configureStorageBackends(
     }
 }
 
+// ============================================================================
+// Static libcurl Configuration for Fetch Module
+// ============================================================================
+
+/// Find a library artifact by name from a dependency
+/// This is needed because some packages (like curl) expose both .exe and .lib
+/// with the same name, causing ambiguity with the standard artifact() method
+fn findLibraryArtifact(dependency: *std.Build.Dependency, name: []const u8) ?*std.Build.Step.Compile {
+    for (dependency.builder.install_tls.step.dependencies.items) |dep_step| {
+        const inst = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
+        if (!std.mem.eql(u8, inst.artifact.name, name)) continue;
+        if (inst.artifact.kind != .lib) continue;
+        return inst.artifact;
+    }
+    return null;
+}
+
+/// Configure statically-compiled libcurl for the fetch module
+///
+/// Compiles libcurl from source using allyourcodebase/curl package.
+/// TLS provided by mbedTLS (cross-platform, no system dependencies).
+///
+/// Features enabled:
+/// - HTTP/HTTPS (with mbedTLS)
+/// - Compression (gzip via zlib)
+///
+/// Features disabled (minimize binary size):
+/// - LDAP, LDAPS (not needed for Fetch)
+/// - libpsl (Public Suffix List - URL module handles this)
+/// - libssh2 (SSH/SCP/SFTP)
+/// - libidn2 (IDN - URL module handles IDNA)
+/// - nghttp2 (HTTP/2 - optional, can enable with -Dhttp2=true)
+/// - brotli, zstd (additional compression)
+/// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
+fn configureStaticLibcurl(
+    b: *std.Build,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    enable_http2: bool,
+) void {
+    // Get the curl dependency with appropriate options
+    const curl_dep = b.lazyDependency("curl", .{
+        .target = target,
+        .optimize = optimize,
+        // Static linking
+        .linkage = .static,
+        // TLS backend: mbedTLS (cross-platform, no OpenSSL issues)
+        .@"enable-ssl" = true,
+        .@"use-openssl" = false,
+        .@"use-mbedtls" = true,
+        .@"use-schannel" = false,
+        .@"use-wolfssl" = false,
+        .@"use-gnutls" = false,
+        .@"use-rustls" = false,
+        // Compression: zlib only
+        .zlib = true,
+        .brotli = false,
+        .zstd = false,
+        // Disable optional dependencies we don't need
+        .libpsl = false, // URL module handles PSL
+        .libssh2 = false, // No SSH/SCP/SFTP
+        .libssh = false,
+        .libidn2 = false, // URL module handles IDNA
+        .@"apple-idn" = false,
+        .@"win32-idn" = false,
+        .nghttp2 = enable_http2, // HTTP/2 optional
+        .ares = false, // Use threaded resolver
+        // Disable non-HTTP protocols
+        .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
+    }) orelse return; // Lazy dependency not available
+
+    // Get the libcurl static library artifact from the dependency
+    // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
+    const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return;
+
+    // Link the static library to the module
+    module.linkLibrary(libcurl);
+
+    // Required macro for static linking
+    module.addCMacro("CURL_STATICLIB", "1");
+
+    // Platform-specific system libraries required by curl
+    const os = target.result.os.tag;
+    if (os == .windows) {
+        // Windows: Winsock2 and crypto libraries
+        module.linkSystemLibrary("ws2_32", .{});
+        module.linkSystemLibrary("bcrypt", .{});
+        module.linkSystemLibrary("advapi32", .{});
+        module.linkSystemLibrary("crypt32", .{});
+    } else if (os == .linux) {
+        // Linux: pthread for threaded resolver
+        module.linkSystemLibrary("pthread", .{});
+    }
+    // macOS: No additional libraries needed with mbedTLS
+}
+
 /// Helper function to add all .zig test files from a directory
 fn addTestFilesFromDir(
     builder: *std.Build,
@@ -200,6 +297,21 @@ pub fn build(b: *std.Build) void {
         "Enable TestUtils namespace (WHATWG TestUtils Standard). " ++
             "Disable with -Denable-test-utils=false for production builds.",
     ) orelse true;
+
+    // Fetch network backend options
+    // Use system libcurl for faster development builds (no static compilation)
+    const use_system_curl = b.option(
+        bool,
+        "system-curl",
+        "Use system libcurl instead of static compilation (faster dev builds)",
+    ) orelse false;
+
+    // Enable HTTP/2 support via nghttp2
+    const enable_http2 = b.option(
+        bool,
+        "http2",
+        "Enable HTTP/2 support via nghttp2 (increases binary size)",
+    ) orelse false;
 
     // ========================================================================
     // BUILD OPTIONS MODULE
@@ -1106,6 +1218,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     fetch_mod.addImport("referrer_policy", referrer_policy_mod);
+
+    // Configure libcurl for network requests
+    if (use_system_curl) {
+        // Development: Use system libcurl for faster builds
+        fetch_mod.linkSystemLibrary("curl", .{});
+    } else {
+        // Production: Statically compile libcurl with mbedTLS
+        configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
+    }
+
     // fetch_mod dependencies will be added as implementation progresses:
     // fetch_mod.addImport("infra", infra_mod);
     // fetch_mod.addImport("url", url_mod);
