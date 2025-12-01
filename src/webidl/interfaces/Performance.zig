@@ -40,13 +40,13 @@ pub const Performance = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "timeOrigin", "get_timeOrigin", null },
@@ -56,7 +56,7 @@ pub const Performance = struct {
             .{ "navigation", "get_navigation", null },
             .{ "onresourcetimingbufferfull", "get_onresourcetimingbufferfull", "set_onresourcetimingbufferfull" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "now", "call_now", 0 },
@@ -72,7 +72,7 @@ pub const Performance = struct {
             .{ "measure", "call_measure", 1 },
             .{ "clearMeasures", "call_clearMeasures", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "now",
@@ -88,7 +88,7 @@ pub const Performance = struct {
             "measure",
             "clearMeasures",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -96,7 +96,7 @@ pub const Performance = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "timeOrigin", "get_timeOrigin", null },
@@ -106,11 +106,10 @@ pub const Performance = struct {
             .{ "navigation", "get_navigation", null },
             .{ "onresourcetimingbufferfull", "get_onresourcetimingbufferfull", "set_onresourcetimingbufferfull" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -132,7 +131,6 @@ pub const Performance = struct {
     );
 
     const delegates = .{
-
         .get_eventCounts = &get_eventCounts,
         .get_interactionCount = &get_interactionCount,
         .get_navigation = &get_navigation,
@@ -155,7 +153,7 @@ pub const Performance = struct {
         .call_setResourceTimingBufferSize = &call_setResourceTimingBufferSize,
         .call_toJSON = &call_toJSON,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &deinit);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -220,7 +218,6 @@ pub const Performance = struct {
     }
 
     pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
-        
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
 
@@ -229,17 +226,14 @@ pub const Performance = struct {
     }
 
     pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
-        
         return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 
     pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(DOMString)) anyerror!void {
-        
         return try PerformanceImpl.call_clearMeasures(instance, measureName);
     }
 
     pub fn call_mark(instance: *runtime.Instance, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) anyerror!*runtime.Instance {
-        
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }
 
@@ -248,7 +242,6 @@ pub const Performance = struct {
     }
 
     pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) anyerror!void {
-        
         return try PerformanceImpl.call_setResourceTimingBufferSize(instance, maxSize);
     }
 
@@ -267,13 +260,10 @@ pub const Performance = struct {
     }
 
     pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(DOMString)) anyerror!void {
-        
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
     pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
-        
         return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }
-
 };

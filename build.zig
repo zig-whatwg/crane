@@ -1143,6 +1143,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // HR-Time module (W3C High Resolution Time)
+    const hr_time_mod = b.addModule("hr_time", .{
+        .root_source_file = b.path("src/hr_time/root.zig"),
+        .target = target,
+    });
+
+    // Add hr_time to impls for Performance implementation
+    impls_mod.addImport("hr_time", hr_time_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1162,6 +1171,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("fetch", fetch_mod);
     whatwg_mod.addImport("trusted_types", trusted_types_mod);
     whatwg_mod.addImport("csp", csp_mod);
+    whatwg_mod.addImport("hr_time", hr_time_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING

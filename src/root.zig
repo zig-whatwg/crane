@@ -12,6 +12,7 @@
 //! - MIME Sniff (MIME type detection)
 //! - Trusted Types (W3C Trusted Types for DOM XSS prevention)
 //! - CSP (W3C Content Security Policy Level 3)
+//! - HR-Time (W3C High Resolution Time)
 
 const std = @import("std");
 
@@ -29,6 +30,7 @@ pub const interfaces = @import("interfaces");
 pub const impls = @import("impls");
 pub const trusted_types = @import("trusted_types");
 pub const csp = @import("csp");
+pub const hr_time = @import("hr_time");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");

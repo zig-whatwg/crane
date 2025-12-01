@@ -581,6 +581,7 @@ const Repl = struct {
     history: std.ArrayListUnmanaged([]const u8),
     /// Singleton instances that need to be cleaned up on exit
     indexeddb_instance: ?*runtime.Instance = null,
+    performance_instance: ?*runtime.Instance = null,
 
     const Self = @This();
 
@@ -837,6 +838,35 @@ const Repl = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_idb_factory));
         }
 
+        // Register performance singleton (Performance instance)
+        // Per spec: readonly attribute Performance performance; on WindowOrWorkerGlobalScope
+        {
+            const Performance = @import("interfaces").Performance;
+
+            // Create Performance instance
+            const performance_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create performance singleton: {}\n", .{err});
+                return;
+            };
+            // Store for cleanup on exit
+            self.performance_instance = performance_instance;
+
+            // Wrap it as a V8 object using the template registry
+            const v8_performance = v8.template_registry.wrapInstanceAsV8Object(
+                performance_instance,
+                "Performance",
+                self.isolate,
+                self.context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap performance singleton: {}\n", .{err});
+                return;
+            };
+
+            // Set it as 'performance' property on the global object
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "performance", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_performance));
+        }
+
         // Register fetch stub (normally on WindowOrWorkerGlobalScope, but Window not implemented)
         // This is a temporary stub until Window is properly implemented
         try self.registerFetchStub(global_obj);
@@ -871,6 +901,7 @@ const Repl = struct {
         // context_manager.deinit() iterates the cache. Explicit deinit
         // would cause double-free since wrapper cache also calls deinit.
         self.indexeddb_instance = null;
+        self.performance_instance = null;
 
         // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
         context_manager.deinit();
