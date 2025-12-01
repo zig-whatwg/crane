@@ -1,12 +1,31 @@
-//! Local HTTP test server for network integration tests
+//! Local HTTP and WebSocket test server
 //!
-//! Provides a simple HTTP server that mimics httpbin.org endpoints locally,
+//! Provides HTTP and WebSocket endpoints for integration testing,
 //! eliminating external network dependencies and flaky test failures.
+//!
+//! HTTP Endpoints:
+//!   GET  /get              - Echo request info
+//!   POST /post             - Echo request with body
+//!   PUT  /put              - Echo request with body
+//!   DELETE /delete         - Echo request
+//!   GET  /headers          - Echo request headers
+//!   GET  /status/{code}    - Return specific HTTP status code
+//!   GET  /delay/{seconds}  - Delay response (for timeout tests)
+//!   GET  /response-headers - Return custom response headers
+//!   GET  /bytes/{n}        - Return n bytes
+//!
+//! WebSocket Endpoints:
+//!   /ws/echo               - Echo all messages back
+//!   /ws/close              - Accept connection, then immediately close
+//!   /ws/close/{code}       - Close with specific code
+//!   /ws/binary             - Echo binary messages back
 
 const std = @import("std");
 const net = std.net;
 const Thread = std.Thread;
 const Allocator = std.mem.Allocator;
+const base64 = std.base64;
+const Sha1 = std.crypto.hash.Sha1;
 
 pub const TestServer = struct {
     allocator: Allocator,
@@ -47,21 +66,27 @@ pub const TestServer = struct {
         return std.fmt.bufPrint(buf, "http://127.0.0.1:{d}", .{self.port}) catch "http://127.0.0.1:0";
     }
 
+    pub fn getWsUrl(self: *TestServer, buf: []u8) []const u8 {
+        return std.fmt.bufPrint(buf, "ws://127.0.0.1:{d}", .{self.port}) catch "ws://127.0.0.1:0";
+    }
+
     fn serverLoop(self: *TestServer) void {
         while (!self.should_stop.load(.acquire)) {
             const conn = self.server.accept() catch |err| {
                 if (err == error.SocketNotListening) break;
                 continue;
             };
-            defer conn.stream.close();
 
-            handleConnection(self.allocator, conn.stream) catch |err| {
+            // Handle connection in the same thread for simplicity
+            // (for production, spawn a thread per connection)
+            handleConnection(self.allocator, conn.stream, &self.should_stop) catch |err| {
                 std.debug.print("Test server error: {}\n", .{err});
             };
+            conn.stream.close();
         }
     }
 
-    fn handleConnection(allocator: Allocator, stream: net.Stream) !void {
+    fn handleConnection(allocator: Allocator, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
         var buf: [4096]u8 = undefined;
         const bytes_read = try stream.read(&buf);
         if (bytes_read == 0) return;
@@ -75,7 +100,13 @@ pub const TestServer = struct {
         const method = parts.next() orelse return;
         const path = parts.next() orelse return;
 
-        // Route to handler
+        // Check for WebSocket upgrade
+        if (isWebSocketUpgrade(request)) {
+            try handleWebSocketUpgrade(allocator, stream, request, path, should_stop);
+            return;
+        }
+
+        // Route to HTTP handler
         const response = routeRequest(allocator, method, path) catch |err| {
             std.debug.print("Route error: {}\n", .{err});
             return sendResponse(stream, 500, "Internal Server Error", "text/plain", "Internal Server Error");
@@ -83,6 +114,206 @@ pub const TestServer = struct {
         defer if (response.body_allocated) allocator.free(response.body);
 
         try sendResponse(stream, response.status, response.status_text, response.content_type, response.body);
+    }
+
+    fn isWebSocketUpgrade(request: []const u8) bool {
+        // Check for "Upgrade: websocket" header (case-insensitive)
+        var lines = std.mem.splitSequence(u8, request, "\r\n");
+        while (lines.next()) |line| {
+            if (std.ascii.startsWithIgnoreCase(line, "upgrade:")) {
+                const value = std.mem.trim(u8, line["upgrade:".len..], " \t");
+                if (std.ascii.eqlIgnoreCase(value, "websocket")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn handleWebSocketUpgrade(allocator: Allocator, stream: net.Stream, request: []const u8, path: []const u8, should_stop: *std.atomic.Value(bool)) !void {
+        // Extract Sec-WebSocket-Key
+        const ws_key = extractHeader(request, "Sec-WebSocket-Key") orelse return error.MissingWebSocketKey;
+
+        // Generate Sec-WebSocket-Accept
+        const accept_key = try computeAcceptKey(ws_key);
+
+        // Send upgrade response
+        var response_buf: [512]u8 = undefined;
+        const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {s}\r\n\r\n", .{accept_key}) catch return error.ResponseTooLarge;
+
+        _ = try stream.write(response);
+
+        // Handle WebSocket frames based on path
+        if (std.mem.startsWith(u8, path, "/ws/echo")) {
+            try handleWebSocketEcho(stream, should_stop);
+        } else if (std.mem.startsWith(u8, path, "/ws/close/")) {
+            const code_str = path["/ws/close/".len..];
+            const code = std.fmt.parseInt(u16, code_str, 10) catch 1000;
+            try sendWebSocketClose(stream, code, "Server closing");
+        } else if (std.mem.eql(u8, path, "/ws/close")) {
+            try sendWebSocketClose(stream, 1000, "Normal closure");
+        } else if (std.mem.eql(u8, path, "/ws/binary")) {
+            try handleWebSocketBinaryEcho(allocator, stream, should_stop);
+        } else {
+            // Default: echo
+            try handleWebSocketEcho(stream, should_stop);
+        }
+    }
+
+    fn extractHeader(request: []const u8, header_name: []const u8) ?[]const u8 {
+        var lines = std.mem.splitSequence(u8, request, "\r\n");
+        while (lines.next()) |line| {
+            if (std.ascii.startsWithIgnoreCase(line, header_name)) {
+                if (line.len > header_name.len and line[header_name.len] == ':') {
+                    return std.mem.trim(u8, line[header_name.len + 1 ..], " \t");
+                }
+            }
+        }
+        return null;
+    }
+
+    fn computeAcceptKey(client_key: []const u8) ![28]u8 {
+        const magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        var hasher = Sha1.init(.{});
+        hasher.update(client_key);
+        hasher.update(magic);
+        const hash = hasher.finalResult();
+
+        var encoded: [28]u8 = undefined;
+        _ = base64.standard.Encoder.encode(&encoded, &hash);
+        return encoded;
+    }
+
+    fn handleWebSocketEcho(stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+        var frame_buf: [4096]u8 = undefined;
+
+        while (!should_stop.load(.acquire)) {
+            // Read frame header (at least 2 bytes)
+            const header_bytes = stream.read(frame_buf[0..2]) catch |err| {
+                if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) break;
+                return err;
+            };
+            if (header_bytes < 2) break;
+
+            const fin = (frame_buf[0] & 0x80) != 0;
+            const opcode = frame_buf[0] & 0x0F;
+            const masked = (frame_buf[1] & 0x80) != 0;
+            var payload_len: u64 = frame_buf[1] & 0x7F;
+
+            // Handle extended payload length
+            var header_offset: usize = 2;
+            if (payload_len == 126) {
+                const ext_bytes = try stream.read(frame_buf[2..4]);
+                if (ext_bytes < 2) break;
+                payload_len = std.mem.readInt(u16, frame_buf[2..4], .big);
+                header_offset = 4;
+            } else if (payload_len == 127) {
+                const ext_bytes = try stream.read(frame_buf[2..10]);
+                if (ext_bytes < 8) break;
+                payload_len = std.mem.readInt(u64, frame_buf[2..10], .big);
+                header_offset = 10;
+            }
+
+            // Read mask key if present
+            var mask_key: [4]u8 = undefined;
+            if (masked) {
+                const mask_bytes = try stream.read(frame_buf[header_offset .. header_offset + 4]);
+                if (mask_bytes < 4) break;
+                @memcpy(&mask_key, frame_buf[header_offset .. header_offset + 4]);
+                header_offset += 4;
+            }
+
+            // Read payload
+            if (payload_len > frame_buf.len - header_offset) {
+                // Payload too large for buffer
+                break;
+            }
+            const payload_end = header_offset + @as(usize, @intCast(payload_len));
+            if (payload_len > 0) {
+                const payload_bytes = try stream.read(frame_buf[header_offset..payload_end]);
+                if (payload_bytes < payload_len) break;
+            }
+
+            // Unmask payload
+            if (masked) {
+                for (frame_buf[header_offset..payload_end], 0..) |*byte, i| {
+                    byte.* ^= mask_key[i % 4];
+                }
+            }
+
+            const payload = frame_buf[header_offset..payload_end];
+
+            // Handle frame by opcode
+            switch (opcode) {
+                0x1, 0x2 => { // Text or Binary frame
+                    // Echo back (unmasked, server-to-client)
+                    try sendWebSocketFrame(stream, opcode, fin, payload);
+                },
+                0x8 => { // Close frame
+                    // Echo close frame and exit
+                    try sendWebSocketFrame(stream, 0x8, true, payload);
+                    break;
+                },
+                0x9 => { // Ping
+                    // Respond with Pong
+                    try sendWebSocketFrame(stream, 0xA, true, payload);
+                },
+                0xA => { // Pong
+                    // Ignore
+                },
+                else => {
+                    // Unknown opcode, close connection
+                    break;
+                },
+            }
+
+            // Note: fin flag handling (fragmentation) is simplified for test server
+        }
+    }
+
+    fn handleWebSocketBinaryEcho(allocator: Allocator, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+        // Same as echo but explicitly for binary frames
+        _ = allocator;
+        try handleWebSocketEcho(stream, should_stop);
+    }
+
+    fn sendWebSocketFrame(stream: net.Stream, opcode: u8, fin: bool, payload: []const u8) !void {
+        var frame_buf: [4096 + 10]u8 = undefined;
+        var offset: usize = 0;
+
+        // First byte: FIN + opcode
+        frame_buf[0] = (if (fin) @as(u8, 0x80) else @as(u8, 0)) | opcode;
+        offset = 1;
+
+        // Second byte: payload length (server frames are not masked)
+        if (payload.len < 126) {
+            frame_buf[1] = @intCast(payload.len);
+            offset = 2;
+        } else if (payload.len < 65536) {
+            frame_buf[1] = 126;
+            std.mem.writeInt(u16, frame_buf[2..4], @intCast(payload.len), .big);
+            offset = 4;
+        } else {
+            frame_buf[1] = 127;
+            std.mem.writeInt(u64, frame_buf[2..10], @intCast(payload.len), .big);
+            offset = 10;
+        }
+
+        // Write header
+        _ = try stream.write(frame_buf[0..offset]);
+
+        // Write payload
+        if (payload.len > 0) {
+            _ = try stream.write(payload);
+        }
+    }
+
+    fn sendWebSocketClose(stream: net.Stream, code: u16, reason: []const u8) !void {
+        var payload: [125]u8 = undefined;
+        std.mem.writeInt(u16, payload[0..2], code, .big);
+        const reason_len = @min(reason.len, 123);
+        @memcpy(payload[2 .. 2 + reason_len], reason[0..reason_len]);
+        try sendWebSocketFrame(stream, 0x8, true, payload[0 .. 2 + reason_len]);
     }
 
     const RouteResponse = struct {
@@ -250,7 +481,7 @@ pub const TestServer = struct {
     }
 };
 
-// Test the server itself
+// Tests
 test "TestServer - starts and stops" {
     const allocator = std.testing.allocator;
     const server = try TestServer.start(allocator);
@@ -259,4 +490,22 @@ test "TestServer - starts and stops" {
     var buf: [64]u8 = undefined;
     const url = server.getBaseUrl(&buf);
     try std.testing.expect(std.mem.startsWith(u8, url, "http://127.0.0.1:"));
+}
+
+test "TestServer - WebSocket URL" {
+    const allocator = std.testing.allocator;
+    const server = try TestServer.start(allocator);
+    defer server.stop();
+
+    var buf: [64]u8 = undefined;
+    const url = server.getWsUrl(&buf);
+    try std.testing.expect(std.mem.startsWith(u8, url, "ws://127.0.0.1:"));
+}
+
+test "TestServer - computeAcceptKey" {
+    // Test vector from RFC 6455
+    const key = "dGhlIHNhbXBsZSBub25jZQ==";
+    const expected = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+    const result = try TestServer.computeAcceptKey(key);
+    try std.testing.expectEqualStrings(expected, &result);
 }
