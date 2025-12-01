@@ -56,6 +56,7 @@ pub const curl_backend = @import("curl_backend.zig");
 pub const send_buffer = @import("send_buffer.zig");
 pub const events = @import("events.zig");
 pub const utf8 = @import("utf8.zig");
+pub const binary_types = @import("binary_types.zig");
 
 // Re-export common types
 pub const CloseCodes = close_codes.CloseCodes;
@@ -76,6 +77,11 @@ pub const CloseEventData = events.CloseEventData;
 // UTF-8 validation
 pub const Utf8Validator = utf8.Utf8Validator;
 pub const isValidUtf8 = utf8.isValidUtf8;
+
+// Binary types
+pub const BinaryBytes = binary_types.BinaryBytes;
+pub const BinaryDataType = binary_types.BinaryDataType;
+pub const MessageBinaryData = binary_types.MessageBinaryData;
 
 // TODO: Export WebSocket interface once implemented
 // pub const WebSocket = @import("../webidl/impls/WebSocket.zig").WebSocket;
