@@ -258,6 +258,90 @@ pub const CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE = c.CURL_HTTP_VERSION_2_PRIOR_KNOW
 pub const CURL_HTTP_VERSION_3 = c.CURL_HTTP_VERSION_3;
 
 // =============================================================================
+// Cookie Options (CURLOPT)
+// =============================================================================
+
+/// Enable cookie engine - read cookies from file (empty string = enable only)
+/// Reference: https://curl.se/libcurl/c/CURLOPT_COOKIEFILE.html
+pub const CURLOPT_COOKIEFILE = c.CURLOPT_COOKIEFILE;
+
+/// Write cookies to file on curl_easy_cleanup
+/// Reference: https://curl.se/libcurl/c/CURLOPT_COOKIEJAR.html
+pub const CURLOPT_COOKIEJAR = c.CURLOPT_COOKIEJAR;
+
+/// Add/manipulate individual cookies (Netscape format or Set-Cookie header)
+/// Special values: "ALL" (erase all), "SESS" (erase session), "FLUSH" (write to jar), "RELOAD" (reload from file)
+/// Reference: https://curl.se/libcurl/c/CURLOPT_COOKIELIST.html
+pub const CURLOPT_COOKIELIST = c.CURLOPT_COOKIELIST;
+
+/// Start new cookie session (ignore session cookies from file)
+/// Reference: https://curl.se/libcurl/c/CURLOPT_COOKIESESSION.html
+pub const CURLOPT_COOKIESESSION = c.CURLOPT_COOKIESESSION;
+
+/// Set share handle for sharing data (cookies, DNS, SSL sessions) between handles
+/// Reference: https://curl.se/libcurl/c/CURLOPT_SHARE.html
+pub const CURLOPT_SHARE = c.CURLOPT_SHARE;
+
+// =============================================================================
+// Cookie Info (CURLINFO)
+// =============================================================================
+
+/// Get all known cookies as a linked list (Netscape format)
+/// Result: *?*curl_slist - MUST call slist_free_all() on result
+/// Reference: https://curl.se/libcurl/c/CURLINFO_COOKIELIST.html
+pub const CURLINFO_COOKIELIST = c.CURLINFO_COOKIELIST;
+
+// =============================================================================
+// Share Handle Types and Constants (CURLSH)
+// =============================================================================
+
+/// Opaque handle for sharing data between CURL easy handles
+pub const CURLSH = c.CURLSH;
+
+/// Return code for share interface functions
+pub const CURLSHcode = c.CURLSHcode;
+
+/// Success - no error
+pub const CURLSHE_OK = c.CURLSHE_OK;
+/// Bad option passed
+pub const CURLSHE_BAD_OPTION = c.CURLSHE_BAD_OPTION;
+/// Share already in use
+pub const CURLSHE_IN_USE = c.CURLSHE_IN_USE;
+/// Invalid share handle
+pub const CURLSHE_INVALID = c.CURLSHE_INVALID;
+/// Out of memory
+pub const CURLSHE_NOMEM = c.CURLSHE_NOMEM;
+/// Feature not built in
+pub const CURLSHE_NOT_BUILT_IN = c.CURLSHE_NOT_BUILT_IN;
+
+/// Share handle option: specify data type to share
+pub const CURLSHOPT_SHARE = c.CURLSHOPT_SHARE;
+/// Share handle option: specify data type to unshare
+pub const CURLSHOPT_UNSHARE = c.CURLSHOPT_UNSHARE;
+/// Share handle option: set lock function callback
+pub const CURLSHOPT_LOCKFUNC = c.CURLSHOPT_LOCKFUNC;
+/// Share handle option: set unlock function callback
+pub const CURLSHOPT_UNLOCKFUNC = c.CURLSHOPT_UNLOCKFUNC;
+/// Share handle option: user data for lock/unlock callbacks
+pub const CURLSHOPT_USERDATA = c.CURLSHOPT_USERDATA;
+
+/// Lock data type: cookie data
+pub const CURL_LOCK_DATA_COOKIE = c.CURL_LOCK_DATA_COOKIE;
+/// Lock data type: DNS cache
+pub const CURL_LOCK_DATA_DNS = c.CURL_LOCK_DATA_DNS;
+/// Lock data type: SSL session IDs
+pub const CURL_LOCK_DATA_SSL_SESSION = c.CURL_LOCK_DATA_SSL_SESSION;
+/// Lock data type: connection cache
+pub const CURL_LOCK_DATA_CONNECT = c.CURL_LOCK_DATA_CONNECT;
+/// Lock data type: PSL (Public Suffix List)
+pub const CURL_LOCK_DATA_PSL = c.CURL_LOCK_DATA_PSL;
+
+/// Lock access type: shared (read) access
+pub const CURL_LOCK_ACCESS_SHARED = c.CURL_LOCK_ACCESS_SHARED;
+/// Lock access type: exclusive (write) access
+pub const CURL_LOCK_ACCESS_SINGLE = c.CURL_LOCK_ACCESS_SINGLE;
+
+// =============================================================================
 // Global Init Flags
 // =============================================================================
 
@@ -499,6 +583,52 @@ pub fn multi_strerror(code: CURLMcode) [*:0]const u8 {
 }
 
 // =============================================================================
+// Share Interface (shared cookie storage)
+// =============================================================================
+
+/// Create a new share handle for sharing data between CURL handles.
+/// Returns null on failure (out of memory).
+/// Reference: https://curl.se/libcurl/c/curl_share_init.html
+pub fn share_init() ?*CURLSH {
+    return c.curl_share_init();
+}
+
+/// Set options on a share handle.
+/// Reference: https://curl.se/libcurl/c/curl_share_setopt.html
+pub fn share_setopt(share: *CURLSH, option: c.CURLSHoption, value: anytype) CURLSHcode {
+    return @call(.auto, c.curl_share_setopt, .{ share, option, value });
+}
+
+/// Clean up a share handle and free all associated resources.
+/// Reference: https://curl.se/libcurl/c/curl_share_cleanup.html
+pub fn share_cleanup(share: *CURLSH) CURLSHcode {
+    return c.curl_share_cleanup(share);
+}
+
+/// Get human-readable error message for a CURLSHcode.
+/// Reference: https://curl.se/libcurl/c/curl_share_strerror.html
+pub fn share_strerror(code: CURLSHcode) [*:0]const u8 {
+    return c.curl_share_strerror(code);
+}
+
+/// Lock function callback type for thread-safe sharing.
+/// Called when curl needs to access shared data.
+pub const LockFunction = *const fn (
+    handle: *CURL,
+    data: c_int, // CURL_LOCK_DATA_*
+    access: c_int, // CURL_LOCK_ACCESS_*
+    userptr: ?*anyopaque,
+) callconv(.C) void;
+
+/// Unlock function callback type for thread-safe sharing.
+/// Called when curl is done accessing shared data.
+pub const UnlockFunction = *const fn (
+    handle: *CURL,
+    data: c_int, // CURL_LOCK_DATA_*
+    userptr: ?*anyopaque,
+) callconv(.C) void;
+
+// =============================================================================
 // WebSocket Functions (libcurl 7.86.0+)
 // =============================================================================
 
@@ -564,6 +694,40 @@ pub fn slist_append(list: ?*curl_slist, string: [*:0]const u8) ?*curl_slist {
 /// Safe to call with null.
 pub fn slist_free_all(list: ?*curl_slist) void {
     c.curl_slist_free_all(list);
+}
+
+/// Iterator for curl_slist linked list.
+/// Provides Zig-idiomatic iteration over cookie lists.
+pub const SlistIterator = struct {
+    current: ?*curl_slist,
+
+    /// Get the next string in the list.
+    /// Returns null when list is exhausted.
+    pub fn next(self: *SlistIterator) ?[]const u8 {
+        if (self.current) |node| {
+            const data = std.mem.span(node.data);
+            self.current = node.next;
+            return data;
+        }
+        return null;
+    }
+};
+
+/// Create an iterator from a curl_slist.
+/// Usage: var iter = slistIterator(list); while (iter.next()) |s| { ... }
+pub fn slistIterator(list: ?*curl_slist) SlistIterator {
+    return .{ .current = list };
+}
+
+/// Count items in a curl_slist.
+pub fn slistCount(list: ?*curl_slist) usize {
+    var count: usize = 0;
+    var current = list;
+    while (current) |node| {
+        count += 1;
+        current = node.next;
+    }
+    return count;
 }
 
 // =============================================================================
@@ -674,4 +838,43 @@ test "curl_ffi - websocket frame struct layout" {
     };
     try std.testing.expectEqual(@as(c_int, 0), frame.age);
     try std.testing.expectEqual(CURLWS_TEXT, @as(c_uint, @intCast(frame.flags)));
+}
+
+test "curl_ffi - cookie option constants defined" {
+    // Verify cookie-related constants are available
+    try std.testing.expect(CURLOPT_COOKIEFILE != 0);
+    try std.testing.expect(CURLOPT_COOKIEJAR != 0);
+    try std.testing.expect(CURLOPT_COOKIELIST != 0);
+    try std.testing.expect(CURLOPT_COOKIESESSION != 0);
+    try std.testing.expect(CURLOPT_SHARE != 0);
+    try std.testing.expect(CURLINFO_COOKIELIST != 0);
+}
+
+test "curl_ffi - share handle constants defined" {
+    // Verify share handle constants are available
+    try std.testing.expectEqual(@as(c_int, 0), CURLSHE_OK);
+    try std.testing.expect(CURLSHOPT_SHARE != 0);
+    try std.testing.expect(CURLSHOPT_UNSHARE != 0);
+    try std.testing.expect(CURL_LOCK_DATA_COOKIE != 0);
+    try std.testing.expect(CURL_LOCK_DATA_DNS != 0);
+    try std.testing.expect(CURL_LOCK_DATA_SSL_SESSION != 0);
+}
+
+test "curl_ffi - slist iterator" {
+    // Test with null list
+    var iter = slistIterator(null);
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+
+    // Test count with null list
+    try std.testing.expectEqual(@as(usize, 0), slistCount(null));
+}
+
+test "curl_ffi - share handle lifecycle" {
+    // Test share handle creation and cleanup
+    const share = share_init() orelse return error.ShareInitFailed;
+    defer _ = share_cleanup(share);
+
+    // Enable cookie sharing
+    const result = share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+    try std.testing.expect(result == CURLSHE_OK);
 }
