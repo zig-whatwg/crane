@@ -1282,6 +1282,9 @@ pub fn build(b: *std.Build) void {
     // WebSocket needs fetch for curl backend
     websocket_mod.addImport("fetch", fetch_mod);
 
+    // Add websocket to impls for WebSocket interface implementation
+    impls_mod.addImport("websocket", websocket_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);

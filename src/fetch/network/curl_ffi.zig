@@ -516,7 +516,9 @@ pub fn multi_strerror(code: CURLMcode) [*:0]const u8 {
 /// Returns: CURLE_OK on success, error code on failure
 /// Note: Use CURLOPT_CONNECT_ONLY=2 to establish WebSocket connection first
 pub fn ws_send(handle: *CURL, buffer: [*]const u8, buflen: usize, sent: *usize, fragsize: usize, flags: c_uint) CURLcode {
-    return c.curl_ws_send(handle, buffer, buflen, sent, fragsize, flags);
+    // fragsize needs to be curl_off_t (c_long) for the C API
+    const fragsize_long: c_long = @intCast(fragsize);
+    return c.curl_ws_send(handle, buffer, buflen, sent, fragsize_long, flags);
 }
 
 /// Receive a WebSocket frame.

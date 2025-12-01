@@ -29,6 +29,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WebSocket = interfaces.WebSocket;
 
+// Import the WebSocket connection module
+const websocket = @import("websocket");
+const WebSocketConnection = websocket.WebSocketConnection;
+
 pub const State = WebSocket.State;
 
 pub const ImplError = error{
@@ -42,14 +46,11 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
+    /// The underlying WebSocket connection
+    connection: ?*WebSocketConnection,
+
     /// The WebSocket URL (stored separately for ownership)
     url_string: []const u8,
-
-    /// The negotiated protocol
-    protocol_string: []const u8,
-
-    /// The negotiated extensions
-    extensions_string: []const u8,
 
     /// Binary type preference
     binary_type: enums.BinaryType,
@@ -60,38 +61,59 @@ pub const InternalState = struct {
     onclose: typedefs.EventHandler,
     onmessage: typedefs.EventHandler,
 
-    /// Send buffer for tracking bufferedAmount
-    buffered_amount: u64,
-
-    /// Current ready state
-    ready_state: u16,
-
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
+            .connection = null,
             .url_string = "",
-            .protocol_string = "",
-            .extensions_string = "",
             .binary_type = ._blob_,
             .onopen = null,
             .onerror = null,
             .onclose = null,
             .onmessage = null,
-            .buffered_amount = 0,
-            .ready_state = 0, // CONNECTING
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.connection) |conn| {
+            conn.deinit();
+            self.connection = null;
+        }
         if (self.url_string.len > 0) {
             self.allocator.free(self.url_string);
         }
-        if (self.protocol_string.len > 0) {
-            self.allocator.free(self.protocol_string);
+    }
+
+    /// Get the current ready state from the connection
+    pub fn getReadyState(self: *const InternalState) u16 {
+        if (self.connection) |conn| {
+            return conn.getReadyState();
         }
-        if (self.extensions_string.len > 0) {
-            self.allocator.free(self.extensions_string);
+        return 3; // CLOSED if no connection
+    }
+
+    /// Get the buffered amount from the connection
+    pub fn getBufferedAmount(self: *const InternalState) u64 {
+        if (self.connection) |conn| {
+            return conn.buffered_amount;
         }
+        return 0;
+    }
+
+    /// Get the negotiated protocol from the connection
+    pub fn getProtocol(self: *const InternalState) ?[]const u8 {
+        if (self.connection) |conn| {
+            return conn.protocol;
+        }
+        return null;
+    }
+
+    /// Get the extensions from the connection
+    pub fn getExtensions(self: *const InternalState) ?[]const u8 {
+        if (self.connection) |conn| {
+            return conn.extensions;
+        }
+        return null;
     }
 };
 
@@ -137,6 +159,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 9. Let client be this's relevant settings object.
 /// 10. Run this step in parallel: Establish a WebSocket connection given urlRecord, protocols...
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+    // Validate URL scheme (ws:// or wss://)
+    if (!std.mem.startsWith(u8, url, "ws://") and !std.mem.startsWith(u8, url, "wss://")) {
+        return error.SyntaxError;
+    }
+
+    // Check for fragment identifier (URL with # is invalid)
+    if (std.mem.indexOf(u8, url, "#") != null) {
+        return error.SyntaxError;
+    }
+
     // Create instance
     const instance = try init(allocator, State, &WebSocket.vtable, ctx);
     errdefer deinit(instance);
@@ -150,13 +182,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
+    // Create the WebSocket connection (starts in CONNECTING state)
+    const connection = try WebSocketConnection.init(allocator, url);
+    internal.connection = connection;
+
     // Store URL (copy for ownership)
     internal.url_string = try allocator.dupe(u8, url);
     state.own.url = internal.url_string;
 
-    // Initialize state
-    state.own.readyState = 0; // CONNECTING
-    internal.ready_state = 0;
+    // Initialize state from connection
+    state.own.readyState = connection.getReadyState();
     state.own.bufferedAmount = 0;
     state.own.extensions = runtime.DOMString.initEmpty();
     state.own.protocol = runtime.DOMString.initEmpty();
@@ -169,12 +204,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     state.own.onclose = null;
     state.own.onmessage = null;
 
-    // TODO: Validate URL scheme (ws:// or wss://)
-    // TODO: Check for fragment identifier
-    // TODO: Validate protocols
-    // TODO: In parallel, establish WebSocket connection
-
-    _ = protocols; // TODO: Handle protocols parameter
+    // TODO: Handle protocols parameter and start connection in parallel
+    _ = protocols;
 
     return instance;
 }
@@ -194,7 +225,7 @@ pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// The readyState attribute represents the state of the connection.
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     const internal = getInternal(instance) orelse return 3; // CLOSED
-    return internal.ready_state;
+    return internal.getReadyState();
 }
 
 /// Getter for bufferedAmount
@@ -205,7 +236,7 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
 /// transmitted to the network.
 pub fn get_bufferedAmount(instance: *runtime.Instance) anyerror!u64 {
     const internal = getInternal(instance) orelse return 0;
-    return internal.buffered_amount;
+    return internal.getBufferedAmount();
 }
 
 /// Getter for onopen
@@ -233,8 +264,8 @@ pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
 /// After the WebSocket connection is established, its value might change.
 pub fn get_extensions(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    if (internal.extensions_string.len > 0) {
-        return runtime.DOMString.initInterned(internal.extensions_string);
+    if (internal.getExtensions()) |ext| {
+        return runtime.DOMString.initInterned(ext);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -246,8 +277,8 @@ pub fn get_extensions(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// After the WebSocket connection is established, its value might change.
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    if (internal.protocol_string.len > 0) {
-        return runtime.DOMString.initInterned(internal.protocol_string);
+    if (internal.getProtocol()) |proto| {
+        return runtime.DOMString.initInterned(proto);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -336,34 +367,23 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
     }
 
     // Validate reason length if present
-    if (reason.was_passed) {
+    const reason_str: ?[]const u8 = if (reason.was_passed) blk: {
         if (reason.value.len > 123) {
             return error.SyntaxError;
         }
-    }
+        break :blk reason.value;
+    } else null;
 
-    // Check ready state
-    switch (internal.ready_state) {
-        2, 3 => {
-            // CLOSING or CLOSED - do nothing
-            return;
-        },
-        0 => {
-            // CONNECTING - fail the connection
-            internal.ready_state = 3; // CLOSED
-            const state = instance.getState(State);
-            state.own.readyState = 3;
-            // TODO: Fire error event, then close event
-        },
-        1 => {
-            // OPEN - start closing handshake
-            internal.ready_state = 2; // CLOSING
-            const state = instance.getState(State);
-            state.own.readyState = 2;
-            // TODO: Send close frame via backend
-        },
-        else => {},
-    }
+    // Get the connection
+    const connection = internal.connection orelse return;
+
+    // Delegate to the connection's close method
+    const close_code: ?u16 = if (code.was_passed) code.value else null;
+    try connection.close(close_code, reason_str);
+
+    // Update the state
+    const state = instance.getState(State);
+    state.own.readyState = connection.getReadyState();
 }
 
 /// Operation: send
@@ -382,54 +402,61 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
 /// 5. Increase this's bufferedAmount by the byte length of data.
 pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
     const internal = getInternal(instance) orelse return;
+    const connection = internal.connection orelse return;
 
     // Check if connecting
-    if (internal.ready_state == 0) {
+    if (internal.getReadyState() == 0) {
         return error.InvalidState;
     }
 
-    // TODO: Determine data type and send appropriately
-    // For now, just acknowledge the call
-    _ = data;
+    // TODO: Properly determine data type (string, Blob, ArrayBuffer, ArrayBufferView)
+    // For now, treat data as a string pointer (this is a simplification)
+    // In the real implementation, we'd need to use runtime type info
 
-    // TODO: Update bufferedAmount based on data size
-    // TODO: Send data via WebSocket backend
+    // If not OPEN, discard the data
+    if (internal.getReadyState() != 1) {
+        return;
+    }
+
+    // Send as text for now (proper type detection would be needed)
+    // This is a placeholder - real implementation needs V8 integration
+    _ = data;
+    _ = connection;
+
+    // Update bufferedAmount
+    const state = instance.getState(State);
+    state.own.bufferedAmount = internal.getBufferedAmount();
 }
 
 // =============================================================================
 // Helper functions for connection management
 // =============================================================================
 
-/// Update the ready state (called by connection code)
-pub fn setReadyState(instance: *runtime.Instance, ready_state: u16) void {
+/// Synchronize the WebIDL state with the underlying connection state.
+/// Call this after any operation that might change connection state.
+pub fn syncState(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
-    internal.ready_state = ready_state;
     const state = instance.getState(State);
-    state.own.readyState = ready_state;
-}
 
-/// Set the protocol after handshake completes
-pub fn setProtocol(instance: *runtime.Instance, protocol: []const u8) !void {
-    const internal = getInternal(instance) orelse return;
-    if (internal.protocol_string.len > 0) {
-        internal.allocator.free(internal.protocol_string);
+    // Sync readyState
+    state.own.readyState = internal.getReadyState();
+
+    // Sync bufferedAmount
+    state.own.bufferedAmount = internal.getBufferedAmount();
+
+    // Sync protocol
+    if (internal.getProtocol()) |proto| {
+        state.own.protocol = runtime.DOMString.initInterned(proto);
     }
-    internal.protocol_string = try internal.allocator.dupe(u8, protocol);
-}
 
-/// Set extensions after handshake completes
-pub fn setExtensions(instance: *runtime.Instance, extensions: []const u8) !void {
-    const internal = getInternal(instance) orelse return;
-    if (internal.extensions_string.len > 0) {
-        internal.allocator.free(internal.extensions_string);
+    // Sync extensions
+    if (internal.getExtensions()) |ext| {
+        state.own.extensions = runtime.DOMString.initInterned(ext);
     }
-    internal.extensions_string = try internal.allocator.dupe(u8, extensions);
 }
 
-/// Update buffered amount
-pub fn updateBufferedAmount(instance: *runtime.Instance, amount: u64) void {
-    const internal = getInternal(instance) orelse return;
-    internal.buffered_amount = amount;
-    const state = instance.getState(State);
-    state.own.bufferedAmount = amount;
+/// Get the underlying connection for direct access (for event loop integration)
+pub fn getConnection(instance: *runtime.Instance) ?*WebSocketConnection {
+    const internal = getInternal(instance) orelse return null;
+    return internal.connection;
 }
