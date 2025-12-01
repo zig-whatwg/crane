@@ -557,6 +557,62 @@ pub extern fn v8_PromiseResolver_CreateRejectHandler(
 ) ?*Function;
 
 // ============================================================================
+// Zig Callback Bridge for Promise Handlers
+// ============================================================================
+
+/// Callback type for Zig promise fulfillment handler
+/// Called when a V8 Promise fulfills
+/// Arguments:
+///   - context: The context pointer passed when creating the handler
+///   - value: The fulfillment value (as a V8 Global<Value>*), or null for undefined
+pub const ZigPromiseFulfillCallback = *const fn (context: ?*anyopaque, value: ?*anyopaque) callconv(.c) void;
+
+/// Callback type for Zig promise rejection handler
+/// Called when a V8 Promise rejects
+/// Arguments:
+///   - context: The context pointer passed when creating the handler
+///   - reason: The rejection reason (as a V8 Global<Value>*), or null for undefined
+pub const ZigPromiseRejectCallback = *const fn (context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void;
+
+/// Create a V8 Function that invokes a Zig fulfill callback when called
+///
+/// When the returned function is called (e.g., from Promise.then()), it will:
+/// 1. Extract the first argument (or undefined)
+/// 2. Call the Zig fulfill_callback with the context and argument
+///
+/// @param context - V8 Context
+/// @param fulfill_callback - Zig function to call on fulfillment
+/// @param fulfill_context - Context pointer to pass to Zig callback
+/// @return Global<Function>* that invokes the Zig callback, or null on failure
+pub extern fn v8_CreateZigFulfillHandler(
+    context: *Context,
+    fulfill_callback: ZigPromiseFulfillCallback,
+    fulfill_context: ?*anyopaque,
+) ?*Function;
+
+/// Create a V8 Function that invokes a Zig reject callback when called
+///
+/// When the returned function is called (e.g., from Promise.catch()), it will:
+/// 1. Extract the first argument (rejection reason, or undefined)
+/// 2. Call the Zig reject_callback with the context and reason
+///
+/// @param context - V8 Context
+/// @param reject_callback - Zig function to call on rejection
+/// @param reject_context - Context pointer to pass to Zig callback
+/// @return Global<Function>* that invokes the Zig callback, or null on failure
+pub extern fn v8_CreateZigRejectHandler(
+    context: *Context,
+    reject_callback: ZigPromiseRejectCallback,
+    reject_context: ?*anyopaque,
+) ?*Function;
+
+/// Dispose a Zig callback handler function
+///
+/// Frees the V8 Global<Function> and associated callback data.
+/// Must be called when the handler is no longer needed.
+pub extern fn v8_DisposeZigCallbackHandler(handler: *Function) void;
+
+// ============================================================================
 // ArrayBuffer API (Phase 4: Runtime Infrastructure)
 // ============================================================================
 

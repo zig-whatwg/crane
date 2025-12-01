@@ -41,6 +41,20 @@ const std = @import("std");
 /// The user_data pointer is passed through from scheduleOnMainThread.
 pub const MainThreadCallback = *const fn (user_data: *anyopaque) void;
 
+/// Callback type for promise fulfillment handler
+/// Called when a JS Promise fulfills
+/// Arguments:
+///   - context: The context pointer passed when creating the handler
+///   - value: The fulfillment value (engine-specific), or null for undefined
+pub const PromiseFulfillCallback = *const fn (context: ?*anyopaque, value: ?*anyopaque) callconv(.c) void;
+
+/// Callback type for promise rejection handler
+/// Called when a JS Promise rejects
+/// Arguments:
+///   - context: The context pointer passed when creating the handler
+///   - reason: The rejection reason (engine-specific), or null for undefined
+pub const PromiseRejectCallback = *const fn (context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void;
+
 /// Error set for engine operations
 pub const EngineError = error{
     /// No engine is configured in the context
@@ -435,12 +449,14 @@ pub const EngineInterface = struct {
     /// Chain a fulfillment/rejection handler to a JS Promise
     ///
     /// Used to bridge JS Promises to Zig AsyncPromise. When the JS Promise
-    /// settles, the appropriate handler is called with fulfillment context.
+    /// settles, the appropriate Zig callback is invoked.
     ///
     /// Arguments:
     ///   - engine_ctx: Engine-specific context
     ///   - js_promise: Opaque pointer to JS Promise
+    ///   - on_fulfill: Zig callback for fulfillment
     ///   - on_fulfill_ctx: Context pointer passed to fulfillment callback
+    ///   - on_reject: Zig callback for rejection
     ///   - on_reject_ctx: Context pointer passed to rejection callback
     ///
     /// Returns:
@@ -449,8 +465,10 @@ pub const EngineInterface = struct {
     chainPromiseHandlers: ?*const fn (
         engine_ctx: *anyopaque,
         js_promise: *anyopaque,
-        on_fulfill_ctx: *anyopaque,
-        on_reject_ctx: *anyopaque,
+        on_fulfill: PromiseFulfillCallback,
+        on_fulfill_ctx: ?*anyopaque,
+        on_reject: PromiseRejectCallback,
+        on_reject_ctx: ?*anyopaque,
     ) EngineError!void,
 
     /// Engine name for debugging/logging
@@ -550,8 +568,10 @@ fn stubGetWrapperForInstance(
 fn stubChainPromiseHandlers(
     _: *anyopaque,
     _: *anyopaque,
-    _: *anyopaque,
-    _: *anyopaque,
+    _: PromiseFulfillCallback,
+    _: ?*anyopaque,
+    _: PromiseRejectCallback,
+    _: ?*anyopaque,
 ) EngineError!void {
     // Stub: No JS engine available
     return EngineError.NoEngine;

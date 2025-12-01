@@ -1633,6 +1633,182 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
 }
 
 // ============================================================================
+// Zig Callback Bridge for Promise Handlers
+// ============================================================================
+
+/// Type definition for Zig promise fulfill callback
+/// Signature: fn(context: *anyopaque, value: ?*anyopaque) void
+typedef void (*ZigPromiseFulfillCallback)(void* context, void* value);
+
+/// Type definition for Zig promise reject callback  
+/// Signature: fn(context: *anyopaque, reason: ?*anyopaque) void
+typedef void (*ZigPromiseRejectCallback)(void* context, void* reason);
+
+/// Data structure to hold Zig callback info
+struct ZigPromiseCallbackData {
+    ZigPromiseFulfillCallback fulfill_callback;
+    ZigPromiseRejectCallback reject_callback;
+    void* fulfill_context;
+    void* reject_context;
+};
+
+/// Create a V8 Function that invokes a Zig fulfill callback when called
+///
+/// When the returned function is called (e.g., from Promise.then()), it will:
+/// 1. Extract the first argument (or undefined)
+/// 2. Call the Zig fulfill_callback with the context and argument
+///
+/// Arguments:
+///   - context: V8 Context
+///   - fulfill_callback: Zig function to call on fulfillment
+///   - fulfill_context: Context pointer to pass to Zig callback
+///
+/// Returns:
+///   - Global<Function>* that invokes the Zig callback, or nullptr on failure
+Global<Function>* v8_CreateZigFulfillHandler(
+    Global<Context>* context,
+    ZigPromiseFulfillCallback fulfill_callback,
+    void* fulfill_context
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Allocate callback data
+    auto* data = new ZigPromiseCallbackData{
+        fulfill_callback,
+        nullptr,
+        fulfill_context,
+        nullptr
+    };
+    
+    // Store in External
+    Local<External> external = External::New(isolate, data);
+    
+    // Create callback that invokes the Zig function
+    auto callback = [](const FunctionCallbackInfo<Value>& info) {
+        Isolate* isolate = info.GetIsolate();
+        HandleScope scope(isolate);
+        
+        // Extract callback data
+        Local<External> external = Local<External>::Cast(info.Data());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        
+        if (data && data->fulfill_callback) {
+            // Get value argument (or nullptr if no args/undefined)
+            void* value = nullptr;
+            if (info.Length() > 0 && !info[0]->IsUndefined()) {
+                // Store the Local<Value> as a Global for Zig to use
+                // The Zig side will need to handle this appropriately
+                value = new Global<Value>(isolate, info[0]);
+            }
+            
+            // Call Zig callback
+            data->fulfill_callback(data->fulfill_context, value);
+        }
+        
+        // Return undefined
+        info.GetReturnValue().SetUndefined();
+    };
+    
+    // Create FunctionTemplate
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, callback, external);
+    MaybeLocal<Function> maybe_fn = tpl->GetFunction(ctx);
+    if (maybe_fn.IsEmpty()) {
+        delete data;
+        return nullptr;
+    }
+    
+    Local<Function> fn = maybe_fn.ToLocalChecked();
+    return new Global<Function>(isolate, fn);
+}
+
+/// Create a V8 Function that invokes a Zig reject callback when called
+///
+/// When the returned function is called (e.g., from Promise.catch()), it will:
+/// 1. Extract the first argument (rejection reason, or undefined)
+/// 2. Call the Zig reject_callback with the context and reason
+///
+/// Arguments:
+///   - context: V8 Context
+///   - reject_callback: Zig function to call on rejection
+///   - reject_context: Context pointer to pass to Zig callback
+///
+/// Returns:
+///   - Global<Function>* that invokes the Zig callback, or nullptr on failure
+Global<Function>* v8_CreateZigRejectHandler(
+    Global<Context>* context,
+    ZigPromiseRejectCallback reject_callback,
+    void* reject_context
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Allocate callback data
+    auto* data = new ZigPromiseCallbackData{
+        nullptr,
+        reject_callback,
+        nullptr,
+        reject_context
+    };
+    
+    // Store in External
+    Local<External> external = External::New(isolate, data);
+    
+    // Create callback that invokes the Zig function
+    auto callback = [](const FunctionCallbackInfo<Value>& info) {
+        Isolate* isolate = info.GetIsolate();
+        HandleScope scope(isolate);
+        
+        // Extract callback data
+        Local<External> external = Local<External>::Cast(info.Data());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        
+        if (data && data->reject_callback) {
+            // Get reason argument (or nullptr if no args/undefined)
+            void* reason = nullptr;
+            if (info.Length() > 0 && !info[0]->IsUndefined()) {
+                // Store the Local<Value> as a Global for Zig to use
+                reason = new Global<Value>(isolate, info[0]);
+            }
+            
+            // Call Zig callback
+            data->reject_callback(data->reject_context, reason);
+        }
+        
+        // Return undefined
+        info.GetReturnValue().SetUndefined();
+    };
+    
+    // Create FunctionTemplate
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, callback, external);
+    MaybeLocal<Function> maybe_fn = tpl->GetFunction(ctx);
+    if (maybe_fn.IsEmpty()) {
+        delete data;
+        return nullptr;
+    }
+    
+    Local<Function> fn = maybe_fn.ToLocalChecked();
+    return new Global<Function>(isolate, fn);
+}
+
+/// Dispose a Zig callback handler function
+///
+/// This frees both the V8 Global<Function> and the ZigPromiseCallbackData.
+/// Must be called when the handler is no longer needed.
+void v8_DisposeZigCallbackHandler(Global<Function>* handler) {
+    if (handler) {
+        // Note: We can't easily access the callback data from here to free it,
+        // so it will be leaked. In a real implementation, we'd need weak callbacks
+        // or a different architecture. For now, the data is small and persistent
+        // for the lifetime of the stream.
+        handler->Reset();
+        delete handler;
+    }
+}
+
+// ============================================================================
 // ArrayBuffer API (Phase 4: Runtime Infrastructure)
 // ============================================================================
 

@@ -111,6 +111,78 @@ const js_callback_vtable = Algorithm.VTable{
     .destroy = jsCallbackDestroy,
 };
 
+/// Context structure for bridging V8 Promise to AsyncPromise
+/// This is passed to the V8 promise handlers and freed after settlement
+const PromiseBridgeContext = struct {
+    promise: *AsyncPromise(void),
+    allocator: Allocator,
+};
+
+/// Callback invoked when V8 Promise fulfills
+/// Fulfills the corresponding AsyncPromise
+fn v8PromiseFulfillCallback(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const bridge_ctx: *PromiseBridgeContext = @ptrCast(@alignCast(ctx orelse return));
+
+    // Fulfill the AsyncPromise
+    bridge_ctx.promise.fulfill({});
+
+    // Clean up bridge context
+    bridge_ctx.allocator.destroy(bridge_ctx);
+}
+
+/// Callback invoked when V8 Promise rejects
+/// Rejects the corresponding AsyncPromise
+fn v8PromiseRejectCallback(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const bridge_ctx: *PromiseBridgeContext = @ptrCast(@alignCast(ctx orelse return));
+
+    // Reject the AsyncPromise with a generic error
+    // Note: We could extract the error message from the V8 value if needed
+    bridge_ctx.promise.reject(webidl.errors.Exception{ .simple = .{
+        .type = .TypeError,
+        .message = "Stream callback promise rejected",
+    } });
+
+    // Clean up bridge context
+    bridge_ctx.allocator.destroy(bridge_ctx);
+}
+
+/// Bridge a V8 Promise result to an AsyncPromise
+/// Creates handlers that fulfill/reject the AsyncPromise when the V8 Promise settles
+fn bridgeV8PromiseToAsync(
+    engine: *const runtime.EngineInterface,
+    engine_ctx: *anyopaque,
+    v8_promise: *anyopaque,
+    async_promise: *AsyncPromise(void),
+    allocator: Allocator,
+) !void {
+    const chain_fn = engine.chainPromiseHandlers orelse {
+        // Engine doesn't support promise chaining - fulfill immediately
+        async_promise.fulfill({});
+        return;
+    };
+
+    // Create bridge context
+    const bridge_ctx = try allocator.create(PromiseBridgeContext);
+    bridge_ctx.* = .{
+        .promise = async_promise,
+        .allocator = allocator,
+    };
+
+    // Chain our handlers onto the V8 Promise
+    chain_fn(
+        engine_ctx,
+        v8_promise,
+        v8PromiseFulfillCallback,
+        bridge_ctx,
+        v8PromiseRejectCallback,
+        bridge_ctx, // Same context for both - only one will be called
+    ) catch {
+        // Failed to chain - clean up and fulfill immediately
+        allocator.destroy(bridge_ctx);
+        async_promise.fulfill({});
+    };
+}
+
 fn jsCallbackInvoke(
     controller: *runtime.Instance,
     context: ?*anyopaque,
@@ -181,11 +253,12 @@ fn jsCallbackInvoke(
         return promise;
     }
 
-    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
-    // For now, return a resolved promise since we can't chain V8 promises easily
-    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
+    // Create our AsyncPromise that will be settled when V8 Promise settles
     const promise = try AsyncPromise(void).init(allocator, event_loop);
-    promise.fulfill({});
+
+    // Bridge the V8 Promise to our AsyncPromise
+    try bridgeV8PromiseToAsync(engine, engine_ctx, result.?, promise, allocator);
+
     return promise;
 }
 
@@ -253,11 +326,12 @@ fn jsCallbackInvokeWithArg(
         return promise;
     }
 
-    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
-    // For now, return a resolved promise since we can't chain V8 promises easily
-    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
+    // Create our AsyncPromise that will be settled when V8 Promise settles
     const promise = try AsyncPromise(void).init(allocator, event_loop);
-    promise.fulfill({});
+
+    // Bridge the V8 Promise to our AsyncPromise
+    try bridgeV8PromiseToAsync(engine, engine_ctx, result.?, promise, allocator);
+
     return promise;
 }
 
@@ -328,11 +402,12 @@ fn jsCallbackInvokeWithOptArg(
         return promise;
     }
 
-    // The result is a V8 Promise - we need to wrap it in an AsyncPromise
-    // For now, return a resolved promise since we can't chain V8 promises easily
-    // TODO: Bridge V8 Promise to AsyncPromise via then() callbacks
+    // Create our AsyncPromise that will be settled when V8 Promise settles
     const promise = try AsyncPromise(void).init(allocator, event_loop);
-    promise.fulfill({});
+
+    // Bridge the V8 Promise to our AsyncPromise
+    try bridgeV8PromiseToAsync(engine, engine_ctx, result.?, promise, allocator);
+
     return promise;
 }
 

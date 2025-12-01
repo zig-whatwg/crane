@@ -639,53 +639,47 @@ fn v8GetWrapperForInstance(
 /// Arguments:
 ///   - engine_ctx: V8 Context pointer
 ///   - js_promise: V8 Promise* to chain handlers onto
+///   - on_fulfill: Zig callback for fulfillment
 ///   - on_fulfill_ctx: Context passed to fulfillment callback
+///   - on_reject: Zig callback for rejection
 ///   - on_reject_ctx: Context passed to rejection callback
 fn v8ChainPromiseHandlers(
     engine_ctx: *anyopaque,
     js_promise: *anyopaque,
-    on_fulfill_ctx: *anyopaque,
-    on_reject_ctx: *anyopaque,
+    on_fulfill: runtime.PromiseFulfillCallback,
+    on_fulfill_ctx: ?*anyopaque,
+    on_reject: runtime.PromiseRejectCallback,
+    on_reject_ctx: ?*anyopaque,
 ) EngineError!void {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const promise: *ffi.Promise = @ptrCast(@alignCast(js_promise));
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse
-        return EngineError.OperationFailed;
 
-    // Create a PromiseResolver that we'll use to create handlers
-    // The handlers will call our Zig callback when invoked
-    const resolver = ffi.v8_PromiseResolver_New(context) orelse
-        return EngineError.PromiseError;
+    // Create fulfill handler that calls Zig callback
+    const fulfill_handler = ffi.v8_CreateZigFulfillHandler(
+        context,
+        on_fulfill,
+        on_fulfill_ctx,
+    ) orelse return EngineError.PromiseError;
 
-    // Create fulfill handler function
-    const fulfill_handler = ffi.v8_PromiseResolver_CreateResolveHandler(context, resolver) orelse {
-        ffi.v8_PromiseResolver_Dispose(resolver);
-        return EngineError.PromiseError;
-    };
-
-    // Create reject handler function
-    const reject_handler = ffi.v8_PromiseResolver_CreateRejectHandler(context, resolver) orelse {
-        ffi.v8_Function_Dispose(fulfill_handler);
-        ffi.v8_PromiseResolver_Dispose(resolver);
+    // Create reject handler that calls Zig callback
+    const reject_handler = ffi.v8_CreateZigRejectHandler(
+        context,
+        on_reject,
+        on_reject_ctx,
+    ) orelse {
+        ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
         return EngineError.PromiseError;
     };
-
-    // Store our context pointers in the isolate data slots for now
-    // TODO: Use proper weak ref mechanism to pass context to handlers
-    _ = on_fulfill_ctx;
-    _ = on_reject_ctx;
-    _ = isolate;
 
     // Chain the handlers onto the promise
     _ = ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler) orelse {
-        ffi.v8_Function_Dispose(reject_handler);
-        ffi.v8_Function_Dispose(fulfill_handler);
-        ffi.v8_PromiseResolver_Dispose(resolver);
+        ffi.v8_DisposeZigCallbackHandler(reject_handler);
+        ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
         return EngineError.PromiseError;
     };
 
     // Note: The handlers are now owned by the promise chain
-    // The resolver is used internally by the handlers
+    // The callback data will be cleaned up when the handlers are GC'd
 }
 
 // ============================================================================

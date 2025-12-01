@@ -112,6 +112,8 @@ pub const jsengine = @import("jsengine.zig");
 pub const EngineInterface = @import("engine_interface.zig").EngineInterface;
 pub const EngineError = @import("engine_interface.zig").EngineError;
 pub const MainThreadCallback = @import("engine_interface.zig").MainThreadCallback;
+pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfillCallback;
+pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
 // NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
