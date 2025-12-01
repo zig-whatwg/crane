@@ -63,11 +63,16 @@ pub const dom_token_list = @import("dom_token_list.zig");
 pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
 pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
+pub const cookie_change_event = @import("cookie_change_event.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;
 pub const isSlottable = slot_helpers.isSlottable;
 pub const isSlot = slot_helpers.isSlot;
+
+// Re-export CookieChangeEvent
+pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
+pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
 
 // Re-export selector functions
 pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
