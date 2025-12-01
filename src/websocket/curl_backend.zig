@@ -35,6 +35,7 @@
 const std = @import("std");
 const fetch = @import("fetch");
 const curl = fetch.network.curl_ffi;
+const CurlCookieManager = fetch.network.CurlCookieManager;
 const close_codes = @import("close_codes.zig");
 
 /// WebSocket backend using libcurl.
@@ -56,7 +57,19 @@ pub const CurlWebSocket = struct {
     /// Negotiated protocol from server.
     negotiated_protocol: ?[]const u8,
 
+    /// Cookie manager for handshake cookies (shared with Fetch API)
+    cookie_manager: ?*CurlCookieManager,
+
     const Self = @This();
+
+    /// Options for WebSocket initialization.
+    pub const Options = struct {
+        /// Subprotocols to request
+        protocols: ?[]const []const u8 = null,
+
+        /// Cookie manager for handshake (shared with Fetch API)
+        cookie_manager: ?*CurlCookieManager = null,
+    };
 
     /// Initialize a new WebSocket backend.
     ///
@@ -65,6 +78,11 @@ pub const CurlWebSocket = struct {
     /// - url: WebSocket URL (ws:// or wss://)
     /// - protocols: Optional list of subprotocols to request
     pub fn init(allocator: std.mem.Allocator, url: []const u8, protocols: ?[]const []const u8) !*Self {
+        return initWithOptions(allocator, url, .{ .protocols = protocols });
+    }
+
+    /// Initialize with full options including cookie manager.
+    pub fn initWithOptions(allocator: std.mem.Allocator, url: []const u8, options: Options) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
@@ -74,7 +92,7 @@ pub const CurlWebSocket = struct {
 
         // Build comma-separated protocol list if provided
         var protocols_copy: ?[]const u8 = null;
-        if (protocols) |protos| {
+        if (options.protocols) |protos| {
             if (protos.len > 0) {
                 var total_len: usize = 0;
                 for (protos) |p| {
@@ -105,6 +123,7 @@ pub const CurlWebSocket = struct {
             .protocols = protocols_copy,
             .connected = false,
             .negotiated_protocol = null,
+            .cookie_manager = options.cookie_manager,
         };
 
         return self;
@@ -154,6 +173,11 @@ pub const CurlWebSocket = struct {
         result = curl.easy_setopt(handle, curl.CURLOPT_CONNECT_ONLY, curl.CURL_CONNECT_ONLY_WEBSOCKET);
         if (result != curl.CURLE_OK) {
             return error.CurlSetoptFailed;
+        }
+
+        // Attach cookie manager for handshake cookies
+        if (self.cookie_manager) |cm| {
+            cm.attachToHandle(handle);
         }
 
         // Add Sec-WebSocket-Protocol header if protocols specified

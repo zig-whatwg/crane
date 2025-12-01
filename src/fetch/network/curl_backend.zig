@@ -24,6 +24,7 @@ const NetworkError = backend.NetworkError;
 const HttpVersion = backend.HttpVersion;
 const curl = @import("curl_ffi.zig");
 const curl_error = @import("curl_error.zig");
+const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 
 // =============================================================================
 // Global State Management
@@ -93,22 +94,70 @@ pub const LibcurlBackend = struct {
     /// Abort flag - set to true to cancel in-progress request
     aborted: std.atomic.Value(bool),
 
+    /// Shared cookie manager (null = cookies disabled)
+    cookie_manager: ?*CurlCookieManager,
+
+    /// Whether we own the cookie manager (should deinit on cleanup)
+    owns_cookie_manager: bool,
+
     const Self = @This();
+
+    /// Options for LibcurlBackend initialization
+    pub const Options = struct {
+        /// Enable cookie handling (default: true)
+        enable_cookies: bool = true,
+
+        /// Custom cookie manager (null = create new one)
+        /// If provided, caller retains ownership
+        cookie_manager: ?*CurlCookieManager = null,
+    };
 
     /// Initialize a new LibcurlBackend.
     /// Requires globalInit() to have been called first.
     pub fn init(allocator: Allocator) !*Self {
+        return initWithOptions(allocator, .{});
+    }
+
+    /// Initialize with options (including cookie configuration)
+    pub fn initWithOptions(allocator: Allocator, options: Options) !*Self {
         const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        var cookie_manager: ?*CurlCookieManager = null;
+        var owns_manager = false;
+
+        if (options.enable_cookies) {
+            if (options.cookie_manager) |cm| {
+                cookie_manager = cm;
+                owns_manager = false; // Caller owns it
+            } else {
+                cookie_manager = try CurlCookieManager.init(allocator, null);
+                owns_manager = true; // We own it
+            }
+        }
+
         self.* = .{
             .allocator = allocator,
             .aborted = std.atomic.Value(bool).init(false),
+            .cookie_manager = cookie_manager,
+            .owns_cookie_manager = owns_manager,
         };
         return self;
     }
 
     /// Clean up backend resources.
     pub fn deinit(self: *Self) void {
+        if (self.owns_cookie_manager) {
+            if (self.cookie_manager) |cm| {
+                cm.deinit();
+            }
+        }
         self.allocator.destroy(self);
+    }
+
+    /// Get the cookie manager (for sharing with CookieStore API)
+    pub fn getCookieManager(self: *Self) ?*CurlCookieManager {
+        return self.cookie_manager;
     }
 
     /// Get as NetworkBackend interface.
@@ -166,6 +215,11 @@ pub const LibcurlBackend = struct {
         // Create curl easy handle
         const handle = curl.easy_init() orelse return NetworkError.OutOfMemory;
         defer curl.easy_cleanup(handle);
+
+        // Attach cookie manager if available
+        if (self.cookie_manager) |cm| {
+            cm.attachToHandle(handle);
+        }
 
         // Initialize callback context
         var ctx = CallbackContext.init(allocator, &self.aborted);
