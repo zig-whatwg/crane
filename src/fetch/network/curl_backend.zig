@@ -545,3 +545,108 @@ test "LibcurlBackend - abort flag" {
     // Now aborted
     try std.testing.expect(back.aborted.load(.seq_cst));
 }
+
+test "LibcurlBackend - CallbackContext init and deinit" {
+    const allocator = std.testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    const back = try LibcurlBackend.init(allocator);
+    defer back.deinit();
+
+    // Create callback context
+    var ctx = LibcurlBackend.CallbackContext.init(allocator, &back.aborted);
+    defer ctx.deinit();
+
+    // Verify empty state
+    try std.testing.expectEqual(@as(usize, 0), ctx.response_body.items.len);
+    try std.testing.expectEqual(@as(usize, 0), ctx.response_headers.items.len);
+    try std.testing.expectEqual(@as(usize, 0), ctx.raw_headers.items.len);
+}
+
+test "LibcurlBackend - CallbackContext accumulates data" {
+    const allocator = std.testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    const back = try LibcurlBackend.init(allocator);
+    defer back.deinit();
+
+    var ctx = LibcurlBackend.CallbackContext.init(allocator, &back.aborted);
+    defer ctx.deinit();
+
+    // Simulate body data accumulation
+    try ctx.response_body.appendSlice(allocator, "Hello, ");
+    try ctx.response_body.appendSlice(allocator, "World!");
+
+    try std.testing.expectEqualStrings("Hello, World!", ctx.response_body.items);
+
+    // Simulate header data accumulation
+    try ctx.raw_headers.appendSlice(allocator, "HTTP/1.1 200 OK\r\n");
+    try ctx.raw_headers.appendSlice(allocator, "Content-Type: text/plain\r\n");
+
+    try std.testing.expect(std.mem.startsWith(u8, ctx.raw_headers.items, "HTTP/1.1 200 OK"));
+}
+
+test "LibcurlBackend - supportsStreaming returns false" {
+    const allocator = std.testing.allocator;
+
+    try globalInit();
+    defer globalCleanup();
+
+    const back = try LibcurlBackend.init(allocator);
+    defer back.deinit();
+
+    // LibcurlBackend uses easy interface, not streaming
+    try std.testing.expect(!back.getBackend().supportsStreaming());
+}
+
+test "LibcurlBackend - multiple init/cleanup cycles" {
+    const allocator = std.testing.allocator;
+
+    // Cycle 1
+    {
+        try globalInit();
+        defer globalCleanup();
+
+        const back = try LibcurlBackend.init(allocator);
+        defer back.deinit();
+
+        try std.testing.expectEqualStrings("LibcurlBackend", back.getBackend().getName());
+    }
+
+    // Verify cleanup happened
+    try std.testing.expectEqual(@as(usize, 0), global_init_count);
+
+    // Cycle 2
+    {
+        try globalInit();
+        defer globalCleanup();
+
+        const back = try LibcurlBackend.init(allocator);
+        defer back.deinit();
+
+        try std.testing.expect(!back.aborted.load(.seq_cst));
+    }
+
+    try std.testing.expectEqual(@as(usize, 0), global_init_count);
+}
+
+test "LibcurlBackend - concurrent global init" {
+    // Test that multiple inits increment correctly
+    try globalInit();
+    try globalInit();
+    try globalInit();
+
+    try std.testing.expectEqual(@as(usize, 3), global_init_count);
+
+    globalCleanup();
+    try std.testing.expectEqual(@as(usize, 2), global_init_count);
+
+    globalCleanup();
+    globalCleanup();
+
+    try std.testing.expectEqual(@as(usize, 0), global_init_count);
+}
