@@ -41,7 +41,7 @@
 //! This implementation is in progress. Currently implemented:
 //! - [x] Core data structures (Phase 2)
 //! - [x] Client-side interfaces (Phase 3)
-//! - [ ] ServiceWorkerGlobalScope (Phase 4)
+//! - [x] ServiceWorkerGlobalScope (Phase 4)
 //! - [ ] Events (Phase 5)
 //! - [ ] Cache API (Phase 6)
 //! - [ ] Core algorithms (Phase 7)
@@ -103,6 +103,13 @@ pub const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
 pub const NavigationPreloadManager = interfaces.NavigationPreloadManager;
 pub const ClientInterface = interfaces.ClientInterface;
 pub const WindowClientInterface = interfaces.WindowClientInterface;
+
+// ServiceWorkerGlobalScope and context APIs (Phase 4)
+pub const global = @import("global/root.zig");
+
+// Re-export commonly used global types
+pub const ServiceWorkerGlobalScope = global.ServiceWorkerGlobalScope;
+pub const Clients = global.Clients;
 
 // =============================================================================
 // Tests
