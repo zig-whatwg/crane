@@ -72,6 +72,9 @@ pub const enforcement = @import("enforcement.zig");
 // DOM integration module - integrates Trusted Types with DOM injection sinks
 pub const dom_integration = @import("dom_integration.zig");
 
+// Eval integration module - integrates Trusted Types with eval/Function
+pub const eval_integration = @import("eval_integration.zig");
+
 pub const EnforcementError = enforcement.EnforcementError;
 pub const ExpectedType = enforcement.ExpectedType;
 pub const InputValue = enforcement.InputValue;
@@ -92,6 +95,21 @@ pub const isValidTrustedScriptURL = enforcement.isValidTrustedScriptURL;
 pub const getRequiredTypeForProperty = enforcement.getRequiredTypeForProperty;
 pub const getRequiredTypeForAttribute = enforcement.getRequiredTypeForAttribute;
 pub const createCspPolicyInfo = enforcement.createCspPolicyInfo;
+
+// Eval integration exports
+pub const EvalInput = eval_integration.EvalInput;
+pub const EvalCspPolicyInfo = eval_integration.EvalCspPolicyInfo;
+pub const CompilationCheckResult = eval_integration.CompilationCheckResult;
+pub const ensureCSPDoesNotBlockStringCompilation = eval_integration.ensureCSPDoesNotBlockStringCompilation;
+pub const validateEval = eval_integration.validateEval;
+pub const validateFunctionConstructor = eval_integration.validateFunctionConstructor;
+pub const validateTimerStringCallback = eval_integration.validateTimerStringCallback;
+
+// Eval sink name constants
+pub const SINK_EVAL = eval_integration.SINK_EVAL;
+pub const SINK_FUNCTION = eval_integration.SINK_FUNCTION;
+pub const SINK_SET_TIMEOUT = eval_integration.SINK_SET_TIMEOUT;
+pub const SINK_SET_INTERVAL = eval_integration.SINK_SET_INTERVAL;
 
 // TODO: Add these in subsequent tasks
 // pub const sink_types = @import("sink_types.zig");
