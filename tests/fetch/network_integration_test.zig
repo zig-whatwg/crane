@@ -17,6 +17,20 @@ const NetworkError = network.NetworkError;
 const globalInit = network.globalInit;
 const globalCleanup = network.globalCleanup;
 
+/// Check if a response indicates a server error (5xx) that should cause test skip
+/// This handles cases where httpbin.org or other test endpoints are having issues
+fn isServerError(status: u16) bool {
+    return status >= 500 and status <= 599;
+}
+
+/// Skip test if response indicates server-side issues with test endpoint
+fn skipOnServerError(response_status: u16) error{SkipZigTest}!void {
+    if (isServerError(response_status)) {
+        std.debug.print("Skipping network test: test endpoint returned server error {d}\n", .{response_status});
+        return error.SkipZigTest;
+    }
+}
+
 /// Check if we can reach the test endpoint
 fn canReachTestEndpoint(allocator: std.mem.Allocator) bool {
     // Try to make a simple request to detect network availability
@@ -50,7 +64,7 @@ test "LibcurlBackend - GET request to httpbin.org" {
     // Skip if no network
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -87,7 +101,7 @@ test "LibcurlBackend - POST request with body" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -125,7 +139,7 @@ test "LibcurlBackend - PUT request" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -155,7 +169,7 @@ test "LibcurlBackend - DELETE request" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -187,7 +201,7 @@ test "LibcurlBackend - various status codes" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -211,6 +225,13 @@ test "LibcurlBackend - various status codes" {
         var response = try backend.getBackend().send(allocator, &request);
         defer response.deinit();
 
+        // If httpbin.org returns a 5xx error when we didn't expect one,
+        // skip this test as httpbin.org is having issues
+        if (isServerError(response.status) and !isServerError(expected_status)) {
+            std.debug.print("Skipping status code test: httpbin.org returned {d} (server error)\n", .{response.status});
+            return error.SkipZigTest;
+        }
+
         try testing.expectEqual(expected_status, response.status);
     }
 }
@@ -227,7 +248,7 @@ test "LibcurlBackend - custom headers are sent" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -263,7 +284,7 @@ test "LibcurlBackend - response headers are captured" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -279,6 +300,9 @@ test "LibcurlBackend - response headers are captured" {
 
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
+
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
 
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.headers.len > 0);
@@ -307,7 +331,7 @@ test "LibcurlBackend - request timeout" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -394,7 +418,7 @@ test "LibcurlBackend - HTTPS with valid certificate" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -430,7 +454,7 @@ test "LibcurlBackend - gzip compressed response" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -467,7 +491,7 @@ test "LibcurlBackend - timing information populated" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -504,7 +528,7 @@ test "LibcurlBackend - HTTP/2 request" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const backend = try LibcurlBackend.init(allocator);
@@ -541,7 +565,7 @@ test "ConnectionPool - basic request" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const pool = try ConnectionPool.init(allocator);
@@ -570,7 +594,7 @@ test "ConnectionPool - connection reuse" {
 
     if (!canReachTestEndpoint(allocator)) {
         std.debug.print("Skipping network test: endpoint not reachable\n", .{});
-        return;
+        return error.SkipZigTest;
     }
 
     const pool = try ConnectionPool.init(allocator);
