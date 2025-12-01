@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes - Cookie Implementation Migration
+
+#### Removed: `src/fetch/cookies/` module
+The standalone cookie implementation has been removed in favor of the unified
+`CurlCookieManager` that integrates with libcurl.
+
+**Before (deprecated):**
+```zig
+const cookies = @import("fetch").cookies;
+const store = cookies.CookieStore.init(allocator);
+defer store.deinit();
+try store.setCookie("session=abc123", "example.com", "/", true);
+```
+
+**After:**
+```zig
+const fetch = @import("fetch");
+const CurlCookieManager = fetch.CurlCookieManager;
+const CookieStore = fetch.CookieStore;
+
+// Option 1: Direct CurlCookieManager access
+const manager = try CurlCookieManager.init(allocator, null);
+defer manager.deinit();
+try manager.set(.{ .name = "session", .value = "abc123", .domain = ".example.com", ... });
+
+// Option 2: CookieStore API (recommended for WebIDL compatibility)
+const store = try CookieStore.init(allocator, manager, null);
+defer store.deinit();
+try store.setNameValue("session", "abc123");
+```
+
+**Benefits of new implementation:**
+- Cookies automatically shared with Fetch API requests
+- Cookies automatically shared with WebSocket handshakes
+- Proper domain/path matching via libcurl
+- Optional disk persistence
+- Thread-safe operations
+- CookieChangeEvent support for change detection
+
+**Migration notes:**
+- `fetch.cookies.CookieStore` is replaced by `fetch.network.cookie_store.CookieStore`
+- `fetch.cookies.Cookie` is replaced by `fetch.network.curl_cookies.Cookie`
+- Manual cookie header building (`buildCookieHeader`) is no longer needed - libcurl handles it
+- Cookie extraction from responses is automatic when using `LibcurlBackend`
+- The `HttpFetchOptions.cookie_store` field is replaced by `HttpFetchOptions.cookie_manager`
+
 ### Added - Fetch API Implementation (v0.7.0 - 2025-11-27)
 
 #### Core Fetch Infrastructure (`src/fetch/`)

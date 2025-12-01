@@ -35,7 +35,6 @@
 
 pub const internal = @import("internal/root.zig");
 pub const referrer_policy = @import("referrer_policy");
-pub const cookies = @import("cookies/root.zig");
 pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
 pub const cache = @import("cache/root.zig");
@@ -49,9 +48,10 @@ pub const Header = internal.Header;
 // Re-export referrer policy types
 pub const ReferrerPolicy = referrer_policy.ReferrerPolicy;
 
-// Re-export cookie types
-pub const CookieStore = cookies.CookieStore;
-pub const Cookie = cookies.Cookie;
+// Re-export cookie types (from unified curl-based implementation)
+pub const CurlCookieManager = network.curl_cookies.CurlCookieManager;
+pub const Cookie = network.curl_cookies.Cookie;
+pub const CookieStore = network.cookie_store.CookieStore;
 
 // Re-export CORS types
 pub const CredentialsMode = cors.CredentialsMode;
@@ -89,7 +89,6 @@ pub const Response = webidl.Response;
 test {
     _ = internal;
     _ = referrer_policy;
-    _ = cookies;
     _ = cors;
     _ = network;
     _ = cache;

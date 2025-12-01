@@ -28,8 +28,7 @@ const NetworkRequest = network.NetworkRequest;
 const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
-const cookies = @import("../cookies/root.zig");
-const CookieStore = cookies.CookieStore;
+const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const cors = @import("../cors/root.zig");
 const PreflightCache = cors.PreflightCache;
 
@@ -51,8 +50,10 @@ pub const HttpFetchOptions = struct {
     cors_flag: bool = false,
     /// CORS-preflight flag - set if preflight should be performed
     cors_preflight_flag: bool = false,
-    /// Cookie store for credentials handling (optional)
-    cookie_store: ?*CookieStore = null,
+    /// Cookie manager for credentials handling (optional)
+    /// If null, LibcurlBackend creates its own cookie manager.
+    /// Cookies are handled automatically by libcurl when attached.
+    cookie_manager: ?*CurlCookieManager = null,
     /// Preflight cache for CORS preflight requests (optional)
     preflight_cache: ?*PreflightCache = null,
 };
@@ -226,20 +227,17 @@ pub fn httpNetworkOrCacheFetch(
 /// 2. Create backend and perform network fetch
 /// 3. Convert NetworkResponse to InternalResponse
 /// 4. Record timing information
+///
+/// Note: Cookie handling is automatic via LibcurlBackend's CurlCookieManager.
+/// When credentials mode is not 'omit', libcurl automatically:
+/// - Sends matching cookies in the Cookie header (per Fetch spec §4.9 step 5)
+/// - Stores cookies from Set-Cookie headers (per Fetch spec §4.9 step 11)
 pub fn httpNetworkFetch(
     allocator: Allocator,
     params: *FetchParams,
     options: HttpFetchOptions,
 ) HttpFetchError!*InternalResponse {
     const request = params.request;
-
-    // Add cookies to request if credentials are included and cookie store is available
-    // Per Fetch spec §4.9 step 5
-    if (options.cookie_store) |cookie_store| {
-        addCookiesToRequest(allocator, request, cookie_store) catch {
-            // Non-fatal: continue without cookies
-        };
-    }
 
     // Step 1: Build NetworkRequest from InternalRequest
     const network_request = buildNetworkRequest(allocator, request) catch {
@@ -248,7 +246,13 @@ pub fn httpNetworkFetch(
     defer freeNetworkRequest(allocator, network_request);
 
     // Step 2: Create backend and perform network fetch
-    const backend_impl = LibcurlBackend.init(allocator) catch {
+    // Configure backend with cookie manager if provided
+    const backend_options = LibcurlBackend.Options{
+        .enable_cookies = request.credentials_mode != .omit,
+        .cookie_manager = options.cookie_manager,
+    };
+
+    const backend_impl = LibcurlBackend.initWithOptions(allocator, backend_options) catch {
         return HttpFetchError.NetworkError;
     };
     defer backend_impl.deinit();
@@ -259,6 +263,7 @@ pub fn httpNetworkFetch(
     const start_time = getCurrentTimeMs();
 
     // Perform the actual network request
+    // Cookies are handled automatically by libcurl via CurlCookieManager
     var network_response = backend_iface.send(allocator, &network_request) catch |err| {
         // Map network error to HttpFetchError
         return switch (err) {
@@ -307,14 +312,6 @@ pub fn httpNetworkFetch(
     const end_time = getCurrentTimeMs();
     params.timing_info.final_network_response_start_time = start_time + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
     params.timing_info.end_time = end_time;
-
-    // Step 5: Extract and store cookies from response
-    // Per Fetch spec §4.9 step 11
-    if (options.cookie_store) |cookie_store| {
-        extractCookiesFromResponse(allocator, response, request, cookie_store) catch {
-            // Non-fatal: continue without storing cookies
-        };
-    }
 
     return response;
 }
@@ -427,184 +424,6 @@ fn isNetworkError(response: *InternalResponse) bool {
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
 fn getCurrentTimeMs() f64 {
     return @as(f64, @floatFromInt(std.time.timestamp())) * 1000.0;
-}
-
-// =============================================================================
-// Cookie Integration
-// =============================================================================
-
-/// Add cookies to request based on credentials mode.
-///
-/// Per Fetch spec §4.9 step 5:
-/// "If includeCredentials is true, then: set request's header list
-/// to the result of appending (`Cookie`, cookies) to request's header list."
-fn addCookiesToRequest(
-    allocator: Allocator,
-    request: *InternalRequest,
-    cookie_store: *CookieStore,
-) !void {
-    // Don't send cookies if credentials mode is omit
-    if (request.credentials_mode == .omit) return;
-
-    // Parse URL to get host, path, and scheme
-    const url = request.currentUrl();
-    const url_info = parseUrlForCookies(url) orelse return;
-
-    // Determine same-site status
-    const same_site_status = determineSameSiteStatus(request, url_info.host);
-
-    // Get matching cookies from store
-    const matching_cookies = try cookie_store.getCookiesForRequest(
-        url_info.host,
-        url_info.path,
-        url_info.is_secure,
-        same_site_status,
-        .subresource, // TODO: Determine actual request type from request
-    );
-    defer allocator.free(matching_cookies);
-
-    if (matching_cookies.len == 0) return;
-
-    // Build Cookie header value
-    const cookie_header = try cookies.buildCookieHeader(allocator, matching_cookies);
-    defer allocator.free(cookie_header);
-
-    // Add Cookie header to request
-    try request.header_list.append("Cookie", cookie_header);
-}
-
-/// Extract cookies from response and store them.
-///
-/// Per Fetch spec §4.9 step 11:
-/// "If includeCredentials is true, then: for each `Set-Cookie` header field
-/// in response's header list, run the set-cookie-string parsing algorithm."
-fn extractCookiesFromResponse(
-    allocator: Allocator,
-    response: *InternalResponse,
-    request: *InternalRequest,
-    cookie_store: *CookieStore,
-) !void {
-    // Don't store cookies if credentials mode is omit
-    if (request.credentials_mode == .omit) return;
-
-    // Parse URL to get host, path, and scheme
-    const url = request.currentUrl();
-    const url_info = parseUrlForCookies(url) orelse return;
-
-    // Get all Set-Cookie headers (they must not be combined)
-    const set_cookies = try response.header_list.getSetCookie(allocator);
-    defer {
-        for (set_cookies) |sc| allocator.free(sc);
-        allocator.free(set_cookies);
-    }
-
-    // Store each cookie
-    for (set_cookies) |set_cookie| {
-        cookie_store.setCookie(
-            set_cookie,
-            url_info.host,
-            url_info.path,
-            url_info.is_secure,
-        ) catch {
-            // Ignore individual cookie parse/store errors
-            continue;
-        };
-    }
-}
-
-/// URL info extracted for cookie operations.
-const CookieUrlInfo = struct {
-    host: []const u8,
-    path: []const u8,
-    is_secure: bool,
-};
-
-/// Parse URL to extract host, path, and scheme for cookie operations.
-fn parseUrlForCookies(url: []const u8) ?CookieUrlInfo {
-    // Find scheme
-    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
-    const scheme = url[0..scheme_end];
-    const is_secure = std.mem.eql(u8, scheme, "https");
-
-    // Find host (after :// until / or end)
-    const after_scheme = url[scheme_end + 3 ..];
-    const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
-    const host_part = after_scheme[0..path_start];
-
-    // Remove port from host if present
-    const colon_pos = std.mem.indexOf(u8, host_part, ":");
-    const host = if (colon_pos) |pos| host_part[0..pos] else host_part;
-
-    // Get path (or "/" if no path)
-    const path = if (path_start < after_scheme.len)
-        // Strip query and fragment
-        blk: {
-            const rest = after_scheme[path_start..];
-            const query = std.mem.indexOf(u8, rest, "?") orelse rest.len;
-            const fragment = std.mem.indexOf(u8, rest, "#") orelse rest.len;
-            break :blk rest[0..@min(query, fragment)];
-        } else "/";
-
-    return CookieUrlInfo{
-        .host = host,
-        .path = if (path.len == 0) "/" else path,
-        .is_secure = is_secure,
-    };
-}
-
-/// Determine same-site status for a request.
-fn determineSameSiteStatus(
-    request: *InternalRequest,
-    target_host: []const u8,
-) cookies.SameSiteStatus {
-    // Get request's origin
-    const origin = switch (request.origin) {
-        .client => return .cross_site, // No origin = cross-site
-        .origin => |o| o,
-    };
-
-    // Parse origin to get host
-    if (std.mem.indexOf(u8, origin, "://")) |scheme_end| {
-        const after_scheme = origin[scheme_end + 3 ..];
-        const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
-        const origin_host_part = after_scheme[0..path_start];
-        const colon_pos = std.mem.indexOf(u8, origin_host_part, ":");
-        const origin_host = if (colon_pos) |pos| origin_host_part[0..pos] else origin_host_part;
-
-        // Compare hosts (simplified - doesn't handle eTLD+1)
-        if (std.ascii.eqlIgnoreCase(origin_host, target_host)) {
-            return .same_site;
-        }
-
-        // Check if same registrable domain (simplified)
-        // TODO: Use PSL for proper eTLD+1 comparison
-        if (hasSameSuffix(origin_host, target_host)) {
-            return .same_site;
-        }
-    }
-
-    return .cross_site;
-}
-
-/// Check if two hosts share a common suffix (simplified same-site check).
-fn hasSameSuffix(host_a: []const u8, host_b: []const u8) bool {
-    // Very simplified - just check if one is a suffix of the other with dot
-    if (host_a.len > host_b.len) {
-        if (std.mem.endsWith(u8, host_a, host_b)) {
-            const prefix_len = host_a.len - host_b.len;
-            if (prefix_len > 0 and host_a[prefix_len - 1] == '.') {
-                return true;
-            }
-        }
-    } else {
-        if (std.mem.endsWith(u8, host_b, host_a)) {
-            const prefix_len = host_b.len - host_a.len;
-            if (prefix_len > 0 and host_b[prefix_len - 1] == '.') {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 // =============================================================================
@@ -744,8 +563,10 @@ fn performCorsPreflight(
         .verbose = false,
     };
 
-    // Perform network request
-    const backend_impl = LibcurlBackend.init(allocator) catch {
+    // Perform network request (preflight doesn't use cookies)
+    const backend_impl = LibcurlBackend.initWithOptions(allocator, .{
+        .enable_cookies = false, // Preflight doesn't need cookies
+    }) catch {
         return .{ .failure = .cors_check_failed };
     };
     defer backend_impl.deinit();
