@@ -84,6 +84,8 @@ test "LibcurlBackend - GET request to httpbin.org" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
     try testing.expect(response.body.?.len > 0);
@@ -122,6 +124,8 @@ test "LibcurlBackend - POST request with body" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
 
@@ -158,6 +162,8 @@ test "LibcurlBackend - PUT request" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 }
 
@@ -186,6 +192,8 @@ test "LibcurlBackend - DELETE request" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 }
 
@@ -268,6 +276,8 @@ test "LibcurlBackend - custom headers are sent" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 
     // httpbin echoes headers in the response
@@ -304,6 +314,8 @@ test "LibcurlBackend - response headers are captured" {
     // Skip if httpbin.org is having server issues
     try skipOnServerError(response.status);
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.headers.len > 0);
 
@@ -347,7 +359,21 @@ test "LibcurlBackend - request timeout" {
     };
 
     const result = backend.getBackend().send(allocator, &request);
-    try testing.expectError(NetworkError.RequestTimeout, result);
+
+    // If httpbin.org is having issues and returns immediately with an error,
+    // we won't get a timeout - skip the test in that case
+    if (result) |response| {
+        var resp = response;
+        defer resp.deinit();
+        if (isServerError(resp.status)) {
+            std.debug.print("Skipping network test: test endpoint returned server error {d}\n", .{resp.status});
+            return error.SkipZigTest;
+        }
+        // If we got a successful response, the delay endpoint didn't work as expected
+        return error.TestUnexpectedResult;
+    } else |err| {
+        try testing.expectEqual(NetworkError.RequestTimeout, err);
+    }
 }
 
 // =============================================================================
@@ -439,6 +465,8 @@ test "LibcurlBackend - HTTPS with valid certificate" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 }
 
@@ -473,6 +501,8 @@ test "LibcurlBackend - gzip compressed response" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     // libcurl automatically decompresses, so body should contain readable JSON
     try testing.expect(response.body != null);
@@ -508,6 +538,8 @@ test "LibcurlBackend - timing information populated" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
 
     // Timing should be populated
@@ -547,6 +579,8 @@ test "LibcurlBackend - HTTP/2 request" {
     var response = try backend.getBackend().send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     // Note: HTTP/2 will only be used if built with -Dhttp2=true
     // The test passes either way, but http_version will differ
@@ -582,6 +616,11 @@ test "ConnectionPool - basic request" {
     var response = try pool.send(allocator, &request);
     defer response.deinit();
 
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
+
+    // Skip if httpbin.org is having server issues
+    try skipOnServerError(response.status);
     try testing.expectEqual(@as(u16, 200), response.status);
     try testing.expect(response.body != null);
 }
@@ -612,6 +651,8 @@ test "ConnectionPool - connection reuse" {
     {
         var response = try pool.send(allocator, &request);
         defer response.deinit();
+        // Skip if httpbin.org is having server issues
+        try skipOnServerError(response.status);
         try testing.expectEqual(@as(u16, 200), response.status);
         // First request should establish new connection
         try testing.expect(!response.connection_reused);
@@ -621,6 +662,8 @@ test "ConnectionPool - connection reuse" {
     {
         var response = try pool.send(allocator, &request);
         defer response.deinit();
+        // Skip if httpbin.org is having server issues
+        try skipOnServerError(response.status);
         try testing.expectEqual(@as(u16, 200), response.status);
         // Second request should reuse connection (num_connects == 0)
         try testing.expect(response.connection_reused);
