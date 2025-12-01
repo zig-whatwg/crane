@@ -16,29 +16,124 @@
 //!
 //! - `connection.zig` - WebSocket connection state machine and lifecycle
 //! - `curl_backend.zig` - libcurl WebSocket backend implementation
-//! - `close_codes.zig` - RFC 6455 close status codes
-//! - `events.zig` - WebSocket-specific event types (CloseEvent, MessageEvent)
+//! - `close_codes.zig` - RFC 6455 close status codes (1000-4999)
+//! - `events.zig` - Event types for task queue integration
+//! - `utf8.zig` - UTF-8 validation for text frames
+//! - `binary_types.zig` - Binary data handling (Blob/ArrayBuffer)
+//! - `send_buffer.zig` - Message queuing and bufferedAmount tracking
 //!
-//! ## Usage
+//! ## Architecture
+//!
+//! ```
+//! ┌─────────────────────────────────────────────────────────┐
+//! │                   WebSocket Interface                    │
+//! │               (src/webidl/impls/WebSocket.zig)          │
+//! ├─────────────────────────────────────────────────────────┤
+//! │                  WebSocketConnection                     │
+//! │                   (connection.zig)                       │
+//! │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
+//! │  │ SendBuffer  │  │ CloseCodes  │  │ UTF-8 Validator │ │
+//! │  └─────────────┘  └─────────────┘  └─────────────────┘ │
+//! ├─────────────────────────────────────────────────────────┤
+//! │                   CurlWebSocket                          │
+//! │                  (curl_backend.zig)                      │
+//! │         libcurl WebSocket API (7.86.0+)                 │
+//! └─────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Connection States
+//!
+//! Per WHATWG spec, WebSocket connections have four states:
+//!
+//! - **CONNECTING (0)**: Connection not yet established
+//! - **OPEN (1)**: Connection established, communication possible
+//! - **CLOSING (2)**: Close handshake in progress
+//! - **CLOSED (3)**: Connection closed or could not be opened
+//!
+//! ## Close Codes
+//!
+//! RFC 6455 defines close status codes:
+//!
+//! - **1000**: Normal closure
+//! - **1001**: Going away (endpoint navigating away)
+//! - **1002**: Protocol error
+//! - **1003**: Unsupported data type
+//! - **1007**: Invalid payload data (bad UTF-8)
+//! - **1008**: Policy violation
+//! - **1009**: Message too big
+//! - **1010**: Missing required extension
+//! - **1011**: Internal server error
+//! - **3000-3999**: Registered for libraries/frameworks
+//! - **4000-4999**: Private use (application-specific)
+//!
+//! ## Binary Types
+//!
+//! The `binaryType` attribute controls how binary messages are exposed:
+//!
+//! - **"blob"**: Data exposed as Blob object (can spool to disk)
+//! - **"arraybuffer"**: Data exposed as ArrayBuffer (memory-efficient)
+//!
+//! ## Events
+//!
+//! WebSocket fires four events:
+//!
+//! - **open**: Connection established
+//! - **message**: Data received (text or binary)
+//! - **error**: Error occurred
+//! - **close**: Connection closed
+//!
+//! All events are dispatched via the task queue using "networking" task source.
+//!
+//! ## Usage Example
 //!
 //! ```zig
-//! const ws = @import("websocket");
+//! const websocket = @import("websocket");
 //!
-//! // Create a new WebSocket connection
-//! var socket = try ws.WebSocket.init(allocator, "wss://example.com/socket", null);
-//! defer socket.deinit();
+//! // Create connection (starts in CONNECTING state)
+//! var conn = try websocket.WebSocketConnection.init(allocator, "wss://example.com/ws");
+//! defer conn.deinit();
 //!
-//! // Set up event handlers
-//! socket.onopen = onOpenHandler;
-//! socket.onmessage = onMessageHandler;
-//! socket.onclose = onCloseHandler;
-//! socket.onerror = onErrorHandler;
+//! // Establish connection
+//! try conn.connect(null); // or &[_][]const u8{"graphql", "chat"}
 //!
-//! // Send data
-//! try socket.send("Hello, WebSocket!");
+//! // Send text message
+//! try conn.sendText("Hello, WebSocket!");
 //!
-//! // Close the connection
-//! try socket.close(1000, "Goodbye");
+//! // Send binary message
+//! try conn.sendBinary(&[_]u8{ 0x01, 0x02, 0x03 });
+//!
+//! // Receive message (non-blocking)
+//! var buffer: [4096]u8 = undefined;
+//! if (try conn.receive(&buffer)) |msg| {
+//!     if (msg.is_text) {
+//!         std.debug.print("Text: {s}\n", .{msg.data});
+//!     } else {
+//!         std.debug.print("Binary: {} bytes\n", .{msg.data.len});
+//!     }
+//! }
+//!
+//! // Close connection
+//! try conn.close(1000, "Goodbye");
+//! ```
+//!
+//! ## UTF-8 Validation
+//!
+//! Per RFC 6455, text frames must contain valid UTF-8. Invalid UTF-8
+//! causes connection failure with close code 1007.
+//!
+//! For fragmented messages, use `Utf8Validator` for streaming validation:
+//!
+//! ```zig
+//! var validator = websocket.Utf8Validator{};
+//! for (fragments) |fragment| {
+//!     if (!validator.validate(fragment)) {
+//!         // Invalid UTF-8 - fail connection
+//!         break;
+//!     }
+//! }
+//! if (!validator.finalize()) {
+//!     // Incomplete sequence at end - fail connection
+//! }
 //! ```
 //!
 //! ## References
@@ -46,6 +141,7 @@
 //! - WHATWG WebSockets: https://websockets.spec.whatwg.org/
 //! - RFC 6455: https://datatracker.ietf.org/doc/html/rfc6455
 //! - libcurl WebSocket: https://curl.se/libcurl/c/libcurl-ws.html
+//! - W3C File API (Blob): https://www.w3.org/TR/FileAPI/
 
 const std = @import("std");
 
