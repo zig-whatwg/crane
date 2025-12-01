@@ -45,6 +45,7 @@ pub const curl_ffi = @import("curl_ffi.zig");
 pub const curl_error = @import("curl_error.zig");
 pub const curl_backend = @import("curl_backend.zig");
 pub const curl_cookies = @import("curl_cookies.zig");
+pub const cookie_store = @import("cookie_store.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
 
@@ -80,6 +81,16 @@ pub const DEFAULT_CHUNK_SIZE = streaming_source.DEFAULT_CHUNK_SIZE;
 pub const CurlCookieManager = curl_cookies.CurlCookieManager;
 pub const Cookie = curl_cookies.Cookie;
 pub const CookieError = curl_cookies.CookieError;
+
+// Re-export CookieStore API
+pub const CookieStore = cookie_store.CookieStore;
+pub const CookieListItem = cookie_store.CookieListItem;
+pub const CookieSameSite = cookie_store.CookieSameSite;
+pub const CookieStoreGetOptions = cookie_store.CookieStoreGetOptions;
+pub const CookieInit = cookie_store.CookieInit;
+pub const CookieStoreDeleteOptions = cookie_store.CookieStoreDeleteOptions;
+pub const getGlobalCookieStore = cookie_store.getGlobalCookieStore;
+pub const cleanupGlobalCookieStore = cookie_store.cleanupGlobalCookieStore;
 
 test {
     std.testing.refAllDecls(@This());
