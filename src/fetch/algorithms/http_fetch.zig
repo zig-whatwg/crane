@@ -30,6 +30,8 @@ const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
 const cookies = @import("../cookies/root.zig");
 const CookieStore = cookies.CookieStore;
+const cors = @import("../cors/root.zig");
+const PreflightCache = cors.PreflightCache;
 
 /// Error types for HTTP fetch.
 pub const HttpFetchError = error{
@@ -51,6 +53,8 @@ pub const HttpFetchOptions = struct {
     cors_preflight_flag: bool = false,
     /// Cookie store for credentials handling (optional)
     cookie_store: ?*CookieStore = null,
+    /// Preflight cache for CORS preflight requests (optional)
+    preflight_cache: ?*PreflightCache = null,
 };
 
 /// Execute the HTTP fetch algorithm.
@@ -188,6 +192,24 @@ pub fn httpNetworkOrCacheFetch(
         // Only-if-cached requires a cached response
         // Since we don't have cache yet, return network error
         return try internal_response.networkError(allocator);
+    }
+
+    // CORS preflight per Fetch spec §4.8 step 8
+    // If CORS-preflight flag is set, perform preflight before actual request
+    if (options.cors_preflight_flag) {
+        const preflight_result = performCorsPreflight(allocator, request, options) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+
+        switch (preflight_result) {
+            .success => {
+                // Preflight succeeded, continue with actual request
+            },
+            .failure => {
+                // Preflight failed
+                return HttpFetchError.CorsError;
+            },
+        }
     }
 
     // Run HTTP-network fetch
@@ -584,6 +606,245 @@ fn hasSameSuffix(host_a: []const u8, host_b: []const u8) bool {
     }
     return false;
 }
+
+// =============================================================================
+// CORS Preflight Integration
+// =============================================================================
+
+/// Perform CORS preflight request using real network.
+///
+/// Per Fetch spec §4.8 step 8:
+/// "If CORS-preflight flag is set, then run CORS-preflight fetch"
+///
+/// This function:
+/// 1. Checks preflight cache for existing valid entry
+/// 2. If not cached, performs OPTIONS request via LibcurlBackend
+/// 3. Validates response and caches successful preflights
+fn performCorsPreflight(
+    allocator: Allocator,
+    request: *InternalRequest,
+    options: HttpFetchOptions,
+) !cors.PreflightResult {
+    // Get request origin
+    const origin = switch (request.origin) {
+        .client => return .{ .failure = .cors_check_failed },
+        .origin => |o| o,
+    };
+
+    const url = request.currentUrl();
+
+    // Check preflight cache first
+    if (options.preflight_cache) |cache| {
+        if (cache.match(origin, url, origin)) |entry| {
+            // Validate cached entry allows this request
+            if (entry.isMethodAllowed(request.method)) {
+                // Check headers
+                const header_entries = request.header_list.iterator();
+                var all_headers_allowed = true;
+                for (header_entries) |header| {
+                    if (!cors.isCorseSafelistedRequestHeader(header.name, header.value)) {
+                        if (!entry.isHeaderAllowed(header.name)) {
+                            all_headers_allowed = false;
+                            break;
+                        }
+                    }
+                }
+                if (all_headers_allowed) {
+                    // Cache hit - preflight allowed
+                    return .{
+                        .success = .{
+                            .allocator = allocator,
+                            .methods = .{},
+                            .headers = .{},
+                            .methods_wildcard = entry.methods_wildcard,
+                            .headers_wildcard = entry.headers_wildcard,
+                            .expiry_time = entry.expiry_time,
+                        },
+                    };
+                }
+            }
+        }
+    }
+
+    // No valid cache entry - perform preflight request
+
+    // Get unsafe header names
+    const header_entries = request.header_list.iterator();
+    var header_names: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer header_names.deinit(allocator);
+    var header_values: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer header_values.deinit(allocator);
+
+    for (header_entries) |header| {
+        try header_names.append(allocator, header.name);
+        try header_values.append(allocator, header.value);
+    }
+
+    const unsafe_headers = try cors.getCorsUnsafeHeaderNames(
+        allocator,
+        header_names.items,
+        header_values.items,
+    );
+    defer allocator.free(unsafe_headers);
+
+    // Build preflight (OPTIONS) request
+    var preflight_headers: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer preflight_headers.deinit(allocator);
+
+    // Add Origin header
+    try preflight_headers.append(allocator, .{ .name = "Origin", .value = origin });
+
+    // Add Access-Control-Request-Method header
+    try preflight_headers.append(allocator, .{ .name = "Access-Control-Request-Method", .value = request.method });
+
+    // Add Access-Control-Request-Headers if we have unsafe headers
+    var headers_value: ?[]u8 = null;
+    defer if (headers_value) |h| allocator.free(h);
+
+    if (unsafe_headers.len > 0) {
+        // Join unsafe header names with ", "
+        var total_len: usize = 0;
+        for (unsafe_headers) |h| {
+            total_len += h.len;
+        }
+        total_len += (unsafe_headers.len - 1) * 2;
+
+        headers_value = try allocator.alloc(u8, total_len);
+        var pos: usize = 0;
+        for (unsafe_headers, 0..) |h, i| {
+            @memcpy(headers_value.?[pos..][0..h.len], h);
+            pos += h.len;
+            if (i < unsafe_headers.len - 1) {
+                headers_value.?[pos] = ',';
+                headers_value.?[pos + 1] = ' ';
+                pos += 2;
+            }
+        }
+        try preflight_headers.append(allocator, .{
+            .name = "Access-Control-Request-Headers",
+            .value = headers_value.?,
+        });
+    }
+
+    const preflight_request = NetworkRequest{
+        .url = url,
+        .method = "OPTIONS",
+        .headers = preflight_headers.items,
+        .body = null,
+        .http_version = .http_1_1,
+        .connect_timeout_ms = 30_000,
+        .timeout_ms = 30_000, // Shorter timeout for preflight
+        .follow_redirects = false,
+        .max_redirects = 0,
+        .proxy = null,
+        .cert_options = .{
+            .verify_peer = true,
+            .verify_host = true,
+        },
+        .verbose = false,
+    };
+
+    // Perform network request
+    const backend_impl = LibcurlBackend.init(allocator) catch {
+        return .{ .failure = .cors_check_failed };
+    };
+    defer backend_impl.deinit();
+
+    const backend_iface = backend_impl.getBackend();
+
+    var network_response = backend_iface.send(allocator, &preflight_request) catch {
+        return .{ .failure = .cors_check_failed };
+    };
+    defer network_response.deinit();
+
+    // Convert network response headers to a format validatePreflightResponse expects
+    var response_headers = PreflightResponseHeaders.init(allocator);
+    defer response_headers.deinit();
+
+    for (network_response.headers) |header| {
+        try response_headers.put(header.name, header.value);
+    }
+
+    // Map CredentialsMode
+    const creds_mode: cors.CredentialsMode = switch (request.credentials_mode) {
+        .omit => .omit,
+        .same_origin => .same_origin,
+        .include => .include,
+    };
+
+    // Validate preflight response
+    const result = cors.validatePreflightResponse(
+        allocator,
+        origin,
+        request.method,
+        if (unsafe_headers.len > 0) unsafe_headers else null,
+        creds_mode,
+        response_headers,
+        network_response.status,
+    );
+
+    // Cache successful preflight if we have a cache
+    if (options.preflight_cache) |cache| {
+        switch (result) {
+            .success => |entry| {
+                // Extract methods and headers for caching
+                var methods_list: std.ArrayListUnmanaged([]const u8) = .empty;
+                defer methods_list.deinit(allocator);
+                for (entry.methods.items) |m| {
+                    try methods_list.append(allocator, m);
+                }
+
+                var headers_list: std.ArrayListUnmanaged([]const u8) = .empty;
+                defer headers_list.deinit(allocator);
+                for (entry.headers.items) |h| {
+                    try headers_list.append(allocator, h);
+                }
+
+                cache.createEntry(
+                    origin,
+                    url,
+                    origin, // network partition key
+                    @as(u64, @intCast(@max(0, entry.expiry_time - std.time.timestamp()))),
+                    methods_list.items,
+                    entry.methods_wildcard,
+                    headers_list.items,
+                    entry.headers_wildcard,
+                    request.credentials_mode == .include,
+                ) catch {
+                    // Cache failure is non-fatal
+                };
+            },
+            .failure => {},
+        }
+    }
+
+    return result;
+}
+
+/// Header wrapper for preflight response validation.
+const PreflightResponseHeaders = struct {
+    headers: std.StringHashMap([]const u8),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) PreflightResponseHeaders {
+        return .{
+            .headers = std.StringHashMap([]const u8).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *PreflightResponseHeaders) void {
+        self.headers.deinit();
+    }
+
+    pub fn put(self: *PreflightResponseHeaders, name: []const u8, value: []const u8) !void {
+        try self.headers.put(name, value);
+    }
+
+    pub fn get(self: *const PreflightResponseHeaders, name: []const u8) ?[]const u8 {
+        return self.headers.get(name);
+    }
+};
 
 // =============================================================================
 // Tests
