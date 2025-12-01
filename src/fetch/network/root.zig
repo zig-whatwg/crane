@@ -43,6 +43,7 @@ const std = @import("std");
 pub const backend = @import("backend.zig");
 pub const curl_ffi = @import("curl_ffi.zig");
 pub const curl_error = @import("curl_error.zig");
+pub const curl_backend = @import("curl_backend.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -55,6 +56,11 @@ pub const TlsVersion = backend.TlsVersion;
 pub const ProxyConfig = backend.ProxyConfig;
 pub const CertVerifyOptions = backend.CertVerifyOptions;
 pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
+
+// Re-export libcurl backend
+pub const LibcurlBackend = curl_backend.LibcurlBackend;
+pub const globalInit = curl_backend.globalInit;
+pub const globalCleanup = curl_backend.globalCleanup;
 
 test {
     std.testing.refAllDecls(@This());
