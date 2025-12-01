@@ -11,6 +11,10 @@ const std = @import("std");
 const v8 = @import("v8");
 const context_manager = @import("v8").context_manager;
 const runtime = @import("runtime");
+const fetch_mod = @import("fetch");
+
+// Global shared cookie manager for Fetch/WebSocket cookie sharing
+var global_cookie_manager: ?*fetch_mod.CurlCookieManager = null;
 
 /// Helper to extract a string property from a V8 object
 fn getStringProperty(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, obj: *v8.ffi.Object, prop_name: []const u8, buf: []u8) ?[]const u8 {
@@ -26,7 +30,8 @@ fn getStringProperty(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, obj: *v
     return buf[0..len];
 }
 
-/// Fetch callback that makes real HTTP requests using std.http.Client.
+/// Fetch callback that makes real HTTP requests using libcurl backend.
+/// Uses shared CurlCookieManager for cookie persistence across requests.
 /// Returns a Promise that resolves to a Response object.
 fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
@@ -87,7 +92,14 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         return;
     }
 
-    const url_str = url_buf[0..url_len];
+    // Copy URL to owned memory (url_buf is stack allocated)
+    const url_str = allocator.dupe(u8, url_buf[0..url_len]) catch {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Out of memory", 13) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+        return;
+    };
+    defer allocator.free(url_str);
 
     // Parse second argument (RequestInit) if present, or use Request object properties
     var method: std.http.Method = .GET;
@@ -300,144 +312,113 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         }
     }
 
-    // Parse URL
-    const uri = std.Uri.parse(url_str) catch {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Invalid URL", 11) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
+    // Convert method enum to string
+    const method_str: []const u8 = switch (method) {
+        .GET => "GET",
+        .POST => "POST",
+        .PUT => "PUT",
+        .DELETE => "DELETE",
+        .PATCH => "PATCH",
+        .HEAD => "HEAD",
+        .OPTIONS => "OPTIONS",
+        else => "GET",
+    };
+
+    // Create InternalRequest for the fetch algorithm
+    const internal_request = fetch_mod.internal.InternalRequest.init(allocator, url_str) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create request", 24) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+    defer internal_request.deinit();
+
+    // Set method (free the default "GET" first, then allocate new method)
+    allocator.free(internal_request.method);
+    internal_request.method = allocator.dupe(u8, method_str) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to set request method", 28) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
         return;
     };
 
-    // Create HTTP client and make request
-    var client = std.http.Client{ .allocator = allocator };
-    defer client.deinit();
+    // Set credentials mode to include (to enable cookies)
+    internal_request.credentials_mode = .include;
 
-    // Make the request using low-level API but with proper buffer management
-    var req = client.request(method, uri, .{
-        .extra_headers = extra_headers_storage[0..extra_headers_count],
-        .redirect_behavior = redirect_behavior,
-        .keep_alive = false, // Don't try to reuse connections (simpler for mock server)
-    }) catch {
-        // Return rejected promise with network error
+    // Add headers
+    for (extra_headers_storage[0..extra_headers_count]) |h| {
+        internal_request.header_list.append(h.name, h.value) catch {};
+    }
+
+    // Set body if present
+    if (request_body) |rb| {
+        const body_bytes = allocator.dupe(u8, rb) catch null;
+        if (body_bytes) |bb| {
+            internal_request.body = .{ .bytes = bb };
+        }
+    }
+
+    // Ensure global cookie manager is initialized
+    if (global_cookie_manager == null) {
+        global_cookie_manager = fetch_mod.CurlCookieManager.init(allocator, null) catch {
+            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to initialize cookie manager", 35) orelse return;
+            const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+            info.setReturnValue(@ptrCast(promise));
+            return;
+        };
+    }
+
+    // Use HTTP fetch with the shared cookie manager
+    const http_options = fetch_mod.algorithms.HttpFetchOptions{
+        .cors_flag = false,
+        .cors_preflight_flag = false,
+        .cookie_manager = global_cookie_manager,
+    };
+
+    // Create fetch params
+    var timing_info = fetch_mod.internal.FetchTimingInfo.init(allocator);
+    const controller = fetch_mod.internal.FetchController.init(allocator) catch {
         const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: connection failed", 33) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create fetch controller", 33) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+    defer controller.deinit();
+
+    const params = fetch_mod.internal.FetchParams.init(allocator, internal_request, controller, &timing_info) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create fetch params", 29) orelse return;
+        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+    defer params.deinit();
+
+    // Execute HTTP fetch with libcurl backend (handles cookies automatically)
+    const internal_response = fetch_mod.algorithms.httpFetch(allocator, params, http_options) catch {
+        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error", 13) orelse return;
         const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
         _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
         const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
         info.setReturnValue(@ptrCast(promise));
         return;
     };
-    defer req.deinit();
-
-    // Send the request with or without body
-    // Methods that can have bodies: POST, PUT, PATCH
-    // Methods that cannot: GET, HEAD, DELETE, OPTIONS
-    const method_has_body = method == .POST or method == .PUT or method == .PATCH;
-
-    if (request_body) |rb| {
-        // Send with body
-        req.transfer_encoding = .{ .content_length = rb.len };
-        var body_writer = req.sendBodyUnflushed(&.{}) catch {
-            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-            info.setReturnValue(@ptrCast(promise));
-            return;
-        };
-        body_writer.writer.writeAll(rb) catch {
-            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: body write failed", 32) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-            info.setReturnValue(@ptrCast(promise));
-            return;
-        };
-        body_writer.end() catch {};
-        if (req.connection) |conn| conn.flush() catch {};
-    } else if (method_has_body) {
-        // Method can have body but none provided - send empty body
-        req.transfer_encoding = .{ .content_length = 0 };
-        var body_writer = req.sendBodyUnflushed(&.{}) catch {
-            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-            info.setReturnValue(@ptrCast(promise));
-            return;
-        };
-        body_writer.end() catch {};
-        if (req.connection) |conn| conn.flush() catch {};
-    } else {
-        // Send without body (GET, HEAD, DELETE, OPTIONS)
-        req.sendBodiless() catch {
-            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: send failed", 26) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-            info.setReturnValue(@ptrCast(promise));
-            return;
-        };
-    }
-
-    // Receive response headers
-    var redirect_buffer: [4096]u8 = undefined;
-    var http_response = req.receiveHead(&redirect_buffer) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error: receive failed", 30) orelse return;
-        const v8_err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, v8_err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-
-    // Extract status and headers BEFORE reading body (body read invalidates head.bytes)
-    const status = @intFromEnum(http_response.head.status);
-
-    // Copy all headers from the response (must be done before reading body)
-    // because iterateHeaders returns slices into redirect_buffer which gets reused
-    const HeaderCopy = struct { name: []u8, value: []u8 };
-    var headers_list: std.ArrayListUnmanaged(HeaderCopy) = .empty;
-    defer {
-        for (headers_list.items) |h| {
-            allocator.free(h.name);
-            allocator.free(h.value);
-        }
-        headers_list.deinit(allocator);
-    }
-
-    var header_iter = http_response.head.iterateHeaders();
-    while (header_iter.next()) |header| {
-        const name_copy = allocator.dupe(u8, header.name) catch continue;
-        const value_copy = allocator.dupe(u8, header.value) catch {
-            allocator.free(name_copy);
-            continue;
-        };
-        headers_list.append(allocator, .{ .name = name_copy, .value = value_copy }) catch {
-            allocator.free(name_copy);
-            allocator.free(value_copy);
-            continue;
-        };
-    }
-
-    // Read response body (skip for HEAD requests)
-    var transfer_buffer: [4096]u8 = undefined;
-    var body: []const u8 = "";
-    var body_owned: ?[]u8 = null;
-    defer if (body_owned) |b| allocator.free(b);
-
-    if (method != .HEAD) {
-        const reader = http_response.reader(&transfer_buffer);
-        body_owned = reader.allocRemaining(allocator, std.Io.Limit.unlimited) catch null;
-        if (body_owned) |b| {
-            body = b;
-        }
-    }
+    defer internal_response.deinit();
 
     // Create Response object
     const Response = @import("interfaces").Response;
@@ -449,98 +430,34 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     };
 
     // Set response properties via the internal state
-    // The Response interface stores internal state in state.own._internal
     const state = response_instance.getState(Response.State);
     if (state.own._internal) |internal| {
         // Set status from HTTP response
-        internal.response.status = status;
+        internal.response.status = internal_response.status;
 
-        // Get final URL after redirects (req.uri may have been updated)
-        // Manually construct URL since std.Uri.format requires a Writer pointer
-        var final_url_buf: [4096]u8 = undefined;
-        var final_url_len: usize = 0;
-
-        // Helper to get percent-encoded or raw string from Component
-        const getComponentStr = struct {
-            fn get(component: std.Uri.Component) []const u8 {
-                return switch (component) {
-                    .raw => |r| r,
-                    .percent_encoded => |p| p,
-                };
-            }
-        }.get;
-
-        // Build URL: scheme://host:port/path?query#fragment
-        if (req.uri.scheme.len > 0) {
-            @memcpy(final_url_buf[final_url_len..][0..req.uri.scheme.len], req.uri.scheme);
-            final_url_len += req.uri.scheme.len;
-            final_url_buf[final_url_len] = ':';
-            final_url_len += 1;
-        }
-        if (req.uri.host) |host| {
-            final_url_buf[final_url_len] = '/';
-            final_url_buf[final_url_len + 1] = '/';
-            final_url_len += 2;
-            const host_str = getComponentStr(host);
-            @memcpy(final_url_buf[final_url_len..][0..host_str.len], host_str);
-            final_url_len += host_str.len;
-        }
-        if (req.uri.port) |port| {
-            final_url_buf[final_url_len] = ':';
-            final_url_len += 1;
-            const port_str = std.fmt.bufPrint(final_url_buf[final_url_len..], "{d}", .{port}) catch "";
-            final_url_len += port_str.len;
-        }
-        const path_str = getComponentStr(req.uri.path);
-        if (path_str.len > 0) {
-            @memcpy(final_url_buf[final_url_len..][0..path_str.len], path_str);
-            final_url_len += path_str.len;
-        }
-        if (req.uri.query) |query| {
-            final_url_buf[final_url_len] = '?';
-            final_url_len += 1;
-            const query_str = getComponentStr(query);
-            @memcpy(final_url_buf[final_url_len..][0..query_str.len], query_str);
-            final_url_len += query_str.len;
-        }
-        if (req.uri.fragment) |fragment| {
-            final_url_buf[final_url_len] = '#';
-            final_url_len += 1;
-            const frag_str = getComponentStr(fragment);
-            @memcpy(final_url_buf[final_url_len..][0..frag_str.len], frag_str);
-            final_url_len += frag_str.len;
-        }
-        const final_url = final_url_buf[0..final_url_len];
-
-        // Check if redirect happened (original URL != final URL)
-        const was_redirected = !std.mem.eql(u8, url_str, final_url);
-
-        // Set URL in URL list - add original URL first if redirected
-        if (was_redirected) {
-            const orig_url_copy = allocator.dupe(u8, url_str) catch null;
-            if (orig_url_copy) |u| {
-                internal.response.url_list.append(allocator, u) catch {};
-            }
+        // Copy URL list
+        for (internal_response.url_list.items) |response_url| {
+            const url_copy = allocator.dupe(u8, response_url) catch continue;
+            internal.response.url_list.append(allocator, url_copy) catch {
+                allocator.free(url_copy);
+            };
         }
 
-        // Add final URL
-        const url_copy = allocator.dupe(u8, final_url) catch null;
-        if (url_copy) |u| {
-            internal.response.url_list.append(allocator, u) catch {};
-        }
-
-        // Set body from response data
-        if (body.len > 0) {
-            const fetch = @import("fetch");
-            const body_obj = fetch.internal.Body.fromBytes(allocator, body) catch null;
-            if (body_obj) |b| {
-                internal.response.body = b;
-            }
-        }
-
-        // Add all response headers
-        for (headers_list.items) |h| {
+        // Copy headers
+        const header_entries = internal_response.header_list.iterator();
+        for (header_entries) |h| {
             internal.response.header_list.append(h.name, h.value) catch {};
+        }
+
+        // Copy body if present
+        if (internal_response.body) |response_body| {
+            const body_bytes = response_body.getBytes();
+            if (body_bytes.len > 0) {
+                const body_obj = fetch_mod.internal.Body.fromBytes(allocator, body_bytes) catch null;
+                if (body_obj) |b| {
+                    internal.response.body = b;
+                }
+            }
         }
     }
 

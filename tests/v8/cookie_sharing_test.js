@@ -1,12 +1,15 @@
 // Cookie Sharing Integration Test (V8)
 // Tests that cookies set via Fetch API are shared with WebSocket connections
 //
-// This validates that the CurlCookieManager properly shares cookies between:
-// - Fetch API (via LibcurlBackend)
-// - WebSocket (via CurlWebSocket)
+// CURRENT STATUS: IMPLEMENTED
+// The REPL's fetch() uses LibcurlBackend with CurlCookieManager for cookie support.
+// Cookies are automatically stored and sent on subsequent requests.
+//
+// NOTE: The WebSocket cookie sharing test requires setTimeout which is not
+// implemented in the REPL. That test will fail until setTimeout is added.
 //
 // Prerequisites: Mock HTTP server running on localhost:8080
-// Run with: zig build test-v8-fetch (after adding to integration test runner)
+// Run manually: ./zig-out/bin/http_mock_server & ./zig-out/bin/repl tests/v8/cookie_sharing_test.js
 //
 // Test flow:
 // 1. Fetch a URL that sets a session cookie via Set-Cookie header
