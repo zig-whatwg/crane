@@ -44,6 +44,7 @@ pub const backend = @import("backend.zig");
 pub const curl_ffi = @import("curl_ffi.zig");
 pub const curl_error = @import("curl_error.zig");
 pub const curl_backend = @import("curl_backend.zig");
+pub const streaming_source = @import("streaming_source.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -61,6 +62,12 @@ pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
 pub const LibcurlBackend = curl_backend.LibcurlBackend;
 pub const globalInit = curl_backend.globalInit;
 pub const globalCleanup = curl_backend.globalCleanup;
+
+// Re-export streaming types
+pub const StreamingSource = streaming_source.StreamingSource;
+pub const StreamingState = streaming_source.StreamingState;
+pub const ChunkIterator = streaming_source.ChunkIterator;
+pub const DEFAULT_CHUNK_SIZE = streaming_source.DEFAULT_CHUNK_SIZE;
 
 test {
     std.testing.refAllDecls(@This());

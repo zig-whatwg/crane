@@ -13,6 +13,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const network = @import("../network/root.zig");
+const StreamingSource = network.StreamingSource;
 
 /// Body source types for tracking the origin of body data.
 /// Per spec, source can be null, bytes, Blob, or FormData.
@@ -301,6 +303,39 @@ pub const Body = struct {
 
         return self.data.items;
     }
+
+    // =========================================================================
+    // Streaming Interface
+    // =========================================================================
+    //
+    // These methods provide ReadableStream-like access to body data.
+    // Per spec, body.stream should be a ReadableStream. Until full runtime
+    // integration, StreamingSource provides chunk-based iteration.
+
+    /// Get a streaming source for reading the body in chunks.
+    ///
+    /// This is Phase 3a streaming: chunks the buffered data for incremental
+    /// reading. The caller can iterate over chunks without loading everything
+    /// into memory at once (though the data is already buffered).
+    ///
+    /// Per spec, this corresponds to getting a reader from body's stream.
+    ///
+    /// Returns error if body has already been used.
+    pub fn getStreamingSource(self: *Self, options: StreamingSource.Options) BodyError!StreamingSource {
+        if (self.used) {
+            return BodyError.BodyAlreadyUsed;
+        }
+
+        self.disturbed = true;
+        // Note: we don't mark as "used" until stream is fully consumed
+
+        return StreamingSource.fromBytes(self.allocator, self.data.items, options);
+    }
+
+    /// Get a streaming source with default options.
+    pub fn stream(self: *Self) BodyError!StreamingSource {
+        return self.getStreamingSource(.{});
+    }
 };
 
 /// Create an empty body (null body per spec).
@@ -518,4 +553,66 @@ test "nullBody and isNullBody" {
     defer body.deinit();
 
     try std.testing.expect(!isNullBody(body));
+}
+
+test "Body.stream returns StreamingSource" {
+    const allocator = std.testing.allocator;
+
+    const body = try Body.fromBytes(allocator, "streaming data");
+    defer body.deinit();
+
+    var source = try body.stream();
+    defer source.deinit();
+
+    // Read first chunk
+    const chunk1 = (try source.read()).?;
+    defer allocator.free(chunk1);
+    try std.testing.expectEqualStrings("streaming data", chunk1);
+
+    // Stream should be closed
+    try std.testing.expect(try source.read() == null);
+    try std.testing.expect(source.getState() == .closed);
+}
+
+test "Body.getStreamingSource with custom chunk size" {
+    const allocator = std.testing.allocator;
+
+    const body = try Body.fromBytes(allocator, "ABCDEFGHIJ"); // 10 bytes
+    defer body.deinit();
+
+    var source = try body.getStreamingSource(.{ .chunk_size = 3 });
+    defer source.deinit();
+
+    // Read in 3-byte chunks
+    const chunk1 = (try source.read()).?;
+    defer allocator.free(chunk1);
+    try std.testing.expectEqualStrings("ABC", chunk1);
+
+    const chunk2 = (try source.read()).?;
+    defer allocator.free(chunk2);
+    try std.testing.expectEqualStrings("DEF", chunk2);
+
+    const chunk3 = (try source.read()).?;
+    defer allocator.free(chunk3);
+    try std.testing.expectEqualStrings("GHI", chunk3);
+
+    const chunk4 = (try source.read()).?;
+    defer allocator.free(chunk4);
+    try std.testing.expectEqualStrings("J", chunk4);
+
+    try std.testing.expect(try source.read() == null);
+}
+
+test "Body.stream fails if already used" {
+    const allocator = std.testing.allocator;
+
+    const body = try Body.fromBytes(allocator, "test");
+    defer body.deinit();
+
+    // Use the body first
+    _ = try body.readAllBytes();
+
+    // stream() should fail
+    const result = body.stream();
+    try std.testing.expectError(Body.BodyError.BodyAlreadyUsed, result);
 }
