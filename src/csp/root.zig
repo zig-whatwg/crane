@@ -113,6 +113,16 @@ pub const getEffectiveScriptSrcElem = fallback.getEffectiveScriptSrcElem;
 pub const getEffectiveStyleSrc = fallback.getEffectiveStyleSrc;
 pub const getEffectiveConnectSrc = fallback.getEffectiveConnectSrc;
 
+// Violations
+pub const violations = @import("violations.zig");
+
+pub const createViolation = violations.createViolation;
+pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolicyViolation;
+pub const createTrustedTypesSinkViolation = violations.createTrustedTypesSinkViolation;
+pub const createViolationReport = violations.createViolationReport;
+pub const reportViolation = violations.reportViolation;
+pub const ViolationOptions = violations.ViolationOptions;
+
 // Trusted Types directives
 pub const directives = @import("directives/root.zig");
 
