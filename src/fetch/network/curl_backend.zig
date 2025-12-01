@@ -139,21 +139,21 @@ pub const LibcurlBackend = struct {
         fn init(allocator: Allocator, aborted: *std.atomic.Value(bool)) CallbackContext {
             return .{
                 .allocator = allocator,
-                .response_body = std.ArrayList(u8).init(allocator),
-                .response_headers = std.ArrayList(NetworkResponse.Header).init(allocator),
-                .raw_headers = std.ArrayList(u8).init(allocator),
+                .response_body = .empty,
+                .response_headers = .empty,
+                .raw_headers = .empty,
                 .aborted = aborted,
             };
         }
 
         fn deinit(self: *CallbackContext) void {
-            self.response_body.deinit();
+            self.response_body.deinit(self.allocator);
             for (self.response_headers.items) |header| {
                 self.allocator.free(header.name);
                 self.allocator.free(header.value);
             }
-            self.response_headers.deinit();
-            self.raw_headers.deinit();
+            self.response_headers.deinit(self.allocator);
+            self.raw_headers.deinit(self.allocator);
         }
     };
 
@@ -174,12 +174,9 @@ pub const LibcurlBackend = struct {
         }
 
         // Configure request
-        configureRequest(handle, request, &ctx) catch |err| {
+        configureRequest(handle, request, &ctx) catch {
             ctx.deinit();
-            return switch (err) {
-                error.OutOfMemory => NetworkError.OutOfMemory,
-                else => NetworkError.Unknown,
-            };
+            return NetworkError.OutOfMemory;
         };
 
         // Perform the request
@@ -198,12 +195,9 @@ pub const LibcurlBackend = struct {
         }
 
         // Parse headers from raw header data
-        parseHeaders(&ctx) catch |err| {
+        parseHeaders(&ctx) catch {
             ctx.deinit();
-            return switch (err) {
-                error.OutOfMemory => NetworkError.OutOfMemory,
-                else => NetworkError.Unknown,
-            };
+            return NetworkError.OutOfMemory;
         };
 
         // Extract response info
@@ -241,13 +235,13 @@ pub const LibcurlBackend = struct {
         };
 
         // Transfer ownership of collected data
-        const headers = ctx.response_headers.toOwnedSlice() catch {
+        const headers = ctx.response_headers.toOwnedSlice(allocator) catch {
             ctx.deinit();
             return NetworkError.OutOfMemory;
         };
 
         const body = if (ctx.response_body.items.len > 0)
-            ctx.response_body.toOwnedSlice() catch {
+            ctx.response_body.toOwnedSlice(allocator) catch {
                 allocator.free(headers);
                 ctx.deinit();
                 return NetworkError.OutOfMemory;
@@ -268,7 +262,7 @@ pub const LibcurlBackend = struct {
             null;
 
         // Clean up remaining context resources
-        ctx.raw_headers.deinit();
+        ctx.raw_headers.deinit(allocator);
 
         return NetworkResponse{
             .allocator = allocator,
@@ -307,10 +301,13 @@ pub const LibcurlBackend = struct {
         // Headers
         var header_list: ?*curl.curl_slist = null;
         for (request.headers) |header| {
-            // Format: "Name: Value"
-            const header_str = try std.fmt.allocPrintZ(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
+            // Format: "Name: Value" - allocate then convert to null-terminated
+            const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
             defer ctx.allocator.free(header_str);
-            header_list = curl.slist_append(header_list, header_str.ptr);
+            // Create null-terminated copy for curl
+            const header_z = try ctx.allocator.dupeZ(u8, header_str);
+            defer ctx.allocator.free(header_z);
+            header_list = curl.slist_append(header_list, header_z.ptr);
         }
         if (header_list != null) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, header_list);
@@ -357,12 +354,15 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_PROXY, proxy_z.ptr);
 
             if (proxy.username != null and proxy.password != null) {
-                const userpwd = try std.fmt.allocPrintZ(ctx.allocator, "{s}:{s}", .{
+                const userpwd = try std.fmt.allocPrint(ctx.allocator, "{s}:{s}", .{
                     proxy.username.?,
                     proxy.password.?,
                 });
                 defer ctx.allocator.free(userpwd);
-                _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, userpwd.ptr);
+                // Create null-terminated copy for curl
+                const userpwd_z = try ctx.allocator.dupeZ(u8, userpwd);
+                defer ctx.allocator.free(userpwd_z);
+                _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, userpwd_z.ptr);
             }
 
             if (proxy.no_proxy) |no_proxy| {
@@ -412,7 +412,7 @@ pub const LibcurlBackend = struct {
                         .name = try ctx.allocator.dupe(u8, name),
                         .value = try ctx.allocator.dupe(u8, value),
                     };
-                    try ctx.response_headers.append(header);
+                    try ctx.response_headers.append(ctx.allocator, header);
                 }
             }
         }
@@ -444,7 +444,7 @@ pub const LibcurlBackend = struct {
 // =============================================================================
 
 /// Write callback - called when response body data is received
-fn writeCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) callconv(.C) usize {
+fn writeCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) callconv(.c) usize {
     const ctx: *LibcurlBackend.CallbackContext = @ptrCast(@alignCast(userdata));
 
     // Check abort flag
@@ -453,14 +453,14 @@ fn writeCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) c
     }
 
     const total_size = size * nmemb;
-    ctx.response_body.appendSlice(data[0..total_size]) catch {
+    ctx.response_body.appendSlice(ctx.allocator, data[0..total_size]) catch {
         return 0; // Signal error
     };
     return total_size;
 }
 
 /// Header callback - called for each header line received
-fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) callconv(.C) usize {
+fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) callconv(.c) usize {
     const ctx: *LibcurlBackend.CallbackContext = @ptrCast(@alignCast(userdata));
 
     // Check abort flag
@@ -469,7 +469,7 @@ fn headerCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) 
     }
 
     const total_size = size * nmemb;
-    ctx.raw_headers.appendSlice(data[0..total_size]) catch {
+    ctx.raw_headers.appendSlice(ctx.allocator, data[0..total_size]) catch {
         return 0; // Signal error
     };
     return total_size;
@@ -482,7 +482,7 @@ fn progressCallback(
     _: c_longlong, // dlnow
     _: c_longlong, // ultotal
     _: c_longlong, // ulnow
-) callconv(.C) c_int {
+) callconv(.c) c_int {
     const ctx: *LibcurlBackend.CallbackContext = @ptrCast(@alignCast(userdata));
 
     // Return non-zero to abort transfer

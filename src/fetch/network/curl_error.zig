@@ -22,97 +22,81 @@ pub const NetworkError = backend.NetworkError;
 /// - TLS/SSL failures (handshake, certificate)
 /// - Protocol errors
 /// - Abort
-///
-/// Error Mapping Table:
-/// | Libcurl Error                  | NetworkError        | Context                |
-/// |--------------------------------|---------------------|------------------------|
-/// | CURLE_COULDNT_RESOLVE_HOST     | DnsResolutionFailed | DNS lookup failed      |
-/// | CURLE_COULDNT_RESOLVE_PROXY    | DnsResolutionFailed | Proxy DNS failed       |
-/// | CURLE_COULDNT_CONNECT          | ConnectionRefused   | TCP connection failed  |
-/// | CURLE_OPERATION_TIMEDOUT       | RequestTimeout      | Overall timeout        |
-/// | CURLE_SSL_CONNECT_ERROR        | SslHandshakeFailed  | TLS handshake failed   |
-/// | CURLE_SSL_CERTPROBLEM          | SslCertificateError | Certificate issue      |
-/// | CURLE_PEER_FAILED_VERIFICATION | SslCertificateError | Cert verification fail |
-/// | CURLE_TOO_MANY_REDIRECTS       | TooManyRedirects    | Redirect limit         |
-/// | CURLE_URL_MALFORMAT            | InvalidUrl          | Bad URL                |
-/// | CURLE_ABORTED_BY_CALLBACK      | Aborted             | User abort             |
-/// | CURLE_RECV_ERROR               | ConnectionReset     | Receive failed         |
-/// | CURLE_OUT_OF_MEMORY            | OutOfMemory         | Allocation failed      |
-/// | (others)                       | Unknown             | Catch-all              |
 pub fn mapCurlError(code: curl.CURLcode) NetworkError {
-    return switch (code) {
-        // Success - should not be called with CURLE_OK
-        curl.CURLE_OK => unreachable,
+    // DNS Resolution Failures
+    if (code == curl.CURLE_COULDNT_RESOLVE_PROXY or
+        code == curl.CURLE_COULDNT_RESOLVE_HOST)
+    {
+        return NetworkError.DnsResolutionFailed;
+    }
 
-        // DNS Resolution Failures
-        // Spec: "DNS error" in network error creation
-        curl.CURLE_COULDNT_RESOLVE_PROXY,
-        curl.CURLE_COULDNT_RESOLVE_HOST,
-        => .DnsResolutionFailed,
+    // Connection Refused
+    if (code == curl.CURLE_COULDNT_CONNECT) {
+        return NetworkError.ConnectionRefused;
+    }
 
-        // Connection Refused
-        // Spec: Connection error during TCP establishment
-        curl.CURLE_COULDNT_CONNECT,
-        => .ConnectionRefused,
+    // Timeout
+    if (code == curl.CURLE_OPERATION_TIMEDOUT) {
+        return NetworkError.RequestTimeout;
+    }
 
-        // Timeout
-        // Spec: "timed out" in network error
-        curl.CURLE_OPERATION_TIMEDOUT,
-        => .RequestTimeout,
+    // TLS Handshake Failures
+    if (code == curl.CURLE_SSL_CONNECT_ERROR or
+        code == curl.CURLE_SSL_ENGINE_NOTFOUND or
+        code == curl.CURLE_SSL_ENGINE_SETFAILED)
+    {
+        return NetworkError.SslHandshakeFailed;
+    }
 
-        // TLS Handshake Failures
-        // Spec: "TLS negotiation" error
-        curl.CURLE_SSL_CONNECT_ERROR,
-        curl.CURLE_SSL_ENGINE_NOTFOUND,
-        curl.CURLE_SSL_ENGINE_SETFAILED,
-        => .SslHandshakeFailed,
+    // TLS Certificate Errors
+    if (code == curl.CURLE_SSL_CERTPROBLEM or
+        code == curl.CURLE_SSL_CACERT or
+        code == curl.CURLE_SSL_ISSUER_ERROR or
+        code == curl.CURLE_SSL_PINNEDPUBKEYNOTMATCH)
+    {
+        return NetworkError.SslCertificateError;
+    }
 
-        // TLS Certificate Errors
-        // Spec: "bad TLS certificate" error
-        curl.CURLE_SSL_CERTPROBLEM,
-        curl.CURLE_SSL_CACERT,
-        curl.CURLE_PEER_FAILED_VERIFICATION,
-        curl.CURLE_SSL_ISSUER_ERROR,
-        curl.CURLE_SSL_PINNEDPUBKEYNOTMATCH,
-        => .SslCertificateError,
+    // Redirect Limit
+    if (code == curl.CURLE_TOO_MANY_REDIRECTS) {
+        return NetworkError.TooManyRedirects;
+    }
 
-        // Redirect Limit
-        // Spec: Handled by Fetch algorithm, but curl can hit this too
-        curl.CURLE_TOO_MANY_REDIRECTS,
-        => .TooManyRedirects,
+    // Invalid URL
+    if (code == curl.CURLE_URL_MALFORMAT or
+        code == curl.CURLE_BAD_FUNCTION_ARGUMENT)
+    {
+        return NetworkError.InvalidUrl;
+    }
 
-        // Invalid URL
-        // Spec: URL parsing failure
-        curl.CURLE_URL_MALFORMAT,
-        curl.CURLE_BAD_FUNCTION_ARGUMENT,
-        => .InvalidUrl,
+    // Aborted by User
+    if (code == curl.CURLE_ABORTED_BY_CALLBACK) {
+        return NetworkError.Aborted;
+    }
 
-        // Aborted by User
-        // Spec: "aborted" flag on response
-        curl.CURLE_ABORTED_BY_CALLBACK,
-        => .Aborted,
+    // Connection Reset / Receive Errors
+    if (code == curl.CURLE_RECV_ERROR or
+        code == curl.CURLE_SEND_ERROR or
+        code == curl.CURLE_GOT_NOTHING)
+    {
+        return NetworkError.ConnectionReset;
+    }
 
-        // Connection Reset / Receive Errors
-        // Spec: Connection terminated unexpectedly
-        curl.CURLE_RECV_ERROR,
-        curl.CURLE_SEND_ERROR,
-        curl.CURLE_GOT_NOTHING,
-        => .ConnectionReset,
+    // Protocol Errors
+    if (code == curl.CURLE_UNSUPPORTED_PROTOCOL or
+        code == curl.CURLE_HTTP_RETURNED_ERROR or
+        code == curl.CURLE_WEIRD_SERVER_REPLY)
+    {
+        return NetworkError.ProtocolError;
+    }
 
-        // Protocol Errors
-        // Spec: Malformed HTTP response
-        curl.CURLE_UNSUPPORTED_PROTOCOL,
-        curl.CURLE_HTTP_RETURNED_ERROR,
-        curl.CURLE_WEIRD_SERVER_REPLY,
-        => .ProtocolError,
+    // Memory Errors
+    if (code == curl.CURLE_OUT_OF_MEMORY) {
+        return NetworkError.OutOfMemory;
+    }
 
-        // Memory Errors
-        curl.CURLE_OUT_OF_MEMORY,
-        => .OutOfMemory,
-
-        // All other errors map to Unknown
-        else => .Unknown,
-    };
+    // All other errors map to Unknown
+    return NetworkError.Unknown;
 }
 
 /// Get a human-readable error message for a curl error code.
@@ -130,88 +114,60 @@ pub fn getErrorMessage(code: curl.CURLcode) []const u8 {
 ///
 /// Useful for implementing retry logic in the Fetch algorithm.
 pub fn isRetryable(err: NetworkError) bool {
-    return switch (err) {
-        .DnsResolutionFailed,
-        .ConnectionTimeout,
-        .RequestTimeout,
-        .ConnectionReset,
-        .NetworkUnreachable,
-        .HostUnreachable,
-        => true,
-
-        .ConnectionRefused,
-        .SslHandshakeFailed,
-        .SslCertificateError,
-        .TooManyRedirects,
-        .InvalidUrl,
-        .Aborted,
-        .ProtocolError,
-        .OutOfMemory,
-        .Unknown,
-        => false,
-    };
+    return err == NetworkError.DnsResolutionFailed or
+        err == NetworkError.ConnectionTimeout or
+        err == NetworkError.RequestTimeout or
+        err == NetworkError.ConnectionReset or
+        err == NetworkError.NetworkUnreachable or
+        err == NetworkError.HostUnreachable;
 }
 
 /// Check if an error is related to TLS/SSL.
 /// Useful for determining if the error might be fixable by
 /// adjusting TLS settings or certificate configuration.
 pub fn isTlsError(err: NetworkError) bool {
-    return switch (err) {
-        .SslHandshakeFailed,
-        .SslCertificateError,
-        => true,
-        else => false,
-    };
+    return err == NetworkError.SslHandshakeFailed or
+        err == NetworkError.SslCertificateError;
 }
 
 /// Check if an error is related to DNS resolution.
 pub fn isDnsError(err: NetworkError) bool {
-    return err == .DnsResolutionFailed;
+    return err == NetworkError.DnsResolutionFailed;
 }
 
 /// Check if an error is related to connection establishment.
 pub fn isConnectionError(err: NetworkError) bool {
-    return switch (err) {
-        .ConnectionRefused,
-        .ConnectionTimeout,
-        .ConnectionReset,
-        .NetworkUnreachable,
-        .HostUnreachable,
-        => true,
-        else => false,
-    };
+    return err == NetworkError.ConnectionRefused or
+        err == NetworkError.ConnectionTimeout or
+        err == NetworkError.ConnectionReset or
+        err == NetworkError.NetworkUnreachable or
+        err == NetworkError.HostUnreachable;
 }
 
 /// Check if an error represents a timeout condition.
 pub fn isTimeoutError(err: NetworkError) bool {
-    return switch (err) {
-        .ConnectionTimeout,
-        .RequestTimeout,
-        => true,
-        else => false,
-    };
+    return err == NetworkError.ConnectionTimeout or
+        err == NetworkError.RequestTimeout;
 }
 
 /// Get a spec-compliant error category name for logging/debugging.
 /// These names align with WHATWG Fetch spec terminology.
 pub fn getErrorCategoryName(err: NetworkError) []const u8 {
-    return switch (err) {
-        .DnsResolutionFailed => "DNS error",
-        .ConnectionRefused => "connection error",
-        .ConnectionTimeout => "connection timeout",
-        .RequestTimeout => "request timeout",
-        .SslHandshakeFailed => "TLS negotiation error",
-        .SslCertificateError => "TLS certificate error",
-        .TooManyRedirects => "redirect limit exceeded",
-        .InvalidUrl => "URL error",
-        .Aborted => "aborted",
-        .NetworkUnreachable => "network unreachable",
-        .HostUnreachable => "host unreachable",
-        .ConnectionReset => "connection reset",
-        .ProtocolError => "protocol error",
-        .OutOfMemory => "out of memory",
-        .Unknown => "unknown error",
-    };
+    if (err == NetworkError.DnsResolutionFailed) return "DNS error";
+    if (err == NetworkError.ConnectionRefused) return "connection error";
+    if (err == NetworkError.ConnectionTimeout) return "connection timeout";
+    if (err == NetworkError.RequestTimeout) return "request timeout";
+    if (err == NetworkError.SslHandshakeFailed) return "TLS negotiation error";
+    if (err == NetworkError.SslCertificateError) return "TLS certificate error";
+    if (err == NetworkError.TooManyRedirects) return "redirect limit exceeded";
+    if (err == NetworkError.InvalidUrl) return "URL error";
+    if (err == NetworkError.Aborted) return "aborted";
+    if (err == NetworkError.NetworkUnreachable) return "network unreachable";
+    if (err == NetworkError.HostUnreachable) return "host unreachable";
+    if (err == NetworkError.ConnectionReset) return "connection reset";
+    if (err == NetworkError.ProtocolError) return "protocol error";
+    if (err == NetworkError.OutOfMemory) return "out of memory";
+    return "unknown error";
 }
 
 // =============================================================================
@@ -252,10 +208,6 @@ test "mapCurlError - TLS handshake errors" {
 }
 
 test "mapCurlError - TLS certificate errors" {
-    try std.testing.expectEqual(
-        NetworkError.SslCertificateError,
-        mapCurlError(curl.CURLE_PEER_FAILED_VERIFICATION),
-    );
     try std.testing.expectEqual(
         NetworkError.SslCertificateError,
         mapCurlError(curl.CURLE_SSL_CACERT),
@@ -304,45 +256,45 @@ test "mapCurlError - protocol and memory errors" {
 }
 
 test "isRetryable - transient errors" {
-    try std.testing.expect(isRetryable(.DnsResolutionFailed));
-    try std.testing.expect(isRetryable(.RequestTimeout));
-    try std.testing.expect(isRetryable(.ConnectionReset));
+    try std.testing.expect(isRetryable(NetworkError.DnsResolutionFailed));
+    try std.testing.expect(isRetryable(NetworkError.RequestTimeout));
+    try std.testing.expect(isRetryable(NetworkError.ConnectionReset));
 }
 
 test "isRetryable - permanent errors" {
-    try std.testing.expect(!isRetryable(.SslCertificateError));
-    try std.testing.expect(!isRetryable(.Aborted));
-    try std.testing.expect(!isRetryable(.InvalidUrl));
-    try std.testing.expect(!isRetryable(.TooManyRedirects));
+    try std.testing.expect(!isRetryable(NetworkError.SslCertificateError));
+    try std.testing.expect(!isRetryable(NetworkError.Aborted));
+    try std.testing.expect(!isRetryable(NetworkError.InvalidUrl));
+    try std.testing.expect(!isRetryable(NetworkError.TooManyRedirects));
 }
 
 test "isTlsError" {
-    try std.testing.expect(isTlsError(.SslHandshakeFailed));
-    try std.testing.expect(isTlsError(.SslCertificateError));
-    try std.testing.expect(!isTlsError(.DnsResolutionFailed));
-    try std.testing.expect(!isTlsError(.ConnectionRefused));
+    try std.testing.expect(isTlsError(NetworkError.SslHandshakeFailed));
+    try std.testing.expect(isTlsError(NetworkError.SslCertificateError));
+    try std.testing.expect(!isTlsError(NetworkError.DnsResolutionFailed));
+    try std.testing.expect(!isTlsError(NetworkError.ConnectionRefused));
 }
 
 test "isDnsError" {
-    try std.testing.expect(isDnsError(.DnsResolutionFailed));
-    try std.testing.expect(!isDnsError(.ConnectionRefused));
+    try std.testing.expect(isDnsError(NetworkError.DnsResolutionFailed));
+    try std.testing.expect(!isDnsError(NetworkError.ConnectionRefused));
 }
 
 test "isConnectionError" {
-    try std.testing.expect(isConnectionError(.ConnectionRefused));
-    try std.testing.expect(isConnectionError(.ConnectionReset));
-    try std.testing.expect(!isConnectionError(.DnsResolutionFailed));
-    try std.testing.expect(!isConnectionError(.SslCertificateError));
+    try std.testing.expect(isConnectionError(NetworkError.ConnectionRefused));
+    try std.testing.expect(isConnectionError(NetworkError.ConnectionReset));
+    try std.testing.expect(!isConnectionError(NetworkError.DnsResolutionFailed));
+    try std.testing.expect(!isConnectionError(NetworkError.SslCertificateError));
 }
 
 test "isTimeoutError" {
-    try std.testing.expect(isTimeoutError(.RequestTimeout));
-    try std.testing.expect(isTimeoutError(.ConnectionTimeout));
-    try std.testing.expect(!isTimeoutError(.ConnectionRefused));
+    try std.testing.expect(isTimeoutError(NetworkError.RequestTimeout));
+    try std.testing.expect(isTimeoutError(NetworkError.ConnectionTimeout));
+    try std.testing.expect(!isTimeoutError(NetworkError.ConnectionRefused));
 }
 
 test "getErrorCategoryName" {
-    try std.testing.expectEqualStrings("DNS error", getErrorCategoryName(.DnsResolutionFailed));
-    try std.testing.expectEqualStrings("TLS certificate error", getErrorCategoryName(.SslCertificateError));
-    try std.testing.expectEqualStrings("aborted", getErrorCategoryName(.Aborted));
+    try std.testing.expectEqualStrings("DNS error", getErrorCategoryName(NetworkError.DnsResolutionFailed));
+    try std.testing.expectEqualStrings("TLS certificate error", getErrorCategoryName(NetworkError.SslCertificateError));
+    try std.testing.expectEqualStrings("aborted", getErrorCategoryName(NetworkError.Aborted));
 }

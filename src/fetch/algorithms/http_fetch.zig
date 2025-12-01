@@ -22,6 +22,11 @@ const InternalRequest = internal_request.InternalRequest;
 const RedirectMode = internal_request.RedirectMode;
 const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
+const network = @import("../network/root.zig");
+const NetworkRequest = network.NetworkRequest;
+const NetworkResponse = network.NetworkResponse;
+const NetworkError = network.NetworkError;
+const LibcurlBackend = network.LibcurlBackend;
 
 /// Error types for HTTP fetch.
 pub const HttpFetchError = error{
@@ -187,8 +192,13 @@ pub fn httpNetworkOrCacheFetch(
 /// HTTP-network fetch algorithm.
 ///
 /// Per Fetch spec §4.9:
-/// This is where the actual network request happens.
-/// For now, returns a stubbed response.
+/// This is where the actual network request happens using LibcurlBackend.
+///
+/// Steps:
+/// 1. Build NetworkRequest from InternalRequest
+/// 2. Create backend and perform network fetch
+/// 3. Convert NetworkResponse to InternalResponse
+/// 4. Record timing information
 pub fn httpNetworkFetch(
     allocator: Allocator,
     params: *FetchParams,
@@ -197,28 +207,120 @@ pub fn httpNetworkFetch(
     _ = options;
     const request = params.request;
 
-    // TODO: Implement actual network request using NetworkBackend
-    // For now, create a stubbed successful response
+    // Step 1: Build NetworkRequest from InternalRequest
+    const network_request = buildNetworkRequest(allocator, request) catch {
+        return HttpFetchError.OutOfMemory;
+    };
+    defer freeNetworkRequest(allocator, network_request);
 
+    // Step 2: Create backend and perform network fetch
+    const backend_impl = LibcurlBackend.init(allocator) catch {
+        return HttpFetchError.NetworkError;
+    };
+    defer backend_impl.deinit();
+
+    const backend_iface = backend_impl.getBackend();
+
+    // Record start time
+    const start_time = getCurrentTimeMs();
+
+    // Perform the actual network request
+    var network_response = backend_iface.send(allocator, &network_request) catch |err| {
+        // Map network error to HttpFetchError
+        return switch (err) {
+            NetworkError.OutOfMemory => HttpFetchError.OutOfMemory,
+            else => HttpFetchError.NetworkError,
+        };
+    };
+    defer network_response.deinit();
+
+    // Step 3: Convert NetworkResponse to InternalResponse
     const response = InternalResponse.init(allocator) catch {
         return HttpFetchError.OutOfMemory;
     };
     errdefer response.deinit();
 
-    // Set response URL from request
-    response.addUrl(request.currentUrl()) catch {
-        return HttpFetchError.OutOfMemory;
-    };
+    // Set response URL from request (or final URL if redirected)
+    if (network_response.final_url) |final_url| {
+        response.addUrl(final_url) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+    } else {
+        response.addUrl(request.currentUrl()) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+    }
 
-    // Default to 200 OK for stub
-    response.status = 200;
+    // Set status code
+    response.status = network_response.status;
 
-    // Record timing
-    const now = getCurrentTimeMs();
-    params.timing_info.final_network_response_start_time = now;
-    params.timing_info.end_time = now;
+    // Copy headers
+    for (network_response.headers) |header| {
+        response.header_list.append(header.name, header.value) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+    }
+
+    // Set body if present
+    if (network_response.body) |body_bytes| {
+        const body = @import("../internal/body.zig").Body.fromBytes(allocator, body_bytes) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+        response.body = body;
+    }
+
+    // Step 4: Record timing information
+    const end_time = getCurrentTimeMs();
+    params.timing_info.final_network_response_start_time = start_time + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
+    params.timing_info.end_time = end_time;
 
     return response;
+}
+
+/// Build a NetworkRequest from an InternalRequest.
+fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !NetworkRequest {
+    // Get headers from header list using iterator()
+    const header_entries = request.header_list.iterator();
+
+    // Allocate headers array
+    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len);
+    errdefer allocator.free(headers);
+
+    for (header_entries, 0..) |header, i| {
+        headers[i] = .{
+            .name = header.name,
+            .value = header.value,
+        };
+    }
+
+    // Get body bytes if present
+    const body: ?[]const u8 = if (request.body) |b| switch (b) {
+        .bytes => |bytes| bytes,
+        .body => |body_obj| body_obj.getBytes(),
+    } else null;
+
+    return NetworkRequest{
+        .url = request.currentUrl(),
+        .method = request.method,
+        .headers = headers,
+        .body = body,
+        .http_version = .http_1_1, // Default to HTTP/1.1
+        .connect_timeout_ms = 30_000,
+        .timeout_ms = 0, // No timeout by default
+        .follow_redirects = false, // WHATWG Fetch handles redirects
+        .max_redirects = 20,
+        .proxy = null, // TODO: Get from request/settings
+        .cert_options = .{
+            .verify_peer = true,
+            .verify_host = true,
+        },
+        .verbose = false,
+    };
+}
+
+/// Free allocated NetworkRequest resources.
+fn freeNetworkRequest(allocator: Allocator, request: NetworkRequest) void {
+    allocator.free(request.headers);
 }
 
 /// CORS check result.
