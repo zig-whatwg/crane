@@ -69,6 +69,9 @@ pub const FactoryError = policy_factory.FactoryError;
 // Enforcement module - core enforcement algorithms per spec §3.4-3.5, §4.3.4
 pub const enforcement = @import("enforcement.zig");
 
+// DOM integration module - integrates Trusted Types with DOM injection sinks
+pub const dom_integration = @import("dom_integration.zig");
+
 pub const EnforcementError = enforcement.EnforcementError;
 pub const ExpectedType = enforcement.ExpectedType;
 pub const InputValue = enforcement.InputValue;
