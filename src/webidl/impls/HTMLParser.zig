@@ -39,13 +39,10 @@ const InsertionMode = html_parser.InsertionMode;
 const QuirksMode = html_parser.QuirksMode;
 const ParserNamespace = html_parser.Namespace;
 
-// Import DOM implementation modules
+// Import DOM implementation modules for internal algorithm methods
 const DocumentImpl = @import("Document.zig");
 const ElementImpl = @import("Element.zig");
-const TextImpl = @import("Text.zig");
-const CommentImpl = @import("Comment.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
-const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const NodeImpl = @import("Node.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
@@ -399,13 +396,11 @@ pub fn parseHTML(
     tree_builder.parse() catch return error.TreeBuilderError;
 
     // Step 5: Create DOM Document from parsed tree
-    const document = DocumentImpl.init(
+    const document = interfaces.Document.init(
         allocator,
-        interfaces.Document.State,
-        &interfaces.Document.vtable,
         ctx,
     ) catch return error.OutOfMemory;
-    errdefer DocumentImpl.deinit(document);
+    errdefer interfaces.Document.deinit(document);
 
     // Set document type to HTML
     if (DocumentImpl.getInternal(document)) |doc_internal| {
@@ -495,18 +490,16 @@ pub fn parseFragment(
     tree_builder.parse() catch return error.TreeBuilderError;
 
     // Step 6: Create DocumentFragment
-    const fragment = DocumentFragmentImpl.init(
+    const fragment = interfaces.DocumentFragment.init(
         allocator,
-        interfaces.DocumentFragment.State,
-        &interfaces.DocumentFragment.vtable,
         ctx,
     ) catch return error.OutOfMemory;
-    errdefer DocumentFragmentImpl.deinit(fragment);
+    errdefer interfaces.DocumentFragment.deinit(fragment);
 
     // Get owner document for node creation
     var owner_doc: ?*runtime.Instance = null;
     if (context_element) |elem| {
-        owner_doc = NodeImpl.get_ownerDocument(elem) catch null;
+        owner_doc = interfaces.Node.get_ownerDocument(elem) catch null;
     }
 
     // Step 7: Convert parsed children to DOM nodes
@@ -705,20 +698,10 @@ fn createElementNode(
 
     // Create the appropriate element type
     const element = if (is_script)
-        HTMLScriptElementImpl.init(
-            allocator,
-            interfaces.HTMLScriptElement.State,
-            &interfaces.HTMLScriptElement.vtable,
-            ctx,
-        ) catch return error.OutOfMemory
+        interfaces.HTMLScriptElement.init(allocator, ctx) catch return error.OutOfMemory
     else
-        ElementImpl.init(
-            allocator,
-            interfaces.Element.State,
-            &interfaces.Element.vtable,
-            ctx,
-        ) catch return error.OutOfMemory;
-    errdefer if (is_script) HTMLScriptElementImpl.deinit(element) else ElementImpl.deinit(element);
+        interfaces.Element.init(allocator, ctx) catch return error.OutOfMemory;
+    errdefer if (is_script) interfaces.HTMLScriptElement.deinit(element) else interfaces.Element.deinit(element);
 
     // Set node type
     NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch return error.InvalidStateError;
@@ -750,7 +733,7 @@ fn createElementNode(
         // Use initInterned since the TreeNode owns the strings and they'll outlive this call
         const name_str = runtime.DOMString.initInterned(attr.name);
         const value_str = runtime.DOMString.initInterned(attr.value);
-        ElementImpl.call_setAttribute(element, name_str, value_str) catch continue;
+        interfaces.Element.call_setAttribute(element, name_str, value_str) catch continue;
     }
 
     return element;
@@ -767,12 +750,12 @@ fn createTextNode(
 
     // Create Text node using constructor
     const dom_string = runtime.DOMString.initInterned(text_data);
-    const text = TextImpl.call_constructor(
+    const text = interfaces.Text.call_constructor(
         allocator,
         ctx,
         webidl.Opt(runtime.DOMString).passed(dom_string),
     ) catch return error.OutOfMemory;
-    errdefer TextImpl.deinit(text);
+    errdefer interfaces.Text.deinit(text);
 
     // Set owner document
     if (owner_document) |doc| {
@@ -793,12 +776,12 @@ fn createCommentNode(
 
     // Create Comment node
     const dom_string = runtime.DOMString.initInterned(comment_data);
-    const comment = CommentImpl.call_constructor(
+    const comment = interfaces.Comment.call_constructor(
         allocator,
         ctx,
         webidl.Opt(runtime.DOMString).passed(dom_string),
     ) catch return error.OutOfMemory;
-    errdefer CommentImpl.deinit(comment);
+    errdefer interfaces.Comment.deinit(comment);
 
     // Set node type
     NodeImpl.setNodeType(comment, NodeImpl.NodeType.COMMENT_NODE) catch return error.InvalidStateError;
@@ -819,13 +802,11 @@ fn createDoctypeNode(
     owner_document: ?*runtime.Instance,
 ) ParseError!*runtime.Instance {
     // Create DocumentType node
-    const doctype = DocumentTypeImpl.init(
+    const doctype = interfaces.DocumentType.init(
         allocator,
-        interfaces.DocumentType.State,
-        &interfaces.DocumentType.vtable,
         ctx,
     ) catch return error.OutOfMemory;
-    errdefer DocumentTypeImpl.deinit(doctype);
+    errdefer interfaces.DocumentType.deinit(doctype);
 
     // Set node type
     NodeImpl.setNodeType(doctype, NodeImpl.NodeType.DOCUMENT_TYPE_NODE) catch return error.InvalidStateError;
@@ -865,7 +846,7 @@ test "HTMLParser - parse simple HTML document" {
     const ctx = runtime.Context{};
 
     const doc = try parseHTML(allocator, ctx, "<!DOCTYPE html><html><head></head><body>Hello</body></html>", .{});
-    defer DocumentImpl.deinit(doc);
+    defer interfaces.Document.deinit(doc);
 
     // Verify document was created
     try std.testing.expect(doc != null);
@@ -895,7 +876,7 @@ test "HTMLParser - parse HTML with nested elements" {
     ;
 
     const doc = try parseHTML(allocator, ctx, html, .{});
-    defer DocumentImpl.deinit(doc);
+    defer interfaces.Document.deinit(doc);
 
     try std.testing.expect(doc != null);
 }
@@ -905,7 +886,7 @@ test "HTMLParser - parse fragment" {
     const ctx = runtime.Context{};
 
     const frag = try parseFragment(allocator, ctx, "<div>Hello</div><span>World</span>", null);
-    defer DocumentFragmentImpl.deinit(frag);
+    defer interfaces.DocumentFragment.deinit(frag);
 
     try std.testing.expect(frag != null);
 }
