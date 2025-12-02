@@ -521,8 +521,8 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
     const range = if (internal.range) |r| r else try createRangeFromSelection(internal);
     internal.range = range;
 
-    // Delete the range contents
-    RangeImpl.call_deleteContents(range) catch return error.InvalidStateError;
+    // Delete the range contents (use interface per Golden Rule #13)
+    interfaces.Range.call_deleteContents(range) catch return error.InvalidStateError;
 
     // Collapse to start after deletion
     try call_collapseToStart(instance);
@@ -577,21 +577,21 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
     const anchor = internal.anchor_node orelse return error.InvalidStateError;
     const focus = internal.focus_node orelse return error.InvalidStateError;
 
-    // Create a new Range
+    // Create a new Range (use interface per Golden Rule #13)
     // Note: We need a context here - get it from anchor node
-    const range = try RangeImpl.call_constructor(internal.allocator, anchor.ctx);
+    const range = try interfaces.Range.call_constructor(internal.allocator, anchor.ctx);
 
     // Set the range boundaries based on direction
     switch (internal.direction) {
         .backward => {
             // Focus comes before anchor
-            try RangeImpl.call_setStart(range, focus, internal.focus_offset);
-            try RangeImpl.call_setEnd(range, anchor, internal.anchor_offset);
+            try interfaces.Range.call_setStart(range, focus, internal.focus_offset);
+            try interfaces.Range.call_setEnd(range, anchor, internal.anchor_offset);
         },
         else => {
             // Anchor comes before focus (or same position)
-            try RangeImpl.call_setStart(range, anchor, internal.anchor_offset);
-            try RangeImpl.call_setEnd(range, focus, internal.focus_offset);
+            try interfaces.Range.call_setStart(range, anchor, internal.anchor_offset);
+            try interfaces.Range.call_setEnd(range, focus, internal.focus_offset);
         },
     }
 

@@ -400,8 +400,8 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
         // Set event's target
         EventImpl.setTarget(event, instance);
 
-        // Get listeners for this event type
-        const @"type" = EventImpl.get_type(event) catch return true;
+        // Get listeners for this event type (use interface per Golden Rule #13)
+        const @"type" = interfaces.Event.get_type(event) catch return true;
         const listeners = int.getEventListenerList();
 
         // Invoke matching listeners

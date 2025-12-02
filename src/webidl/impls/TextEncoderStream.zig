@@ -152,8 +152,8 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const TransformStreamImpl = @import("TransformStream.zig");
-    return TransformStreamImpl.get_readable(internal.transform) catch error.InvalidState;
+    // Use interface per Golden Rule #13
+    return interfaces.TransformStream.get_readable(internal.transform) catch error.InvalidState;
 }
 
 /// Getter for writable
@@ -163,8 +163,8 @@ pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const TransformStreamImpl = @import("TransformStream.zig");
-    return TransformStreamImpl.get_writable(internal.transform) catch error.InvalidState;
+    // Use interface per Golden Rule #13
+    return interfaces.TransformStream.get_writable(internal.transform) catch error.InvalidState;
 }
 
 // ============================================================================

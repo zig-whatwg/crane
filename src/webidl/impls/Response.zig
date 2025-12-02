@@ -357,7 +357,6 @@ pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
     // Try to create a ReadableStream from the body data
     // This requires an event loop; if not available, return null
     // (body methods like text()/json() will still work directly)
-    const ReadableStreamImpl = @import("ReadableStream.zig");
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
@@ -368,9 +367,9 @@ pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
         return null;
     };
 
-    // Create a basic ReadableStream
+    // Create a basic ReadableStream (use interface per Golden Rule #13)
     // For now, create a simple stream that will serve the body data
-    const stream_instance = ReadableStreamImpl.call_constructor(
+    const stream_instance = interfaces.ReadableStream.call_constructor(
         allocator,
         ctx,
         webidl.Opt(*const anyopaque).notPassed(),

@@ -185,7 +185,7 @@ test "DOMParser - parseFromString with HTML" {
 
     const html = runtime.DOMString.initStatic("<html><body>Hello World</body></html>");
     const doc = try call_parseFromString(parser, html, ._text_html_);
-    defer DocumentImpl.deinit(doc);
+    defer interfaces.Document.deinit(doc);
 
     try std.testing.expect(doc != null);
 

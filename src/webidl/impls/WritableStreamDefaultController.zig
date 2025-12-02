@@ -195,11 +195,10 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Return the AbortSignal from the AbortController
     // Per spec, the controller's [[abortController]] should always exist
-    // and we return abortController.[[signal]]
+    // and we return abortController.[[signal]] (use interface per Golden Rule #13)
     if (internal.abort_controller) |abort_controller| {
         // Get the signal from the AbortController
-        const AbortControllerImpl = @import("AbortController.zig");
-        return AbortControllerImpl.get_signal(abort_controller);
+        return interfaces.AbortController.get_signal(abort_controller);
     }
 
     // If no abort controller is set, this is an implementation error

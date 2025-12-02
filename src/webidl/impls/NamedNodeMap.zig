@@ -15,6 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const NamedNodeMap = interfaces.NamedNodeMap;
+const AttrImpl = @import("Attr.zig");
 
 pub const State = NamedNodeMap.State;
 
@@ -108,11 +109,11 @@ pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: runtime.DOM
     const name = qualifiedName.asSlice();
 
     // Find attribute by qualified name
-    const AttrImpl = @import("Attr.zig");
+    // Use interface per Golden Rule #13
     const attrs = internal.attrs.toSlice();
     for (attrs) |attr| {
         // Get attr's name (qualified name)
-        const attr_name = AttrImpl.get_name(attr) catch continue;
+        const attr_name = interfaces.Attr.get_name(attr) catch continue;
         if (std.mem.eql(u8, attr_name.asSlice(), name)) {
             return attr;
         }
@@ -131,13 +132,12 @@ pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
     // Normalize empty namespace to null per spec
     const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
 
-    // Find attribute by namespace and local name
-    const AttrImpl = @import("Attr.zig");
+    // Find attribute by namespace and local name (use interface per Golden Rule #13)
     const attrs = internal.attrs.toSlice();
     for (attrs) |attr| {
         // Get attr's namespace and local name
-        const attr_ns_opt = AttrImpl.get_namespaceURI(attr) catch continue;
-        const attr_local = AttrImpl.get_localName(attr) catch continue;
+        const attr_ns_opt = interfaces.Attr.get_namespaceURI(attr) catch continue;
+        const attr_local = interfaces.Attr.get_localName(attr) catch continue;
 
         const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
         const attr_local_slice = attr_local.asSlice();
@@ -175,10 +175,9 @@ pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: runtime.
     const internal = getInternal(instance) orelse return error.InvalidState;
     const name = qualifiedName.asSlice();
 
-    // Find and remove attribute by qualified name
-    const AttrImpl = @import("Attr.zig");
+    // Find and remove attribute by qualified name (use interface per Golden Rule #13)
     for (internal.attrs.toSlice(), 0..) |attr, i| {
-        const attr_name = AttrImpl.get_name(attr) catch continue;
+        const attr_name = interfaces.Attr.get_name(attr) catch continue;
         if (std.mem.eql(u8, attr_name.asSlice(), name)) {
             // Remove from list
             const removed = internal.attrs.remove(i) catch return error.NotFoundError;
@@ -207,11 +206,10 @@ pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.D
     // Normalize empty namespace to null per spec
     const ns_to_match: ?[]const u8 = if (ns.len == 0) null else ns;
 
-    // Find and remove attribute by namespace and local name
-    const AttrImpl = @import("Attr.zig");
+    // Find and remove attribute by namespace and local name (use interface per Golden Rule #13)
     for (internal.attrs.toSlice(), 0..) |attr, i| {
-        const attr_ns_opt = AttrImpl.get_namespaceURI(attr) catch continue;
-        const attr_local = AttrImpl.get_localName(attr) catch continue;
+        const attr_ns_opt = interfaces.Attr.get_namespaceURI(attr) catch continue;
+        const attr_local = interfaces.Attr.get_localName(attr) catch continue;
 
         const attr_ns_slice = if (attr_ns_opt) |attr_ns| attr_ns.asSlice() else "";
         const attr_local_slice = attr_local.asSlice();
