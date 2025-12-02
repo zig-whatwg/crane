@@ -413,191 +413,314 @@ pub fn getCachedSourceText(instance: *runtime.Instance) ?[]const u8 {
     return null;
 }
 
-/// Getter for type
-pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
+// =============================================================================
+// Content Attribute Reflection Helpers
+// Spec: https://html.spec.whatwg.org/multipage/dom.html#reflecting-content-attributes-in-idl-attributes
+// =============================================================================
 
-/// Getter for src
-pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
-}
+const ElementImpl = @import("Element.zig");
 
-/// Getter for noModule
-pub fn get_noModule(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
+/// Get a content attribute value from this element
+fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
+    const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
 
-/// Getter for async
-pub fn get_async(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for defer
-pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for blocking
-pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for crossOrigin
-pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    _ = instance;
+    // Search attributes for matching name
+    for (elem_internal.attributes.items) |attr| {
+        if (std.mem.eql(u8, attr.local_name, name)) {
+            return runtime.DOMString.initInterned(attr.value);
+        }
+    }
     return null;
 }
 
-/// Getter for referrerPolicy
-pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
+/// Set a content attribute value on this element
+fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
+    const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
+
+    // Search for existing attribute
+    for (elem_internal.attributes.items) |*attr| {
+        if (std.mem.eql(u8, attr.local_name, name)) {
+            // Update existing
+            elem_internal.allocator.free(attr.value);
+            attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
+            return;
+        }
+    }
+
+    // Add new attribute
+    try elem_internal.attributes.append(elem_internal.allocator, .{
+        .namespace_uri = null,
+        .prefix = null,
+        .local_name = try elem_internal.allocator.dupe(u8, name),
+        .value = try elem_internal.allocator.dupe(u8, value.asSlice()),
+    });
+}
+
+/// Check if a boolean content attribute exists (presence = true)
+fn hasBooleanAttribute(instance: *runtime.Instance, name: []const u8) bool {
+    const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
+
+    for (elem_internal.attributes.items) |attr| {
+        if (std.mem.eql(u8, attr.local_name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Set or remove a boolean attribute (presence = true, absence = false)
+fn setBooleanAttribute(instance: *runtime.Instance, name: []const u8, value: bool) !void {
+    const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
+
+    if (value) {
+        // Set the attribute with empty value (presence means true)
+        try setContentAttribute(instance, name, runtime.DOMString.initEmpty());
+    } else {
+        // Remove the attribute
+        var i: usize = 0;
+        while (i < elem_internal.attributes.items.len) {
+            if (std.mem.eql(u8, elem_internal.attributes.items[i].local_name, name)) {
+                const entry = elem_internal.attributes.orderedRemove(i);
+                elem_internal.allocator.free(entry.local_name);
+                elem_internal.allocator.free(entry.value);
+                if (entry.namespace_uri) |ns| elem_internal.allocator.free(ns);
+                if (entry.prefix) |p| elem_internal.allocator.free(p);
+                return;
+            }
+            i += 1;
+        }
+    }
+}
+
+// =============================================================================
+// IDL Attribute Implementations - Content Attribute Reflection
+// =============================================================================
+
+/// Getter for type
+/// Spec: [CEReactions, Reflect] attribute DOMString type;
+/// Reflects the type content attribute.
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return getContentAttribute(instance, "type") orelse runtime.DOMString.initEmpty();
+}
+
+/// Getter for src
+/// Spec: [CEReactions, ReflectURL] attribute USVString src;
+/// Reflects the src content attribute (URL-valued).
+pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // For ReflectURL, we should return the resolved URL, but for now return raw value
+    if (getContentAttribute(instance, "src")) |attr| {
+        return attr.asSlice();
+    }
+    return "";
+}
+
+/// Getter for noModule
+/// Spec: [CEReactions, Reflect] attribute boolean noModule;
+/// True if the nomodule attribute is present.
+pub fn get_noModule(instance: *runtime.Instance) anyerror!bool {
+    return hasBooleanAttribute(instance, "nomodule");
+}
+
+/// Getter for async
+/// Spec: [CEReactions] attribute boolean async;
+/// Special behavior: returns the "force async" flag OR the async attribute.
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-async
+pub fn get_async(instance: *runtime.Instance) anyerror!bool {
+    // Per spec: The async IDL attribute controls whether the element will execute
+    // asynchronously or not. If the element's "force async" flag is set, then,
+    // on getting, the async IDL attribute must return true, and on setting,
+    // the "force async" flag must first be unset...
+    if (getInternal(instance)) |internal| {
+        if (internal.force_async) {
+            return true;
+        }
+    }
+    return hasBooleanAttribute(instance, "async");
+}
+
+/// Getter for defer
+/// Spec: [CEReactions, Reflect] attribute boolean defer;
+/// True if the defer attribute is present.
+pub fn get_defer(instance: *runtime.Instance) anyerror!bool {
+    return hasBooleanAttribute(instance, "defer");
+}
+
+/// Getter for blocking
+/// Spec: [SameObject, PutForwards=value, Reflect] readonly attribute DOMTokenList blocking;
+/// Returns the DOMTokenList for the blocking attribute.
+/// TODO: Implement DOMTokenList support
+pub fn get_blocking(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
+    return error.NotImplemented; // Requires DOMTokenList implementation
+}
+
+/// Getter for crossOrigin
+/// Spec: [CEReactions] attribute DOMString? crossOrigin;
+/// Reflects the crossorigin content attribute (limited to known values).
+pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString {
+    // Per spec, crossOrigin returns null if attribute is absent
+    return getContentAttribute(instance, "crossorigin");
+}
+
+/// Getter for referrerPolicy
+/// Spec: [CEReactions] attribute DOMString referrerPolicy;
+/// Reflects the referrerpolicy content attribute.
+pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return getContentAttribute(instance, "referrerpolicy") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for integrity
+/// Spec: [CEReactions, Reflect] attribute DOMString integrity;
+/// Reflects the integrity content attribute.
 pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getContentAttribute(instance, "integrity") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for fetchPriority
+/// Spec: [CEReactions] attribute DOMString fetchPriority;
+/// Reflects the fetchpriority content attribute.
 pub fn get_fetchPriority(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getContentAttribute(instance, "fetchpriority") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for text
+/// Spec: [CEReactions] attribute DOMString text;
+/// Returns the child text content (concatenation of all Text node descendants).
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
 pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // Per spec: "On getting, it must return this element's child text content."
+    // For now, return cached source text if available
+    if (getInternal(instance)) |internal| {
+        if (internal.cached_source_text) |text| {
+            return runtime.DOMString.initInterned(text);
+        }
+    }
+    // TODO: Implement proper child text content collection
+    return runtime.DOMString.initEmpty();
 }
 
-/// Getter for charset
+/// Getter for charset (obsolete)
+/// Spec: [CEReactions, Reflect] attribute DOMString charset;
+/// Reflects the charset content attribute.
 pub fn get_charset(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getContentAttribute(instance, "charset") orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for event
+/// Getter for event (obsolete)
+/// Spec: [CEReactions, Reflect] attribute DOMString event;
+/// Reflects the event content attribute.
 pub fn get_event(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getContentAttribute(instance, "event") orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for htmlFor
+/// Getter for htmlFor (obsolete)
+/// Spec: [CEReactions, Reflect=for] attribute DOMString htmlFor;
+/// Reflects the "for" content attribute.
 pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return getContentAttribute(instance, "for") orelse runtime.DOMString.initEmpty();
 }
 
 /// Getter for attributionSrc
+/// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
+/// Reflects the attributionsrc content attribute.
 pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    if (getContentAttribute(instance, "attributionsrc")) |attr| {
+        return attr.asSlice();
+    }
+    return "";
 }
 
 /// Setter for type
+/// Spec: [CEReactions, Reflect] attribute DOMString type;
 pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "type", value);
 }
 
 /// Setter for src
+/// Spec: [CEReactions, ReflectURL] attribute USVString src;
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "src", runtime.DOMString.initInterned(value));
 }
 
 /// Setter for noModule
+/// Spec: [CEReactions, Reflect] attribute boolean noModule;
 pub fn set_noModule(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBooleanAttribute(instance, "nomodule", value);
 }
 
 /// Setter for async
+/// Spec: [CEReactions] attribute boolean async;
+/// Special behavior: first unsets the "force async" flag.
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-async
 pub fn set_async(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Per spec: On setting, the "force async" flag must first be unset...
+    if (getInternal(instance)) |internal| {
+        internal.force_async = false;
+    }
+    try setBooleanAttribute(instance, "async", value);
 }
 
 /// Setter for defer
+/// Spec: [CEReactions, Reflect] attribute boolean defer;
 pub fn set_defer(instance: *runtime.Instance, value: bool) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setBooleanAttribute(instance, "defer", value);
 }
 
 /// Setter for crossOrigin
+/// Spec: [CEReactions] attribute DOMString? crossOrigin;
 pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "crossorigin", value);
 }
 
 /// Setter for referrerPolicy
+/// Spec: [CEReactions] attribute DOMString referrerPolicy;
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "referrerpolicy", value);
 }
 
 /// Setter for integrity
+/// Spec: [CEReactions, Reflect] attribute DOMString integrity;
 pub fn set_integrity(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "integrity", value);
 }
 
 /// Setter for fetchPriority
+/// Spec: [CEReactions] attribute DOMString fetchPriority;
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "fetchpriority", value);
 }
 
 /// Setter for text
+/// Spec: [CEReactions] attribute DOMString text;
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
 pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Per spec: "On setting, it must string replace all with the given value within this element."
+    // For now, just cache the text (full implementation needs DOM tree manipulation)
+    try cacheSourceText(instance, value.asSlice());
 }
 
-/// Setter for charset
+/// Setter for charset (obsolete)
+/// Spec: [CEReactions, Reflect] attribute DOMString charset;
 pub fn set_charset(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "charset", value);
 }
 
-/// Setter for event
+/// Setter for event (obsolete)
+/// Spec: [CEReactions, Reflect] attribute DOMString event;
 pub fn set_event(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "event", value);
 }
 
-/// Setter for htmlFor
+/// Setter for htmlFor (obsolete)
+/// Spec: [CEReactions, Reflect=for] attribute DOMString htmlFor;
 pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try setContentAttribute(instance, "for", value);
 }
 
 /// Setter for attributionSrc
+/// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
 pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
+    try setContentAttribute(instance, "attributionsrc", runtime.DOMString.initInterned(value));
     return error.NotImplemented;
 }
 
