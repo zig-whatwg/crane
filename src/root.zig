@@ -29,7 +29,9 @@ pub const console = @import("console");
 pub const streams = @import("streams");
 pub const mimesniff = @import("mimesniff");
 pub const interfaces = @import("interfaces");
-pub const impls = @import("impls");
+// NOTE: impls is intentionally NOT exported publicly.
+// External code must use interfaces, which delegate to impls.
+// See AGENTS.md Golden Rule #12 and #13.
 pub const trusted_types = @import("trusted_types");
 pub const csp = @import("csp");
 pub const hr_time = @import("hr_time");
@@ -53,7 +55,7 @@ test {
     _ = streams;
     _ = mimesniff;
     _ = interfaces;
-    _ = impls;
+    // impls tests are run through their individual modules, not exported publicly
     _ = trusted_types;
     _ = csp;
     _ = websocket;
