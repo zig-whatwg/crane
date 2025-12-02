@@ -7,22 +7,40 @@
 //!
 //! This module provides the bridge between the HTML parser and the V8 JavaScript
 //! engine for executing inline and external scripts.
+//!
+//! ## Architecture Note
+//!
+//! This module implements HTML spec algorithms that manipulate internal state not
+//! exposed through WebIDL interfaces (parser document, already started, script
+//! result, etc.). Per Golden Rule #12 (external code uses interfaces), this code
+//! SHOULD eventually be refactored:
+//!
+//! **Current**: Standalone module using impls directly
+//! **Target**: Move algorithms into HTMLScriptElementImpl, expose via interface
+//!
+//! TODO(whatwg-jwgc): Refactor to move prepareScriptElement and executeScriptElement
+//! into HTMLScriptElementImpl, then have this module (or callers) use the interface.
+//! This is a significant refactoring task tracked in epic whatwg-jwgc.
 
 const std = @import("std");
 const runtime = @import("runtime");
 
 // WebIDL types
 const interfaces = @import("interfaces");
+
+// NOTE: Direct impl access is used here because this module implements HTML spec
+// algorithms that require access to internal state not exposed via WebIDL interfaces.
+// See "Architecture Note" above for the planned refactoring approach.
 const impls = @import("impls");
 
-// Script element implementation
+// Script element implementation - internal types and methods
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const ScriptType = HTMLScriptElementImpl.ScriptType;
 const ScriptResult = HTMLScriptElementImpl.ScriptResult;
 const ClassicScript = HTMLScriptElementImpl.ClassicScript;
 const ModuleScript = HTMLScriptElementImpl.ModuleScript;
 
-// Document implementation
+// Document implementation - internal methods for CSP, scripting state
 const DocumentImpl = impls.Document;
 
 // Node implementation for DOM traversal
