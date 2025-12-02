@@ -1,4 +1,18 @@
 //! Implementation for DOMParser interface
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#domparser
+//! HTML Standard §8.4.2 "DOMParser"
+//!
+//! The DOMParser interface allows parsing HTML and XML documents from strings.
+//!
+//! ## Usage
+//!
+//! ```zig
+//! const parser = try DOMParser.call_constructor(allocator, ctx);
+//! defer DOMParser.deinit(parser);
+//!
+//! const doc = try DOMParser.call_parseFromString(parser, html_string, ._text_html_);
+//! ```
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -9,17 +23,39 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DOMParser = interfaces.DOMParser;
 
+// Import HTML parser
+const HTMLParser = @import("HTMLParser.zig");
+const DocumentImpl = @import("Document.zig");
+
 pub const State = DOMParser.State;
 
 pub const ImplError = error{
     NotImplemented,
+    NotSupportedError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for DOMParser implementation
+/// DOMParser is stateless - all operations are independent
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        _ = self;
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -29,33 +65,132 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Creates a new DOMParser instance
+///
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-constructor
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &DOMParser.vtable, ctx);
     errdefer deinit(instance);
 
-    // TODO: Implement constructor logic with parameters
-
     return instance;
 }
 
 /// Operation: parseFromString
-pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMString, @"type": enums.DOMParserSupportedType) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = string;
-    _ = @"type";
-    return error.NotImplemented;
+///
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-parsefromstring
+///
+/// The parseFromString(string, type) method steps are:
+///
+/// 1. Let document be a new Document, whose content type is type and url is
+///    "about:blank".
+///
+/// 2. Switch on type:
+///    - "text/html"
+///      Parse string given document using the HTML parser.
+///
+///    - "text/xml", "application/xml", "application/xhtml+xml", "image/svg+xml"
+///      Parse string given document using the XML parser.
+///      If that throws an error, or if the root element of document is an html
+///      element in the HTML namespace whose local name is "parsererror", set
+///      document's error flag.
+///
+/// 3. Return document.
+pub fn call_parseFromString(
+    instance: *runtime.Instance,
+    string: runtime.DOMString,
+    @"type": enums.DOMParserSupportedType,
+) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const html_string = string.asSlice();
+
+    return switch (@"type") {
+        ._text_html_ => {
+            // Parse as HTML
+            const document = HTMLParser.parseHTML(
+                internal.allocator,
+                instance.ctx,
+                html_string,
+                .{},
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return error.NotSupportedError,
+            };
+
+            // Set content type to "text/html"
+            if (DocumentImpl.getInternal(document)) |doc_internal| {
+                doc_internal.content_type.deinit(doc_internal.allocator);
+                doc_internal.content_type = try runtime.DOMString.initDupe(
+                    doc_internal.allocator,
+                    "text/html",
+                );
+            }
+
+            return document;
+        },
+        ._text_xml_,
+        ._application_xml_,
+        ._application_xhtml_xml_,
+        ._image_svg_xml_,
+        => {
+            // XML parsing not yet implemented
+            // TODO: Implement XML parser integration
+            return error.NotImplemented;
+        },
+    };
 }
 
+// =============================================================================
+// Tests
+// =============================================================================
+
+test "DOMParser - constructor creates valid instance" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.Context{};
+
+    const parser = try call_constructor(allocator, ctx);
+    defer deinit(parser);
+
+    try std.testing.expect(parser != null);
+}
+
+test "DOMParser - parseFromString with HTML" {
+    const allocator = std.testing.allocator;
+    const ctx = runtime.Context{};
+
+    const parser = try call_constructor(allocator, ctx);
+    defer deinit(parser);
+
+    const html = runtime.DOMString.initStatic("<html><body>Hello World</body></html>");
+    const doc = try call_parseFromString(parser, html, ._text_html_);
+    defer DocumentImpl.deinit(doc);
+
+    try std.testing.expect(doc != null);
+
+    // Verify content type was set
+    if (DocumentImpl.getInternal(doc)) |doc_internal| {
+        try std.testing.expectEqualStrings("text/html", doc_internal.content_type.asSlice());
+    }
+}

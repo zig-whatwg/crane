@@ -1670,14 +1670,60 @@ pub fn set_elementTiming(instance: *runtime.Instance, value: runtime.DOMString) 
 /// 2. Remove all children from this element
 /// 3. Append parsed nodes to this element
 ///
-/// Note: Full HTML parsing not implemented - this is a stub.
-/// TODO: Implement HTML fragment parsing algorithm
+/// HTML Standard - Sets the innerHTML of this element
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-innerhtml-property
+///
+/// Steps:
+/// 1. Let context element be this (the element)
+/// 2. Parse the string using the HTML fragment parsing algorithm with context
+/// 3. Replace all children of context with the parsed nodes
 pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Requires HTML fragment parsing algorithm
-    // For now, this is not implemented
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const html_string = value.asSlice();
+
+    // Import HTMLParser for fragment parsing
+    const HTMLParser = @import("HTMLParser.zig");
+
+    // Step 1: Remove all existing children
+    // Walk through children and remove them
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const next = NodeImpl.getNextSibling(c);
+        // Remove child from parent
+        _ = NodeImpl.call_removeChild(instance, c) catch break;
+        child = next;
+    }
+
+    // Step 2: If value is empty string, we're done
+    if (html_string.len == 0) {
+        return;
+    }
+
+    // Step 3: Parse the HTML fragment using this element as context
+    const fragment = HTMLParser.parseFragment(
+        internal.allocator,
+        instance.ctx,
+        html_string,
+        instance,
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
+
+    // Step 4: Move all children from fragment to this element
+    var fragment_child = NodeImpl.getFirstChild(fragment);
+    while (fragment_child) |fc| {
+        const next = NodeImpl.getNextSibling(fc);
+        // Remove from fragment
+        _ = NodeImpl.call_removeChild(fragment, fc) catch break;
+        // Append to this element
+        _ = NodeImpl.appendChild(instance, fc) catch break;
+        fragment_child = next;
+    }
+
+    // Clean up the fragment (children have been moved)
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    DocumentFragmentImpl.deinit(fragment);
 }
 
 /// Setter for outerHTML
@@ -1685,18 +1731,56 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-outerhtml-property
 ///
 /// Steps:
-/// 1. If element has no parent, return
-/// 2. Parse the string using the HTML fragment parsing algorithm
-/// 3. Replace this element with parsed nodes in parent
-///
-/// Note: Full HTML parsing not implemented - this is a stub.
-/// TODO: Implement HTML fragment parsing algorithm
+/// 1. Let parent be this element's parent
+/// 2. If parent is null, return
+/// 3. If parent is a Document, throw a NoModificationAllowedError
+/// 4. Parse the string using the HTML fragment parsing algorithm with parent as context
+/// 5. Replace this element with the parsed nodes
 pub fn set_outerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Requires HTML fragment parsing algorithm
-    // For now, this is not implemented
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const html_string = value.asSlice();
+
+    // Step 1-2: Get parent, return if null
+    const parent = NodeImpl.getParent(instance) orelse return;
+
+    // Step 3: Check if parent is a Document (not allowed)
+    const parent_type = NodeImpl.getNodeType(parent) orelse return error.InvalidStateError;
+    if (parent_type == NodeImpl.NodeType.DOCUMENT_NODE) {
+        return error.HierarchyRequestError;
+    }
+
+    // Import HTMLParser for fragment parsing
+    const HTMLParser = @import("HTMLParser.zig");
+
+    // Step 4: Parse the HTML fragment using parent as context
+    const fragment = HTMLParser.parseFragment(
+        internal.allocator,
+        instance.ctx,
+        html_string,
+        parent,
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.NotSupportedError,
+    };
+
+    // Step 5: Replace this element with the parsed nodes
+    // Insert all children from fragment before this element, then remove this element
+    var fragment_child = NodeImpl.getFirstChild(fragment);
+    while (fragment_child) |fc| {
+        const next = NodeImpl.getNextSibling(fc);
+        // Remove from fragment
+        _ = NodeImpl.call_removeChild(fragment, fc) catch break;
+        // Insert before this element
+        _ = NodeImpl.call_insertBefore(parent, fc, instance) catch break;
+        fragment_child = next;
+    }
+
+    // Remove this element from parent
+    _ = NodeImpl.call_removeChild(parent, instance) catch {};
+
+    // Clean up the fragment
+    const DocumentFragmentImpl = @import("DocumentFragment.zig");
+    DocumentFragmentImpl.deinit(fragment);
 }
 
 /// Setter for scrollTop

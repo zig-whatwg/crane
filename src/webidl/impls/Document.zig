@@ -243,7 +243,9 @@ pub const InternalState = struct {
 };
 
 /// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+/// Made public for use by HTMLParser, DOMParser, and other modules that need
+/// access to document internals for DOM construction.
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return getInternalFromRegistry(instance);
 }
 
@@ -2638,10 +2640,63 @@ pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instan
 }
 
 /// Operation: write
+/// HTML §8.4.3 - Writes text to the document
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-write
+///
+/// Simplified implementation that appends parsed HTML to document body.
+/// Full implementation requires insertion point tracking and parser integration.
 pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = text;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Concatenate all text arguments
+    var total_len: usize = 0;
+    for (text) |t| {
+        total_len += t.asSlice().len;
+    }
+
+    if (total_len == 0) return;
+
+    // Allocate buffer for concatenated text
+    const buffer = try internal.allocator.alloc(u8, total_len);
+    defer internal.allocator.free(buffer);
+
+    var offset: usize = 0;
+    for (text) |t| {
+        const slice = t.asSlice();
+        @memcpy(buffer[offset..][0..slice.len], slice);
+        offset += slice.len;
+    }
+
+    // Get document body to append to
+    const body = try get_body(instance);
+    if (body == null) {
+        // No body element - can't write
+        // Full implementation would create one or handle differently
+        return;
+    }
+
+    // Parse and append the HTML to body
+    const HTMLParser = @import("HTMLParser.zig");
+
+    const fragment = HTMLParser.parseFragment(
+        internal.allocator,
+        instance.ctx,
+        buffer,
+        body,
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return,
+    };
+    defer DocumentFragmentImpl.deinit(fragment);
+
+    // Move children from fragment to body
+    var child = NodeImpl.getFirstChild(fragment);
+    while (child) |c| {
+        const next = NodeImpl.getNextSibling(c);
+        _ = NodeImpl.call_removeChild(fragment, c) catch break;
+        _ = NodeImpl.appendChild(body.?, c) catch break;
+        child = next;
+    }
 }
 
 /// Operation: createAttribute
@@ -3596,10 +3651,60 @@ fn collectElementsByName(
 }
 
 /// Operation: writeln
+/// HTML §8.4.3 - Writes text to the document followed by a newline
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-writeln
+///
+/// Same as write() but appends a newline character.
 pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = text;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Calculate total length including newline
+    var total_len: usize = 0;
+    for (text) |t| {
+        total_len += t.asSlice().len;
+    }
+    total_len += 1; // For newline
+
+    // Allocate buffer for concatenated text plus newline
+    const buffer = try internal.allocator.alloc(u8, total_len);
+    defer internal.allocator.free(buffer);
+
+    var offset: usize = 0;
+    for (text) |t| {
+        const slice = t.asSlice();
+        @memcpy(buffer[offset..][0..slice.len], slice);
+        offset += slice.len;
+    }
+    buffer[offset] = '\n';
+
+    // Get document body to append to
+    const body = try get_body(instance);
+    if (body == null) {
+        return;
+    }
+
+    // Parse and append the HTML to body
+    const HTMLParser = @import("HTMLParser.zig");
+
+    const fragment = HTMLParser.parseFragment(
+        internal.allocator,
+        instance.ctx,
+        buffer,
+        body,
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return,
+    };
+    defer DocumentFragmentImpl.deinit(fragment);
+
+    // Move children from fragment to body
+    var child = NodeImpl.getFirstChild(fragment);
+    while (child) |c| {
+        const next = NodeImpl.getNextSibling(c);
+        _ = NodeImpl.call_removeChild(fragment, c) catch break;
+        _ = NodeImpl.appendChild(body.?, c) catch break;
+        child = next;
+    }
 }
 
 /// Operation: append

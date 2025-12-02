@@ -58,7 +58,8 @@ pub const InternalState = struct {
 };
 
 /// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+/// Made public for use by HTMLParser when creating DOCTYPE nodes.
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.getState(State);
     return state.own._internal;
 }
