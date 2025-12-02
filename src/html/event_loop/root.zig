@@ -53,6 +53,7 @@ pub const task = @import("task.zig");
 pub const task_queue = @import("task_queue.zig");
 pub const microtask = @import("microtask.zig");
 pub const timers = @import("timers.zig");
+pub const rendering = @import("rendering.zig");
 pub const event_loop = @import("event_loop.zig");
 
 // Main types
@@ -71,6 +72,13 @@ pub const performMicrotaskCheckpoint = microtask.performMicrotaskCheckpoint;
 pub const Timer = timers.Timer;
 pub const TimerManager = timers.TimerManager;
 pub const VisibilityState = timers.VisibilityState;
+
+pub const FrameRequestCallback = rendering.FrameRequestCallback;
+pub const AnimationFrameProvider = rendering.AnimationFrameProvider;
+pub const RenderingState = rendering.RenderingState;
+pub const IdleCallback = rendering.IdleCallback;
+pub const IdleDeadline = rendering.IdleDeadline;
+pub const IdleCallbackManager = rendering.IdleCallbackManager;
 
 pub const EventLoop = event_loop.EventLoop;
 pub const EventLoopType = event_loop.EventLoopType;
