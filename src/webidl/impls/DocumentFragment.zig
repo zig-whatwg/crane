@@ -268,8 +268,8 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
         try NodeImpl.removeNodeFromParent(node, oldParent);
     }
 
-    // Step 4: Insert node before child
-    _ = try NodeImpl.call_insertBefore(instance, node, child);
+    // Step 4: Insert node before child (use interface per Golden Rule #13)
+    _ = try interfaces.Node.call_insertBefore(instance, node, child);
 }
 
 /// Operation: querySelector (from ParentNode mixin)

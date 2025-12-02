@@ -139,7 +139,7 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
         public_id_slice,
         system_id_slice,
     );
-    errdefer DocumentTypeImpl.deinit(doctype);
+    errdefer interfaces.DocumentType.deinit(doctype);
 
     // Set node document to the associated document
     if (internal.document) |doc| {
@@ -176,14 +176,12 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new XMLDocument
-    const document = try DocumentImpl.init(
+    // Step 1: Create new XMLDocument (use interface per Golden Rule #13)
+    const document = try interfaces.Document.init(
         allocator,
-        interfaces.Document.State,
-        &interfaces.Document.vtable,
         ctx,
     );
-    errdefer DocumentImpl.deinit(document);
+    errdefer interfaces.Document.deinit(document);
 
     // Set document type to XML
     try DocumentImpl.setDocumentType(document, .xml);
@@ -263,14 +261,12 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     const allocator = internal.allocator;
     const ctx = instance.ctx;
 
-    // Step 1: Create new HTML document
-    const doc = try DocumentImpl.init(
+    // Step 1: Create new HTML document (use interface per Golden Rule #13)
+    const doc = try interfaces.Document.init(
         allocator,
-        interfaces.Document.State,
-        &interfaces.Document.vtable,
         ctx,
     );
-    errdefer DocumentImpl.deinit(doc);
+    errdefer interfaces.Document.deinit(doc);
 
     // Set document type to HTML
     try DocumentImpl.setDocumentType(doc, .html);
@@ -280,18 +276,18 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
 
     // Step 3: Create and append doctype with name "html"
     const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
-    errdefer DocumentTypeImpl.deinit(doctype);
+    errdefer interfaces.DocumentType.deinit(doctype);
     try NodeImpl.setOwnerDocument(doctype, doc);
     _ = try NodeImpl.appendChild(doc, doctype);
 
     // Step 4: Create and append <html> element
     const html = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "html");
-    errdefer ElementImpl.deinit(html);
+    errdefer interfaces.Element.deinit(html);
     _ = try NodeImpl.appendChild(doc, html);
 
     // Step 5: Create and append <head> element to html
     const head = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "head");
-    errdefer ElementImpl.deinit(head);
+    errdefer interfaces.Element.deinit(head);
     _ = try NodeImpl.appendChild(html, head);
 
     // Step 6: If title is given (non-null/non-empty check)
@@ -302,12 +298,12 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
         if (title_slice.len > 0 or true) { // Always create if title param passed
             // Step 6.1: Create and append <title> element to head
             const title_elem = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "title");
-            errdefer ElementImpl.deinit(title_elem);
+            errdefer interfaces.Element.deinit(title_elem);
             _ = try NodeImpl.appendChild(head, title_elem);
 
-            // Step 6.2: Create Text node with title data and append to title element
-            const text_node = try TextImpl.call_constructor(allocator, ctx, webidl.Opt(runtime.DOMString).passed(title_val));
-            errdefer TextImpl.deinit(text_node);
+            // Step 6.2: Create Text node with title data and append to title element (use interface per Golden Rule #13)
+            const text_node = try interfaces.Text.call_constructor(allocator, ctx, webidl.Opt(runtime.DOMString).passed(title_val));
+            errdefer interfaces.Text.deinit(text_node);
             try NodeImpl.setOwnerDocument(text_node, doc);
             _ = try NodeImpl.appendChild(title_elem, text_node);
         }
@@ -315,7 +311,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
 
     // Step 7: Create and append <body> element to html
     const body = try createElementNS(allocator, ctx, doc, HTML_NAMESPACE, "body");
-    errdefer ElementImpl.deinit(body);
+    errdefer interfaces.Element.deinit(body);
     _ = try NodeImpl.appendChild(html, body);
 
     // Step 8: Set doc's origin from associated document
@@ -425,14 +421,12 @@ fn createElementNS(
     namespace: []const u8,
     qualified_name: []const u8,
 ) !*runtime.Instance {
-    // Create element via Element impl
-    const element = try ElementImpl.init(
+    // Create element via Element interface (per Golden Rule #13)
+    const element = try interfaces.Element.init(
         allocator,
-        interfaces.Element.State,
-        &interfaces.Element.vtable,
         ctx,
     );
-    errdefer ElementImpl.deinit(element);
+    errdefer interfaces.Element.deinit(element);
 
     // Set node type to ELEMENT_NODE
     try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);

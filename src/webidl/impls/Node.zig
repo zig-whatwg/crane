@@ -19,7 +19,6 @@ const Node = interfaces.Node;
 
 // Import parent class impl for initialization chain
 const EventTargetImpl = @import("EventTarget.zig");
-const TextImpl = @import("Text.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 
 pub const State = Node.State;
@@ -525,13 +524,13 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
             // If value is not empty, create and append a Text node
             const slice = value.asSlice();
             if (slice.len > 0) {
-                // Create Text node with the value
-                const text_node = try TextImpl.call_constructor(
+                // Create Text node with the value (use interface per Golden Rule #13)
+                const text_node = try interfaces.Text.call_constructor(
                     internal.allocator,
                     instance.ctx,
                     webidl.Opt(runtime.DOMString).passed(value),
                 );
-                errdefer TextImpl.deinit(text_node);
+                errdefer interfaces.Text.deinit(text_node);
 
                 // Set owner document for the text node
                 if (internal.owner_document) |owner_doc| {

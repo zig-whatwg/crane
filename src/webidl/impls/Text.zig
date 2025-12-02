@@ -219,8 +219,8 @@ pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance
 pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: Get length from CharacterData
-    const length = try CharacterDataImpl.get_length(instance);
+    // Step 1: Get length from CharacterData (use interface per Golden Rule #13)
+    const length = try interfaces.CharacterData.get_length(instance);
 
     // Step 2: If offset > length, throw IndexSizeError
     if (offset > length) {
@@ -231,7 +231,7 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
     const count = length - offset;
 
     // Step 4: Get substring (the data for new node)
-    const new_data = try CharacterDataImpl.call_substringData(instance, offset, count);
+    const new_data = try interfaces.CharacterData.call_substringData(instance, offset, count);
     defer {
         var nd = new_data;
         nd.deinit(internal.allocator);
@@ -252,8 +252,8 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
     // Step 6: If parent is not null, insert new node
     // TODO: Access Node's parent via inheritance and call dom.mutation.insert
 
-    // Step 7: Delete the split-off data from this node
-    try CharacterDataImpl.call_deleteData(instance, offset, count);
+    // Step 7: Delete the split-off data from this node (use interface per Golden Rule #13)
+    try interfaces.CharacterData.call_deleteData(instance, offset, count);
 
     // Step 8: Return new node
     return new_node;
