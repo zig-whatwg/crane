@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 const State = @import("tokenizer_states.zig").State;
 const Token = @import("tokens.zig").Token;
@@ -1486,7 +1486,7 @@ pub const Tokenizer = struct {
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
             var doctype = DoctypeToken.init(self.allocator);
-            try doctype.appendToName(0xFFFD);
+            try doctype.appendCodepointToName(0xFFFD);
             self.current_token = Token{ .doctype = doctype };
             self.state = .doctype_name;
             return null;
@@ -1530,7 +1530,7 @@ pub const Tokenizer = struct {
             return null;
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
-            try self.appendToCurrentDoctypeName(0xFFFD);
+            try self.appendCodepointToCurrentDoctypeName(0xFFFD);
             return null;
         } else if (char.isEof()) {
             self.reportError(.eof_in_doctype);
@@ -1669,7 +1669,7 @@ pub const Tokenizer = struct {
             return null;
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
-            try self.appendToCurrentDoctypePublicIdentifier(0xFFFD);
+            try self.appendCodepointToCurrentDoctypePublicIdentifier(0xFFFD);
             return null;
         } else if (char.is('>')) {
             self.reportError(.abrupt_doctype_public_identifier);
@@ -1700,7 +1700,7 @@ pub const Tokenizer = struct {
             return null;
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
-            try self.appendToCurrentDoctypePublicIdentifier(0xFFFD);
+            try self.appendCodepointToCurrentDoctypePublicIdentifier(0xFFFD);
             return null;
         } else if (char.is('>')) {
             self.reportError(.abrupt_doctype_public_identifier);
@@ -1871,7 +1871,7 @@ pub const Tokenizer = struct {
             return null;
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
-            try self.appendToCurrentDoctypeSystemIdentifier(0xFFFD);
+            try self.appendCodepointToCurrentDoctypeSystemIdentifier(0xFFFD);
             return null;
         } else if (char.is('>')) {
             self.reportError(.abrupt_doctype_system_identifier);
@@ -1902,7 +1902,7 @@ pub const Tokenizer = struct {
             return null;
         } else if (char.is(0x00)) {
             self.reportError(.unexpected_null_character);
-            try self.appendToCurrentDoctypeSystemIdentifier(0xFFFD);
+            try self.appendCodepointToCurrentDoctypeSystemIdentifier(0xFFFD);
             return null;
         } else if (char.is('>')) {
             self.reportError(.abrupt_doctype_system_identifier);
@@ -2297,9 +2297,7 @@ pub const Tokenizer = struct {
                 .end_tag => |*t| t,
                 else => return,
             };
-            if (cp <= 0xFF) {
-                try tag.tag_name.append(@intCast(cp));
-            }
+            try tag.appendCodepointToTagName(cp);
         }
     }
 
@@ -2323,9 +2321,7 @@ pub const Tokenizer = struct {
                 .end_tag => |*t| t,
                 else => return,
             };
-            if (cp <= 0xFF) {
-                try tag.appendToAttributeName(@intCast(cp));
-            }
+            try tag.appendCodepointToAttributeName(cp);
         }
     }
 
@@ -2337,9 +2333,7 @@ pub const Tokenizer = struct {
                 .end_tag => |*t| t,
                 else => return,
             };
-            if (cp <= 0xFF) {
-                try tag.appendToAttributeValue(@intCast(cp));
-            }
+            try tag.appendCodepointToAttributeValue(cp);
         }
     }
 
@@ -2388,9 +2382,7 @@ pub const Tokenizer = struct {
         if (self.current_token) |*token| {
             switch (token.*) {
                 .comment => |*c| {
-                    if (cp <= 0xFF) {
-                        try c.data.append(@intCast(cp));
-                    }
+                    try c.appendCodepointToData(cp);
                 },
                 else => {},
             }
@@ -2411,6 +2403,16 @@ pub const Tokenizer = struct {
         if (self.current_token) |*token| {
             switch (token.*) {
                 .doctype => |*d| try d.appendToName(char),
+                else => {},
+            }
+        }
+    }
+
+    /// Append a Unicode codepoint to current DOCTYPE name (UTF-8 encoded).
+    fn appendCodepointToCurrentDoctypeName(self: *Tokenizer, codepoint: u21) !void {
+        if (self.current_token) |*token| {
+            switch (token.*) {
+                .doctype => |*d| try d.appendCodepointToName(codepoint),
                 else => {},
             }
         }
@@ -2446,6 +2448,16 @@ pub const Tokenizer = struct {
         }
     }
 
+    /// Append a Unicode codepoint to DOCTYPE public identifier (UTF-8 encoded).
+    fn appendCodepointToCurrentDoctypePublicIdentifier(self: *Tokenizer, codepoint: u21) !void {
+        if (self.current_token) |*token| {
+            switch (token.*) {
+                .doctype => |*d| try d.appendCodepointToPublicIdentifier(codepoint),
+                else => {},
+            }
+        }
+    }
+
     /// Start DOCTYPE system identifier.
     fn startDoctypeSystemIdentifier(self: *Tokenizer) void {
         if (self.current_token) |*token| {
@@ -2461,6 +2473,16 @@ pub const Tokenizer = struct {
         if (self.current_token) |*token| {
             switch (token.*) {
                 .doctype => |*d| try d.appendToSystemIdentifier(char),
+                else => {},
+            }
+        }
+    }
+
+    /// Append a Unicode codepoint to DOCTYPE system identifier (UTF-8 encoded).
+    fn appendCodepointToCurrentDoctypeSystemIdentifier(self: *Tokenizer, codepoint: u21) !void {
+        if (self.current_token) |*token| {
+            switch (token.*) {
+                .doctype => |*d| try d.appendCodepointToSystemIdentifier(codepoint),
                 else => {},
             }
         }

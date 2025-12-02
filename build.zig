@@ -1285,6 +1285,16 @@ pub fn build(b: *std.Build) void {
     // Add websocket to impls for WebSocket interface implementation
     impls_mod.addImport("websocket", websocket_mod);
 
+    // HTML Parser module (WHATWG HTML Standard §13)
+    const html_parser_mod = b.addModule("html_parser", .{
+        .root_source_file = b.path("src/html/parser/root.zig"),
+        .target = target,
+    });
+    html_parser_mod.addImport("infra", infra_mod);
+
+    // Add html_parser to impls for DOMParser, innerHTML, document.write implementations
+    impls_mod.addImport("html_parser", html_parser_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);

@@ -8,7 +8,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 /// An attribute on a start or end tag token.
 ///
@@ -55,9 +55,29 @@ pub const Attribute = struct {
         try self.name.append(char);
     }
 
+    /// Append a Unicode codepoint to the name (UTF-8 encoded).
+    pub fn appendCodepointToName(self: *Attribute, codepoint: u21) !void {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            try self.name.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.name.appendSlice(buf[0..len]);
+    }
+
     /// Append a character to the value.
     pub fn appendToValue(self: *Attribute, char: u8) !void {
         try self.value.append(char);
+    }
+
+    /// Append a Unicode codepoint to the value (UTF-8 encoded).
+    pub fn appendCodepointToValue(self: *Attribute, codepoint: u21) !void {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            try self.value.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.value.appendSlice(buf[0..len]);
     }
 };
 
@@ -119,6 +139,20 @@ pub const DoctypeToken = struct {
         try self.name.?.append(char);
     }
 
+    /// Append a Unicode codepoint to the name (UTF-8 encoded).
+    pub fn appendCodepointToName(self: *DoctypeToken, codepoint: u21) !void {
+        if (self.name == null) {
+            self.name = infra.List(u8).init(self.allocator);
+        }
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            // Invalid codepoint, use replacement character (already UTF-8 encoded)
+            try self.name.?.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.name.?.appendSlice(buf[0..len]);
+    }
+
     /// Get the name as a string slice.
     pub fn getName(self: *const DoctypeToken) ?[]const u8 {
         if (self.name) |n| return n.toSlice() else return null;
@@ -139,6 +173,20 @@ pub const DoctypeToken = struct {
         try self.public_identifier.?.append(char);
     }
 
+    /// Append a Unicode codepoint to the public identifier (UTF-8 encoded).
+    pub fn appendCodepointToPublicIdentifier(self: *DoctypeToken, codepoint: u21) !void {
+        if (self.public_identifier == null) {
+            self.public_identifier = infra.List(u8).init(self.allocator);
+        }
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            // Invalid codepoint, use replacement character (already UTF-8 encoded)
+            try self.public_identifier.?.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.public_identifier.?.appendSlice(buf[0..len]);
+    }
+
     /// Get the public identifier as a string slice.
     pub fn getPublicIdentifier(self: *const DoctypeToken) ?[]const u8 {
         if (self.public_identifier) |p| return p.toSlice() else return null;
@@ -157,6 +205,20 @@ pub const DoctypeToken = struct {
             self.system_identifier = infra.List(u8).init(self.allocator);
         }
         try self.system_identifier.?.append(char);
+    }
+
+    /// Append a Unicode codepoint to the system identifier (UTF-8 encoded).
+    pub fn appendCodepointToSystemIdentifier(self: *DoctypeToken, codepoint: u21) !void {
+        if (self.system_identifier == null) {
+            self.system_identifier = infra.List(u8).init(self.allocator);
+        }
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            // Invalid codepoint, use replacement character (already UTF-8 encoded)
+            try self.system_identifier.?.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.system_identifier.?.appendSlice(buf[0..len]);
     }
 
     /// Get the system identifier as a string slice.
@@ -234,6 +296,16 @@ pub const TagToken = struct {
         try self.tag_name.append(char);
     }
 
+    /// Append a Unicode codepoint to the tag name (UTF-8 encoded).
+    pub fn appendCodepointToTagName(self: *TagToken, codepoint: u21) !void {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            try self.tag_name.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.tag_name.appendSlice(buf[0..len]);
+    }
+
     /// Start a new attribute.
     /// HTML Standard §13.2.5:
     /// "Start a new attribute in the current tag token."
@@ -278,10 +350,24 @@ pub const TagToken = struct {
         }
     }
 
+    /// Append a Unicode codepoint to the current attribute's name (UTF-8 encoded).
+    pub fn appendCodepointToAttributeName(self: *TagToken, codepoint: u21) !void {
+        if (self.current_attribute) |*attr| {
+            try attr.appendCodepointToName(codepoint);
+        }
+    }
+
     /// Append a character to the current attribute's value.
     pub fn appendToAttributeValue(self: *TagToken, char: u8) !void {
         if (self.current_attribute) |*attr| {
             try attr.appendToValue(char);
+        }
+    }
+
+    /// Append a Unicode codepoint to the current attribute's value (UTF-8 encoded).
+    pub fn appendCodepointToAttributeValue(self: *TagToken, codepoint: u21) !void {
+        if (self.current_attribute) |*attr| {
+            try attr.appendCodepointToValue(codepoint);
         }
     }
 
@@ -329,6 +415,16 @@ pub const CommentToken = struct {
     /// Append a character to the data.
     pub fn appendToData(self: *CommentToken, char: u8) !void {
         try self.data.append(char);
+    }
+
+    /// Append a Unicode codepoint to the data (UTF-8 encoded).
+    pub fn appendCodepointToData(self: *CommentToken, codepoint: u21) !void {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(codepoint, &buf) catch {
+            try self.data.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
+            return;
+        };
+        try self.data.appendSlice(buf[0..len]);
     }
 
     /// Get the data as a string slice.

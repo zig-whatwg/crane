@@ -9,7 +9,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 /// Parse error codes as defined in the HTML specification.
 ///

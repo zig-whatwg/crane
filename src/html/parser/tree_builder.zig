@@ -19,7 +19,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 const Token = @import("tokens.zig").Token;
 const TagToken = @import("tokens.zig").TagToken;
@@ -501,7 +501,7 @@ pub const TreeBuilder = struct {
     /// Report a parse error.
     fn reportError(self: *TreeBuilder, code: ParseErrorCode) void {
         if (self.error_callback) |callback| {
-            callback(code, 0, 0, self.error_context);
+            callback(.{ .code = code, .line = 0, .column = 0, .offset = 0 }, self.error_context);
         }
     }
 
@@ -535,7 +535,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Process a single token.
-    pub fn processToken(self: *TreeBuilder, token: Token) !void {
+    pub fn processToken(self: *TreeBuilder, token: Token) Allocator.Error!void {
         // Tree construction dispatcher
         // HTML Standard §13.2.6: Check if we should use foreign content rules
         const use_foreign = self.shouldUseForeignContent(token);
@@ -625,7 +625,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Process token using HTML content rules.
-    fn processTokenInHtmlContent(self: *TreeBuilder, token: Token) !void {
+    fn processTokenInHtmlContent(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (self.insertion_mode) {
             .initial => try self.handleInitialMode(token),
             .before_html => try self.handleBeforeHtmlMode(token),
@@ -654,7 +654,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Process token in foreign content.
-    fn processTokenInForeignContent(self: *TreeBuilder, token: Token) !void {
+    fn processTokenInForeignContent(self: *TreeBuilder, token: Token) Allocator.Error!void {
         // TODO: Implement foreign content handling
         // For now, fall back to HTML content handling
         try self.processTokenInHtmlContent(token);
@@ -666,7 +666,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "initial" insertion mode.
     /// HTML Standard §13.2.6.4.1
-    fn handleInitialMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInitialMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 // Ignore whitespace
@@ -790,7 +790,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "before html" insertion mode.
     /// HTML Standard §13.2.6.4.2
-    fn handleBeforeHtmlMode(self: *TreeBuilder, token: Token) !void {
+    fn handleBeforeHtmlMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .doctype => {
                 // Parse error, ignore
@@ -853,7 +853,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "before head" insertion mode.
     /// HTML Standard §13.2.6.4.3
-    fn handleBeforeHeadMode(self: *TreeBuilder, token: Token) !void {
+    fn handleBeforeHeadMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) return;
@@ -913,7 +913,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in head" insertion mode.
     /// HTML Standard §13.2.6.4.4
-    fn handleInHeadMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInHeadMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -1053,7 +1053,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Handle token in "in head noscript" insertion mode.
-    fn handleInHeadNoscriptMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInHeadNoscriptMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .doctype => {
                 self.reportError(.missing_doctype_name);
@@ -1116,7 +1116,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Handle token in "after head" insertion mode.
-    fn handleAfterHeadMode(self: *TreeBuilder, token: Token) !void {
+    fn handleAfterHeadMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -1206,7 +1206,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in body" insertion mode.
     /// HTML Standard §13.2.6.4.7 (simplified)
-    fn handleInBodyMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInBodyMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (char == 0) {
@@ -1362,7 +1362,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Handle token in "text" insertion mode.
-    fn handleTextMode(self: *TreeBuilder, token: Token) !void {
+    fn handleTextMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 try self.insertCharacter(char);
@@ -1390,7 +1390,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in table" insertion mode.
     /// HTML Standard §13.2.6.4.9
-    fn handleInTableMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInTableMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => {
                 // Character token, if current node is table/tbody/template/tfoot/thead/tr
@@ -1542,7 +1542,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in table text" insertion mode.
     /// HTML Standard §13.2.6.4.10
-    fn handleInTableTextMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInTableTextMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (char == 0) {
@@ -1588,7 +1588,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in caption" insertion mode.
     /// HTML Standard §13.2.6.4.11
-    fn handleInCaptionMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInCaptionMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .end_tag => |tag| {
                 const name = tag.getTagName();
@@ -1676,7 +1676,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in column group" insertion mode.
     /// HTML Standard §13.2.6.4.12
-    fn handleInColumnGroupMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInColumnGroupMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -1759,7 +1759,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in table body" insertion mode.
     /// HTML Standard §13.2.6.4.13
-    fn handleInTableBodyMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInTableBodyMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .start_tag => |tag| {
                 const name = tag.getTagName();
@@ -1840,7 +1840,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in row" insertion mode.
     /// HTML Standard §13.2.6.4.14
-    fn handleInRowMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInRowMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .start_tag => |tag| {
                 const name = tag.getTagName();
@@ -1925,7 +1925,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in cell" insertion mode.
     /// HTML Standard §13.2.6.4.15
-    fn handleInCellMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInCellMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .end_tag => |tag| {
                 const name = tag.getTagName();
@@ -1994,7 +1994,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in select" insertion mode.
     /// HTML Standard §13.2.6.4.16 (not in main parsing.md, simplified)
-    fn handleInSelectMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInSelectMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (char == 0) {
@@ -2120,7 +2120,7 @@ pub const TreeBuilder = struct {
     }
 
     /// Handle token in "in select in table" insertion mode.
-    fn handleInSelectInTableMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInSelectInTableMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .start_tag => |tag| {
                 const name = tag.getTagName();
@@ -2171,7 +2171,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in template" insertion mode.
     /// HTML Standard §13.2.6.4.16
-    fn handleInTemplateMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInTemplateMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character, .comment, .doctype => {
                 try self.handleInBodyMode(token);
@@ -2249,7 +2249,7 @@ pub const TreeBuilder = struct {
         }
     }
 
-    fn handleAfterBodyMode(self: *TreeBuilder, token: Token) !void {
+    fn handleAfterBodyMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -2300,7 +2300,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "in frameset" insertion mode.
     /// HTML Standard §13.2.6.4.18
-    fn handleInFramesetMode(self: *TreeBuilder, token: Token) !void {
+    fn handleInFramesetMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -2367,7 +2367,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "after frameset" insertion mode.
     /// HTML Standard §13.2.6.4.19
-    fn handleAfterFramesetMode(self: *TreeBuilder, token: Token) !void {
+    fn handleAfterFramesetMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .character => |char| {
                 if (isHtmlWhitespace(char)) {
@@ -2409,7 +2409,7 @@ pub const TreeBuilder = struct {
         }
     }
 
-    fn handleAfterAfterBodyMode(self: *TreeBuilder, token: Token) !void {
+    fn handleAfterAfterBodyMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .comment => |comment| {
                 const node = try TreeNode.initComment(self.allocator);
@@ -2446,7 +2446,7 @@ pub const TreeBuilder = struct {
 
     /// Handle token in "after after frameset" insertion mode.
     /// HTML Standard §13.2.6.4.21
-    fn handleAfterAfterFramesetMode(self: *TreeBuilder, token: Token) !void {
+    fn handleAfterAfterFramesetMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
             .comment => |comment| {
                 const node = try TreeNode.initComment(self.allocator);

@@ -9,7 +9,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 const ParseError = @import("parse_errors.zig").ParseError;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
