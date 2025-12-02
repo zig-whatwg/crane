@@ -10,6 +10,7 @@
 //! - **Timers** (§8.6) - setTimeout() and setInterval()
 //! - **Parser** (§13) - HTML parsing algorithm with tokenizer and tree builder
 //! - **Custom Elements** - Custom element registry and lifecycle
+//! - **Structured Clone** (§2.7) - Safe passing of structured data
 //!
 //! ## Architecture
 //!
@@ -30,6 +31,13 @@
 //! │   ├── tokenizer_states.zig  # State enum and helpers
 //! │   ├── parse_errors.zig # Parse error codes and handling
 //! │   ├── input_stream.zig # Input preprocessing
+//! │   └── root.zig         # Module exports
+//! ├── structured_clone/    # Structured clone algorithm (§2.7)
+//! │   ├── types.zig        # Core types and error definitions
+//! │   ├── serialize.zig    # StructuredSerialize implementation
+//! │   ├── deserialize.zig  # StructuredDeserialize implementation
+//! │   ├── transfer.zig     # Transfer algorithm for transferable objects
+//! │   ├── clone.zig        # High-level structuredClone() API
 //! │   └── root.zig         # Module exports
 //! ├── custom_elements.zig  # Custom element definitions
 //! └── root.zig             # This file
@@ -110,6 +118,17 @@ pub const script_execution = @import("script_execution.zig");
 pub const prepareScriptElement = script_execution.prepareScriptElement;
 pub const executeScriptElement = script_execution.executeScriptElement;
 pub const ScriptExecutionError = script_execution.ScriptExecutionError;
+
+// Structured Clone (§2.7)
+pub const structured_clone = @import("structured_clone/root.zig");
+
+// Re-export commonly used structured clone types
+pub const structuredClone = structured_clone.structuredClone;
+pub const structuredSerialize = structured_clone.structuredSerialize;
+pub const structuredDeserialize = structured_clone.structuredDeserialize;
+pub const CloneError = structured_clone.CloneError;
+pub const SerializedValue = structured_clone.SerializedValue;
+pub const Transferable = structured_clone.Transferable;
 
 test {
     std.testing.refAllDecls(@This());
