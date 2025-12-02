@@ -4123,6 +4123,21 @@ pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) voi
     }
 }
 
+/// Get scripts from "execute as soon as possible" set
+pub fn getScriptsToExecuteAsap(instance: *runtime.Instance) []*runtime.Instance {
+    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
+    return internal.scripts_to_execute_asap.items;
+}
+
+/// Pop and return the first script from "execute in order" list
+pub fn popFirstScriptToExecuteInOrderAsap(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
+        return internal.scripts_to_execute_in_order_asap.orderedRemove(0);
+    }
+    return null;
+}
+
 /// Get currently executing script (for document.currentScript)
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
 pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {

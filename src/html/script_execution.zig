@@ -225,36 +225,212 @@ pub fn prepareScriptElement(
         }
     }
 
-    // Step 35: Handle script scheduling (async, defer, parser-blocking)
-    if (script_type == .classic and !hasSrcAttribute(script_element)) {
-        // Inline classic script - handle based on parser insertion
+    // Step 35-36: Handle script scheduling based on type and attributes
+    // Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+    return handleScriptScheduling(allocator, script_element, parser_document, script_type);
+}
 
-        if (parser_document) |pd| {
-            const internal = HTMLScriptElementImpl.getInternal(script_element);
-            if (internal) |int| {
-                // Step 36.2: Check if we should defer to parser-blocking
-                if (int.script_type == .classic) {
-                    // Check if document has style sheet that is blocking scripts
+/// Handle script scheduling based on script type, parser insertion, and attributes
+/// Spec: Steps 35-36 of "prepare the script element"
+fn handleScriptScheduling(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    parser_document: ?*runtime.Instance,
+    script_type: ScriptType,
+) ScriptExecutionError!bool {
+    const has_src = hasSrcAttribute(script_element);
+    const has_async = hasAsyncAttribute(script_element);
+    const has_defer = hasDeferAttribute(script_element);
+    const internal = HTMLScriptElementImpl.getInternal(script_element);
+    const force_async = if (internal) |int| int.force_async else true;
+
+    const node_document = getNodeDocument(script_element);
+
+    // Determine if parser-inserted
+    const is_parser_inserted = parser_document != null;
+
+    switch (script_type) {
+        .classic => {
+            if (!has_src) {
+                // Inline classic script
+                if (is_parser_inserted) {
+                    // Parser-inserted inline classic script
+                    // Step 36.2: Check if document has a style sheet that is blocking scripts
                     // (not implemented - assume no blocking stylesheets)
 
-                    // Step 36.3: Otherwise, immediately execute the script element
+                    // Step 36.3: Immediately execute the script element
                     _ = executeScriptElement(allocator, script_element) catch {
-                        // Execution error - but don't propagate, script errors are handled differently
+                        // Script errors are handled internally
                     };
+                    return true;
+                } else {
+                    // Non-parser-inserted inline classic script - execute immediately
+                    _ = executeScriptElement(allocator, script_element) catch {};
+                    return true;
+                }
+            } else {
+                // External classic script (has src)
+                if (is_parser_inserted and !has_async and !has_defer) {
+                    // Parser-blocking external script
+                    // Step 35.1: Set document's pending parsing-blocking script to el
+                    if (node_document) |doc| {
+                        DocumentImpl.setPendingParsingBlockingScript(doc, script_element);
+                    }
+                    // Mark as ready to be parser-executed when fetch completes
+                    // (actual fetching not yet implemented)
+                    return true;
+                } else if (has_defer and is_parser_inserted and !has_async) {
+                    // Deferred external script
+                    // Step 35.2: Add to list of scripts that will execute when document finishes parsing
+                    if (node_document) |doc| {
+                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                    }
+                    return true;
+                } else if (has_async and has_src) {
+                    // Async external script
+                    if (!force_async) {
+                        // Step 35.3: Add to list of scripts that will execute in order
+                        if (node_document) |doc| {
+                            DocumentImpl.addScriptToExecuteInOrderAsap(doc, script_element);
+                        }
+                    } else {
+                        // Step 35.4: Add to set of scripts that will execute ASAP
+                        if (node_document) |doc| {
+                            DocumentImpl.addScriptToExecuteAsap(doc, script_element);
+                        }
+                    }
+                    return true;
+                }
+                // External script without special handling - return true but don't execute yet
+                return true;
+            }
+        },
+        .module => {
+            // Module scripts have similar scheduling logic but with async modules
+            if (!has_src) {
+                // Inline module script - execute when ready
+                // (Module dependency resolution not yet implemented)
+                return false;
+            } else {
+                // External module script
+                if (is_parser_inserted and !has_async) {
+                    // Parser-blocking module script
+                    if (node_document) |doc| {
+                        DocumentImpl.setPendingParsingBlockingScript(doc, script_element);
+                    }
+                    return true;
+                } else {
+                    // Async module script
+                    if (node_document) |doc| {
+                        DocumentImpl.addScriptToExecuteAsap(doc, script_element);
+                    }
                     return true;
                 }
             }
-            _ = pd;
-        } else {
-            // Not parser-inserted, execute immediately for inline classic scripts
-            _ = executeScriptElement(allocator, script_element) catch {
-                // Execution error
-            };
-            return true;
-        }
+        },
+        .importmap => {
+            // Import maps must be processed before any module scripts
+            // Not yet implemented
+            return false;
+        },
+        .speculationrules => {
+            // Speculation rules for prefetching/prerendering
+            // Not yet implemented
+            return false;
+        },
+        .null => return false,
+    }
+}
+
+/// Execute pending parser-blocking script if ready
+/// Called by the parser after processing tokens
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#pending-parsing-blocking-script
+pub fn executePendingParserBlockingScript(
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+) void {
+    const pending_script = DocumentImpl.getPendingParsingBlockingScript(document) orelse return;
+
+    // Check if the script is ready to execute
+    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) {
+        // Script is not ready yet (still fetching or waiting for dependencies)
+        return;
     }
 
-    return true;
+    // Clear pending parsing-blocking script
+    DocumentImpl.setPendingParsingBlockingScript(document, null);
+
+    // Execute the script
+    _ = executeScriptElement(allocator, pending_script) catch |err| {
+        std.debug.print("Parser-blocking script execution error: {}\n", .{err});
+    };
+}
+
+/// Execute all scripts that should run when document finishes parsing
+/// Called when the parser reaches the end of the document
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#the-end (step 3)
+pub fn executeScriptsWhenParsingFinished(
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+) void {
+    const scripts = DocumentImpl.getScriptsToExecuteWhenParsingFinished(document);
+
+    for (scripts) |script| {
+        // Execute each deferred script in order
+        _ = executeScriptElement(allocator, script) catch |err| {
+            std.debug.print("Deferred script execution error: {}\n", .{err});
+        };
+    }
+
+    // Clear the list
+    DocumentImpl.clearScriptsToExecuteWhenParsingFinished(document);
+}
+
+/// Execute scripts in the "execute in order ASAP" list
+/// These are async scripts that were added with the async attribute
+/// but need to maintain relative order
+pub fn executeScriptsInOrderAsap(
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+) void {
+    while (true) {
+        const script = DocumentImpl.popFirstScriptToExecuteInOrderAsap(document) orelse break;
+
+        // Check if ready
+        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
+            // Re-add to list and stop - must maintain order
+            DocumentImpl.addScriptToExecuteInOrderAsap(document, script);
+            break;
+        }
+
+        _ = executeScriptElement(allocator, script) catch |err| {
+            std.debug.print("In-order async script execution error: {}\n", .{err});
+        };
+    }
+}
+
+/// Execute scripts in the "execute ASAP" set
+/// These can execute in any order as soon as they're ready
+pub fn executeScriptsAsap(
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+) void {
+    const scripts = DocumentImpl.getScriptsToExecuteAsap(document);
+
+    // Find all ready scripts and execute them
+    var i: usize = 0;
+    while (i < scripts.len) {
+        const script = scripts[i];
+        if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
+            _ = DocumentImpl.removeScriptFromExecuteAsap(document, script);
+            _ = executeScriptElement(allocator, script) catch |err| {
+                std.debug.print("ASAP script execution error: {}\n", .{err});
+            };
+            // Don't increment i - list shifted
+        } else {
+            i += 1;
+        }
+    }
 }
 
 /// Execute the script element
