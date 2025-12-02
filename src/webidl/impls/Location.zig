@@ -1,25 +1,104 @@
 //! Implementation for Location interface
+//!
+//! Implements the Location interface per HTML Standard §7.1.3.
+//! Spec: https://html.spec.whatwg.org/multipage/history.html#the-location-interface
+//!
+//! ## Overview
+//!
+//! The Location interface represents the URL of the document and provides
+//! methods to manipulate it. Setting URL components triggers navigation.
+//!
+//! ## Security Model
+//!
+//! The Location interface has special security requirements:
+//! - Cross-origin access is restricted (throws SecurityError)
+//! - Only certain properties are accessible cross-origin (href setter, replace)
+//!
+//! ## Navigation
+//!
+//! Setting URL components or calling navigation methods triggers:
+//! - assign(): Normal navigation (adds to session history)
+//! - replace(): Replace navigation (replaces current entry)
+//! - reload(): Reloads the current document
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+
+// URL modules
+const url_record = @import("url_record");
+const url_serializer = @import("url_serializer");
+const host_serializer = @import("host_serializer");
+const origin = @import("origin");
+
+/// Special schemes default ports
+/// Per WHATWG URL spec: https://url.spec.whatwg.org/#special-scheme
+fn getDefaultPort(scheme: []const u8) ?u16 {
+    if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "ws")) {
+        return 80;
+    } else if (std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "wss")) {
+        return 443;
+    } else if (std.mem.eql(u8, scheme, "ftp")) {
+        return 21;
+    }
+    return null;
+}
+
 const Location = interfaces.Location;
 
 pub const State = Location.State;
 
 pub const ImplError = error{
     NotImplemented,
+    SecurityError,
+    InvalidStateError,
+    SyntaxError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for Location implementation
+/// Contains private data not exposed via WebIDL attributes.
+pub const InternalState = struct {
+    /// Allocator for this location's resources
+    allocator: Allocator,
+
+    /// The associated window (owner)
+    window: ?*runtime.Instance = null,
+
+    /// The document's URL as a parsed URLRecord
+    /// This is owned by the Document, Location just references it
+    url: ?*url_record.URLRecord = null,
+
+    /// Cached ancestor origins (lazily created DOMStringList)
+    ancestor_origins: ?*runtime.Instance = null,
+
+    /// Cached href for comparison
+    cached_href: ?[]const u8 = null,
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.cached_href) |href| {
+            self.allocator.free(href);
+        }
+    }
+};
+
+/// Helper to get internal state from instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
+/// Helper to get URL from internal state
+fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
+    const internal = getInternal(instance) orelse return null;
+    return internal.url;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -29,149 +108,346 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+
+    // Initialize internal state
+    const internal = try allocator.create(InternalState);
+    internal.* = .{
+        .allocator = allocator,
+    };
+
+    // Store internal state in the instance
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+        internal.allocator.destroy(internal);
+    }
 }
 
+// =============================================================================
+// URL Component Getters
+// =============================================================================
+
 /// Getter for href
+/// Per spec §7.1.3: Returns the URL serialization of this Location's URL.
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Serialize the URL (exclude fragment = false)
+    const serialized = try url_serializer.serialize(internal.allocator, url, false);
+
+    return serialized;
 }
 
 /// Getter for origin
+/// Per spec §7.1.3: Returns the serialization of this Location's origin.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get origin from URL
+    const url_origin = try origin.getOrigin(internal.allocator, url);
+    defer url_origin.deinit(internal.allocator);
+
+    // Serialize the origin
+    const serialized = try url_origin.serialize(internal.allocator);
+
+    return serialized;
 }
 
 /// Getter for protocol
+/// Per spec §7.1.3: Returns the scheme of this Location's URL, followed by ":".
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    const scheme = url.scheme();
+
+    // Allocate scheme + ":"
+    const result = try internal.allocator.alloc(u8, scheme.len + 1);
+    @memcpy(result[0..scheme.len], scheme);
+    result[scheme.len] = ':';
+
+    return result;
 }
 
 /// Getter for host
+/// Per spec §7.1.3: Returns this Location's URL host and port (if different from default).
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If no host, return empty string
+    if (url.host == null) {
+        return "";
+    }
+
+    // Serialize host
+    const host_str = try host_serializer.serializeHost(internal.allocator, url.host.?);
+    defer internal.allocator.free(host_str);
+
+    // If no port or default port, return just host
+    if (url.port == null) {
+        return try internal.allocator.dupe(u8, host_str);
+    }
+
+    // Check if port is default for scheme
+    const scheme = url.scheme();
+    const default_port = getDefaultPort(scheme);
+    if (default_port != null and url.port.? == default_port.?) {
+        return try internal.allocator.dupe(u8, host_str);
+    }
+
+    // Return host:port
+    const result = try std.fmt.allocPrint(internal.allocator, "{s}:{d}", .{ host_str, url.port.? });
+
+    return result;
 }
 
 /// Getter for hostname
+/// Per spec §7.1.3: Returns this Location's URL host, serialized.
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If no host, return empty string
+    if (url.host == null) {
+        return "";
+    }
+
+    // Serialize host
+    const host_str = try host_serializer.serializeHost(internal.allocator, url.host.?);
+
+    return host_str;
 }
 
 /// Getter for port
+/// Per spec §7.1.3: Returns this Location's URL port, serialized.
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If no port, return empty string
+    if (url.port == null) {
+        return "";
+    }
+
+    // Serialize port
+    const result = try std.fmt.allocPrint(internal.allocator, "{d}", .{url.port.?});
+
+    return result;
 }
 
 /// Getter for pathname
+/// Per spec §7.1.3: Returns the URL path serialized.
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Use the path component from URL
+    switch (url.path) {
+        .opaque_path => |op| {
+            return try internal.allocator.dupe(u8, op);
+        },
+        .segments => |segs| {
+            // Build path string with "/" separators
+            var result = std.ArrayListUnmanaged(u8){};
+            errdefer result.deinit(internal.allocator);
+
+            var i: usize = 0;
+            while (i < segs.len) : (i += 1) {
+                try result.append(internal.allocator, '/');
+                if (segs.get(i)) |segment| {
+                    try result.appendSlice(internal.allocator, segment);
+                }
+            }
+
+            // If empty segments, return "/"
+            if (result.items.len == 0) {
+                try result.append(internal.allocator, '/');
+            }
+
+            return try result.toOwnedSlice(internal.allocator);
+        },
+    }
 }
 
 /// Getter for search
+/// Per spec §7.1.3: Returns this Location's URL query (includes "?").
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If no query, return empty string
+    const query = url.query() orelse {
+        return "";
+    };
+
+    // Return "?" + query
+    const result = try internal.allocator.alloc(u8, query.len + 1);
+    result[0] = '?';
+    @memcpy(result[1..], query);
+
+    return result;
 }
 
 /// Getter for hash
+/// Per spec §7.1.3: Returns this Location's URL fragment (includes "#").
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const url = getURL(instance) orelse return error.InvalidStateError;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If no fragment, return empty string
+    const fragment = url.fragment() orelse {
+        return "";
+    };
+
+    // Return "#" + fragment
+    const result = try internal.allocator.alloc(u8, fragment.len + 1);
+    result[0] = '#';
+    @memcpy(result[1..], fragment);
+
+    return result;
 }
 
 /// Getter for ancestorOrigins
+/// Per spec §7.1.3: Returns a DOMStringList of ancestor browsing context origins.
 pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
+    // TODO: Implement DOMStringList creation
+    // This requires:
+    // 1. Walking up the browsing context tree
+    // 2. Collecting origins from each ancestor
+    // 3. Creating a DOMStringList with those origins
     return error.NotImplemented;
 }
 
+// =============================================================================
+// URL Component Setters
+// =============================================================================
+
 /// Setter for href
+/// Per spec §7.1.3: Navigate to the given URL.
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Navigate to the URL
+    return call_assign(instance, value);
 }
 
 /// Setter for protocol
+/// Per spec §7.1.3: Update URL scheme if valid, then navigate.
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement protocol setter
+    // This requires parsing the value and updating the URL's scheme
+    // Then triggering navigation
     return error.NotImplemented;
 }
 
 /// Setter for host
+/// Per spec §7.1.3: Update URL host and port, then navigate.
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement host setter
     return error.NotImplemented;
 }
 
 /// Setter for hostname
+/// Per spec §7.1.3: Update URL hostname, then navigate.
 pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement hostname setter
     return error.NotImplemented;
 }
 
 /// Setter for port
+/// Per spec §7.1.3: Update URL port, then navigate.
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement port setter
     return error.NotImplemented;
 }
 
 /// Setter for pathname
+/// Per spec §7.1.3: Update URL pathname, then navigate.
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement pathname setter
     return error.NotImplemented;
 }
 
 /// Setter for search
+/// Per spec §7.1.3: Update URL query, then navigate.
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement search setter
     return error.NotImplemented;
 }
 
 /// Setter for hash
+/// Per spec §7.1.3: Update URL fragment, then navigate (fragment navigation).
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     _ = instance;
     _ = value;
+    // TODO: Implement hash setter
+    // This may trigger fragment-only navigation (hashchange event)
     return error.NotImplemented;
 }
 
-/// Operation: reload
-pub fn call_reload(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
+// =============================================================================
+// Navigation Methods
+// =============================================================================
+
+/// Operation: assign
+/// Per spec §7.1.3: Navigate to url, adding entry to session history.
+pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    _ = url;
+
+    // TODO: Implement navigation
+    // 1. Resolve URL relative to document's URL
+    // 2. Check security (same-origin or appropriate permissions)
+    // 3. Navigate the browsing context with history handling = "push"
+
+    // For now, we just store the intent
+    // Full navigation requires Phase 6: Navigation & History
     return error.NotImplemented;
 }
 
 /// Operation: replace
+/// Per spec §7.1.3: Navigate to url, replacing current session history entry.
 pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
     _ = url;
+
+    // TODO: Implement replace navigation
+    // Same as assign but with history handling = "replace"
     return error.NotImplemented;
 }
 
-/// Operation: assign
-pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
+/// Operation: reload
+/// Per spec §7.1.3: Reload the document.
+pub fn call_reload(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    _ = url;
+
+    // TODO: Implement reload
+    // This triggers a reload of the current document
     return error.NotImplemented;
 }
-
