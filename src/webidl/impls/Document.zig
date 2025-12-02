@@ -916,14 +916,9 @@ pub fn get_head(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 fn createCollectionByTagName(instance: *runtime.Instance, tag_name: []const u8) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    // Use interface instead of impl (per Golden Rule #13)
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Traverse tree and collect matching elements
     try collectElementsByTagName(instance, tag_name, internal.doc_type == .html, collection);
@@ -935,14 +930,9 @@ fn createCollectionByTagName(instance: *runtime.Instance, tag_name: []const u8) 
 fn createCollectionByTagNames(instance: *runtime.Instance, tag_names: []const []const u8) ImplError!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    // Use interface instead of impl (per Golden Rule #13)
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Traverse tree and collect matching elements
     try collectElementsByTagNames(instance, tag_names, internal.doc_type == .html, collection);
@@ -1146,13 +1136,8 @@ pub fn get_applets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return empty collection since applet is obsolete
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    return try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
+    // Use interface instead of impl (per Golden Rule #13)
+    return try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
 }
 
 /// Getter for all
@@ -1253,20 +1238,17 @@ pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create an HTMLCollection to hold direct child elements
+    // Use interface instead of impl (per Golden Rule #13)
     const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Iterate direct children and add elements
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const node_type = NodeImpl.getNodeType(c) orelse 0;
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // addElement is an internal method not exposed via interface
             HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
         }
         child = NodeImpl.getNextSibling(c);
@@ -2012,7 +1994,8 @@ pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!
     // Step 3: If old body exists, replace it
     if (old_body) |ob| {
         // Remove old body and insert new in its place
-        _ = try NodeImpl.call_replaceChild(doc_element, value, ob);
+        // Use interface instead of impl (per Golden Rule #13)
+        _ = try interfaces.Node.call_replaceChild(doc_element, value, ob);
     } else {
         // Step 4: Append to html element
         _ = try NodeImpl.appendChild(doc_element, value);
@@ -2686,20 +2669,15 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
 
     const local_name_slice = localName.asSlice();
 
-    // Create element via Element impl
+    // Use interface instead of impl (per Golden Rule #13)
     const ElementImpl = @import("Element.zig");
-    const element = try ElementImpl.init(
-        internal.allocator,
-        interfaces.Element.State,
-        &interfaces.Element.vtable,
-        instance.ctx,
-    );
-    errdefer ElementImpl.deinit(element);
+    const element = try interfaces.Element.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Element.deinit(element);
 
-    // Set node type to ELEMENT_NODE via Node impl
+    // Set node type to ELEMENT_NODE via Node impl (internal initialization)
     try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
 
-    // Set the local name
+    // Set the local name (internal method)
     try ElementImpl.setLocalName(element, local_name_slice);
 
     // Set owner document
@@ -2869,13 +2847,14 @@ pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) 
         error.OutOfMemory => return error.OutOfMemory,
         else => return,
     };
-    defer DocumentFragmentImpl.deinit(fragment);
+    defer interfaces.DocumentFragment.deinit(fragment);
 
     // Move children from fragment to body
     var child = NodeImpl.getFirstChild(fragment);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
-        _ = NodeImpl.call_removeChild(fragment, c) catch break;
+        // Use interface instead of impl (per Golden Rule #13)
+        _ = interfaces.Node.call_removeChild(fragment, c) catch break;
         _ = NodeImpl.appendChild(body.?, c) catch break;
         child = next;
     }
@@ -2906,13 +2885,9 @@ pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMS
     }
 
     // Step 3: Create a new Attr
-    const attr = try AttrImpl.init(
-        internal.allocator,
-        interfaces.Attr.State,
-        &interfaces.Attr.vtable,
-        instance.ctx,
-    );
-    errdefer AttrImpl.deinit(attr);
+    // Use interface instead of impl (per Golden Rule #13)
+    const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Attr.deinit(attr);
 
     // Set node type to ATTRIBUTE_NODE
     try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
@@ -2968,14 +2943,9 @@ pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyer
 pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: runtime.DOMString, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Create ProcessingInstruction node via impl
-    const pi = try ProcessingInstructionImpl.init(
-        internal.allocator,
-        interfaces.ProcessingInstruction.State,
-        &interfaces.ProcessingInstruction.vtable,
-        instance.ctx,
-    );
-    errdefer ProcessingInstructionImpl.deinit(pi);
+    // Use interface instead of impl (per Golden Rule #13)
+    const pi = try interfaces.ProcessingInstruction.init(internal.allocator, instance.ctx);
+    errdefer interfaces.ProcessingInstruction.deinit(pi);
 
     // Set node type
     try NodeImpl.setNodeType(pi, NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE);
@@ -3120,24 +3090,14 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 
     // Empty class string returns empty collection
     if (class_names.len == 0) {
-        const HTMLCollectionImpl = @import("HTMLCollection.zig");
-        return try HTMLCollectionImpl.init(
-            internal.allocator,
-            interfaces.HTMLCollection.State,
-            &interfaces.HTMLCollection.vtable,
-            instance.ctx,
-        );
+        // Use interface instead of impl (per Golden Rule #13)
+        return try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
     }
 
     // Create an HTMLCollection to hold results
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    // Use interface instead of impl (per Golden Rule #13)
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Traverse tree and collect matching elements
     try collectElementsByClassName(instance, class_names, collection);
@@ -3212,14 +3172,9 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
     const qname = qualifiedName.asSlice();
 
     // Create an HTMLCollection to hold results
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    // Use interface instead of impl (per Golden Rule #13)
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Traverse tree and collect matching elements
     try collectElementsByTagName(instance, qname, internal.doc_type == .html, collection);
@@ -3786,14 +3741,9 @@ pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.
 
     // Create a NodeList to hold results
     // We use HTMLCollection since we don't have a separate NodeList impl yet
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = try HTMLCollectionImpl.init(
-        internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
-        instance.ctx,
-    );
-    errdefer HTMLCollectionImpl.deinit(collection);
+    // Use interface instead of impl (per Golden Rule #13)
+    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Traverse tree and collect elements with matching name attribute
     try collectElementsByName(instance, target_name, collection);
@@ -3891,13 +3841,14 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
         error.OutOfMemory => return error.OutOfMemory,
         else => return,
     };
-    defer DocumentFragmentImpl.deinit(fragment);
+    defer interfaces.DocumentFragment.deinit(fragment);
 
     // Move children from fragment to body
     var child = NodeImpl.getFirstChild(fragment);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
-        _ = NodeImpl.call_removeChild(fragment, c) catch break;
+        // Use interface instead of impl (per Golden Rule #13)
+        _ = interfaces.Node.call_removeChild(fragment, c) catch break;
         _ = NodeImpl.appendChild(body.?, c) catch break;
         child = next;
     }
