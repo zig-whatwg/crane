@@ -43,6 +43,15 @@ pub const InputCharacter = @import("input_stream.zig").InputCharacter;
 // Tokenizer
 pub const Tokenizer = @import("tokenizer.zig").Tokenizer;
 
+// Tree construction
+pub const TreeBuilder = @import("tree_builder.zig").TreeBuilder;
+pub const InsertionMode = @import("tree_builder.zig").InsertionMode;
+pub const TreeNode = @import("tree_builder.zig").TreeNode;
+pub const QuirksMode = @import("tree_builder.zig").QuirksMode;
+pub const Namespace = @import("tree_builder.zig").Namespace;
+pub const FormattingEntry = @import("tree_builder.zig").FormattingEntry;
+pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
+
 test {
     // Run all parser tests
     std.testing.refAllDecls(@This());
@@ -51,4 +60,5 @@ test {
     _ = @import("parse_errors.zig");
     _ = @import("input_stream.zig");
     _ = @import("tokenizer.zig");
+    _ = @import("tree_builder.zig");
 }
