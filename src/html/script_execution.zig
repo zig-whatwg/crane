@@ -20,6 +20,7 @@ const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const ScriptType = HTMLScriptElementImpl.ScriptType;
 const ScriptResult = HTMLScriptElementImpl.ScriptResult;
 const ClassicScript = HTMLScriptElementImpl.ClassicScript;
+const ModuleScript = HTMLScriptElementImpl.ModuleScript;
 
 // Document implementation
 const DocumentImpl = impls.Document;
@@ -247,9 +248,20 @@ pub fn prepareScriptElement(
                 };
             },
             .module => {
-                // Module scripts require async handling for dependency resolution
-                // For now, skip module scripts
-                return false;
+                // Step 34.1: Create a module script
+                const module = ModuleScript.init(source_text, base_url);
+
+                // Set result
+                HTMLScriptElementImpl.setResult(script_element, .{ .module_script = module });
+
+                // Cache source text for execution
+                HTMLScriptElementImpl.cacheSourceText(script_element, source_text) catch {
+                    return ScriptExecutionError.OutOfMemory;
+                };
+
+                // Note: Module scripts still need dependency resolution before execution
+                // For inline modules with no imports, we can execute directly
+                // Full implementation would parse imports and fetch dependencies
             },
             .importmap => {
                 // Import maps - not yet implemented
@@ -344,21 +356,33 @@ fn handleScriptScheduling(
             }
         },
         .module => {
-            // Module scripts have similar scheduling logic but with async modules
+            // Module scripts are always deferred by default
+            // Spec: https://html.spec.whatwg.org/multipage/scripting.html#attr-script-async
             if (!has_src) {
-                // Inline module script - execute when ready
-                // (Module dependency resolution not yet implemented)
-                return false;
-            } else {
-                // External module script
+                // Inline module script
                 if (is_parser_inserted and !has_async) {
-                    // Parser-blocking module script
+                    // Parser-inserted inline module without async - defer until parsing finishes
                     if (node_document) |doc| {
-                        DocumentImpl.setPendingParsingBlockingScript(doc, script_element);
+                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
                     }
                     return true;
                 } else {
-                    // Async module script
+                    // Not parser-inserted or has async - execute immediately
+                    // For inline modules with no imports, we can execute now
+                    _ = executeScriptElement(allocator, script_element) catch {};
+                    return true;
+                }
+            } else {
+                // External module script
+                if (is_parser_inserted and !has_async) {
+                    // Parser-inserted external module - deferred by default
+                    // Step 35.2: Add to list of scripts that will execute when document finishes parsing
+                    if (node_document) |doc| {
+                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                    }
+                    return true;
+                } else {
+                    // Async external module script
                     if (node_document) |doc| {
                         DocumentImpl.addScriptToExecuteAsap(doc, script_element);
                     }
@@ -541,7 +565,13 @@ pub fn executeScriptElement(
         },
         .module => {
             // Step 6.2: Run the module script
-            // Not yet implemented
+            // Note: For module scripts, currentScript is always null (per spec)
+            // Modules execute in strict mode and have their own scope
+
+            runModuleScript(script_element) catch |err| {
+                // Module execution error - log but don't propagate
+                std.debug.print("Module script execution error: {}\n", .{err});
+            };
         },
         .importmap => {
             // Step 6.3: Register an import map
@@ -615,6 +645,91 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         // TODO: Handle script exceptions properly
         return;
     };
+}
+
+/// Run a module script
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+fn runModuleScript(script_element: *runtime.Instance) !void {
+    const result = HTMLScriptElementImpl.getResult(script_element);
+    const source = switch (result) {
+        .module_script => |m| m.source_text,
+        else => HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return,
+    };
+
+    // Get V8 FFI
+    const v8 = @import("v8");
+    const ffi = v8.ffi;
+
+    // Get current isolate
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse {
+        std.debug.print("No V8 isolate available for module script execution\n", .{});
+        return;
+    };
+
+    // Get current context
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.debug.print("No V8 context available for module script execution\n", .{});
+        return;
+    };
+
+    // Create V8 string from source
+    const source_str = ffi.v8_String_NewFromUtf8(
+        isolate,
+        source.ptr,
+        @intCast(source.len),
+    ) orelse {
+        std.debug.print("Failed to create V8 string from module source\n", .{});
+        return;
+    };
+    defer ffi.v8_String_Dispose(source_str);
+
+    // For ES modules, we need to use v8::ScriptCompiler::CompileModule
+    // However, this requires additional V8 module resolution callbacks
+    // For now, we use a workaround: wrap the module code in a function scope
+    // to simulate module semantics (strict mode, own scope)
+
+    // V8 module compilation would look like:
+    // const module = ffi.v8_Module_Compile(context, source_str, ...) orelse ...
+    // _ = ffi.v8_Module_Instantiate(context, module, resolve_callback) orelse ...
+    // _ = ffi.v8_Module_Evaluate(context, module) orelse ...
+
+    // For now, compile as a script with strict mode
+    // This is a simplified approach - full module support requires:
+    // 1. Module resolution callbacks for imports
+    // 2. Module map for caching
+    // 3. Proper module linking
+
+    // Prefix with "use strict" to enforce strict mode (modules are always strict)
+    // Note: This is a temporary workaround; proper module compilation should be used
+    const strict_prefix = "'use strict';\n";
+    var full_source: [65536]u8 = undefined;
+    if (source.len + strict_prefix.len < full_source.len) {
+        @memcpy(full_source[0..strict_prefix.len], strict_prefix);
+        @memcpy(full_source[strict_prefix.len .. strict_prefix.len + source.len], source);
+
+        const full_source_str = ffi.v8_String_NewFromUtf8(
+            isolate,
+            &full_source,
+            @intCast(strict_prefix.len + source.len),
+        ) orelse {
+            std.debug.print("Failed to create V8 string for module wrapper\n", .{});
+            return;
+        };
+        defer ffi.v8_String_Dispose(full_source_str);
+
+        const script = ffi.v8_Script_Compile(context, full_source_str) orelse {
+            std.debug.print("Failed to compile module script\n", .{});
+            return;
+        };
+        defer ffi.v8_Script_Dispose(script);
+
+        _ = ffi.v8_Script_Run(context, script) orelse {
+            std.debug.print("Module script execution threw an exception\n", .{});
+            return;
+        };
+    } else {
+        std.debug.print("Module script too large\n", .{});
+    }
 }
 
 // =============================================================================

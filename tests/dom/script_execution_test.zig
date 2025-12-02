@@ -366,3 +366,94 @@ test "InternalState - already_started prevents re-execution" {
     // Second attempt should see already_started = true
     try std.testing.expect(state.already_started);
 }
+
+// =============================================================================
+// Module Script Tests
+// =============================================================================
+
+/// Module script representation
+const ModuleScript = struct {
+    source_text: []const u8,
+    base_url: []const u8,
+    parse_error: bool,
+    muted_errors: bool,
+    credentials_mode: CredentialsMode,
+
+    pub const CredentialsMode = enum {
+        same_origin,
+        include,
+        omit,
+    };
+
+    pub fn init(source: []const u8, base: []const u8) ModuleScript {
+        return .{
+            .source_text = source,
+            .base_url = base,
+            .parse_error = false,
+            .muted_errors = false,
+            .credentials_mode = .same_origin,
+        };
+    }
+};
+
+test "ModuleScript - initialization" {
+    const module = ModuleScript.init("export const x = 1;", "https://example.com/module.js");
+    try std.testing.expectEqualStrings("export const x = 1;", module.source_text);
+    try std.testing.expectEqualStrings("https://example.com/module.js", module.base_url);
+    try std.testing.expect(!module.parse_error);
+    try std.testing.expect(!module.muted_errors);
+    try std.testing.expectEqual(ModuleScript.CredentialsMode.same_origin, module.credentials_mode);
+}
+
+test "ModuleScript - empty module" {
+    const module = ModuleScript.init("", "about:blank");
+    try std.testing.expectEqualStrings("", module.source_text);
+    try std.testing.expectEqualStrings("about:blank", module.base_url);
+}
+
+test "determineScriptType - module type variations" {
+    // Module type (case-insensitive)
+    try std.testing.expectEqual(ScriptType.module, determineScriptType("module", ""));
+    try std.testing.expectEqual(ScriptType.module, determineScriptType("MODULE", ""));
+    try std.testing.expectEqual(ScriptType.module, determineScriptType("Module", ""));
+    try std.testing.expectEqual(ScriptType.module, determineScriptType("  module  ", ""));
+
+    // Not module (partial match should fail)
+    try std.testing.expectEqual(ScriptType.null, determineScriptType("module/javascript", ""));
+    try std.testing.expectEqual(ScriptType.null, determineScriptType("module;", ""));
+}
+
+// =============================================================================
+// ScriptResult with Module Tests
+// =============================================================================
+
+/// Extended ScriptResult for module support
+const ScriptResultWithModule = union(enum) {
+    uninitialized,
+    null,
+    script: ClassicScript,
+    module_script: ModuleScript,
+};
+
+test "ScriptResultWithModule - module script state" {
+    const module = ModuleScript.init("import { foo } from './foo.js';", "https://example.com/main.js");
+    const result: ScriptResultWithModule = .{ .module_script = module };
+
+    switch (result) {
+        .module_script => |m| {
+            try std.testing.expectEqualStrings("import { foo } from './foo.js';", m.source_text);
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "ScriptResultWithModule - distinguishes classic from module" {
+    const classic = ClassicScript.init("console.log('classic');", "https://example.com/classic.js");
+    const module = ModuleScript.init("console.log('module');", "https://example.com/module.js");
+
+    const classic_result: ScriptResultWithModule = .{ .script = classic };
+    const module_result: ScriptResultWithModule = .{ .module_script = module };
+
+    try std.testing.expect(classic_result == .script);
+    try std.testing.expect(module_result == .module_script);
+}

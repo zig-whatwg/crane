@@ -46,8 +46,10 @@ pub const ScriptResult = union(enum) {
     uninitialized,
     /// Error state (failed to load/parse)
     null,
-    /// Successfully prepared classic or module script
+    /// Successfully prepared classic script
     script: ClassicScript,
+    /// Successfully prepared module script
+    module_script: ModuleScript,
     /// Import map parse result
     import_map_result: void, // TODO: Implement import map result type
     /// Speculation rules parse result
@@ -75,6 +77,46 @@ pub const ClassicScript = struct {
             .settings_object = null,
             .parse_error = false,
             .muted_errors = false,
+        };
+    }
+};
+
+/// Module script representation
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-script
+pub const ModuleScript = struct {
+    /// The script source text
+    source_text: []const u8,
+    /// Base URL for the script
+    base_url: []const u8,
+    /// Settings object (document's origin, etc.)
+    settings_object: ?*runtime.Instance,
+    /// The module record (V8 compiled module)
+    module_record: ?*anyopaque,
+    /// Whether script had a parse error
+    parse_error: bool,
+    /// Parse error details
+    parse_error_message: ?[]const u8,
+    /// Muted errors flag (for cross-origin scripts)
+    muted_errors: bool,
+    /// Credentials mode for fetching imports
+    credentials_mode: CredentialsMode,
+
+    pub const CredentialsMode = enum {
+        same_origin,
+        include,
+        omit,
+    };
+
+    pub fn init(source: []const u8, base: []const u8) ModuleScript {
+        return .{
+            .source_text = source,
+            .base_url = base,
+            .settings_object = null,
+            .module_record = null,
+            .parse_error = false,
+            .parse_error_message = null,
+            .muted_errors = false,
+            .credentials_mode = .same_origin,
         };
     }
 };
