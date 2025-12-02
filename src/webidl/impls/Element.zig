@@ -24,11 +24,8 @@ const Element = interfaces.Element;
 const NodeImpl = @import("Node.zig");
 const AttrImpl = @import("Attr.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
-const TextImpl = @import("Text.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
-const DOMRectImpl = @import("DOMRect.zig");
-const DOMRectListImpl = @import("DOMRectList.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -350,16 +347,12 @@ pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a new DOMTokenList
-    const token_list = DOMTokenListImpl.init(
-        internal.allocator,
-        interfaces.DOMTokenList.State,
-        &interfaces.DOMTokenList.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
-    errdefer DOMTokenListImpl.deinit(token_list);
+    // Use interface instead of impl (per Golden Rule #13)
+    const token_list = interfaces.DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Initialize with current class attribute value
-    DOMTokenListImpl.set_value(token_list, internal.class_name) catch return error.OutOfMemory;
+    interfaces.DOMTokenList.set_value(token_list, internal.class_name) catch return error.OutOfMemory;
 
     // Associate with this element and the "class" attribute
     DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("class"));
@@ -383,13 +376,9 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a NamedNodeMap containing all attributes
-    const named_node_map = NamedNodeMapImpl.init(
-        internal.allocator,
-        interfaces.NamedNodeMap.State,
-        &interfaces.NamedNodeMap.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
-    errdefer NamedNodeMapImpl.deinit(named_node_map);
+    // Use interface instead of impl (per Golden Rule #13)
+    const named_node_map = interfaces.NamedNodeMap.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    errdefer interfaces.NamedNodeMap.deinit(named_node_map);
 
     // Set the owner element
     NamedNodeMapImpl.setOwnerElement(named_node_map, instance);
@@ -431,8 +420,8 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const shadow = internal.shadow_root orelse return null;
 
     // Step 2: If shadow's mode is "closed", return null
-    const ShadowRootImpl = @import("ShadowRoot.zig");
-    const mode = ShadowRootImpl.get_mode(shadow) catch return null;
+    // Use interface instead of impl (per Golden Rule #13)
+    const mode = interfaces.ShadowRoot.get_mode(shadow) catch return null;
 
     // Check if mode is closed
     if (mode == ._closed_) {
@@ -504,23 +493,19 @@ pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a DOMTokenList for the part attribute
-    const token_list = DOMTokenListImpl.init(
-        internal.allocator,
-        interfaces.DOMTokenList.State,
-        &interfaces.DOMTokenList.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
-    errdefer DOMTokenListImpl.deinit(token_list);
+    // Use interface instead of impl (per Golden Rule #13)
+    const token_list = interfaces.DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Find current part attribute value
     for (internal.attributes.items) |entry| {
         if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, "part")) {
-            DOMTokenListImpl.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
+            interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
             break;
         }
     }
 
-    // Associate with this element and the "part" attribute
+    // Associate with this element and the "part" attribute (internal method)
     DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("part"));
 
     return token_list;
@@ -1356,7 +1341,7 @@ fn insertAdjacent(
         const parent = NodeImpl.getParent(element) orelse return null;
 
         // Insert node into parent before element
-        _ = NodeImpl.call_insertBefore(parent, node, element) catch {
+        _ = interfaces.Node.call_insertBefore(parent, node, element) catch {
             return error.InvalidStateError;
         };
         return node;
@@ -1365,18 +1350,18 @@ fn insertAdjacent(
         const first_child = NodeImpl.getFirstChild(element);
 
         if (first_child) |fc| {
-            _ = NodeImpl.call_insertBefore(element, node, fc) catch {
+            _ = interfaces.Node.call_insertBefore(element, node, fc) catch {
                 return error.InvalidStateError;
             };
         } else {
-            _ = NodeImpl.call_appendChild(element, node) catch {
+            _ = interfaces.Node.call_appendChild(element, node) catch {
                 return error.InvalidStateError;
             };
         }
         return node;
     } else if (std.ascii.eqlIgnoreCase(where, "beforeend")) {
         // Insert as last child of this element
-        _ = NodeImpl.call_appendChild(element, node) catch {
+        _ = interfaces.Node.call_appendChild(element, node) catch {
             return error.InvalidStateError;
         };
         return node;
@@ -1386,11 +1371,11 @@ fn insertAdjacent(
         const next_sibling = NodeImpl.getNextSibling(element);
 
         if (next_sibling) |ns| {
-            _ = NodeImpl.call_insertBefore(parent, node, ns) catch {
+            _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {
                 return error.InvalidStateError;
             };
         } else {
-            _ = NodeImpl.call_appendChild(parent, node) catch {
+            _ = interfaces.Node.call_appendChild(parent, node) catch {
                 return error.InvalidStateError;
             };
         }
@@ -1431,12 +1416,12 @@ fn getElementByIdFromDocument(instance: *runtime.Instance, id: []const u8) ?*run
     if (id.len == 0) return null;
 
     // Get the owner document (nullable return type now)
-    const owner_doc_opt = NodeImpl.get_ownerDocument(instance) catch return null;
+    const owner_doc_opt = interfaces.Node.get_ownerDocument(instance) catch return null;
     const owner_doc = owner_doc_opt orelse return null;
 
     // Use document's getElementById
-    const DocumentImpl = @import("Document.zig");
-    const result = DocumentImpl.call_getElementById(owner_doc, runtime.DOMString.initInterned(id)) catch return null;
+    // Use interface instead of impl (per Golden Rule #13)
+    const result = interfaces.Document.call_getElementById(owner_doc, runtime.DOMString.initInterned(id)) catch return null;
     return result;
 }
 
@@ -1690,7 +1675,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
         // Remove child from parent
-        _ = NodeImpl.call_removeChild(instance, c) catch break;
+        _ = interfaces.Node.call_removeChild(instance, c) catch break;
         child = next;
     }
 
@@ -1715,15 +1700,14 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
     while (fragment_child) |fc| {
         const next = NodeImpl.getNextSibling(fc);
         // Remove from fragment
-        _ = NodeImpl.call_removeChild(fragment, fc) catch break;
+        _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
         // Append to this element
         _ = NodeImpl.appendChild(instance, fc) catch break;
         fragment_child = next;
     }
 
     // Clean up the fragment (children have been moved)
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    DocumentFragmentImpl.deinit(fragment);
+    interfaces.DocumentFragment.deinit(fragment);
 }
 
 /// Setter for outerHTML
@@ -1769,18 +1753,17 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
     while (fragment_child) |fc| {
         const next = NodeImpl.getNextSibling(fc);
         // Remove from fragment
-        _ = NodeImpl.call_removeChild(fragment, fc) catch break;
+        _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
         // Insert before this element
-        _ = NodeImpl.call_insertBefore(parent, fc, instance) catch break;
+        _ = interfaces.Node.call_insertBefore(parent, fc, instance) catch break;
         fragment_child = next;
     }
 
     // Remove this element from parent
-    _ = NodeImpl.call_removeChild(parent, instance) catch {};
+    _ = interfaces.Node.call_removeChild(parent, instance) catch {};
 
     // Clean up the fragment
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    DocumentFragmentImpl.deinit(fragment);
+    interfaces.DocumentFragment.deinit(fragment);
 }
 
 /// Setter for scrollTop
@@ -2285,7 +2268,7 @@ pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instan
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return empty DOMRectList (no layout = no client rects)
-    return DOMRectListImpl.initEmpty(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    return interfaces.DOMRectList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 }
 
 /// Operation: scrollBy
@@ -2315,12 +2298,12 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 
     if (first_child) |fc| {
         // Insert before first child
-        _ = NodeImpl.call_insertBefore(instance, node, fc) catch {
+        _ = interfaces.Node.call_insertBefore(instance, node, fc) catch {
             return error.InvalidStateError;
         };
     } else {
         // No children - append
-        _ = NodeImpl.call_appendChild(instance, node) catch {
+        _ = interfaces.Node.call_appendChild(instance, node) catch {
             return error.InvalidStateError;
         };
     }
@@ -2339,7 +2322,7 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.Paren
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
     // Replace this with node using Node.replaceChild
-    _ = NodeImpl.call_replaceChild(parent, node, instance) catch {
+    _ = interfaces.Node.call_replaceChild(parent, node, instance) catch {
         return error.InvalidStateError;
     };
 }
@@ -2437,10 +2420,10 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
-    const namespace_uri_opt = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
-    const prefix_opt = AttrImpl.get_prefix(attr) catch return error.InvalidStateError;
-    const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
-    const value = AttrImpl.get_value(attr) catch return error.InvalidStateError;
+    const namespace_uri_opt = interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const prefix_opt = interfaces.Attr.get_prefix(attr) catch return error.InvalidStateError;
+    const local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
+    const value = interfaces.Attr.get_value(attr) catch return error.InvalidStateError;
 
     const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
     const prefix_slice = if (prefix_opt) |p| p.asSlice() else "";
@@ -2491,14 +2474,11 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runt
     const name_slice = localName.asSlice();
 
     // Create HTMLCollection
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = HTMLCollectionImpl.init(
+    const collection = interfaces.HTMLCollection.init(
         internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
-    errdefer HTMLCollectionImpl.deinit(collection);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Collect matching descendants
     collectElementsByTagNameNS(instance, ns_slice, name_slice, collection) catch return error.OutOfMemory;
@@ -2521,7 +2501,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
-        _ = NodeImpl.call_removeChild(instance, c) catch {};
+        _ = interfaces.Node.call_removeChild(instance, c) catch {};
         child = next;
     }
 
@@ -2531,7 +2511,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
     // Append the new node
-    _ = NodeImpl.call_appendChild(instance, node) catch {
+    _ = interfaces.Node.call_appendChild(instance, node) catch {
         return error.InvalidStateError;
     };
 }
@@ -2606,14 +2586,11 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     const names_slice = classNames.asSlice();
 
     // Create HTMLCollection
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = HTMLCollectionImpl.init(
+    const collection = interfaces.HTMLCollection.init(
         internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
-    errdefer HTMLCollectionImpl.deinit(collection);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Collect matching descendants
     collectElementsByClassName(instance, names_slice, collection) catch return error.OutOfMemory;
@@ -2674,14 +2651,11 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
     const name_slice = qualifiedName.asSlice();
 
     // Create HTMLCollection
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const collection = HTMLCollectionImpl.init(
+    const collection = interfaces.HTMLCollection.init(
         internal.allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
-    errdefer HTMLCollectionImpl.deinit(collection);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Collect matching descendants
     collectElementsByTagName(instance, name_slice, collection) catch return error.OutOfMemory;
@@ -2816,8 +2790,8 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get attribute properties from the Attr node
-    const namespace_uri_opt = AttrImpl.get_namespaceURI(attr) catch return error.InvalidStateError;
-    const local_name = AttrImpl.get_localName(attr) catch return error.InvalidStateError;
+    const namespace_uri_opt = interfaces.Attr.get_namespaceURI(attr) catch return error.InvalidStateError;
+    const local_name = interfaces.Attr.get_localName(attr) catch return error.InvalidStateError;
 
     const ns_slice = if (namespace_uri_opt) |ns| ns.asSlice() else "";
     const name_slice = local_name.asSlice();
@@ -2924,7 +2898,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
     // Append as last child
-    _ = NodeImpl.call_appendChild(instance, node) catch {
+    _ = interfaces.Node.call_appendChild(instance, node) catch {
         return error.InvalidStateError;
     };
 }
@@ -2936,7 +2910,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 /// This is a newer DOM method for moving nodes atomically
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
     // Use insertBefore as a fallback (doesn't suppress callbacks but same tree result)
-    _ = NodeImpl.call_insertBefore(instance, node, child) catch |err| {
+    _ = interfaces.Node.call_insertBefore(instance, node, child) catch |err| {
         return switch (err) {
             error.HierarchyRequestError => error.InvalidStateError,
             error.NotFoundError => error.NotFoundError,
@@ -3168,7 +3142,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode
     const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
 
     // Insert node before this element
-    _ = NodeImpl.call_insertBefore(parent, node, instance) catch {
+    _ = interfaces.Node.call_insertBefore(parent, node, instance) catch {
         return error.InvalidStateError;
     };
 }
@@ -3190,12 +3164,12 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.
 
     if (next_sibling) |ns| {
         // Insert before next sibling
-        _ = NodeImpl.call_insertBefore(parent, node, ns) catch {
+        _ = interfaces.Node.call_insertBefore(parent, node, ns) catch {
             return error.InvalidStateError;
         };
     } else {
         // Append to parent (no next sibling)
-        _ = NodeImpl.call_appendChild(parent, node) catch {
+        _ = interfaces.Node.call_appendChild(parent, node) catch {
             return error.InvalidStateError;
         };
     }
@@ -3280,11 +3254,8 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyop
 
     // Create a NodeList to hold the attribute names as a sequence
     // TODO: This should ideally return a JS Array, but for now we use NodeList as placeholder
-    const NodeListImpl = @import("NodeList.zig");
-    const node_list = NodeListImpl.init(
+    const node_list = interfaces.NodeList.init(
         internal.allocator,
-        interfaces.NodeList.State,
-        &interfaces.NodeList.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
 
@@ -3439,7 +3410,7 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Without a layout engine, return a zero-sized rect at origin
-    return DOMRectImpl.initWithDimensions(internal.allocator, instance.ctx, 0, 0, 0, 0) catch return error.OutOfMemory;
+    return interfaces.DOMRect.call_constructor(internal.allocator, instance.ctx, webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0)) catch return error.OutOfMemory;
 }
 
 /// Operation: querySelectorAll
