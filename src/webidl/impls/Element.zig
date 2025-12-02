@@ -2875,8 +2875,9 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create a new Text node with the given data
-    const text_node = TextImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
-    errdefer TextImpl.deinit(text_node);
+    // Use interface instead of impl (per Golden Rule #13)
+    const text_node = interfaces.Text.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
+    errdefer interfaces.Text.deinit(text_node);
 
     // Step 2: Run insert adjacent algorithm
     _ = insertAdjacent(instance, where.asSlice(), text_node) catch |err| {
