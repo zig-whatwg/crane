@@ -115,8 +115,9 @@ pub fn next(
     // (ensured by type system)
 
     // Steps 3-5: Call reader.read() which implements the spec algorithm
-    const impls = @import("impls");
-    const read_result_promise_ptr = try impls.ReadableStreamDefaultReader.call_read(reader);
+    // Use interface instead of impl (per Golden Rule #12)
+    const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
+    const read_result_promise_ptr = try ReadableStreamDefaultReader.call_read(reader);
 
     // ReadResult and IteratorResult have identical structure: { value, done }
     // So we can safely cast the promise type
