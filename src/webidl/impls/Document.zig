@@ -4,10 +4,16 @@
 //! WHATWG DOM Standard §4.6
 //!
 //! Document represents the entire HTML or XML document. Conceptually, it is
-//! the root of the document tree, and provides the primary access to the
+//! the root of the tree, and provides the primary access to the
 //! document's data.
 //!
 //! Migrated from: webidl/src/dom/Document.zig
+//!
+//! ## Architecture Note (Golden Rule #13)
+//!
+//! Per Golden Rule #13, impls should call interfaces, not other impls.
+//! This file uses interfaces for factory method calls (call_constructor, etc.)
+//! but may use impls for internal initialization (setNodeType, etc.).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -19,14 +25,13 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Document = interfaces.Document;
 
-// Import related impls for factory methods
+// Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const TextImpl = @import("Text.zig");
-const CommentImpl = @import("Comment.zig");
+// NOTE: The following impls are used for internal methods. Factory methods
+// (call_constructor, etc.) should use interfaces instead.
 const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const CDATASectionImpl = @import("CDATASection.zig");
-const EventImpl = @import("Event.zig");
 const AttrImpl = @import("Attr.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const RangeImpl = @import("Range.zig");
@@ -3055,7 +3060,8 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
         .cancelable = false,
         .composed = false,
     };
-    const event = try EventImpl.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
+    // Use interface instead of impl (per Golden Rule #13)
+    const event = try interfaces.Event.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
 
     return event;
 }
@@ -3378,14 +3384,16 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             // Clone text data
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
-            const text = try TextImpl.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
+            // Use interface instead of impl (per Golden Rule #13)
+            const text = try interfaces.Text.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk text;
         },
         NodeImpl.NodeType.COMMENT_NODE => blk: {
             // Clone comment data
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
-            const comment = try CommentImpl.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
+            // Use interface instead of impl (per Golden Rule #13)
+            const comment = try interfaces.Comment.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk comment;
         },
         NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
@@ -3719,9 +3727,9 @@ fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Create Text node via Text impl constructor
-    const text = try TextImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
-    errdefer TextImpl.deinit(text);
+    // Use interface instead of impl (per Golden Rule #13)
+    const text = try interfaces.Text.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    errdefer interfaces.Text.deinit(text);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(text, instance);
@@ -3966,9 +3974,9 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Create Comment node via Comment impl constructor
-    const comment = try CommentImpl.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
-    errdefer CommentImpl.deinit(comment);
+    // Use interface instead of impl (per Golden Rule #13)
+    const comment = try interfaces.Comment.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    errdefer interfaces.Comment.deinit(comment);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(comment, instance);
