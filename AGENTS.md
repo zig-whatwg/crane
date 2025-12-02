@@ -769,6 +769,57 @@ HTMLScriptElement.prepareTheScriptElement(element);
 
 See epic `whatwg-jwgc` for the refactoring plan.
 
+### 13. **Impls MUST Call Interfaces, NOT Other Impls** ⭐⭐⭐
+
+**When an impl needs to use another type, it MUST call through the interface, namespace, or mixin - NEVER import another impl directly.**
+
+**Architecture:**
+- An impl can call its OWN internal methods (same file)
+- An impl MUST use interfaces/namespaces/mixins to interact with OTHER types
+- This ensures proper encapsulation and allows interfaces to add cross-cutting concerns
+
+**Correct Pattern:**
+```zig
+// src/webidl/impls/HTMLParser.zig
+const interfaces = @import("interfaces");
+const Document = interfaces.Document;
+const Element = interfaces.Element;
+
+pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
+    // ✅ CORRECT: Call through interfaces
+    const doc = try Document.createDocument(allocator);
+    const elem = try Element.createElement(allocator, "div");
+    // ...
+}
+```
+
+**Wrong Pattern:**
+```zig
+// src/webidl/impls/HTMLParser.zig
+const DocumentImpl = @import("Document.zig");
+const ElementImpl = @import("Element.zig");
+
+pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
+    // ❌ WRONG: Direct impl-to-impl calls
+    const doc = try DocumentImpl.createDocument(allocator);
+    const elem = try ElementImpl.createElement(allocator, "div");
+    // ...
+}
+```
+
+**Why This Matters:**
+- Interfaces may add CEReactions, validation, or other cross-cutting concerns
+- Direct impl calls bypass these important behaviors
+- Maintains consistent API surface throughout the codebase
+- Allows interfaces to evolve independently of impls
+
+**Scope of Violation (53 files, 245 instances):**
+- DOM impls: Document, Element, Node, Attr, CharacterData, etc.
+- Streams impls: ReadableStream, WritableStream, TransformStream, controllers, readers
+- Other impls: HTMLParser, Range, Selection, Request, Response, etc.
+
+See epic `whatwg-jwgc` for the full list and refactoring plan.
+
 ---
 
 ## Critical Project Context
@@ -1161,6 +1212,7 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Accumulating uncommitted changes** (commit after every logical unit of work)
 - **Modifying generated files directly** (changes must go through codegen source files)
 - **Calling impls directly from external code** (must go through interfaces - see Golden Rule #12)
+- **Impls calling other impls directly** (must go through interfaces - see Golden Rule #13)
 
 ---
 
