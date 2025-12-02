@@ -573,15 +573,11 @@ pub fn get_implementation(instance: *runtime.Instance) anyerror!*runtime.Instanc
     }
 
     // Create and cache DOMImplementation
+    // Use interface instead of impl (per Golden Rule #13)
     const DOMImplementationImpl = @import("DOMImplementation.zig");
-    const impl = DOMImplementationImpl.init(
-        internal.allocator,
-        interfaces.DOMImplementation.State,
-        &interfaces.DOMImplementation.vtable,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
+    const impl = interfaces.DOMImplementation.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 
-    // Set the associated document
+    // Set the associated document (internal method)
     DOMImplementationImpl.setDocument(impl, instance);
 
     // Cache and return
@@ -3296,13 +3292,9 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
     const copy = switch (node_type) {
         NodeImpl.NodeType.ELEMENT_NODE => blk: {
             // Create new element
+            // Use interface instead of impl (per Golden Rule #13)
             const ElementImpl = @import("Element.zig");
-            const elem = try ElementImpl.init(
-                internal.allocator,
-                interfaces.Element.State,
-                &interfaces.Element.vtable,
-                doc.ctx,
-            );
+            const elem = try interfaces.Element.init(internal.allocator, doc.ctx);
             try NodeImpl.setNodeType(elem, NodeImpl.NodeType.ELEMENT_NODE);
 
             // Copy element properties from source
@@ -3352,12 +3344,8 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             break :blk comment;
         },
         NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
-            const fragment = try DocumentFragmentImpl.init(
-                internal.allocator,
-                interfaces.DocumentFragment.State,
-                &interfaces.DocumentFragment.vtable,
-                doc.ctx,
-            );
+            // Use interface instead of impl (per Golden Rule #13)
+            const fragment = try interfaces.DocumentFragment.init(internal.allocator, doc.ctx);
             try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
             break :blk fragment;
         },
@@ -3381,15 +3369,11 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
 
-            const cdata = try CDATASectionImpl.init(
-                internal.allocator,
-                interfaces.CDATASection.State,
-                &interfaces.CDATASection.vtable,
-                doc.ctx,
-            );
+            // Use interface instead of impl (per Golden Rule #13)
+            const cdata = try interfaces.CDATASection.init(internal.allocator, doc.ctx);
             try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
 
-            // Set the data via CharacterData
+            // Set the data via CharacterData (internal method)
             try CharacterDataImpl.setData(cdata, src_data);
 
             break :blk cdata;
@@ -3436,14 +3420,9 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
         return error.NotSupportedError;
     }
 
-    // Create CDATASection node via impl
-    const cdata = try CDATASectionImpl.init(
-        internal.allocator,
-        interfaces.CDATASection.State,
-        &interfaces.CDATASection.vtable,
-        instance.ctx,
-    );
-    errdefer CDATASectionImpl.deinit(cdata);
+    // Use interface instead of impl (per Golden Rule #13)
+    const cdata = try interfaces.CDATASection.init(internal.allocator, instance.ctx);
+    errdefer interfaces.CDATASection.deinit(cdata);
 
     // Set node type
     try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
@@ -3476,13 +3455,9 @@ pub fn call_createRange(instance: *runtime.Instance) anyerror!*runtime.Instance 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create a new Range
-    const range = try RangeImpl.init(
-        internal.allocator,
-        interfaces.Range.State,
-        &interfaces.Range.vtable,
-        instance.ctx,
-    );
-    errdefer RangeImpl.deinit(range);
+    // Use interface instead of impl (per Golden Rule #13)
+    const range = try interfaces.Range.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Range.deinit(range);
 
     // Step 2: Set range's start and end to (this, 0)
     // Access Range's internal state to set boundary points
@@ -3573,13 +3548,9 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
     }
 
     // Create a new Attr
-    const attr = try AttrImpl.init(
-        internal.allocator,
-        interfaces.Attr.State,
-        &interfaces.Attr.vtable,
-        instance.ctx,
-    );
-    errdefer AttrImpl.deinit(attr);
+    // Use interface instead of impl (per Golden Rule #13)
+    const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Attr.deinit(attr);
 
     // Set node type to ATTRIBUTE_NODE
     try NodeImpl.setNodeType(attr, NodeImpl.NodeType.ATTRIBUTE_NODE);
@@ -3708,13 +3679,9 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
     _ = filter; // TODO: Handle NodeFilter callback properly
 
     // Step 1: Create TreeWalker
-    const walker = try TreeWalkerImpl.init(
-        internal.allocator,
-        interfaces.TreeWalker.State,
-        &interfaces.TreeWalker.vtable,
-        instance.ctx,
-    );
-    errdefer TreeWalkerImpl.deinit(walker);
+    // Use interface instead of impl (per Golden Rule #13)
+    const walker = try interfaces.TreeWalker.init(internal.allocator, instance.ctx);
+    errdefer interfaces.TreeWalker.deinit(walker);
 
     // Steps 2-5: Initialize walker state
     const walker_state = walker.getState(interfaces.TreeWalker.State);
@@ -3942,13 +3909,9 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create DocumentFragment node via impl
-    const fragment = try DocumentFragmentImpl.init(
-        internal.allocator,
-        interfaces.DocumentFragment.State,
-        &interfaces.DocumentFragment.vtable,
-        instance.ctx,
-    );
-    errdefer DocumentFragmentImpl.deinit(fragment);
+    // Use interface instead of impl (per Golden Rule #13)
+    const fragment = try interfaces.DocumentFragment.init(internal.allocator, instance.ctx);
+    errdefer interfaces.DocumentFragment.deinit(fragment);
 
     // Set node type
     try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
@@ -4006,14 +3969,10 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
     }
 
     // Create element via Element impl
+    // Use interface instead of impl (per Golden Rule #13)
     const ElementImpl = @import("Element.zig");
-    const element = try ElementImpl.init(
-        internal.allocator,
-        interfaces.Element.State,
-        &interfaces.Element.vtable,
-        instance.ctx,
-    );
-    errdefer ElementImpl.deinit(element);
+    const element = try interfaces.Element.init(internal.allocator, instance.ctx);
+    errdefer interfaces.Element.deinit(element);
 
     // Set node type to ELEMENT_NODE
     try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
@@ -4087,13 +4046,9 @@ pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Insta
     _ = filter; // TODO: Handle NodeFilter callback properly
 
     // Step 1: Create NodeIterator
-    const iterator = try NodeIteratorImpl.init(
-        internal.allocator,
-        interfaces.NodeIterator.State,
-        &interfaces.NodeIterator.vtable,
-        instance.ctx,
-    );
-    errdefer NodeIteratorImpl.deinit(iterator);
+    // Use interface instead of impl (per Golden Rule #13)
+    const iterator = try interfaces.NodeIterator.init(internal.allocator, instance.ctx);
+    errdefer interfaces.NodeIterator.deinit(iterator);
 
     // Steps 2-6: Initialize iterator state
     const iter_state = iterator.getState(interfaces.NodeIterator.State);
