@@ -2880,6 +2880,14 @@ pub fn setInstanceWithTypeInfo(
 /// which doesn't exist during the Zig constructor execution.
 ///
 /// Called from constructorCallback when interface_name == "ReadableStream"
+///
+/// ## Architecture Note
+///
+/// This function is part of the V8 binding layer, which bridges V8 and Zig
+/// implementations. Per Golden Rule #12, we use interfaces where possible:
+/// - State type: obtained from interface (interfaces.ReadableStream.State)
+/// - Internal callback: requires impls because invokePendingStartCallback is
+///   an internal V8-specific method not exposed through the interface
 fn invokeReadableStreamStartCallback(
     instance: *runtime.Instance,
     this_obj: *v8.Object,
@@ -2890,12 +2898,12 @@ fn invokeReadableStreamStartCallback(
     _ = allocator;
     _ = this_obj;
 
-    // Get the ReadableStream impl module
-    const ReadableStreamImpl = @import("impls").ReadableStream;
+    // Import interfaces module (should be available via build dependencies)
+    const ReadableStreamInterface = @import("interfaces").ReadableStream;
 
     // Get the controller from the stream's internal state
-    const State = ReadableStreamImpl.State;
-    const state = instance.getState(State);
+    // Use interface's State type (per Golden Rule #12)
+    const state = instance.getState(ReadableStreamInterface.State);
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller;
 
@@ -2910,6 +2918,10 @@ fn invokeReadableStreamStartCallback(
     };
 
     // Invoke the pending start callback with the controller wrapper
+    // NOTE: invokePendingStartCallback is an internal V8-specific method not
+    // exposed through the interface. This is legitimate impl access for the
+    // V8 binding layer which needs to trigger internal callbacks.
+    const ReadableStreamImpl = @import("impls").ReadableStream;
     ReadableStreamImpl.invokePendingStartCallback(
         instance,
         @ptrCast(controller_v8),
