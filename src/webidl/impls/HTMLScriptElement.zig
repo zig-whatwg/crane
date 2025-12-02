@@ -607,3 +607,52 @@ pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) an
     _ = @"type";
     return error.NotImplemented;
 }
+
+// =============================================================================
+// Script Preparation and Execution Algorithms
+// HTML Standard §4.12.1.1
+// =============================================================================
+
+/// Prepare the script element
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+///
+/// This is the main entry point for script preparation. It determines the script type,
+/// validates preconditions, and either immediately executes (for inline classic scripts)
+/// or queues the script for later execution.
+///
+/// Returns true if the script was prepared successfully and may need execution,
+/// false if preparation was aborted.
+pub fn prepareScriptElement(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+) ScriptExecutionError!bool {
+    // Import the script_execution module which contains the algorithm implementation
+    // This is a transitional pattern - eventually all logic will move here
+    const script_execution = @import("html").script_execution;
+    return script_execution.prepareScriptElement(allocator, script_element);
+}
+
+/// Execute the script element
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
+///
+/// Executes the prepared script using V8.
+pub fn executeScriptElement(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+) ScriptExecutionError!void {
+    const script_execution = @import("html").script_execution;
+    return script_execution.executeScriptElement(allocator, script_element);
+}
+
+/// Script execution error type
+pub const ScriptExecutionError = error{
+    InvalidScriptElement,
+    ScriptingDisabled,
+    DocumentMismatch,
+    ParseError,
+    NetworkError,
+    SecurityError,
+    AlreadyStarted,
+    NotConnected,
+    OutOfMemory,
+};

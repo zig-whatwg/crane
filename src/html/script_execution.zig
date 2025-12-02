@@ -10,44 +10,28 @@
 //!
 //! ## Architecture Note
 //!
-//! This module implements HTML spec algorithms that manipulate internal state not
-//! exposed through WebIDL interfaces (parser document, already started, script
-//! result, etc.). Per Golden Rule #12 (external code uses interfaces), this code
-//! SHOULD eventually be refactored:
-//!
-//! **Current**: Standalone module using impls directly
-//! **Target**: Move algorithms into HTMLScriptElementImpl, expose via interface
-//!
-//! TODO(whatwg-jwgc): Refactor to move prepareScriptElement and executeScriptElement
-//! into HTMLScriptElementImpl, then have this module (or callers) use the interface.
-//! This is a significant refactoring task tracked in epic whatwg-jwgc.
+//! This module uses interfaces for all public API access per Golden Rule #12.
+//! Internal state access is provided through interface delegate methods that
+//! expose impl internal state in a controlled manner.
 
 const std = @import("std");
 const runtime = @import("runtime");
 
-// WebIDL types
+// WebIDL interfaces - used for all public API access per Golden Rule #12
 const interfaces = @import("interfaces");
 
-// NOTE: Direct impl access is used here because this module implements HTML spec
-// algorithms that require access to internal state not exposed via WebIDL interfaces.
-// See "Architecture Note" above for the planned refactoring approach.
-const impls = @import("impls");
+// Interface types used in this module
+const HTMLScriptElement = interfaces.HTMLScriptElement;
+const Document = interfaces.Document;
+const Node = interfaces.Node;
+const Element = interfaces.Element;
+const Text = interfaces.Text;
 
-// Script element implementation - internal types and methods
-const HTMLScriptElementImpl = impls.HTMLScriptElement;
-const ScriptType = HTMLScriptElementImpl.ScriptType;
-const ScriptResult = HTMLScriptElementImpl.ScriptResult;
-const ClassicScript = HTMLScriptElementImpl.ClassicScript;
-const ModuleScript = HTMLScriptElementImpl.ModuleScript;
-
-// Document implementation - internal methods for CSP, scripting state
-const DocumentImpl = impls.Document;
-
-// Node implementation for DOM traversal
-const NodeImpl = impls.Node;
-
-// Element implementation for attribute access
-const ElementImpl = impls.Element;
+// Script element types re-exported from interface
+const ScriptType = HTMLScriptElement.ScriptType;
+const ScriptResult = HTMLScriptElement.ScriptResult;
+const ClassicScript = HTMLScriptElement.ClassicScript;
+const ModuleScript = HTMLScriptElement.ModuleScript;
 
 // MIME type checking
 const mimesniff = @import("mimesniff");
@@ -87,15 +71,15 @@ pub fn prepareScriptElement(
     script_element: *runtime.Instance,
 ) ScriptExecutionError!bool {
     // Step 1: If el's already started is true, then return
-    if (HTMLScriptElementImpl.hasAlreadyStarted(script_element)) {
+    if (HTMLScriptElement.hasAlreadyStarted(script_element)) {
         return false;
     }
 
     // Step 2: Let parser document be el's parser document
-    const parser_document = HTMLScriptElementImpl.getParserDocument(script_element);
+    const parser_document = HTMLScriptElement.getParserDocument(script_element);
 
     // Step 3: Set el's parser document to null
-    HTMLScriptElementImpl.setParserDocument(script_element, null);
+    HTMLScriptElement.setParserDocument(script_element, null);
 
     // Step 4: If parser document is non-null and el does not have an async attribute,
     // then set el's force async to true
@@ -133,16 +117,16 @@ pub fn prepareScriptElement(
     // Step 14: If parser document is non-null, set el's parser document back
     // and set force_async to false
     if (parser_document) |pd| {
-        HTMLScriptElementImpl.setParserDocument(script_element, pd);
-        HTMLScriptElementImpl.clearForceAsync(script_element);
+        HTMLScriptElement.setParserDocument(script_element, pd);
+        HTMLScriptElement.clearForceAsync(script_element);
     }
 
     // Step 15: Set el's already started to true
-    HTMLScriptElementImpl.setAlreadyStarted(script_element, true);
+    HTMLScriptElement.setAlreadyStarted(script_element, true);
 
     // Step 16: Set el's preparation-time document to its node document
     const node_document = getNodeDocument(script_element);
-    HTMLScriptElementImpl.setPreparationTimeDocument(script_element, node_document);
+    HTMLScriptElement.setPreparationTimeDocument(script_element, node_document);
 
     // Step 17: If parser document is non-null and not equal to preparation-time document, return
     if (parser_document) |pd| {
@@ -153,7 +137,7 @@ pub fn prepareScriptElement(
 
     // Step 18: If scripting is disabled for el, then return
     if (node_document) |doc| {
-        if (!DocumentImpl.isScriptingEnabled(doc)) {
+        if (!Document.isScriptingEnabled(doc)) {
             return false;
         }
     }
@@ -181,7 +165,7 @@ pub fn prepareScriptElement(
             // For now, we only check nonce and 'unsafe-inline'
 
             // Check if inline script is allowed by CSP
-            if (!DocumentImpl.isInlineScriptAllowedByCSP(
+            if (!Document.isInlineScriptAllowedByCSP(
                 doc,
                 if (nonce.len > 0) nonce else null,
                 null, // hash_algorithm (TODO: compute from source)
@@ -221,12 +205,12 @@ pub fn prepareScriptElement(
     // For now, we skip external script fetching
 
     // Set the script type
-    HTMLScriptElementImpl.setScriptType(script_element, script_type);
+    HTMLScriptElement.setScriptType(script_element, script_type);
 
     // Step 33: If el has a src attribute (external script)
     if (hasSrcAttribute(script_element)) {
         // External scripts - mark as from external file
-        HTMLScriptElementImpl.setFromExternalFile(script_element, true);
+        HTMLScriptElement.setFromExternalFile(script_element, true);
 
         // Step 33.3: If src is empty, queue error event and return
         const src = getSrcAttribute(script_element);
@@ -238,7 +222,7 @@ pub fn prepareScriptElement(
         // Step 33.4-33.7: Build script URL, set request parameters
         // Resolve src against base URL
         const base_url = if (node_document) |doc|
-            if (DocumentImpl.getInternal(doc)) |internal| internal.base_uri else ""
+            if (Document.getInternal(doc)) |internal| internal.base_uri else ""
         else
             "";
 
@@ -254,7 +238,7 @@ pub fn prepareScriptElement(
             const url_parts = parseUrlForCSP(script_url);
             const nonce = getNonceAttribute(script_element);
 
-            if (!DocumentImpl.isExternalScriptAllowedByCSP(
+            if (!Document.isExternalScriptAllowedByCSP(
                 doc,
                 url_parts.scheme,
                 url_parts.host,
@@ -280,18 +264,18 @@ pub fn prepareScriptElement(
 
             // Create a classic script from the fetched content
             const script = ClassicScript.init(body, script_url);
-            HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
+            HTMLScriptElement.setResult(script_element, .{ .script = script });
 
             // Cache source text for execution
-            HTMLScriptElementImpl.cacheSourceText(script_element, body) catch {
+            HTMLScriptElement.cacheSourceText(script_element, body) catch {
                 return ScriptExecutionError.OutOfMemory;
             };
 
             // Mark as ready to be parser-executed
-            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
+            HTMLScriptElement.setReadyToBeParserExecuted(script_element, true);
         } else {
             // Network error - set result to null
-            HTMLScriptElementImpl.setResult(script_element, .null);
+            HTMLScriptElement.setResult(script_element, .null);
             return false;
         }
 
@@ -301,7 +285,7 @@ pub fn prepareScriptElement(
 
     // Step 34: Inline script (no src attribute)
     if (node_document) |doc| {
-        const base_url = DocumentImpl.getInternal(doc).?.base_uri;
+        const base_url = Document.getInternal(doc).?.base_uri;
 
         switch (script_type) {
             .classic => {
@@ -309,10 +293,10 @@ pub fn prepareScriptElement(
                 const script = ClassicScript.init(source_text, base_url);
 
                 // Step 34.2.2: Mark as ready
-                HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
+                HTMLScriptElement.setResult(script_element, .{ .script = script });
 
                 // Cache the source text for execution
-                HTMLScriptElementImpl.cacheSourceText(script_element, source_text) catch {
+                HTMLScriptElement.cacheSourceText(script_element, source_text) catch {
                     return ScriptExecutionError.OutOfMemory;
                 };
             },
@@ -321,10 +305,10 @@ pub fn prepareScriptElement(
                 const module = ModuleScript.init(source_text, base_url);
 
                 // Set result
-                HTMLScriptElementImpl.setResult(script_element, .{ .module_script = module });
+                HTMLScriptElement.setResult(script_element, .{ .module_script = module });
 
                 // Cache source text for execution
-                HTMLScriptElementImpl.cacheSourceText(script_element, source_text) catch {
+                HTMLScriptElement.cacheSourceText(script_element, source_text) catch {
                     return ScriptExecutionError.OutOfMemory;
                 };
 
@@ -337,7 +321,7 @@ pub fn prepareScriptElement(
                 // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
 
                 // Step 1: Check if import map has already been acquired
-                if (DocumentImpl.hasImportMapAcquired(doc)) {
+                if (Document.hasImportMapAcquired(doc)) {
                     // Only one import map per document is allowed
                     // Subsequent import maps are ignored with a console warning
                     std.debug.print("Import map ignored: document already has an import map\n", .{});
@@ -366,7 +350,7 @@ pub fn prepareScriptElement(
                 };
 
                 // Step 4: Mark import map as acquired
-                DocumentImpl.setImportMapAcquired(doc);
+                Document.setImportMapAcquired(doc);
 
                 return true;
             },
@@ -417,7 +401,7 @@ fn handleScriptScheduling(
     const has_src = hasSrcAttribute(script_element);
     const has_async = hasAsyncAttribute(script_element);
     const has_defer = hasDeferAttribute(script_element);
-    const internal = HTMLScriptElementImpl.getInternal(script_element);
+    const internal = HTMLScriptElement.getInternal(script_element);
     const force_async = if (internal) |int| int.force_async else true;
 
     const node_document = getNodeDocument(script_element);
@@ -450,7 +434,7 @@ fn handleScriptScheduling(
                     // Parser-blocking external script
                     // Step 35.1: Set document's pending parsing-blocking script to el
                     if (node_document) |doc| {
-                        DocumentImpl.setPendingParsingBlockingScript(doc, script_element);
+                        Document.setPendingParsingBlockingScript(doc, script_element);
                     }
                     // Mark as ready to be parser-executed when fetch completes
                     // (actual fetching not yet implemented)
@@ -459,7 +443,7 @@ fn handleScriptScheduling(
                     // Deferred external script
                     // Step 35.2: Add to list of scripts that will execute when document finishes parsing
                     if (node_document) |doc| {
-                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
                     }
                     return true;
                 } else if (has_async and has_src) {
@@ -467,12 +451,12 @@ fn handleScriptScheduling(
                     if (!force_async) {
                         // Step 35.3: Add to list of scripts that will execute in order
                         if (node_document) |doc| {
-                            DocumentImpl.addScriptToExecuteInOrderAsap(doc, script_element);
+                            Document.addScriptToExecuteInOrderAsap(doc, script_element);
                         }
                     } else {
                         // Step 35.4: Add to set of scripts that will execute ASAP
                         if (node_document) |doc| {
-                            DocumentImpl.addScriptToExecuteAsap(doc, script_element);
+                            Document.addScriptToExecuteAsap(doc, script_element);
                         }
                     }
                     return true;
@@ -489,7 +473,7 @@ fn handleScriptScheduling(
                 if (is_parser_inserted and !has_async) {
                     // Parser-inserted inline module without async - defer until parsing finishes
                     if (node_document) |doc| {
-                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
                     }
                     return true;
                 } else {
@@ -504,13 +488,13 @@ fn handleScriptScheduling(
                     // Parser-inserted external module - deferred by default
                     // Step 35.2: Add to list of scripts that will execute when document finishes parsing
                     if (node_document) |doc| {
-                        DocumentImpl.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
                     }
                     return true;
                 } else {
                     // Async external module script
                     if (node_document) |doc| {
-                        DocumentImpl.addScriptToExecuteAsap(doc, script_element);
+                        Document.addScriptToExecuteAsap(doc, script_element);
                     }
                     return true;
                 }
@@ -537,16 +521,16 @@ pub fn executePendingParserBlockingScript(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
 ) void {
-    const pending_script = DocumentImpl.getPendingParsingBlockingScript(document) orelse return;
+    const pending_script = Document.getPendingParsingBlockingScript(document) orelse return;
 
     // Check if the script is ready to execute
-    if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(pending_script)) {
+    if (!HTMLScriptElement.isReadyToBeParserExecuted(pending_script)) {
         // Script is not ready yet (still fetching or waiting for dependencies)
         return;
     }
 
     // Clear pending parsing-blocking script
-    DocumentImpl.setPendingParsingBlockingScript(document, null);
+    Document.setPendingParsingBlockingScript(document, null);
 
     // Execute the script
     _ = executeScriptElement(allocator, pending_script) catch |err| {
@@ -561,7 +545,7 @@ pub fn executeScriptsWhenParsingFinished(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
 ) void {
-    const scripts = DocumentImpl.getScriptsToExecuteWhenParsingFinished(document);
+    const scripts = Document.getScriptsToExecuteWhenParsingFinished(document);
 
     for (scripts) |script| {
         // Execute each deferred script in order
@@ -571,7 +555,7 @@ pub fn executeScriptsWhenParsingFinished(
     }
 
     // Clear the list
-    DocumentImpl.clearScriptsToExecuteWhenParsingFinished(document);
+    Document.clearScriptsToExecuteWhenParsingFinished(document);
 }
 
 /// Execute scripts in the "execute in order ASAP" list
@@ -582,12 +566,12 @@ pub fn executeScriptsInOrderAsap(
     document: *runtime.Instance,
 ) void {
     while (true) {
-        const script = DocumentImpl.popFirstScriptToExecuteInOrderAsap(document) orelse break;
+        const script = Document.popFirstScriptToExecuteInOrderAsap(document) orelse break;
 
         // Check if ready
-        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
+        if (!HTMLScriptElement.isReadyToBeParserExecuted(script)) {
             // Re-add to list and stop - must maintain order
-            DocumentImpl.addScriptToExecuteInOrderAsap(document, script);
+            Document.addScriptToExecuteInOrderAsap(document, script);
             break;
         }
 
@@ -603,14 +587,14 @@ pub fn executeScriptsAsap(
     allocator: std.mem.Allocator,
     document: *runtime.Instance,
 ) void {
-    const scripts = DocumentImpl.getScriptsToExecuteAsap(document);
+    const scripts = Document.getScriptsToExecuteAsap(document);
 
     // Find all ready scripts and execute them
     var i: usize = 0;
     while (i < scripts.len) {
         const script = scripts[i];
-        if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
-            _ = DocumentImpl.removeScriptFromExecuteAsap(document, script);
+        if (HTMLScriptElement.isReadyToBeParserExecuted(script)) {
+            _ = Document.removeScriptFromExecuteAsap(document, script);
             _ = executeScriptElement(allocator, script) catch |err| {
                 std.debug.print("ASAP script execution error: {}\n", .{err});
             };
@@ -635,7 +619,7 @@ pub fn executeScriptElement(
     };
 
     // Step 2: If el's preparation-time document is not equal to document, return
-    const prep_time_doc = HTMLScriptElementImpl.getPreparationTimeDocument(script_element);
+    const prep_time_doc = HTMLScriptElement.getPreparationTimeDocument(script_element);
     if (prep_time_doc != node_document) {
         return;
     }
@@ -643,7 +627,7 @@ pub fn executeScriptElement(
     // Step 3: Unblock rendering (not implemented - no rendering engine)
 
     // Step 4: If el's result is null, fire error event and return
-    const result = HTMLScriptElementImpl.getResult(script_element);
+    const result = HTMLScriptElement.getResult(script_element);
     switch (result) {
         .null => {
             // Fire error event per spec
@@ -658,26 +642,26 @@ pub fn executeScriptElement(
 
     // Step 5: If el's from an external file is true or type is "module",
     // increment ignore-destructive-writes counter
-    const from_external = HTMLScriptElementImpl.isFromExternalFile(script_element);
-    const script_type = HTMLScriptElementImpl.getScriptType(script_element);
+    const from_external = HTMLScriptElement.isFromExternalFile(script_element);
+    const script_type = HTMLScriptElement.getScriptType(script_element);
     const should_increment_counter = from_external or script_type == .module;
 
     if (should_increment_counter) {
-        DocumentImpl.incrementIgnoreDestructiveWritesCounter(node_document);
+        Document.incrementIgnoreDestructiveWritesCounter(node_document);
     }
     defer if (should_increment_counter) {
-        DocumentImpl.decrementIgnoreDestructiveWritesCounter(node_document);
+        Document.decrementIgnoreDestructiveWritesCounter(node_document);
     };
 
     // Step 6: Execute based on script type
     switch (script_type) {
         .classic => {
             // Step 6.1: Let oldCurrentScript be document's currentScript
-            const old_current_script = DocumentImpl.getCurrentScript(node_document);
+            const old_current_script = Document.getCurrentScript(node_document);
 
             // Step 6.2: If el's root is not a shadow root, set currentScript to el
             // (We'll assume no shadow roots for now)
-            DocumentImpl.setCurrentScript(node_document, script_element);
+            Document.setCurrentScript(node_document, script_element);
 
             // Step 6.3: Run the classic script
             runClassicScript(script_element) catch |err| {
@@ -686,7 +670,7 @@ pub fn executeScriptElement(
             };
 
             // Step 6.4: Set currentScript back to oldCurrentScript
-            DocumentImpl.setCurrentScript(node_document, old_current_script);
+            Document.setCurrentScript(node_document, old_current_script);
         },
         .module => {
             // Step 6.2: Run the module script
@@ -720,10 +704,10 @@ pub fn executeScriptElement(
 /// Run a classic script
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 fn runClassicScript(script_element: *runtime.Instance) !void {
-    const result = HTMLScriptElementImpl.getResult(script_element);
+    const result = HTMLScriptElement.getResult(script_element);
     const source = switch (result) {
         .script => |s| s.source_text,
-        else => HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return,
+        else => HTMLScriptElement.getCachedSourceText(script_element) orelse return,
     };
 
     // Get V8 context from document/global
@@ -775,12 +759,12 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
 /// Run a module script
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
 fn runModuleScript(script_element: *runtime.Instance) !void {
-    const result = HTMLScriptElementImpl.getResult(script_element);
+    const result = HTMLScriptElement.getResult(script_element);
     const module_script = switch (result) {
         .module_script => |m| m,
         else => {
             // Try to get cached source and create inline module
-            const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
+            const source = HTMLScriptElement.getCachedSourceText(script_element) orelse return;
             return runModuleFromSource(script_element, source, "inline");
         },
     };
@@ -814,7 +798,7 @@ fn runModuleFromSource(
 
     // Check if this module is already compiled and cached
     if (node_document) |doc| {
-        if (DocumentImpl.hasModule(doc, base_url)) {
+        if (Document.hasModule(doc, base_url)) {
             // Module already compiled and executed - skip
             // Per spec, modules are only executed once
             return;
@@ -849,7 +833,7 @@ fn runModuleFromSource(
 
     // Store in document's module map for caching and dependency resolution
     if (node_document) |doc| {
-        DocumentImpl.setModule(doc, base_url, module) catch |err| {
+        Document.setModule(doc, base_url, module) catch |err| {
             std.debug.print("Failed to cache module: {}\n", .{err});
             // Continue execution even if caching fails
         };
@@ -919,11 +903,11 @@ fn moduleResolveCallback(
     const node_document = getNodeDocument(script_element) orelse return null;
 
     // Get base URL for resolution
-    const doc_internal = DocumentImpl.getInternal(node_document) orelse return null;
+    const doc_internal = Document.getInternal(node_document) orelse return null;
     const base_url = doc_internal.base_uri;
 
     // Step 1: Try to resolve via import map
-    var resolved_url: ?[]const u8 = DocumentImpl.resolveImportSpecifier(
+    var resolved_url: ?[]const u8 = Document.resolveImportSpecifier(
         node_document,
         specifier_slice,
         base_url,
@@ -947,7 +931,7 @@ fn moduleResolveCallback(
     const final_url = resolved_url orelse return null;
 
     // Step 3: Check module map for cached module
-    if (DocumentImpl.getModule(node_document, final_url)) |cached_module| {
+    if (Document.getModule(node_document, final_url)) |cached_module| {
         return cached_module;
     }
 
@@ -998,7 +982,7 @@ fn moduleResolveCallback(
         };
 
         // Cache in module map
-        DocumentImpl.setModule(node_document, final_url, module) catch {
+        Document.setModule(node_document, final_url, module) catch {
             // Continue even if caching fails
         };
 
@@ -1085,7 +1069,7 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
-    if (ElementImpl.getInternal(element)) |internal| {
+    if (Element.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
             if (std.mem.eql(u8, attr.local_name.asSlice(), name)) {
                 return true;
@@ -1097,7 +1081,7 @@ fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
 
 /// Generic attribute getter
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
-    if (ElementImpl.getInternal(element)) |internal| {
+    if (Element.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
             if (std.mem.eql(u8, attr.local_name.asSlice(), name)) {
                 return attr.value.asSlice();
@@ -1218,7 +1202,7 @@ fn isConnected(element: *runtime.Instance) bool {
 
 /// Get the node's owner document
 fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
-    if (NodeImpl.getInternalState(node)) |internal| {
+    if (Node.getInternalState(node)) |internal| {
         return internal.owner_document;
     }
     return null;
@@ -1241,22 +1225,21 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
 
 /// Recursively collect text content from a node and its descendants
 fn collectTextContent(node: *runtime.Instance, result: *std.ArrayList(u8)) !void {
-    const node_type = NodeImpl.getNodeType(node) orelse return;
+    const node_type = Node.getNodeType(node) orelse return;
 
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+    if (node_type == Node.NodeType.TEXT_NODE or
+        node_type == Node.NodeType.CDATA_SECTION_NODE)
     {
         // Get text content from Text/CDATASection node
-        const TextImpl = impls.Text;
-        if (TextImpl.getInternal(node)) |internal| {
+        if (Text.getInternal(node)) |internal| {
             try result.appendSlice(internal.data.asSlice());
         }
     } else {
         // Recurse into children
-        var child = NodeImpl.getFirstChild(node);
+        var child = Node.getFirstChild(node);
         while (child) |c| {
             try collectTextContent(c, result);
-            child = NodeImpl.getNextSibling(c);
+            child = Node.getNextSibling(c);
         }
     }
 }
@@ -1615,7 +1598,7 @@ fn registerImportMap(
     // Register all top-level imports
     var imp_it = import_map.imports.iterator();
     while (imp_it.next()) |entry| {
-        try DocumentImpl.addImportMapping(doc, entry.key_ptr.*, entry.value_ptr.*);
+        try Document.addImportMapping(doc, entry.key_ptr.*, entry.value_ptr.*);
     }
 
     // Register all scoped imports
@@ -1623,7 +1606,7 @@ fn registerImportMap(
     while (scope_it.next()) |scope_entry| {
         var inner_it = scope_entry.value_ptr.iterator();
         while (inner_it.next()) |inner_entry| {
-            try DocumentImpl.addScopedImportMapping(
+            try Document.addScopedImportMapping(
                 doc,
                 scope_entry.key_ptr.*,
                 inner_entry.key_ptr.*,
@@ -1925,8 +1908,8 @@ fn parseSpeculationRule(
     return rule;
 }
 
-/// Convert local SpeculationEagerness to DocumentImpl.SpeculationEagerness
-fn toDocumentEagerness(eagerness: SpeculationEagerness) DocumentImpl.SpeculationEagerness {
+/// Convert local SpeculationEagerness to Document.SpeculationEagerness
+fn toDocumentEagerness(eagerness: SpeculationEagerness) Document.SpeculationEagerness {
     return switch (eagerness) {
         .immediate => .immediate,
         .eager => .eager,
@@ -1955,7 +1938,7 @@ fn registerSpeculationRules(
             const url = rule.urls.get(j) orelse continue;
             // Add to document's prefetch hints
             // Convert local eagerness type to Document's eagerness type
-            DocumentImpl.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
+            Document.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
         }
     }
 
@@ -1964,7 +1947,7 @@ fn registerSpeculationRules(
         const rule = rules.prerender_rules.get(i) orelse continue;
         for (0..rule.urls.len) |j| {
             const url = rule.urls.get(j) orelse continue;
-            DocumentImpl.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
+            Document.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
         }
     }
 

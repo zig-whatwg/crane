@@ -107,10 +107,10 @@ pub const Document = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyOverrideBuiltIns" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "implementation", "get_implementation", null },
@@ -291,7 +291,7 @@ pub const Document = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementsByTagName", "call_getElementsByTagName", 1 },
@@ -362,12 +362,12 @@ pub const Document = struct {
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parseHTMLUnsafe", "call_parseHTMLUnsafe", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getElementsByTagName",
@@ -439,7 +439,7 @@ pub const Document = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -462,7 +462,7 @@ pub const Document = struct {
             "replaceChild",
             "removeChild",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "implementation", "get_implementation", null },
@@ -641,13 +641,13 @@ pub const Document = struct {
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dir", "get_dir", "set_dir" },
             .{ "hidden", "get_hidden", null },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -851,7 +851,6 @@ pub const Document = struct {
     );
 
     const delegates = .{
-
         .get_URL = &get_URL,
         .get_activeElement = &get_activeElement,
         .get_activeViewTransition = &get_activeViewTransition,
@@ -1438,7 +1437,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_title(instance, value);
     }
 
@@ -1452,7 +1451,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_dir(instance, value);
     }
 
@@ -1466,7 +1465,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_body(instance, value);
     }
 
@@ -1564,7 +1563,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_designMode(instance, value);
     }
 
@@ -1604,7 +1603,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_fgColor(instance, value);
     }
 
@@ -1618,7 +1617,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_linkColor(instance, value);
     }
 
@@ -1632,7 +1631,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_vlinkColor(instance, value);
     }
 
@@ -1646,7 +1645,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_alinkColor(instance, value);
     }
 
@@ -1660,7 +1659,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try DocumentImpl.set_bgColor(instance, value);
     }
 
@@ -2636,12 +2635,10 @@ pub const Document = struct {
     }
 
     pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
     pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_parseHTMLUnsafe(instance, html);
     }
 
@@ -2654,12 +2651,11 @@ pub const Document = struct {
     /// Extended attributes: [NewObject]
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createExpression(instance, expression, resolver);
     }
 
     pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
     }
 
@@ -2668,9 +2664,9 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createElement(instance, localName, options);
     }
 
@@ -2683,28 +2679,23 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_prepend(instance, nodes);
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
     }
 
     pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_hasPrivateToken(instance, issuer);
     }
 
     pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_requestStorageAccessFor(instance, requestedOrigin);
     }
 
@@ -2713,8 +2704,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_open(instance, unused1, unused2);
     }
 
@@ -2723,7 +2713,6 @@ pub const Document = struct {
     }
 
     pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_hasRedemptionRecord(instance, issuer);
     }
 
@@ -2732,13 +2721,11 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
 
     pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_measureElement(instance, element);
     }
 
@@ -2747,15 +2734,14 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_write(instance, text);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createAttribute(instance: *runtime.Instance, localName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createAttribute(instance, localName);
     }
 
@@ -2764,31 +2750,28 @@ pub const Document = struct {
     }
 
     pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
     }
 
     pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: DOMString, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createProcessingInstruction(instance, target, data);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createEvent(instance: *runtime.Instance, interface: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createEvent(instance, interface);
     }
 
@@ -2797,18 +2780,15 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_replaceChildren(instance, nodes);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
@@ -2817,22 +2797,18 @@ pub const Document = struct {
     }
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByClassName(instance, classNames);
     }
 
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByTagName(instance, qualifiedName);
     }
 
     pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_querySelector(instance, selectors);
     }
 
@@ -2845,21 +2821,20 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_importNode(instance, node, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createCDATASection(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createCDATASection(instance, data);
     }
 
     pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        
         return try DocumentImpl.call_queryCommandEnabled(instance, commandId);
     }
 
@@ -2870,14 +2845,13 @@ pub const Document = struct {
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_getElementById(instance, elementId);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
     }
 
@@ -2894,27 +2868,25 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_adoptNode(instance, node);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createTextNode(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createTextNode(instance, data);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createTreeWalker(instance, root, whatToShow, filter);
     }
 
     pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_getElementsByName(instance, elementName);
     }
 
@@ -2923,8 +2895,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_writeln(instance, text);
     }
 
@@ -2933,8 +2904,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_append(instance, nodes);
     }
 
@@ -2943,35 +2913,30 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentImpl.call_moveBefore(instance, node, child);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: DOMString) anyerror!DOMString {
-        
         return try DocumentImpl.call_queryCommandValue(instance, commandId);
     }
 
     pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
-        
         return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
     pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createComment(instance: *runtime.Instance, data: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createComment(instance, data);
     }
 
@@ -2990,7 +2955,7 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try DocumentImpl.call_close(instance);
     }
 
@@ -3003,9 +2968,9 @@ pub const Document = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createElementNS(instance, namespace, qualifiedName, options);
     }
 
@@ -3016,31 +2981,197 @@ pub const Document = struct {
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_querySelectorAll(instance, selectors);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!*const anyopaque {
-        
         return try DocumentImpl.call_browsingTopics(instance, options);
     }
 
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_createNSResolver(instance, nodeResolver);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString, styleMap: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try DocumentImpl.call_measureText(instance, text, styleMap);
     }
 
+    // =============================================================================
+    // Script Execution State (HTML Standard §4.12.1.1)
+    // =============================================================================
+
+    /// Check if scripting is enabled for this document
+    pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
+        return DocumentImpl.isScriptingEnabled(instance);
+    }
+
+    /// Get the pending parsing-blocking script
+    pub fn getPendingParsingBlockingScript(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.getPendingParsingBlockingScript(instance);
+    }
+
+    /// Set the pending parsing-blocking script
+    pub fn setPendingParsingBlockingScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
+        DocumentImpl.setPendingParsingBlockingScript(instance, script);
+    }
+
+    /// Add script to "execute ASAP" set
+    pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteAsap(instance, script);
+    }
+
+    /// Remove script from "execute ASAP" set
+    pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) void {
+        DocumentImpl.removeScriptFromExecuteAsap(instance, script);
+    }
+
+    /// Get scripts to execute ASAP
+    pub fn getScriptsToExecuteAsap(instance: *runtime.Instance) []*runtime.Instance {
+        return DocumentImpl.getScriptsToExecuteAsap(instance);
+    }
+
+    /// Add script to "execute in order ASAP" list
+    pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteInOrderAsap(instance, script);
+    }
+
+    /// Pop first script from "execute in order ASAP" list
+    pub fn popFirstScriptToExecuteInOrderAsap(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.popFirstScriptToExecuteInOrderAsap(instance);
+    }
+
+    /// Add script to "execute when parsing finished" list
+    pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteWhenParsingFinished(instance, script);
+    }
+
+    /// Get scripts to execute when parsing finished
+    pub fn getScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) []const *runtime.Instance {
+        return DocumentImpl.getScriptsToExecuteWhenParsingFinished(instance);
+    }
+
+    /// Clear scripts to execute when parsing finished
+    pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) void {
+        DocumentImpl.clearScriptsToExecuteWhenParsingFinished(instance);
+    }
+
+    /// Get current script
+    pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.getCurrentScript(instance);
+    }
+
+    /// Set current script
+    pub fn setCurrentScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
+        DocumentImpl.setCurrentScript(instance, script);
+    }
+
+    /// Increment ignore-destructive-writes counter
+    pub fn incrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
+        DocumentImpl.incrementIgnoreDestructiveWritesCounter(instance);
+    }
+
+    /// Decrement ignore-destructive-writes counter
+    pub fn decrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
+        DocumentImpl.decrementIgnoreDestructiveWritesCounter(instance);
+    }
+
+    // =============================================================================
+    // Module Map and Import Map (HTML Standard §8.1.3.10, §8.1.6)
+    // =============================================================================
+
+    /// Check if module is in module map
+    pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
+        return DocumentImpl.hasModule(instance, url);
+    }
+
+    /// Get module from module map
+    pub fn getModule(instance: *runtime.Instance, url: []const u8) ?*anyopaque {
+        return DocumentImpl.getModule(instance, url);
+    }
+
+    /// Set module in module map
+    pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaque) !void {
+        return DocumentImpl.setModule(instance, url, module);
+    }
+
+    /// Check if import map has been acquired
+    pub fn hasImportMapAcquired(instance: *runtime.Instance) bool {
+        return DocumentImpl.hasImportMapAcquired(instance);
+    }
+
+    /// Set import map acquired flag
+    pub fn setImportMapAcquired(instance: *runtime.Instance) void {
+        DocumentImpl.setImportMapAcquired(instance);
+    }
+
+    /// Resolve import specifier using import map
+    pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8, base_url: []const u8) ?[]const u8 {
+        return DocumentImpl.resolveImportSpecifier(instance, specifier, base_url);
+    }
+
+    /// Add import mapping
+    pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) !void {
+        return DocumentImpl.addImportMapping(instance, specifier, resolved_url);
+    }
+
+    /// Add scoped import mapping
+    pub fn addScopedImportMapping(instance: *runtime.Instance, scope: []const u8, specifier: []const u8, resolved_url: []const u8) !void {
+        return DocumentImpl.addScopedImportMapping(instance, scope, specifier, resolved_url);
+    }
+
+    // =============================================================================
+    // Content Security Policy (CSP Level 3)
+    // =============================================================================
+
+    /// Check if inline script is allowed by CSP
+    pub fn isInlineScriptAllowedByCSP(
+        instance: *runtime.Instance,
+        nonce: ?[]const u8,
+        hash_algorithm: ?[]const u8,
+        hash_value: ?[]const u8,
+    ) bool {
+        return DocumentImpl.isInlineScriptAllowedByCSP(instance, nonce, hash_algorithm, hash_value);
+    }
+
+    /// Check if external script is allowed by CSP
+    pub fn isExternalScriptAllowedByCSP(
+        instance: *runtime.Instance,
+        scheme: []const u8,
+        host: []const u8,
+        port: ?u16,
+        path: []const u8,
+        nonce: ?[]const u8,
+    ) bool {
+        return DocumentImpl.isExternalScriptAllowedByCSP(instance, scheme, host, port, path, nonce);
+    }
+
+    // =============================================================================
+    // Speculation Rules (HTML Standard §7.6.1)
+    // =============================================================================
+
+    /// Add prefetch hint
+    pub fn addPrefetchHint(instance: *runtime.Instance, url: []const u8, eagerness: DocumentImpl.SpeculationEagerness) !void {
+        return DocumentImpl.addPrefetchHint(instance, url, eagerness);
+    }
+
+    // =============================================================================
+    // Internal State Access
+    // =============================================================================
+
+    /// Get internal state (for base_uri access)
+    pub fn getInternal(instance: *runtime.Instance) ?*DocumentImpl.InternalState {
+        return DocumentImpl.getInternal(instance);
+    }
+
+    // Re-export types for external use
+    pub const SpeculationEagerness = DocumentImpl.SpeculationEagerness;
 };
