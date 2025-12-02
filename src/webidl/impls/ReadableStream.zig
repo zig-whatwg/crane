@@ -2668,12 +2668,11 @@ fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_
     var dummy_error: u8 = 0;
     const err_ptr: *const anyopaque = if (error_reason) |e| e else @ptrCast(&dummy_error);
 
-    // Perform the action
+    // Perform the action (use interfaces per Golden Rule #13)
     switch (action) {
         .abort_dest => {
             // WritableStreamAbort
-            const WritableStreamImpl = @import("WritableStream.zig");
-            _ = WritableStreamImpl.call_abort(pipe_state.dest, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+            _ = interfaces.WritableStream.call_abort(pipe_state.dest, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         },
         .cancel_source => {
             // ReadableStreamCancel
@@ -2681,8 +2680,7 @@ fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_
         },
         .close_dest => {
             // WritableStreamDefaultWriterCloseWithErrorPropagation
-            const WriterImpl = @import("WritableStreamDefaultWriter.zig");
-            _ = WriterImpl.call_close(pipe_state.writer) catch {};
+            _ = interfaces.WritableStreamDefaultWriter.call_close(pipe_state.writer) catch {};
         },
     }
 
@@ -2700,13 +2698,11 @@ fn pipeShutdown(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
 
 /// Finalize pipe operation - release locks and settle promise
 fn pipeFinalize(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
-    // Step 1: Release writer
-    const WriterImpl = @import("WritableStreamDefaultWriter.zig");
-    WriterImpl.call_releaseLock(pipe_state.writer) catch {};
+    // Step 1: Release writer (use interface per Golden Rule #13)
+    interfaces.WritableStreamDefaultWriter.call_releaseLock(pipe_state.writer) catch {};
 
-    // Step 2-3: Release reader
-    const ReaderImpl = @import("ReadableStreamDefaultReader.zig");
-    ReaderImpl.call_releaseLock(pipe_state.reader) catch {};
+    // Step 2-3: Release reader (use interface per Golden Rule #13)
+    interfaces.ReadableStreamDefaultReader.call_releaseLock(pipe_state.reader) catch {};
 
     // Step 5-6: Settle promise
     if (error_reason) |err| {

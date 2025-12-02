@@ -64,13 +64,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: "The readable getter steps are to return this's readable side."
 ///
-/// Note: This delegates to the concrete transform stream implementation.
+/// Note: This delegates to the concrete transform stream implementation via interfaces (per Golden Rule #13).
 pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Determine which transform stream type this is and delegate
+    // Determine which transform stream type this is and delegate via interface
     // Try TransformStream first
     if (instance.vtable == &interfaces.TransformStream.vtable) {
-        const TransformStreamImpl = @import("TransformStream.zig");
-        return TransformStreamImpl.get_readable(instance) catch |err| {
+        return interfaces.TransformStream.get_readable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -80,8 +79,7 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try TextEncoderStream
     if (instance.vtable == &interfaces.TextEncoderStream.vtable) {
-        const TextEncoderStreamImpl = @import("TextEncoderStream.zig");
-        return TextEncoderStreamImpl.get_readable(instance) catch |err| {
+        return interfaces.TextEncoderStream.get_readable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -91,8 +89,7 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try TextDecoderStream
     if (instance.vtable == &interfaces.TextDecoderStream.vtable) {
-        const TextDecoderStreamImpl = @import("TextDecoderStream.zig");
-        return TextDecoderStreamImpl.get_readable(instance) catch |err| {
+        return interfaces.TextDecoderStream.get_readable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -102,8 +99,7 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try CompressionStream
     if (instance.vtable == &interfaces.CompressionStream.vtable) {
-        const CompressionStreamImpl = @import("CompressionStream.zig");
-        return CompressionStreamImpl.get_readable(instance) catch |err| {
+        return interfaces.CompressionStream.get_readable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -113,8 +109,7 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try DecompressionStream
     if (instance.vtable == &interfaces.DecompressionStream.vtable) {
-        const DecompressionStreamImpl = @import("DecompressionStream.zig");
-        return DecompressionStreamImpl.get_readable(instance) catch |err| {
+        return interfaces.DecompressionStream.get_readable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -129,13 +124,12 @@ pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 ///
 /// Spec: "The writable getter steps are to return this's writable side."
 ///
-/// Note: This delegates to the concrete transform stream implementation.
+/// Note: This delegates to the concrete transform stream implementation via interfaces (per Golden Rule #13).
 pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Determine which transform stream type this is and delegate
+    // Determine which transform stream type this is and delegate via interface
     // Try TransformStream first
     if (instance.vtable == &interfaces.TransformStream.vtable) {
-        const TransformStreamImpl = @import("TransformStream.zig");
-        return TransformStreamImpl.get_writable(instance) catch |err| {
+        return interfaces.TransformStream.get_writable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -145,8 +139,7 @@ pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try TextEncoderStream
     if (instance.vtable == &interfaces.TextEncoderStream.vtable) {
-        const TextEncoderStreamImpl = @import("TextEncoderStream.zig");
-        return TextEncoderStreamImpl.get_writable(instance) catch |err| {
+        return interfaces.TextEncoderStream.get_writable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -156,8 +149,7 @@ pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try TextDecoderStream
     if (instance.vtable == &interfaces.TextDecoderStream.vtable) {
-        const TextDecoderStreamImpl = @import("TextDecoderStream.zig");
-        return TextDecoderStreamImpl.get_writable(instance) catch |err| {
+        return interfaces.TextDecoderStream.get_writable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -167,8 +159,7 @@ pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try CompressionStream
     if (instance.vtable == &interfaces.CompressionStream.vtable) {
-        const CompressionStreamImpl = @import("CompressionStream.zig");
-        return CompressionStreamImpl.get_writable(instance) catch |err| {
+        return interfaces.CompressionStream.get_writable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -178,8 +169,7 @@ pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Try DecompressionStream
     if (instance.vtable == &interfaces.DecompressionStream.vtable) {
-        const DecompressionStreamImpl = @import("DecompressionStream.zig");
-        return DecompressionStreamImpl.get_writable(instance) catch |err| {
+        return interfaces.DecompressionStream.get_writable(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,

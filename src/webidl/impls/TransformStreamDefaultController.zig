@@ -116,10 +116,10 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
 
     // Get the controller from readable stream
     const readable_controller = readable_internal.controller;
-    const ReadableControllerImpl = @import("ReadableStreamDefaultController.zig");
 
     // Spec step 2: Return ! ReadableStreamDefaultControllerGetDesiredSize(readableController)
-    return ReadableControllerImpl.get_desiredSize(readable_controller) catch 0.0;
+    // Use interface per Golden Rule #13
+    return interfaces.ReadableStreamDefaultController.get_desiredSize(readable_controller) catch 0.0;
 }
 
 /// Operation: error
@@ -202,8 +202,9 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
 
     // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
     // Convert JSValue to anyopaque for ReadableStreamDefaultController API
+    // Use interface per Golden Rule #13
     const chunk_ptr: *const anyopaque = @ptrCast(&chunk);
-    ReadableStreamDefaultControllerImpl.call_enqueue(controller_instance, webidl.Opt(*const anyopaque).passed(chunk_ptr)) catch |err| {
+    interfaces.ReadableStreamDefaultController.call_enqueue(controller_instance, webidl.Opt(*const anyopaque).passed(chunk_ptr)) catch |err| {
         // Spec step 5: If enqueueResult is an abrupt completion
         // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
         const error_value = JSValue{ .string = "Enqueue failed" };
@@ -253,10 +254,10 @@ fn terminateInternal(internal: *InternalState) !void {
 
     // Get the controller
     const controller_instance = readable_internal.controller;
-    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
 
     // Spec step 3: Perform ! ReadableStreamDefaultControllerClose(readableController)
-    try ReadableStreamDefaultControllerImpl.call_close(controller_instance);
+    // Use interface per Golden Rule #13
+    try interfaces.ReadableStreamDefaultController.call_close(controller_instance);
 
     // Spec step 4: Let error be a TypeError exception indicating that the stream has been terminated
     const error_value = JSValue{ .string = "Stream has been terminated" };

@@ -59,14 +59,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 4.4.2 "The closed getter steps are:"
 /// Returns a promise that fulfills when the stream closes or rejects if it errors.
 ///
-/// Note: This delegates to the concrete reader implementation.
+/// Note: This delegates to the concrete reader implementation via interfaces (per Golden Rule #13).
 /// Both DefaultReader and BYOBReader implement this via their internal closedPromise.
 pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
-    // Determine which reader type this is and delegate
+    // Determine which reader type this is and delegate via interface
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        const DefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
-        return DefaultReaderImpl.get_closed(instance) catch |err| {
+        return interfaces.ReadableStreamDefaultReader.get_closed(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -76,8 +75,7 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
 
     // Try BYOBReader
     if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
-        const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
-        return BYOBReaderImpl.get_closed(instance) catch |err| {
+        return interfaces.ReadableStreamBYOBReader.get_closed(instance) catch |err| {
             return switch (err) {
                 error.InvalidState => error.InvalidState,
                 else => error.InvalidState,
@@ -93,13 +91,12 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Spec: § 4.4.3 "The cancel(reason) method steps are:"
 /// Cancels the stream with the given reason.
 ///
-/// Note: This delegates to the concrete reader implementation.
+/// Note: This delegates to the concrete reader implementation via interfaces (per Golden Rule #13).
 pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-    // Determine which reader type this is and delegate
+    // Determine which reader type this is and delegate via interface
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        const DefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
-        return DefaultReaderImpl.call_cancel(instance, reason) catch |err| {
+        return interfaces.ReadableStreamDefaultReader.call_cancel(instance, reason) catch |err| {
             return switch (err) {
                 error.TypeError => error.TypeError,
                 error.InvalidState => error.InvalidState,
@@ -110,8 +107,7 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopa
 
     // Try BYOBReader
     if (instance.vtable == &interfaces.ReadableStreamBYOBReader.vtable) {
-        const BYOBReaderImpl = @import("ReadableStreamBYOBReader.zig");
-        return BYOBReaderImpl.call_cancel(instance, reason) catch |err| {
+        return interfaces.ReadableStreamBYOBReader.call_cancel(instance, reason) catch |err| {
             return switch (err) {
                 error.TypeError => error.TypeError,
                 error.InvalidState => error.InvalidState,
