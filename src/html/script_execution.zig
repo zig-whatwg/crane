@@ -353,8 +353,31 @@ pub fn prepareScriptElement(
                 return true;
             },
             .speculationrules => {
-                // Speculation rules - not yet implemented
-                return false;
+                // Parse and process speculation rules
+                // Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rules
+
+                // Step 1: Parse the speculation rules JSON
+                const speculation_result = parseSpeculationRules(allocator, source_text, base_url);
+                defer {
+                    if (speculation_result.allocator) |alloc| {
+                        if (speculation_result.error_message) |msg| {
+                            alloc.free(msg);
+                        }
+                    }
+                }
+
+                if (speculation_result.error_message) |err_msg| {
+                    std.debug.print("Speculation rules parse error: {s}\n", .{err_msg});
+                    return false;
+                }
+
+                // Step 2: Register speculation rules with the document
+                registerSpeculationRules(doc, speculation_result) catch |err| {
+                    std.debug.print("Failed to register speculation rules: {}\n", .{err});
+                    return false;
+                };
+
+                return true;
             },
             .null => return false,
         }
@@ -588,8 +611,6 @@ pub fn executeScriptElement(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
 ) ScriptExecutionError!void {
-    _ = allocator;
-
     // Step 1: Let document be el's node document
     const node_document = getNodeDocument(script_element) orelse {
         return ScriptExecutionError.InvalidScriptElement;
@@ -607,7 +628,8 @@ pub fn executeScriptElement(
     const result = HTMLScriptElementImpl.getResult(script_element);
     switch (result) {
         .null => {
-            // TODO: Fire error event
+            // Fire error event per spec
+            fireErrorEvent(allocator, script_element);
             return;
         },
         .uninitialized => {
@@ -673,7 +695,7 @@ pub fn executeScriptElement(
 
     // Step 8: If el's from an external file is true, fire load event
     if (from_external) {
-        // TODO: Fire load event
+        fireLoadEvent(allocator, script_element);
     }
 }
 
@@ -1594,6 +1616,381 @@ fn registerImportMap(
 }
 
 // =============================================================================
+// Speculation Rules Support (HTML Standard §7.6.1)
+// =============================================================================
+
+/// Speculation rule eagerness levels
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
+pub const SpeculationEagerness = enum {
+    immediate,
+    eager,
+    moderate,
+    conservative,
+};
+
+/// A single speculation rule
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule
+pub const SpeculationRule = struct {
+    /// URLs to prefetch/prerender (for list-based rules)
+    urls: infra.List([]const u8),
+
+    /// Eagerness level
+    eagerness: SpeculationEagerness,
+
+    /// Referrer policy override (empty string means use default)
+    referrer_policy: []const u8,
+
+    /// Tags for this rule
+    tags: infra.List([]const u8),
+
+    /// Whether anonymous client IP is required for cross-origin
+    requires_anonymous_client_ip: bool,
+
+    pub fn init(allocator: std.mem.Allocator) SpeculationRule {
+        return .{
+            .urls = infra.List([]const u8).init(allocator),
+            .eagerness = .immediate,
+            .referrer_policy = "",
+            .tags = infra.List([]const u8).init(allocator),
+            .requires_anonymous_client_ip = false,
+        };
+    }
+
+    pub fn deinit(self: *SpeculationRule, allocator: std.mem.Allocator) void {
+        for (0..self.urls.len) |i| {
+            if (self.urls.get(i)) |url| {
+                allocator.free(url);
+            }
+        }
+        self.urls.deinit();
+        for (0..self.tags.len) |i| {
+            if (self.tags.get(i)) |tag| {
+                allocator.free(tag);
+            }
+        }
+        self.tags.deinit();
+        if (self.referrer_policy.len > 0) {
+            allocator.free(self.referrer_policy);
+        }
+    }
+};
+
+/// Result of parsing speculation rules
+const SpeculationRulesParseResult = struct {
+    /// Prefetch rules
+    prefetch_rules: infra.List(SpeculationRule),
+
+    /// Prerender rules (treated same as prefetch for now)
+    prerender_rules: infra.List(SpeculationRule),
+
+    /// Top-level tag (optional)
+    tag: ?[]const u8,
+
+    /// Error message if parsing failed
+    error_message: ?[]const u8,
+
+    /// Allocator used for error message (for cleanup)
+    allocator: ?std.mem.Allocator,
+
+    pub fn init(alloc: std.mem.Allocator) SpeculationRulesParseResult {
+        return .{
+            .prefetch_rules = infra.List(SpeculationRule).init(alloc),
+            .prerender_rules = infra.List(SpeculationRule).init(alloc),
+            .tag = null,
+            .error_message = null,
+            .allocator = null,
+        };
+    }
+
+    pub fn deinit(self: *SpeculationRulesParseResult, alloc: std.mem.Allocator) void {
+        for (0..self.prefetch_rules.len) |i| {
+            if (self.prefetch_rules.get(i)) |*rule| {
+                @constCast(rule).deinit(alloc);
+            }
+        }
+        self.prefetch_rules.deinit();
+        for (0..self.prerender_rules.len) |i| {
+            if (self.prerender_rules.get(i)) |*rule| {
+                @constCast(rule).deinit(alloc);
+            }
+        }
+        self.prerender_rules.deinit();
+        if (self.tag) |tag| {
+            alloc.free(tag);
+        }
+    }
+};
+
+/// Parse speculation rules JSON
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#parse-a-speculation-rule-set-string
+fn parseSpeculationRules(
+    allocator: std.mem.Allocator,
+    json_text: []const u8,
+    base_url: []const u8,
+) SpeculationRulesParseResult {
+    var result = SpeculationRulesParseResult.init(allocator);
+
+    // Step 1: Parse JSON
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_text, .{}) catch {
+        result.error_message = allocator.dupe(u8, "Invalid JSON in speculation rules") catch null;
+        result.allocator = allocator;
+        return result;
+    };
+    defer parsed.deinit();
+
+    const root = parsed.value;
+
+    // Step 2: Must be an object
+    if (root != .object) {
+        result.error_message = allocator.dupe(u8, "Speculation rules must be a JSON object") catch null;
+        result.allocator = allocator;
+        return result;
+    }
+
+    const root_obj = root.object;
+
+    // Step 4-5: Get top-level tag if present
+    if (root_obj.get("tag")) |tag_value| {
+        if (tag_value == .string) {
+            result.tag = allocator.dupe(u8, tag_value.string) catch null;
+        }
+    }
+
+    // Step 7-8: Process "prefetch" and "prerender" arrays
+    const rule_types = [_][]const u8{ "prefetch", "prerender" };
+
+    for (rule_types) |rule_type| {
+        if (root_obj.get(rule_type)) |rules_value| {
+            if (rules_value == .array) {
+                for (rules_value.array.items) |rule_value| {
+                    const rule = parseSpeculationRule(allocator, rule_value, result.tag, base_url) orelse continue;
+                    if (std.mem.eql(u8, rule_type, "prefetch")) {
+                        result.prefetch_rules.append(rule) catch continue;
+                    } else {
+                        result.prerender_rules.append(rule) catch continue;
+                    }
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/// Parse a single speculation rule
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#parse-a-speculation-rule
+fn parseSpeculationRule(
+    allocator: std.mem.Allocator,
+    input: std.json.Value,
+    ruleset_tag: ?[]const u8,
+    base_url: []const u8,
+) ?SpeculationRule {
+    // Step 1: Must be an object
+    if (input != .object) {
+        return null;
+    }
+
+    const obj = input.object;
+
+    var rule = SpeculationRule.init(allocator);
+    errdefer rule.deinit(allocator);
+
+    // Step 3-7: Determine source (list or document)
+    var source: ?[]const u8 = null;
+    if (obj.get("source")) |source_value| {
+        if (source_value == .string) {
+            source = source_value.string;
+        }
+    }
+
+    // Infer source if not provided
+    if (source == null) {
+        if (obj.get("urls") != null and obj.get("where") == null) {
+            source = "list";
+        } else if (obj.get("where") != null and obj.get("urls") == null) {
+            source = "document";
+        }
+    }
+
+    // Step 8-10: Parse URLs for list-based rules
+    if (source != null and std.mem.eql(u8, source.?, "list")) {
+        if (obj.get("urls")) |urls_value| {
+            if (urls_value == .array) {
+                for (urls_value.array.items) |url_value| {
+                    if (url_value == .string) {
+                        // Resolve URL relative to base
+                        const resolved = resolveUrl(allocator, url_value.string, base_url) catch continue;
+                        const owned_url = if (resolved.ptr != url_value.string.ptr)
+                            resolved
+                        else
+                            allocator.dupe(u8, resolved) catch continue;
+
+                        // Validate it's HTTP(S)
+                        if (std.mem.startsWith(u8, owned_url, "http://") or
+                            std.mem.startsWith(u8, owned_url, "https://"))
+                        {
+                            rule.urls.append(owned_url) catch {
+                                allocator.free(owned_url);
+                                continue;
+                            };
+                        } else {
+                            allocator.free(owned_url);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 12-13: Parse eagerness
+    if (obj.get("eagerness")) |eagerness_value| {
+        if (eagerness_value == .string) {
+            const eagerness_str = eagerness_value.string;
+            if (std.mem.eql(u8, eagerness_str, "immediate")) {
+                rule.eagerness = .immediate;
+            } else if (std.mem.eql(u8, eagerness_str, "eager")) {
+                rule.eagerness = .eager;
+            } else if (std.mem.eql(u8, eagerness_str, "moderate")) {
+                rule.eagerness = .moderate;
+            } else if (std.mem.eql(u8, eagerness_str, "conservative")) {
+                rule.eagerness = .conservative;
+            } else {
+                // Invalid eagerness
+                return null;
+            }
+        }
+    } else {
+        // Default: immediate for list, conservative for document
+        if (source != null and std.mem.eql(u8, source.?, "list")) {
+            rule.eagerness = .immediate;
+        } else {
+            rule.eagerness = .conservative;
+        }
+    }
+
+    // Step 14-15: Parse referrer policy
+    if (obj.get("referrer_policy")) |rp_value| {
+        if (rp_value == .string) {
+            rule.referrer_policy = allocator.dupe(u8, rp_value.string) catch "";
+        }
+    }
+
+    // Step 16-20: Parse tags
+    if (ruleset_tag) |tag| {
+        const owned_tag = allocator.dupe(u8, tag) catch null;
+        if (owned_tag) |t| {
+            rule.tags.append(t) catch {};
+        }
+    }
+    if (obj.get("tag")) |tag_value| {
+        if (tag_value == .string) {
+            const owned_tag = allocator.dupe(u8, tag_value.string) catch null;
+            if (owned_tag) |t| {
+                rule.tags.append(t) catch {};
+            }
+        }
+    }
+
+    // Step 21-22: Parse requirements
+    if (obj.get("requires")) |req_value| {
+        if (req_value == .array) {
+            for (req_value.array.items) |req| {
+                if (req == .string) {
+                    if (std.mem.eql(u8, req.string, "anonymous-client-ip-when-cross-origin")) {
+                        rule.requires_anonymous_client_ip = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return rule;
+}
+
+/// Convert local SpeculationEagerness to DocumentImpl.SpeculationEagerness
+fn toDocumentEagerness(eagerness: SpeculationEagerness) DocumentImpl.SpeculationEagerness {
+    return switch (eagerness) {
+        .immediate => .immediate,
+        .eager => .eager,
+        .moderate => .moderate,
+        .conservative => .conservative,
+    };
+}
+
+/// Register speculation rules with the document
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#consider-speculative-loads
+fn registerSpeculationRules(
+    doc: *runtime.Instance,
+    rules: SpeculationRulesParseResult,
+) !void {
+    // For now, we just store the prefetch URLs in the document
+    // A full implementation would:
+    // 1. Add to document's speculation rule sets
+    // 2. Consider speculative loads (queue microtask)
+    // 3. Match against links in the document for document rules
+    // 4. Actually initiate prefetch requests
+
+    // Store prefetch URLs for potential use
+    for (0..rules.prefetch_rules.len) |i| {
+        const rule = rules.prefetch_rules.get(i) orelse continue;
+        for (0..rule.urls.len) |j| {
+            const url = rule.urls.get(j) orelse continue;
+            // Add to document's prefetch hints
+            // Convert local eagerness type to Document's eagerness type
+            DocumentImpl.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
+        }
+    }
+
+    // Prerender rules are treated similarly (prefetch for now)
+    for (0..rules.prerender_rules.len) |i| {
+        const rule = rules.prerender_rules.get(i) orelse continue;
+        for (0..rule.urls.len) |j| {
+            const url = rule.urls.get(j) orelse continue;
+            DocumentImpl.addPrefetchHint(doc, url, toDocumentEagerness(rule.eagerness)) catch continue;
+        }
+    }
+
+    std.debug.print("Registered {d} prefetch rules and {d} prerender rules\n", .{
+        rules.prefetch_rules.len,
+        rules.prerender_rules.len,
+    });
+}
+
+// =============================================================================
+// Event Firing for Script Elements
+// =============================================================================
+
+/// Fire a simple event on an element
+/// Spec: https://dom.spec.whatwg.org/#concept-event-fire
+fn fireSimpleEvent(
+    allocator: std.mem.Allocator,
+    target: *runtime.Instance,
+    event_type: []const u8,
+) void {
+    _ = allocator;
+    _ = target;
+    // TODO: Full implementation requires:
+    // 1. Create Event with type
+    // 2. Set bubbles and cancelable appropriately
+    // 3. Dispatch event to target
+
+    // For now, just log the event
+    std.debug.print("Event fired: {s}\n", .{event_type});
+}
+
+/// Fire a load event on a script element
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element (step 8)
+pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
+    fireSimpleEvent(allocator, script_element, "load");
+}
+
+/// Fire an error event on a script element
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+pub fn fireErrorEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
+    fireSimpleEvent(allocator, script_element, "error");
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -1640,4 +2037,127 @@ test "isJavaScriptMimeType" {
     try std.testing.expect(!isJavaScriptMimeType("text/plain"));
     try std.testing.expect(!isJavaScriptMimeType("application/json"));
     try std.testing.expect(!isJavaScriptMimeType(""));
+}
+
+test "parseSpeculationRules - basic prefetch rule" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "prefetch": [
+        \\    {
+        \\      "source": "list",
+        \\      "urls": ["https://example.com/page1", "https://example.com/page2"]
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    const result = parseSpeculationRules(allocator, json, "https://example.com/");
+    defer @constCast(&result).deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 1), result.prefetch_rules.len);
+
+    const rule = result.prefetch_rules.get(0).?;
+    try std.testing.expectEqual(@as(usize, 2), rule.urls.len);
+    try std.testing.expectEqualStrings("https://example.com/page1", rule.urls.get(0).?);
+    try std.testing.expectEqualStrings("https://example.com/page2", rule.urls.get(1).?);
+    try std.testing.expectEqual(SpeculationEagerness.immediate, rule.eagerness);
+}
+
+test "parseSpeculationRules - eagerness levels" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "prefetch": [
+        \\    {
+        \\      "urls": ["https://example.com/eager"],
+        \\      "eagerness": "eager"
+        \\    },
+        \\    {
+        \\      "urls": ["https://example.com/moderate"],
+        \\      "eagerness": "moderate"
+        \\    },
+        \\    {
+        \\      "urls": ["https://example.com/conservative"],
+        \\      "eagerness": "conservative"
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    var result = parseSpeculationRules(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 3), result.prefetch_rules.len);
+    try std.testing.expectEqual(SpeculationEagerness.eager, result.prefetch_rules.get(0).?.eagerness);
+    try std.testing.expectEqual(SpeculationEagerness.moderate, result.prefetch_rules.get(1).?.eagerness);
+    try std.testing.expectEqual(SpeculationEagerness.conservative, result.prefetch_rules.get(2).?.eagerness);
+}
+
+test "parseSpeculationRules - with tag" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "tag": "navigation-hints",
+        \\  "prefetch": [
+        \\    {
+        \\      "urls": ["https://example.com/page"],
+        \\      "tag": "primary"
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    var result = parseSpeculationRules(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 1), result.prefetch_rules.len);
+
+    // Should have both ruleset tag and rule tag
+    try std.testing.expectEqual(@as(usize, 2), result.prefetch_rules.get(0).?.tags.len);
+}
+
+test "parseSpeculationRules - invalid JSON" {
+    const allocator = std.testing.allocator;
+
+    const json = "{ invalid json }";
+
+    const result = parseSpeculationRules(allocator, json, "https://example.com/");
+    defer {
+        if (result.allocator) |alloc| {
+            if (result.error_message) |msg| {
+                alloc.free(msg);
+            }
+        }
+    }
+
+    try std.testing.expect(result.error_message != null);
+}
+
+test "parseSpeculationRules - non-HTTP URLs filtered" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "prefetch": [
+        \\    {
+        \\      "urls": ["https://example.com/valid", "javascript:alert(1)", "data:text/html,test"]
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    var result = parseSpeculationRules(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 1), result.prefetch_rules.len);
+    // Only the HTTPS URL should be kept
+    try std.testing.expectEqual(@as(usize, 1), result.prefetch_rules.get(0).?.urls.len);
 }

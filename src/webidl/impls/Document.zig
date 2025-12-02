@@ -57,6 +57,15 @@ pub const DocType = enum {
     xml,
 };
 
+/// Speculation rule eagerness levels
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
+pub const SpeculationEagerness = enum {
+    immediate,
+    eager,
+    moderate,
+    conservative,
+};
+
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
@@ -215,6 +224,10 @@ pub const InternalState = struct {
     /// Document origin for CSP 'self' matching
     csp_self_origin: ?csp.Origin,
 
+    /// Speculation rules: Prefetch URL hints
+    /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html
+    prefetch_hints: std.StringHashMap(SpeculationEagerness),
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -274,6 +287,8 @@ pub const InternalState = struct {
             // CSP
             .csp_list = null,
             .csp_self_origin = null,
+            // Speculation rules
+            .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
         };
     }
 
@@ -370,6 +385,15 @@ pub const InternalState = struct {
         }
         if (self.csp_self_origin) |*origin| {
             origin.deinit();
+        }
+
+        // Prefetch hints
+        {
+            var hint_it = self.prefetch_hints.keyIterator();
+            while (hint_it.next()) |key_ptr| {
+                self.allocator.free(key_ptr.*);
+            }
+            self.prefetch_hints.deinit();
         }
     }
 };
@@ -4680,4 +4704,57 @@ pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
     }
 
     return true;
+}
+
+// =============================================================================
+// Speculation Rules Support (HTML Standard §7.6)
+// =============================================================================
+
+/// Add a prefetch hint from speculation rules
+/// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#consider-speculative-loads
+pub fn addPrefetchHint(
+    instance: *runtime.Instance,
+    url: []const u8,
+    eagerness: SpeculationEagerness,
+) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if URL already exists - keep the more eager one
+    if (internal.prefetch_hints.get(url)) |existing_eagerness| {
+        // More eager = earlier in enum order (immediate=0, conservative=3)
+        if (@intFromEnum(eagerness) < @intFromEnum(existing_eagerness)) {
+            // New eagerness is more eager, update
+            internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
+        }
+        // Otherwise keep existing
+        return;
+    }
+
+    // Add new hint with owned key
+    const owned_url = try internal.allocator.dupe(u8, url);
+    errdefer internal.allocator.free(owned_url);
+
+    try internal.prefetch_hints.put(owned_url, eagerness);
+}
+
+/// Get all prefetch hints for this document
+/// Returns a slice of URL strings (borrowed from internal storage)
+pub fn getPrefetchHints(instance: *runtime.Instance) []const []const u8 {
+    const internal = getInternal(instance) orelse return &.{};
+
+    // Note: This returns a view into the internal storage
+    // Caller should not modify or free these strings
+    return internal.prefetch_hints.keys();
+}
+
+/// Check if a URL is in the prefetch hints
+pub fn hasPrefetchHint(instance: *runtime.Instance, url: []const u8) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.prefetch_hints.contains(url);
+}
+
+/// Get the eagerness for a prefetch hint
+pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?SpeculationEagerness {
+    const internal = getInternal(instance) orelse return null;
+    return internal.prefetch_hints.get(url);
 }
