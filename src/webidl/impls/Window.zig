@@ -1,6 +1,24 @@
 //! Implementation for Window interface
+//!
+//! Implements the Window interface per HTML Standard §7.2.
+//! Spec: https://html.spec.whatwg.org/multipage/window-object.html
+//!
+//! ## Overview
+//!
+//! The Window object is the primary global object in the browser environment.
+//! It represents a browsing context's active document's Window, and provides
+//! access to document, navigation, timers, UI prompts, and more.
+//!
+//! ## Architecture
+//!
+//! The Window implementation uses pluggable backends:
+//! - BrowsingContext: Manages window relationships (parent, opener, etc.)
+//! - UIBackend: Handles alert/confirm/prompt dialogs
+//! - AnimationFrameScheduler: Manages requestAnimationFrame callbacks
+//! - TimerManager: Handles setTimeout/setInterval (from event_loop)
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -10,19 +28,136 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Window = interfaces.Window;
 
+// HTML Window infrastructure modules
+const browsing_context = @import("html_browsing_context");
+const BrowsingContext = browsing_context.BrowsingContext;
+
+const ui_backend = @import("html_ui_backend");
+const UIBackend = ui_backend.UIBackend;
+const StubUIBackend = ui_backend.StubUIBackend;
+
+const animation_frame = @import("html_animation_frame");
+const AnimationFrameScheduler = animation_frame.AnimationFrameScheduler;
+const StubFrameTimingBackend = animation_frame.StubFrameTimingBackend;
+
 pub const State = Window.State;
 
 pub const ImplError = error{
     NotImplemented,
+    WindowClosed,
+    SecurityError,
+    InvalidAccess,
+    InvalidStateError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for Window implementation
+/// Contains private data not exposed via WebIDL attributes.
+pub const InternalState = struct {
+    /// Allocator for this window's resources
+    allocator: Allocator,
 
-/// Initialize instance (creates the instance)
+    /// The associated browsing context (§7.1)
+    browsing_context: *BrowsingContext,
+
+    /// Whether this window is closed
+    closed: bool = false,
+
+    /// The window's name (target name for links)
+    name: []const u8 = "",
+
+    /// The status bar text
+    status: []const u8 = "",
+
+    /// UI backend for alert/confirm/prompt
+    ui_backend: UIBackend,
+
+    /// Stub UI backend instance (default, can be replaced)
+    stub_ui_backend: StubUIBackend,
+
+    /// Animation frame scheduler
+    animation_scheduler: ?*AnimationFrameScheduler = null,
+
+    /// Stub frame timing backend (default, can be replaced)
+    stub_timing_backend: StubFrameTimingBackend,
+
+    /// The associated document (lazily set)
+    document: ?*runtime.Instance = null,
+
+    /// The opener window (if opened via window.open())
+    opener: ?*runtime.Instance = null,
+
+    /// Opener as anyopaque for the IDL getter
+    opener_any: ?*const anyopaque = null,
+
+    /// Sub-interface instances (lazily created)
+    location: ?*runtime.Instance = null,
+    history: ?*runtime.Instance = null,
+    navigator: ?*runtime.Instance = null,
+    custom_elements: ?*runtime.Instance = null,
+
+    /// BarProp instances (lazily created)
+    locationbar: ?*runtime.Instance = null,
+    menubar: ?*runtime.Instance = null,
+    personalbar: ?*runtime.Instance = null,
+    scrollbars: ?*runtime.Instance = null,
+    statusbar: ?*runtime.Instance = null,
+    toolbar: ?*runtime.Instance = null,
+
+    /// Screen-related (lazily created)
+    screen: ?*runtime.Instance = null,
+    visual_viewport: ?*runtime.Instance = null,
+
+    /// Dimensions (defaults, can be updated by platform)
+    inner_width: i32 = 1024,
+    inner_height: i32 = 768,
+    outer_width: i32 = 1024,
+    outer_height: i32 = 768,
+    screen_x: i32 = 0,
+    screen_y: i32 = 0,
+    scroll_x: f64 = 0.0,
+    scroll_y: f64 = 0.0,
+    device_pixel_ratio: f64 = 1.0,
+
+    pub fn init(allocator: Allocator) !InternalState {
+        return .{
+            .allocator = allocator,
+            .browsing_context = try BrowsingContext.initTopLevel(allocator),
+            .stub_ui_backend = StubUIBackend.init(.{}),
+            .stub_timing_backend = StubFrameTimingBackend.init(),
+            .ui_backend = undefined, // Set by caller after init
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // Clean up browsing context
+        self.browsing_context.deinit();
+
+        // Clean up animation scheduler if created
+        if (self.animation_scheduler) |scheduler| {
+            scheduler.deinit();
+        }
+
+        // Free name if allocated
+        if (self.name.len > 0) {
+            self.allocator.free(self.name);
+        }
+
+        // Free status if allocated
+        if (self.status.len > 0) {
+            self.allocator.free(self.status);
+        }
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
+
+/// Initialize Window instance
+/// Creates the instance with a new top-level browsing context.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -30,164 +165,259 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize internal state
+    const state = instance.getState(StateType);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = try InternalState.init(allocator);
+    internal.ui_backend = internal.stub_ui_backend.backend();
+    state.own._internal = internal;
+
     return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize Window instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Getter for window
+/// Get the WindowProxy for this window
+/// Per spec, window.window, window.self, and window.frames all return the WindowProxy.
+fn getWindowProxy(instance: *runtime.Instance) typedefs.WindowProxy {
+    // For now, WindowProxy is just the window instance pointer
+    // In a full implementation, WindowProxy would be a separate object
+    // that handles cross-origin access restrictions
+    return @ptrCast(instance);
+}
+
+// ============================================================================
+// Core Window Properties (§7.2.1)
+// ============================================================================
+
+/// Getter for window - Returns the WindowProxy object
+/// Per spec: The window getter steps are to return this's relevant global object.
 pub fn get_window(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
-    _ = instance;
-    return error.NotImplemented;
+    return getWindowProxy(instance);
 }
 
-/// Getter for self
+/// Getter for self - Same as window
+/// Per spec: The self getter steps are to return this's relevant global object.
 pub fn get_self(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
-    _ = instance;
-    return error.NotImplemented;
+    return getWindowProxy(instance);
 }
 
 /// Getter for document
+/// Per spec: Returns the Document associated with this window.
 pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.document orelse error.NotImplemented;
 }
 
-/// Getter for name
+/// Getter for name - The window's target name
+/// Per spec: Returns the browsing context name.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return runtime.DOMString.initInterned(internal.browsing_context.target_name);
 }
 
 /// Getter for location
+/// Per spec: Returns the Location object for this window.
 pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // TODO: Create Location instance lazily
+    return internal.location orelse error.NotImplemented;
 }
 
 /// Getter for history
+/// Per spec: Returns the History object for this window.
 pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // TODO: Create History instance lazily
+    return internal.history orelse error.NotImplemented;
 }
 
 /// Getter for navigation
+/// Per spec: Returns the Navigation object for this window.
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // TODO: Create Navigation instance lazily
+    _ = internal;
     return error.NotImplemented;
 }
 
 /// Getter for customElements
+/// Per spec: Returns the CustomElementRegistry for this window.
 pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // TODO: Create CustomElementRegistry instance lazily
+    return internal.custom_elements orelse error.NotImplemented;
 }
+
+// ============================================================================
+// BarProp Properties (§7.2.2)
+// ============================================================================
 
 /// Getter for locationbar
 pub fn get_locationbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.locationbar orelse error.NotImplemented;
 }
 
 /// Getter for menubar
 pub fn get_menubar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.menubar orelse error.NotImplemented;
 }
 
 /// Getter for personalbar
 pub fn get_personalbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.personalbar orelse error.NotImplemented;
 }
 
 /// Getter for scrollbars
 pub fn get_scrollbars(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.scrollbars orelse error.NotImplemented;
 }
 
 /// Getter for statusbar
 pub fn get_statusbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.statusbar orelse error.NotImplemented;
 }
 
 /// Getter for toolbar
 pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.toolbar orelse error.NotImplemented;
 }
 
-/// Getter for status
+/// Getter for status - The status bar text
 pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return runtime.DOMString.initInterned(internal.status);
 }
+
+// ============================================================================
+// Window State Properties
+// ============================================================================
 
 /// Getter for closed
+/// Per spec: Returns true if the browsing context has been discarded.
 pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.closed or internal.browsing_context.is_closed;
 }
 
-/// Getter for frames
+/// Getter for frames - Same as window
+/// Per spec: The frames getter steps are to return this's relevant global object.
 pub fn get_frames(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
-    _ = instance;
-    return error.NotImplemented;
+    return getWindowProxy(instance);
 }
 
-/// Getter for length
+/// Getter for length - Number of child browsing contexts
+/// Per spec: Returns the number of child navigables.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return @intCast(internal.browsing_context.children.items.len);
 }
 
-/// Getter for top
+/// Getter for top - The topmost browsing context
+/// Per spec: Returns the WindowProxy of the top-level traversable.
 pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Walk up the parent chain to find the top-level context
+    var ctx = internal.browsing_context;
+    while (ctx.parent) |parent| {
+        ctx = parent;
+    }
+
+    // Return the WindowProxy for the top-level window
+    // TODO: Return the actual Window instance for the top context
+    // For now, if we're already at the top, return self
+    if (ctx == internal.browsing_context) {
+        return getWindowProxy(instance);
+    }
+
+    // Otherwise, we'd need to look up the Window for that context
+    return getWindowProxy(instance);
 }
 
 /// Getter for opener
+/// Per spec: Returns the WindowProxy of the opener browsing context.
 pub fn get_opener(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If disowned, return null (represented as NotImplemented for non-nullable pointer)
+    if (internal.browsing_context.disowned) {
+        return error.NotImplemented;
+    }
+
+    // Return opener if set
+    if (internal.opener_any) |opener| {
+        return opener;
+    }
+
+    return error.NotImplemented; // null in JS (no opener)
 }
 
 /// Getter for parent
+/// Per spec: Returns the WindowProxy of the parent browsing context.
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If we have a parent context, return its WindowProxy
+    if (internal.browsing_context.parent != null) {
+        // TODO: Look up the Window for the parent context
+        // For now, return null to indicate "return self" per spec
+    }
+
+    // If no parent, return self per spec
+    return getWindowProxy(instance);
 }
 
 /// Getter for frameElement
+/// Per spec: Returns the Element in which this window is nested, if any.
 pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If this is a top-level context, return null
+    if (internal.browsing_context.isTopLevel()) {
+        return null;
+    }
+
+    // TODO: Return the iframe/frame element that contains this window
     return null;
 }
 
 /// Getter for navigator
+/// Per spec: Returns the Navigator object for this window.
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // TODO: Create Navigator instance lazily
+    return internal.navigator orelse error.NotImplemented;
 }
 
-/// Getter for clientInformation
+/// Getter for clientInformation - Same as navigator
+/// Per spec: Returns the Navigator object (legacy alias).
 pub fn get_clientInformation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return get_navigator(instance);
 }
 
 /// Getter for originAgentCluster
+/// Per spec: Returns true if this window is in an origin-keyed agent cluster.
 pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    // Default: not origin-keyed
+    return false;
 }
 
 /// Getter for ondeviceorientation
@@ -298,82 +528,95 @@ pub fn get_visualViewport(instance: *runtime.Instance) anyerror!?*runtime.Instan
     return null;
 }
 
+// ============================================================================
+// CSSOM View Properties (CSSOM View Module)
+// ============================================================================
+
 /// Getter for innerWidth
+/// Per spec: Returns the viewport width in CSS pixels.
 pub fn get_innerWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.inner_width;
 }
 
 /// Getter for innerHeight
+/// Per spec: Returns the viewport height in CSS pixels.
 pub fn get_innerHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.inner_height;
 }
 
 /// Getter for scrollX
+/// Per spec: Returns the X scroll offset.
 pub fn get_scrollX(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.scroll_x;
 }
 
-/// Getter for pageXOffset
+/// Getter for pageXOffset - Same as scrollX
+/// Per spec: Legacy alias for scrollX.
 pub fn get_pageXOffset(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return get_scrollX(instance);
 }
 
 /// Getter for scrollY
+/// Per spec: Returns the Y scroll offset.
 pub fn get_scrollY(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.scroll_y;
 }
 
-/// Getter for pageYOffset
+/// Getter for pageYOffset - Same as scrollY
+/// Per spec: Legacy alias for scrollY.
 pub fn get_pageYOffset(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    return get_scrollY(instance);
 }
 
 /// Getter for screenX
+/// Per spec: Returns the X position of the window on the screen.
 pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.screen_x;
 }
 
-/// Getter for screenLeft
+/// Getter for screenLeft - Same as screenX
+/// Per spec: Legacy alias for screenX.
 pub fn get_screenLeft(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    return get_screenX(instance);
 }
 
 /// Getter for screenY
+/// Per spec: Returns the Y position of the window on the screen.
 pub fn get_screenY(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.screen_y;
 }
 
-/// Getter for screenTop
+/// Getter for screenTop - Same as screenY
+/// Per spec: Legacy alias for screenY.
 pub fn get_screenTop(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    return get_screenY(instance);
 }
 
 /// Getter for outerWidth
+/// Per spec: Returns the width of the window including chrome.
 pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.outer_width;
 }
 
 /// Getter for outerHeight
+/// Per spec: Returns the height of the window including chrome.
 pub fn get_outerHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.outer_height;
 }
 
 /// Getter for devicePixelRatio
+/// Per spec: Returns the ratio of CSS pixels to physical pixels.
 pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.device_pixel_ratio;
 }
 
 /// Getter for launchQueue
@@ -2161,17 +2404,39 @@ pub fn set_onportalactivate(instance: *runtime.Instance, value: typedefs.EventHa
     return error.NotImplemented;
 }
 
+// ============================================================================
+// Window Operations
+// ============================================================================
+
 /// Operation: print
+/// Per spec §8.8.4: Triggers the printing dialog.
 pub fn call_print(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // Use the UI backend to show print dialog
+    internal.ui_backend.showPrint();
 }
 
 /// Operation: confirm
+/// Per spec §8.8.2: Shows a confirmation dialog.
 pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString)) anyerror!bool {
-    _ = instance;
-    _ = message;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return false; // Return false if window is closed
+    }
+
+    // Get message string (default to empty)
+    const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
+
+    // Use the UI backend to show confirm dialog
+    return internal.ui_backend.showConfirm(msg);
 }
 
 /// Operation: postMessage
@@ -2198,18 +2463,45 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
 }
 
 /// Operation: scroll
+/// Per CSSOM View: Scrolls to a particular position.
 pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = options;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return error.NotImplemented;
+    }
+
+    // Apply scroll options if provided
+    if (options.wasPassed()) {
+        const opts = options.getValue();
+        if (opts.left) |left| {
+            internal.scroll_x = left;
+        }
+        if (opts.top) |top| {
+            internal.scroll_y = top;
+        }
+        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
+    }
+
     return error.NotImplemented;
 }
 
 /// Operation: resizeTo
+/// Per CSSOM View: Resizes the window to the specified dimensions.
 pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
-    _ = instance;
-    _ = width;
-    _ = height;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return;
+    }
+
+    // Update outer dimensions
+    internal.outer_width = width;
+    internal.outer_height = height;
+
+    // TODO: Notify platform to actually resize the window
 }
 
 /// Operation: showSaveFilePicker
@@ -2244,9 +2536,17 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 }
 
 /// Operation: blur
+/// Per spec: Removes focus from the window.
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // TODO: Implement actual blur behavior
+    // This would notify the platform to remove focus from the window
 }
 
 /// Operation: showOpenFilePicker
@@ -2257,16 +2557,35 @@ pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 }
 
 /// Operation: scrollBy
+/// Per CSSOM View: Scrolls by a given amount.
 pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = options;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return error.NotImplemented;
+    }
+
+    // Apply scroll delta if provided
+    if (options.wasPassed()) {
+        const opts = options.getValue();
+        if (opts.left) |left| {
+            internal.scroll_x += left;
+        }
+        if (opts.top) |top| {
+            internal.scroll_y += top;
+        }
+        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
+    }
+
     return error.NotImplemented;
 }
 
 /// Operation: releaseEvents
+/// Per spec: Legacy no-op method for backwards compatibility.
 pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op per spec
 }
 
 /// Operation: atob
@@ -2277,9 +2596,18 @@ pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 }
 
 /// Operation: alert
+/// Per spec §8.8.1: Shows an alert dialog.
+/// Note: The IDL has an overload with message parameter; this is the no-argument version.
 pub fn call_alert(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // Show alert with empty message
+    internal.ui_backend.showAlert("");
 }
 
 /// Operation: btoa
@@ -2290,9 +2618,17 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 }
 
 /// Operation: focus
+/// Per spec: Focuses the window.
 pub fn call_focus(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // TODO: Implement actual focus behavior
+    // This would notify the platform to bring the window to front
 }
 
 /// Operation: requestIdleCallback
@@ -2319,9 +2655,23 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Operation: close
+/// Per spec §7.4.6: Closes the browsing context if it's script-closable.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if already closed
+    if (internal.closed) {
+        return;
+    }
+
+    // Check if the browsing context is script-closable
+    // A browsing context is script-closable if:
+    // 1. It's an auxiliary browsing context (opened via window.open)
+    // 2. Or it's a top-level traversable with a single session history entry
+    if (internal.browsing_context.isScriptClosable()) {
+        internal.browsing_context.close();
+        internal.closed = true;
+    }
 }
 
 /// Operation: getDigitalGoodsService
@@ -2332,11 +2682,20 @@ pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider:
 }
 
 /// Operation: moveBy
+/// Per CSSOM View: Moves the window by the specified delta.
 pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return;
+    }
+
+    // Apply delta to screen position
+    internal.screen_x += x;
+    internal.screen_y += y;
+
+    // TODO: Notify platform to actually move the window
 }
 
 /// Operation: getSelection
@@ -2346,48 +2705,137 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 }
 
 /// Operation: stop
+/// Per spec: Cancels the document loading.
 pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // TODO: Implement stop - abort document loading
+    // This should abort any ongoing navigation
 }
 
 /// Operation: resizeBy
+/// Per CSSOM View: Resizes the window by the specified delta.
 pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return;
+    }
+
+    // Apply delta to outer dimensions
+    internal.outer_width += x;
+    internal.outer_height += y;
+
+    // TODO: Notify platform to actually resize the window
 }
 
 /// Operation: open
+/// Per spec §7.4.1: Opens a new window or navigates existing one.
 pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
-    _ = instance;
-    _ = url;
-    _ = target;
-    _ = features;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return null;
+    }
+
+    // Get parameters (defaults per spec)
+    const url_str = if (url.wasPassed()) url.getValue() else "about:blank";
+    const target_str: []const u8 = if (target.wasPassed()) target.getValue().asSlice() else "_blank";
+    const features_str: []const u8 = if (features.wasPassed()) features.getValue().asSlice() else "";
+
+    // Parse the features string to determine if this should be a popup
+    const is_popup = parseWindowFeatures(features_str);
+
+    // TODO: Full window.open() implementation:
+    // 1. If target names an existing browsing context, navigate it
+    // 2. Otherwise, create a new auxiliary browsing context
+    // 3. Parse and apply window features
+    // 4. Navigate to URL
+
+    // For now, create a simple auxiliary browsing context
+    _ = url_str;
+
+    // Set target name on the new context
+    var new_ctx = try BrowsingContext.initAuxiliary(internal.allocator, internal.browsing_context, is_popup);
+    if (target_str.len > 0 and target_str[0] != '_') {
+        try new_ctx.setTargetName(target_str);
+    }
+
+    // TODO: Create a Window instance for the new context and return its proxy
+    // For now, return null to indicate "not implemented" behavior
     return null;
 }
 
+/// Parse window features string to determine if this should be a popup
+fn parseWindowFeatures(features: []const u8) bool {
+    // Per spec, a window is a popup if:
+    // - The features string is not empty, AND
+    // - Certain features are specified that indicate popup behavior
+    if (features.len == 0) {
+        return false;
+    }
+
+    // Simple heuristic: if width or height is specified, treat as popup
+    // A more complete implementation would parse all feature tokens
+    if (std.mem.indexOf(u8, features, "width") != null or
+        std.mem.indexOf(u8, features, "height") != null or
+        std.mem.indexOf(u8, features, "popup") != null)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 /// Operation: moveTo
+/// Per CSSOM View: Moves the window to the specified position.
 pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-    _ = instance;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return;
+    }
+
+    // Update screen position
+    internal.screen_x = x;
+    internal.screen_y = y;
+
+    // TODO: Notify platform to actually move the window
 }
 
 /// Operation: scrollTo
+/// Per CSSOM View: Same as scroll() - scrolls to a particular position.
 pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+    return call_scroll(instance, options);
 }
 
 /// Operation: prompt
+/// Per spec §8.8.3: Shows a prompt dialog.
 pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), default: webidl.Opt(runtime.DOMString)) anyerror!?runtime.DOMString {
-    _ = instance;
-    _ = message;
-    _ = default;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return null; // Return null if window is closed
+    }
+
+    // Get message and default strings
+    const msg = if (message.wasPassed()) message.getValue().asSlice() else "";
+    const default_value = if (default.wasPassed()) default.getValue().asSlice() else "";
+
+    // Use the UI backend to show prompt dialog
+    const result = internal.ui_backend.showPrompt(msg, default_value);
+    if (result) |str| {
+        return runtime.DOMString.initInterned(str);
+    }
     return null;
 }
 
@@ -2423,10 +2871,19 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 }
 
 /// Operation: cancelAnimationFrame
+/// Per spec §8.14.2: Cancels a previously scheduled animation frame callback.
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-    _ = instance;
-    _ = handle;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return; // No-op if window is closed
+    }
+
+    // Cancel the animation frame if scheduler exists
+    if (internal.animation_scheduler) |scheduler| {
+        scheduler.cancelAnimationFrame(handle);
+    }
 }
 
 /// Operation: fetchLater
@@ -2438,10 +2895,28 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
 }
 
 /// Operation: requestAnimationFrame
+/// Per spec §8.14.2: Schedules a callback to be invoked before the next repaint.
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
-    _ = instance;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if window is closed
+    if (internal.closed) {
+        return 0; // Return 0 handle if window is closed
+    }
+
+    // Create animation scheduler lazily if not exists
+    if (internal.animation_scheduler == null) {
+        internal.animation_scheduler = try AnimationFrameScheduler.init(
+            internal.allocator,
+            internal.stub_timing_backend.backend(),
+        );
+    }
+
+    // Schedule the callback
+    // The callback needs to be wrapped to match our internal signature
+    // TODO: Proper callback wrapping - for now return placeholder
     _ = callback;
-    return error.NotImplemented;
+    return 0; // Placeholder
 }
 
 /// Operation: createImageBitmap
@@ -2460,9 +2935,10 @@ pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerro
 }
 
 /// Operation: captureEvents
+/// Per spec: Legacy no-op method for backwards compatibility.
 pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op per spec
 }
 
 /// Operation: queryLocalFonts
@@ -2484,4 +2960,3 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!*const anyopa
     _ = instance;
     return error.NotImplemented;
 }
-

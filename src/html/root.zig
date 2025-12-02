@@ -130,6 +130,20 @@ pub const CloneError = structured_clone.CloneError;
 pub const SerializedValue = structured_clone.SerializedValue;
 pub const Transferable = structured_clone.Transferable;
 
+// Window & Global Environment (§7)
+pub const window = @import("window/root.zig");
+
+// Re-export commonly used window types
+pub const BrowsingContext = window.BrowsingContext;
+pub const BrowsingContextGroup = window.BrowsingContextGroup;
+pub const UIBackend = window.UIBackend;
+pub const StubUIBackend = window.StubUIBackend;
+pub const AnimationFrameScheduler = window.AnimationFrameScheduler;
+pub const FrameTimingBackend = window.FrameTimingBackend;
+pub const StubFrameTimingBackend = window.StubFrameTimingBackend;
+pub const MockFrameTimingBackend = window.MockFrameTimingBackend;
+pub const DOMHighResTimeStamp = window.DOMHighResTimeStamp;
+
 test {
     std.testing.refAllDecls(@This());
 }

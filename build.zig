@@ -1299,6 +1299,27 @@ pub fn build(b: *std.Build) void {
     // Add html_parser to impls for DOMParser, innerHTML, document.write implementations
     impls_mod.addImport("html_parser", html_parser_mod);
 
+    // HTML Window infrastructure modules (WHATWG HTML Standard §7)
+    const html_browsing_context_mod = b.addModule("html_browsing_context", .{
+        .root_source_file = b.path("src/html/window/browsing_context.zig"),
+        .target = target,
+    });
+
+    const html_ui_backend_mod = b.addModule("html_ui_backend", .{
+        .root_source_file = b.path("src/html/window/ui_backend.zig"),
+        .target = target,
+    });
+
+    const html_animation_frame_mod = b.addModule("html_animation_frame", .{
+        .root_source_file = b.path("src/html/window/animation_frame.zig"),
+        .target = target,
+    });
+
+    // Add HTML window modules to impls for Window implementation
+    impls_mod.addImport("html_browsing_context", html_browsing_context_mod);
+    impls_mod.addImport("html_ui_backend", html_ui_backend_mod);
+    impls_mod.addImport("html_animation_frame", html_animation_frame_mod);
+
     // Permissions module (W3C Permissions API)
     const permissions_mod = b.addModule("permissions", .{
         .root_source_file = b.path("src/permissions/root.zig"),
