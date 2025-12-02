@@ -13,10 +13,10 @@ const v8_mod = @import("v8");
 const v8 = v8_mod.ffi; // Use FFI functions directly
 const v8_engine = v8_mod.engine; // V8 engine helpers
 const webidl = @import("webidl");
-const impls = @import("impls");
 
-// Controller implementation functions
-const ReadableStreamDefaultControllerImpl = impls.ReadableStreamDefaultController;
+// Use interfaces instead of impls (per Golden Rule #12)
+const interfaces = @import("interfaces");
+const ReadableStreamDefaultController = interfaces.ReadableStreamDefaultController;
 
 /// Context for from() pull algorithm
 /// Captured state: iterator record + stream reference
@@ -77,7 +77,7 @@ fn pullInvoke(
         // Step 4.2: If nextResult is abrupt, error the controller
         const err_ptr: *const anyopaque = @ptrCast(&err);
         // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultControllerImpl.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         promise.fulfill({});
         return promise;
     };
@@ -90,7 +90,7 @@ fn pullInvoke(
         const err = error.TypeError;
         const err_ptr: *const anyopaque = @ptrCast(&err);
         // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultControllerImpl.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         promise.fulfill({});
         return promise;
     }
@@ -102,17 +102,17 @@ fn pullInvoke(
         iter_record.isolate,
     ) catch |err| {
         const err_ptr: *const anyopaque = @ptrCast(&err);
-        ReadableStreamDefaultControllerImpl.call_error(controller, err_ptr) catch {};
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         promise.fulfill({});
         return promise;
     };
 
     if (done) {
         // Step 4.4.3: If done is true, close the stream
-        ReadableStreamDefaultControllerImpl.call_close(controller) catch |err| {
+        ReadableStreamDefaultController.call_close(controller) catch |err| {
             const err_ptr: *const anyopaque = @ptrCast(&err);
             // Wrap in Opt since call_error expects webidl.Opt
-            ReadableStreamDefaultControllerImpl.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+            ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         };
         promise.fulfill({});
         return promise;
@@ -126,18 +126,18 @@ fn pullInvoke(
     ) catch |err| {
         const err_ptr: *const anyopaque = @ptrCast(&err);
         // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultControllerImpl.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         promise.fulfill({});
         return promise;
     };
     // Keep value alive - will be enqueued
 
     // Step 4.4.4.2: Enqueue value - wrap in Opt since call_enqueue expects webidl.Opt
-    ReadableStreamDefaultControllerImpl.call_enqueue(controller, webidl.Opt(*const anyopaque).passed(@ptrCast(iter_value))) catch |err| {
+    ReadableStreamDefaultController.call_enqueue(controller, webidl.Opt(*const anyopaque).passed(@ptrCast(iter_value))) catch |err| {
         v8.v8_Value_Dispose(iter_value);
         const err_ptr: *const anyopaque = @ptrCast(&err);
         // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultControllerImpl.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
         promise.fulfill({});
         return promise;
     };

@@ -1047,7 +1047,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "impls", .module = impls_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
             .{ .name = "algorithm", .module = streams_algorithm_mod },
             .{ .name = "iterator_record", .module = streams_iterator_record_mod },
             .{ .name = "async_promise", .module = streams_async_promise_mod },
