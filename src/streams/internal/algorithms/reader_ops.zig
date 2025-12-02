@@ -6,6 +6,14 @@
 //! - ReadableStreamDefaultReader methods
 //! - ReadableStreamAsyncIterator
 //! - Other stream infrastructure
+//!
+//! ## Architecture Note
+//!
+//! This file is part of the streams implementation infrastructure. Per Golden Rule #12,
+//! we use interfaces for public API calls (constructor, releaseLock). However, some
+//! internal algorithms (pullSteps, readableStreamCancelFromReaderWithOptReason) are
+//! NOT exposed through interfaces because they bypass public API checks (e.g., lock
+//! validation). These internal calls legitimately require direct impl access.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,6 +21,10 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const event_loop_mod = @import("event_loop");
+
+// Internal impl access for algorithms that bypass public API checks
+// (e.g., pullSteps, internal cancel without lock check)
+const impls = @import("impls");
 
 /// AcquireReadableStreamDefaultReader
 ///
@@ -34,8 +46,8 @@ pub fn acquireReadableStreamDefaultReader(
 ) !*runtime.Instance {
     // This delegates to ReadableStreamDefaultReader constructor
     // which performs all the acquisition steps
-    const impls = @import("impls");
-    return impls.ReadableStreamDefaultReader.call_constructor(allocator, ctx, stream);
+    // Use interface instead of impl (per Golden Rule #12)
+    return interfaces.ReadableStreamDefaultReader.call_constructor(allocator, ctx, stream);
 }
 
 /// ReadableStreamDefaultReaderRead (callback-based version)
@@ -88,7 +100,7 @@ pub fn readableStreamDefaultReaderRead(
 
     // Step 6: Otherwise, perform ! stream.[[controller]].[[PullSteps]](readRequest)
     // We wrap the callbacks in a promise-based interface that the controller expects
-    const impls = @import("impls");
+    // NOTE: pullSteps is an internal method - see module-level comment for why impls is used
 
     // Get controller from stream
     const controller = stream_internal.controller;
@@ -181,8 +193,8 @@ fn onReadRejected(ctx_ptr: *anyopaque, _: webidl.errors.Exception) anyerror!void
 /// 9. Sets reader.[[stream]] to undefined
 pub fn readableStreamDefaultReaderRelease(reader: *runtime.Instance) !void {
     // This delegates to the releaseLock() method
-    const impls = @import("impls");
-    try impls.ReadableStreamDefaultReader.call_releaseLock(reader);
+    // Use interface instead of impl (per Golden Rule #12)
+    try interfaces.ReadableStreamDefaultReader.call_releaseLock(reader);
 }
 
 /// ReadableStreamReaderGenericCancel
@@ -218,7 +230,7 @@ pub fn readableStreamReaderGenericCancel(
     // Use the internal cancel function that bypasses the lock check
     // This is correct per spec: ReadableStreamReaderGenericCancel calls
     // ReadableStreamCancel directly, not the public cancel() method
-    const impls = @import("impls");
+    // NOTE: This internal method bypasses lock check - see module-level comment
     const cancel_promise_ptr = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason);
 
     // Cast the returned pointer to AsyncPromise(void)
