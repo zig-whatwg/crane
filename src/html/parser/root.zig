@@ -55,6 +55,13 @@ pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
 // Named character references (entities)
 pub const entities = @import("entities.zig");
 
+// Fragment parsing (innerHTML, DOMParser, etc.)
+pub const fragment_parser = @import("fragment_parser.zig");
+pub const parseFragment = fragment_parser.parseFragment;
+pub const parseHTMLFromString = fragment_parser.parseHTMLFromString;
+pub const FragmentParseResult = fragment_parser.FragmentParseResult;
+pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
+
 test {
     // Run all parser tests
     std.testing.refAllDecls(@This());
@@ -65,4 +72,5 @@ test {
     _ = @import("tokenizer.zig");
     _ = @import("tree_builder.zig");
     _ = @import("entities.zig");
+    _ = @import("fragment_parser.zig");
 }

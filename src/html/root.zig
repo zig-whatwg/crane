@@ -77,6 +77,7 @@ pub const parser = @import("parser/root.zig");
 
 // Re-export commonly used parser types
 pub const Tokenizer = parser.Tokenizer;
+pub const TreeBuilder = parser.TreeBuilder;
 pub const Token = parser.Token;
 pub const TagToken = parser.TagToken;
 pub const DoctypeToken = parser.DoctypeToken;
@@ -84,6 +85,12 @@ pub const CommentToken = parser.CommentToken;
 pub const ParseError = parser.ParseError;
 pub const ParseErrorCode = parser.ParseErrorCode;
 pub const ParseErrorCollector = parser.ParseErrorCollector;
+
+// Fragment parsing (§13.5 - innerHTML, DOMParser, etc.)
+pub const parseFragment = parser.parseFragment;
+pub const parseHTMLFromString = parser.parseHTMLFromString;
+pub const FragmentParseResult = parser.FragmentParseResult;
+pub const FragmentParseOptions = parser.FragmentParseOptions;
 
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");
