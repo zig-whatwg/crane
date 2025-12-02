@@ -2056,4 +2056,53 @@ pub fn build(b: *std.Build) void {
 
     const interfaces_step = b.step("interfaces", "Check that all interfaces compile");
     interfaces_step.dependOn(&run_interfaces_check.step);
+
+    // ========================================================================
+    // LINT: Check for impls imports outside allowed locations
+    // ========================================================================
+    // Golden Rule #12: External code must use interfaces, not impls directly
+    // This lint step scans for @import("impls") in files that shouldn't have it
+    //
+    // Allowed locations:
+    // - src/webidl/impls/ - impl files can import other impls
+    // - src/webidl/interfaces/ - generated interfaces delegate to impls
+    // - src/webidl/mixins/ - mixins delegate to impls
+    // - src/webidl/namespaces/ - namespaces delegate to impls
+    // - src/webidl/codegen/ - codegen generates code that uses impls
+    // - src/runtime/ - runtime needs internal access for V8 bindings
+    // - src/root.zig - comment only
+    // - src/streams/internal/algorithms/reader_ops.zig - documented internal algorithm
+
+    const lint_impls_step = b.step("lint-impls", "Check for impls imports outside allowed locations");
+
+    const lint_impls = b.addSystemCommand(&[_][]const u8{
+        "sh",
+        "-c",
+        \\# Find files that import impls outside of allowed locations
+        \\
+        \\VIOLATIONS=$(grep -r '@import("impls")' src/ --include='*.zig' -l 2>/dev/null | \
+        \\    grep -v 'src/webidl/impls/' | \
+        \\    grep -v 'src/webidl/interfaces/' | \
+        \\    grep -v 'src/webidl/mixins/' | \
+        \\    grep -v 'src/webidl/namespaces/' | \
+        \\    grep -v 'src/webidl/codegen/' | \
+        \\    grep -v 'src/runtime/' | \
+        \\    grep -v 'src/root.zig' | \
+        \\    grep -v 'src/streams/internal/algorithms/reader_ops.zig' || true)
+        \\
+        \\if [ -n "$VIOLATIONS" ]; then
+        \\    echo "ERROR: Found @import(\"impls\") in files that should use interfaces:"
+        \\    echo "$VIOLATIONS"
+        \\    echo ""
+        \\    echo "Per Golden Rule #12, external code must use interfaces, not impls."
+        \\    echo "Allowed locations: src/webidl/{impls,interfaces,mixins,namespaces,codegen}/, src/runtime/"
+        \\    echo "See AGENTS.md for details."
+        \\    exit 1
+        \\fi
+        \\
+        \\echo "✅ No impls import violations found"
+        ,
+    });
+
+    lint_impls_step.dependOn(&lint_impls.step);
 }
