@@ -725,9 +725,8 @@ pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
 pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: Create fragment
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    const fragment = DocumentFragmentImpl.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    // Step 1: Create fragment (use interface per Golden Rule #13)
+    const fragment = interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 
     // Step 2: If collapsed, return empty fragment
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -747,8 +746,8 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
         start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
         start_type == NodeImpl.NodeType.COMMENT_NODE))
     {
-        // Clone the node, set its data to the substring, append to fragment
-        const clone = NodeImpl.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
+        // Clone the node, set its data to the substring, append to fragment (use interface per Golden Rule #13)
+        const clone = interfaces.Node.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
         const CharacterDataImpl = @import("CharacterData.zig");
 
         // Get substring and set on clone
@@ -759,7 +758,7 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
         }
 
         // Append clone to fragment
-        _ = NodeImpl.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
 
         // Delete data from original
         const count = internal.end_offset - internal.start_offset;
@@ -781,9 +780,9 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
                 return error.HierarchyRequestError;
             }
 
-            // Remove from original parent and append to fragment
+            // Remove from original parent and append to fragment (use interface per Golden Rule #13)
             try NodeImpl.removeNodeFromParent(c, commonAncestor);
-            _ = try NodeImpl.call_appendChild(fragment, c);
+            _ = try interfaces.Node.call_appendChild(fragment, c);
         }
         child = next;
     }
@@ -802,9 +801,8 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
 pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: Create fragment
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    const fragment = DocumentFragmentImpl.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    // Step 1: Create fragment (use interface per Golden Rule #13)
+    const fragment = interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 
     // Step 2: If collapsed, return empty fragment
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -820,8 +818,8 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
         start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
         start_type == NodeImpl.NodeType.COMMENT_NODE))
     {
-        // Clone the node, set its data to the substring, append to fragment
-        const clone = NodeImpl.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
+        // Clone the node, set its data to the substring, append to fragment (use interface per Golden Rule #13)
+        const clone = interfaces.Node.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
         const CharacterDataImpl = @import("CharacterData.zig");
 
         // Get substring and set on clone
@@ -832,7 +830,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
         }
 
         // Append clone to fragment
-        _ = NodeImpl.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
 
         return fragment;
     }
@@ -850,9 +848,9 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
                 return error.HierarchyRequestError;
             }
 
-            // Deep clone and append to fragment
-            const clone = try NodeImpl.call_cloneNode(c, webidl.Opt(bool).passed(true));
-            _ = try NodeImpl.call_appendChild(fragment, clone);
+            // Deep clone and append to fragment (use interface per Golden Rule #13)
+            const clone = try interfaces.Node.call_cloneNode(c, webidl.Opt(bool).passed(true));
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
         }
         child = next;
     }
@@ -899,10 +897,9 @@ pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) any
     // Step 5-6: Validate pre-insertion
     // (simplified - full validation would need ensurePreInsertValidity)
 
-    // Step 7: If start node is Text, split it
+    // Step 7: If start node is Text, split it (use interface per Golden Rule #13)
     if (start_type == NodeImpl.NodeType.TEXT_NODE and internal.start_offset > 0) {
-        const TextImpl = @import("Text.zig");
-        const newText = try TextImpl.call_splitText(start, internal.start_offset);
+        const newText = try interfaces.Text.call_splitText(start, internal.start_offset);
         referenceNode = newText;
     }
 
@@ -932,11 +929,11 @@ pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) any
         newOffset += 1;
     }
 
-    // Step 12: Insert node before referenceNode
+    // Step 12: Insert node before referenceNode (use interface per Golden Rule #13)
     if (referenceNode) |refNode| {
-        _ = NodeImpl.call_insertBefore(parent, node, refNode) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_insertBefore(parent, node, refNode) catch return error.HierarchyRequestError;
     } else {
-        _ = NodeImpl.call_appendChild(parent, node) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_appendChild(parent, node) catch return error.HierarchyRequestError;
     }
 
     // Step 13: If range is collapsed, update end
@@ -990,8 +987,8 @@ pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.In
     // Step 5: Insert newParent into range
     try call_insertNode(instance, newParent);
 
-    // Step 6: Append fragment to newParent
-    _ = NodeImpl.call_appendChild(newParent, fragment) catch return error.HierarchyRequestError;
+    // Step 6: Append fragment to newParent (use interface per Golden Rule #13)
+    _ = interfaces.Node.call_appendChild(newParent, fragment) catch return error.HierarchyRequestError;
 
     // Step 7: Select newParent within range
     try call_selectNode(instance, newParent);
@@ -1174,9 +1171,8 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: runtim
     _ = string;
 
     // NOTE: Full implementation requires HTML parser
-    // For now, return an empty DocumentFragment
-    const DocumentFragmentImpl = @import("DocumentFragment.zig");
-    return DocumentFragmentImpl.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    // For now, return an empty DocumentFragment (use interface per Golden Rule #13)
+    return interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 }
 
 /// DOM §5.7 - Range stringifier (toString)

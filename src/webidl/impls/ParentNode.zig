@@ -113,13 +113,11 @@ pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
 pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const allocator = instance.ctx.getAllocator();
 
-    const collection = HTMLCollectionImpl.init(
+    const collection = interfaces.HTMLCollection.init(
         allocator,
-        interfaces.HTMLCollection.State,
-        &interfaces.HTMLCollection.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
-    errdefer HTMLCollectionImpl.deinit(collection);
+    errdefer interfaces.HTMLCollection.deinit(collection);
 
     // Iterate direct children and add elements
     var child = NodeImpl.getFirstChild(instance);
@@ -219,14 +217,12 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
     // Analyze selector for fast path opportunities
     const analysis = analyzeSelector(&selector_list);
 
-    // Step 3: Create static NodeList and collect all matching elements
-    const node_list = NodeListImpl.init(
+    // Step 3: Create static NodeList and collect all matching elements (use interface per Golden Rule #13)
+    const node_list = interfaces.NodeList.init(
         allocator,
-        interfaces.NodeList.State,
-        &interfaces.NodeList.vtable,
         instance.ctx,
     ) catch return error.OutOfMemory;
-    errdefer NodeListImpl.deinit(node_list);
+    errdefer interfaces.NodeList.deinit(node_list);
 
     // Collect matches using appropriate strategy
     switch (analysis.fast_path) {
@@ -1052,12 +1048,12 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) an
     // Step 1: Convert nodes into a node
     const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
 
-    // Step 2: Pre-insert node into this before this's first child
+    // Step 2: Pre-insert node into this before this's first child (use interface per Golden Rule #13)
     const first_child = NodeImpl.getFirstChild(instance);
     if (first_child) |child| {
-        _ = NodeImpl.call_insertBefore(instance, node, child) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_insertBefore(instance, node, child) catch return error.HierarchyRequestError;
     } else {
-        _ = NodeImpl.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
     }
 }
 
@@ -1072,8 +1068,8 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) any
     // Step 1: Convert nodes into a node
     const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
 
-    // Step 2: Append node to this
-    _ = NodeImpl.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+    // Step 2: Append node to this (use interface per Golden Rule #13)
+    _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
 }
 
 /// replaceChildren - Replaces all children with nodes
@@ -1087,16 +1083,16 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const NodeOrSt
     // Step 1: Convert nodes into a node
     const node = try convertNodesIntoNode(allocator, nodes, document, instance.ctx);
 
-    // Steps 2-3: Remove all children, then append new node
+    // Steps 2-3: Remove all children, then append new node (use interface per Golden Rule #13)
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
         const next = NodeImpl.getNextSibling(c);
-        _ = NodeImpl.call_removeChild(instance, c) catch {};
+        _ = interfaces.Node.call_removeChild(instance, c) catch {};
         child = next;
     }
 
     // Then append the new node
-    _ = NodeImpl.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+    _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
 }
 
 /// moveBefore - Moves a node into this parent before child, preserving state
@@ -1142,11 +1138,11 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
     // Remove from old position
     NodeImpl.removeNodeFromParent(node, old_parent) catch return error.HierarchyRequestError;
 
-    // Insert at new position
+    // Insert at new position (use interface per Golden Rule #13)
     if (reference_child) |rc| {
-        _ = NodeImpl.call_insertBefore(instance, node, rc) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_insertBefore(instance, node, rc) catch return error.HierarchyRequestError;
     } else {
-        _ = NodeImpl.call_appendChild(instance, node) catch return error.HierarchyRequestError;
+        _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
     }
 }
 
@@ -1184,7 +1180,7 @@ fn convertNodesIntoNode(
             .node => |n| n,
             .string => |s| try createTextNode(allocator, s, document, ctx),
         };
-        _ = try NodeImpl.call_appendChild(fragment, child_node);
+        _ = try interfaces.Node.call_appendChild(fragment, child_node);
     }
 
     return fragment;
@@ -1197,13 +1193,11 @@ fn createTextNode(
     document: *runtime.Instance,
     ctx: runtime.Context,
 ) ImplError!*runtime.Instance {
-    const text = TextImpl.init(
+    const text = interfaces.Text.init(
         allocator,
-        interfaces.Text.State,
-        &interfaces.Text.vtable,
         ctx,
     ) catch return error.OutOfMemory;
-    errdefer TextImpl.deinit(text);
+    errdefer interfaces.Text.deinit(text);
 
     // Set node type to TEXT_NODE (3)
     NodeImpl.setNodeType(text, NodeImpl.NodeType.TEXT_NODE) catch return error.OutOfMemory;
@@ -1223,10 +1217,8 @@ fn createDocumentFragment(
     document: *runtime.Instance,
     ctx: runtime.Context,
 ) ImplError!*runtime.Instance {
-    const fragment = DocumentFragmentImpl.init(
+    const fragment = interfaces.DocumentFragment.init(
         allocator,
-        interfaces.DocumentFragment.State,
-        &interfaces.DocumentFragment.vtable,
         ctx,
     ) catch return error.OutOfMemory;
 
