@@ -8,6 +8,7 @@
 //! - **Event Loop** (§8.1.7) - Core event loop for coordinating events, scripts,
 //!   rendering, and more
 //! - **Timers** (§8.6) - setTimeout() and setInterval()
+//! - **Parser** (§13) - HTML parsing algorithm with tokenizer and tree builder
 //! - **Custom Elements** - Custom element registry and lifecycle
 //!
 //! ## Architecture
@@ -22,6 +23,13 @@
 //! │   ├── task_queue.zig   # TaskQueue and TaskQueueSet
 //! │   ├── microtask.zig    # Microtask queue and checkpoint
 //! │   ├── timers.zig       # setTimeout/setInterval
+//! │   └── root.zig         # Module exports
+//! ├── parser/              # HTML parser (§13)
+//! │   ├── tokenizer.zig    # Tokenization state machine (80 states)
+//! │   ├── tokens.zig       # Token types (DOCTYPE, Tag, Comment, etc.)
+//! │   ├── tokenizer_states.zig  # State enum and helpers
+//! │   ├── parse_errors.zig # Parse error codes and handling
+//! │   ├── input_stream.zig # Input preprocessing
 //! │   └── root.zig         # Module exports
 //! ├── custom_elements.zig  # Custom element definitions
 //! └── root.zig             # This file
@@ -63,6 +71,19 @@ pub const Timer = event_loop.Timer;
 pub const TimerManager = event_loop.TimerManager;
 pub const VisibilityState = event_loop.VisibilityState;
 pub const RenderingCallbacks = event_loop.RenderingCallbacks;
+
+// Parser (§13)
+pub const parser = @import("parser/root.zig");
+
+// Re-export commonly used parser types
+pub const Tokenizer = parser.Tokenizer;
+pub const Token = parser.Token;
+pub const TagToken = parser.TagToken;
+pub const DoctypeToken = parser.DoctypeToken;
+pub const CommentToken = parser.CommentToken;
+pub const ParseError = parser.ParseError;
+pub const ParseErrorCode = parser.ParseErrorCode;
+pub const ParseErrorCollector = parser.ParseErrorCollector;
 
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");

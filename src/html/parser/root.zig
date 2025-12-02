@@ -1,0 +1,54 @@
+//! HTML Parser
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/parsing.html
+//! HTML Standard §13 "Parsing HTML documents"
+//!
+//! This module implements the HTML parsing algorithm as defined in the
+//! WHATWG HTML Standard. It consists of:
+//! - Tokenization (§13.2.5): Converting input into tokens
+//! - Tree construction (§13.2.6): Building the DOM tree from tokens
+//!
+//! The tokenizer processes the input stream character by character using
+//! an 80-state state machine, emitting tokens like DOCTYPE, start tags,
+//! end tags, comments, and characters.
+
+const std = @import("std");
+
+// Token types
+pub const Token = @import("tokens.zig").Token;
+pub const TagToken = @import("tokens.zig").TagToken;
+pub const DoctypeToken = @import("tokens.zig").DoctypeToken;
+pub const CommentToken = @import("tokens.zig").CommentToken;
+pub const Attribute = @import("tokens.zig").Attribute;
+
+// Tokenizer states
+pub const State = @import("tokenizer_states.zig").State;
+pub const getStateName = @import("tokenizer_states.zig").getStateName;
+pub const isRcdataState = @import("tokenizer_states.zig").isRcdataState;
+pub const isRawtextState = @import("tokenizer_states.zig").isRawtextState;
+pub const isScriptDataState = @import("tokenizer_states.zig").isScriptDataState;
+pub const isCharacterReferenceState = @import("tokenizer_states.zig").isCharacterReferenceState;
+
+// Parse errors
+pub const ParseError = @import("parse_errors.zig").ParseError;
+pub const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
+pub const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
+pub const ParseErrorCollector = @import("parse_errors.zig").ParseErrorCollector;
+pub const getErrorDescription = @import("parse_errors.zig").getErrorDescription;
+
+// Input stream
+pub const InputStream = @import("input_stream.zig").InputStream;
+pub const InputCharacter = @import("input_stream.zig").InputCharacter;
+
+// Tokenizer
+pub const Tokenizer = @import("tokenizer.zig").Tokenizer;
+
+test {
+    // Run all parser tests
+    std.testing.refAllDecls(@This());
+    _ = @import("tokens.zig");
+    _ = @import("tokenizer_states.zig");
+    _ = @import("parse_errors.zig");
+    _ = @import("input_stream.zig");
+    _ = @import("tokenizer.zig");
+}
