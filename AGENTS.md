@@ -700,6 +700,75 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 - Allows diffing to see what changed in interface signatures
 - Keeps generated stubs separate from canonical implementations
 
+### 12. **NEVER Call Impls Directly from External Code** ⭐⭐⭐
+
+**External code MUST call through interfaces, NEVER directly call impls.**
+
+**Architecture:**
+- **Interfaces** (`src/webidl/interfaces/`) - The public API that external code uses
+- **Impls** (`src/webidl/impls/`) - Internal implementations that manage state and logic
+- Only interfaces can call impls (via delegation)
+- Impls can call other impls when implementing algorithms
+
+**Correct Pattern:**
+```zig
+// External code (e.g., src/html/script_execution.zig)
+const interfaces = @import("interfaces");
+const HTMLScriptElement = interfaces.HTMLScriptElement;
+
+// ✅ CORRECT: Call through interface
+HTMLScriptElement.prepareTheScriptElement(element);
+```
+
+**Wrong Pattern:**
+```zig
+// External code
+const impls = @import("impls");
+const HTMLScriptElementImpl = impls.HTMLScriptElement;
+
+// ❌ WRONG: Direct impl call from external code
+HTMLScriptElementImpl.hasAlreadyStarted(element);
+```
+
+**When You Need Internal State Access:**
+If external code needs to call methods that access internal state (like `hasAlreadyStarted`):
+1. Move the algorithm logic INTO the impl
+2. Add a delegate method in the interface
+3. External code calls the interface method
+
+**Example Refactoring:**
+```zig
+// 1. Impl contains the algorithm (src/webidl/impls/HTMLScriptElement.zig)
+pub fn prepareTheScriptElement(instance: *Instance) !void {
+    if (hasAlreadyStarted(instance)) return;  // Can call internal methods
+    setAlreadyStarted(instance, true);
+    // ... rest of algorithm
+}
+
+// 2. Interface delegates (src/webidl/interfaces/HTMLScriptElement.zig)
+pub fn prepareTheScriptElement(instance: *Instance) !void {
+    return HTMLScriptElementImpl.prepareTheScriptElement(instance);
+}
+
+// 3. External code uses interface only
+const HTMLScriptElement = @import("interfaces").HTMLScriptElement;
+HTMLScriptElement.prepareTheScriptElement(element);
+```
+
+**Why This Matters:**
+- Interfaces provide a stable public API
+- Impls can change internal implementation without breaking external code
+- Proper encapsulation of internal state
+- Interfaces can add cross-cutting concerns (CEReactions, logging, etc.)
+
+**Files That Violate This Rule (MUST be refactored):**
+- `src/html/script_execution.zig` - Uses HTMLScriptElementImpl, DocumentImpl, NodeImpl, ElementImpl, TextImpl
+- `src/streams/internal/from_iterable_algorithm.zig` - Uses ReadableStreamDefaultControllerImpl
+- `src/streams/internal/readable_stream_async_iterator.zig` - Uses impls.ReadableStreamDefaultReader
+- `src/streams/internal/algorithms/reader_ops.zig` - Uses multiple impls directly
+
+See epic `whatwg-jwgc` for the refactoring plan.
+
 ---
 
 ## Critical Project Context
@@ -1091,6 +1160,7 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Generated files in project root** (must use `tmp/` unless explicitly requested otherwise)
 - **Accumulating uncommitted changes** (commit after every logical unit of work)
 - **Modifying generated files directly** (changes must go through codegen source files)
+- **Calling impls directly from external code** (must go through interfaces - see Golden Rule #12)
 
 ---
 
