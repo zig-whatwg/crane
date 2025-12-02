@@ -126,6 +126,24 @@ pub const ViolationOptions = violations.ViolationOptions;
 // Trusted Types directives
 pub const directives = @import("directives/root.zig");
 
+// Integration
+pub const integration = @import("integration.zig");
+
+// Integration convenience exports
+pub const parseCSPHeaders = integration.parseCSPHeaders;
+pub const parseMetaCSP = integration.parseMetaCSP;
+pub const shouldBlockFetch = integration.shouldBlockFetch;
+pub const shouldBlockInlineScript = integration.shouldBlockInlineScript;
+pub const shouldBlockInlineStyle = integration.shouldBlockInlineStyle;
+pub const shouldBlockEval = integration.shouldBlockEval;
+pub const shouldBlockWasmEval = integration.shouldBlockWasmEval;
+pub const FetchDestination = integration.FetchDestination;
+pub const CSPCheckResult = integration.CSPCheckResult;
+pub const InlineContext = integration.InlineContext;
+pub const HTTPHeader = integration.HTTPHeader;
+pub const getDirectiveForDestination = integration.getDirectiveForDestination;
+pub const isDirectiveAllowedInMeta = integration.isDirectiveAllowedInMeta;
+
 // Run all tests
 test {
     std.testing.refAllDecls(@This());
