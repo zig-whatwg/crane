@@ -14,6 +14,7 @@
 //! - CSP (W3C Content Security Policy Level 3)
 //! - HR-Time (W3C High Resolution Time)
 //! - WebSocket (WHATWG WebSockets API)
+//! - Permissions (W3C Permissions API)
 
 const std = @import("std");
 
@@ -33,6 +34,7 @@ pub const trusted_types = @import("trusted_types");
 pub const csp = @import("csp");
 pub const hr_time = @import("hr_time");
 pub const websocket = @import("websocket");
+pub const permissions = @import("permissions");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -55,6 +57,7 @@ test {
     _ = trusted_types;
     _ = csp;
     _ = websocket;
+    _ = permissions;
     _ = v8;
     _ = js_bindings;
     _ = codegen;

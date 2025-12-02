@@ -343,6 +343,7 @@ pub fn build(b: *std.Build) void {
             "fetch",
             "trusted_types",
             "csp",
+            "permissions",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -353,7 +354,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions\n", .{});
             std.process.exit(1);
         }
     }
@@ -1298,6 +1299,15 @@ pub fn build(b: *std.Build) void {
     // Add html_parser to impls for DOMParser, innerHTML, document.write implementations
     impls_mod.addImport("html_parser", html_parser_mod);
 
+    // Permissions module (W3C Permissions API)
+    const permissions_mod = b.addModule("permissions", .{
+        .root_source_file = b.path("src/permissions/root.zig"),
+        .target = target,
+    });
+
+    // Add permissions to impls for navigator.permissions implementation
+    impls_mod.addImport("permissions", permissions_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1319,6 +1329,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("csp", csp_mod);
     whatwg_mod.addImport("hr_time", hr_time_mod);
     whatwg_mod.addImport("websocket", websocket_mod);
+    whatwg_mod.addImport("permissions", permissions_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1592,6 +1603,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add csp test files: {}\n", .{err});
+        };
+    }
+
+    // Permissions tests (W3C Permissions API)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "permissions")) {
+        const permissions_tests = b.addTest(.{ .root_module = permissions_mod });
+        const run_permissions_tests = b.addRunArtifact(permissions_tests);
+        test_step.dependOn(&run_permissions_tests.step);
+
+        // Add dedicated test files from tests/permissions/ when they exist
+        const permissions_imports = [_]std.Build.Module.Import{
+            .{ .name = "permissions", .module = permissions_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/permissions", target, &permissions_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add permissions test files: {}\n", .{err});
         };
     }
 
