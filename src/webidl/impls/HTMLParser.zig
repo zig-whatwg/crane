@@ -48,6 +48,279 @@ const DocumentTypeImpl = @import("DocumentType.zig");
 const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const NodeImpl = @import("Node.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
+const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
+
+// Import script execution module - inline implementation since the html module
+// is not directly accessible from impls
+const ScriptExecution = struct {
+    /// Prepare a script element for execution
+    /// Currently a simplified version that handles inline classic scripts only
+    pub fn prepareScriptElement(allocator: std.mem.Allocator, script_element: *runtime.Instance) !bool {
+        // Check if already started
+        if (HTMLScriptElementImpl.hasAlreadyStarted(script_element)) {
+            return false;
+        }
+
+        // Get parser document
+        const parser_document = HTMLScriptElementImpl.getParserDocument(script_element);
+
+        // Clear parser document temporarily
+        HTMLScriptElementImpl.setParserDocument(script_element, null);
+
+        // Get source text from element's text content
+        const source_text = getScriptSourceText(allocator, script_element) catch return false;
+        defer if (source_text.len > 0) allocator.free(source_text);
+
+        // If no src and no source text, return
+        if (!hasAttribute(script_element, "src") and source_text.len == 0) {
+            return false;
+        }
+
+        // Check if connected
+        if (!isConnected(script_element)) {
+            return false;
+        }
+
+        // Determine script type
+        const script_type = determineScriptType(script_element);
+        if (script_type == .null) {
+            return false;
+        }
+
+        // Restore parser document if was parser-inserted
+        if (parser_document) |pd| {
+            HTMLScriptElementImpl.setParserDocument(script_element, pd);
+            HTMLScriptElementImpl.clearForceAsync(script_element);
+        }
+
+        // Mark as already started
+        HTMLScriptElementImpl.setAlreadyStarted(script_element, true);
+
+        // Set preparation-time document
+        const node_doc = getNodeDocument(script_element);
+        HTMLScriptElementImpl.setPreparationTimeDocument(script_element, node_doc);
+
+        // Check scripting enabled
+        if (node_doc) |doc| {
+            if (!DocumentImpl.isScriptingEnabled(doc)) {
+                return false;
+            }
+        }
+
+        // Set script type
+        HTMLScriptElementImpl.setScriptType(script_element, script_type);
+
+        // For inline classic scripts without external src, execute immediately
+        if (!hasAttribute(script_element, "src")) {
+            if (script_type == .classic) {
+                // Cache source text
+                HTMLScriptElementImpl.cacheSourceText(script_element, source_text) catch return false;
+
+                // Set result
+                const script = HTMLScriptElementImpl.ClassicScript.init(source_text, "");
+                HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
+
+                // Execute (if parser-inserted and inline, execute immediately)
+                if (parser_document != null) {
+                    executeScriptElement(allocator, script_element) catch {};
+                }
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    /// Execute a prepared script element
+    fn executeScriptElement(allocator: std.mem.Allocator, script_element: *runtime.Instance) !void {
+        _ = allocator;
+
+        const node_doc = getNodeDocument(script_element) orelse return;
+        const prep_doc = HTMLScriptElementImpl.getPreparationTimeDocument(script_element);
+
+        if (prep_doc != node_doc) {
+            return;
+        }
+
+        const script_type = HTMLScriptElementImpl.getScriptType(script_element);
+        if (script_type != .classic) {
+            return; // Only classic scripts supported for now
+        }
+
+        // Get old current script
+        const old_script = DocumentImpl.getCurrentScript(node_doc);
+
+        // Set current script
+        DocumentImpl.setCurrentScript(node_doc, script_element);
+        defer DocumentImpl.setCurrentScript(node_doc, old_script);
+
+        // Run the script
+        runClassicScript(script_element) catch |err| {
+            std.debug.print("Script execution error: {}\n", .{err});
+        };
+    }
+
+    /// Run a classic script using V8
+    fn runClassicScript(script_element: *runtime.Instance) !void {
+        const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
+
+        // Get V8 FFI
+        const v8 = @import("v8");
+        const ffi = v8.ffi;
+
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse {
+            std.debug.print("No V8 isolate for script execution\n", .{});
+            return;
+        };
+
+        const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            std.debug.print("No V8 context for script execution\n", .{});
+            return;
+        };
+
+        const source_str = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse {
+            return;
+        };
+        defer ffi.v8_String_Dispose(source_str);
+
+        const script = ffi.v8_Script_Compile(context, source_str) orelse {
+            std.debug.print("Script compile failed\n", .{});
+            return;
+        };
+        defer ffi.v8_Script_Dispose(script);
+
+        _ = ffi.v8_Script_Run(context, script);
+    }
+
+    // Helper functions
+
+    fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
+        if (ElementImpl.getInternal(element)) |internal| {
+            for (internal.attributes.items) |attr| {
+                if (std.mem.eql(u8, attr.local_name, name)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
+        if (ElementImpl.getInternal(element)) |internal| {
+            for (internal.attributes.items) |attr| {
+                if (std.mem.eql(u8, attr.local_name, name)) {
+                    return attr.value;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn isConnected(element: *runtime.Instance) bool {
+        return getNodeDocument(element) != null;
+    }
+
+    fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
+        if (NodeImpl.getInternalState(node)) |internal| {
+            return internal.owner_document;
+        }
+        return null;
+    }
+
+    fn getScriptSourceText(allocator: std.mem.Allocator, element: *runtime.Instance) ![]const u8 {
+        var result: std.ArrayListUnmanaged(u8) = .{};
+        errdefer result.deinit(allocator);
+
+        try collectTextContent(element, &result, allocator);
+
+        if (result.items.len == 0) {
+            result.deinit(allocator);
+            return "";
+        }
+
+        return try result.toOwnedSlice(allocator);
+    }
+
+    fn collectTextContent(node: *runtime.Instance, result: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator) !void {
+        const node_type = NodeImpl.getNodeType(node) orelse return;
+
+        if (node_type == NodeImpl.NodeType.TEXT_NODE) {
+            // Text inherits from CharacterData, which stores the actual data
+            if (CharacterDataImpl.getInternalState(node)) |char_internal| {
+                try result.appendSlice(allocator, char_internal.data);
+            }
+        } else {
+            var child = NodeImpl.getFirstChild(node);
+            while (child) |c| {
+                try collectTextContent(c, result, allocator);
+                child = NodeImpl.getNextSibling(c);
+            }
+        }
+    }
+
+    fn determineScriptType(element: *runtime.Instance) HTMLScriptElementImpl.ScriptType {
+        const type_attr = getAttribute(element, "type") orelse "";
+        const lang_attr = getAttribute(element, "language") orelse "";
+
+        var type_string: []const u8 = undefined;
+
+        if (type_attr.len == 0) {
+            if (lang_attr.len == 0) {
+                type_string = "text/javascript";
+            } else if (std.ascii.eqlIgnoreCase(lang_attr, "javascript")) {
+                type_string = "text/javascript";
+            } else {
+                return .null;
+            }
+        } else {
+            type_string = std.mem.trim(u8, type_attr, " \t\n\r\x0c");
+        }
+
+        if (isJavaScriptMimeType(type_string)) {
+            return .classic;
+        }
+
+        if (std.ascii.eqlIgnoreCase(type_string, "module")) {
+            return .module;
+        }
+
+        if (std.ascii.eqlIgnoreCase(type_string, "importmap")) {
+            return .importmap;
+        }
+
+        return .null;
+    }
+
+    fn isJavaScriptMimeType(mime_type: []const u8) bool {
+        var lower_buf: [64]u8 = undefined;
+        const len = @min(mime_type.len, 64);
+        for (0..len) |i| {
+            lower_buf[i] = std.ascii.toLower(mime_type[i]);
+        }
+        const lower = lower_buf[0..len];
+
+        const js_types = [_][]const u8{
+            "application/ecmascript",
+            "application/javascript",
+            "text/ecmascript",
+            "text/javascript",
+        };
+
+        for (js_types) |js_type| {
+            if (std.mem.startsWith(u8, lower, js_type)) {
+                if (lower.len == js_type.len or
+                    (lower.len > js_type.len and lower[js_type.len] == ';'))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+};
+
+const script_execution = ScriptExecution;
 
 /// Error type for HTML parsing operations
 pub const ParseError = error{
@@ -349,6 +622,17 @@ fn convertTreeNodeToDom(
         // Recursively convert children
         try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document);
 
+        // After converting a script element's children, prepare and potentially execute it
+        if (tree_child.node_type == .element) {
+            if (tree_child.local_name) |name| {
+                if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
+                    _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
+                        std.debug.print("Script preparation error: {}\n", .{err});
+                    };
+                }
+            }
+        }
+
         child = tree_child.next_sibling;
     }
 }
@@ -370,6 +654,21 @@ fn convertChildrenToDom(
 
         // Recursively convert children
         try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document);
+
+        // After converting a script element's children, prepare and potentially execute it
+        // This happens after the script's text content has been added
+        if (tree_child.node_type == .element) {
+            if (tree_child.local_name) |name| {
+                if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
+                    // Prepare the script element per HTML Standard §4.12.1.1
+                    // This will execute inline classic scripts immediately
+                    _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
+                        // Script preparation error - log but don't fail parsing
+                        std.debug.print("Script preparation error: {}\n", .{err});
+                    };
+                }
+            }
+        }
 
         child = tree_child.next_sibling;
     }
@@ -400,14 +699,26 @@ fn createElementNode(
 ) ParseError!*runtime.Instance {
     const local_name = tree_node.local_name orelse return error.InvalidStateError;
 
-    // Create the element
-    const element = ElementImpl.init(
-        allocator,
-        interfaces.Element.State,
-        &interfaces.Element.vtable,
-        ctx,
-    ) catch return error.OutOfMemory;
-    errdefer ElementImpl.deinit(element);
+    // Check if this is a script element
+    const is_script = std.mem.eql(u8, local_name, "script") and
+        tree_node.namespace == .html;
+
+    // Create the appropriate element type
+    const element = if (is_script)
+        HTMLScriptElementImpl.init(
+            allocator,
+            interfaces.HTMLScriptElement.State,
+            &interfaces.HTMLScriptElement.vtable,
+            ctx,
+        ) catch return error.OutOfMemory
+    else
+        ElementImpl.init(
+            allocator,
+            interfaces.Element.State,
+            &interfaces.Element.vtable,
+            ctx,
+        ) catch return error.OutOfMemory;
+    errdefer if (is_script) HTMLScriptElementImpl.deinit(element) else ElementImpl.deinit(element);
 
     // Set node type
     NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch return error.InvalidStateError;
@@ -424,6 +735,12 @@ fn createElementNode(
     // Set owner document
     if (owner_document) |doc| {
         NodeImpl.setOwnerDocument(element, doc) catch return error.InvalidStateError;
+
+        // For script elements, set parser_document (marks as parser-inserted)
+        if (is_script) {
+            HTMLScriptElementImpl.setParserDocument(element, doc);
+            HTMLScriptElementImpl.clearForceAsync(element);
+        }
     }
 
     // Add attributes

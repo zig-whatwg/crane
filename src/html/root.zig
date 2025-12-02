@@ -88,6 +88,14 @@ pub const ParseErrorCollector = parser.ParseErrorCollector;
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");
 
+// Script Execution (§4.12.1)
+pub const script_execution = @import("script_execution.zig");
+
+// Re-export script execution types
+pub const prepareScriptElement = script_execution.prepareScriptElement;
+pub const executeScriptElement = script_execution.executeScriptElement;
+pub const ScriptExecutionError = script_execution.ScriptExecutionError;
+
 test {
     std.testing.refAllDecls(@This());
 }

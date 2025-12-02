@@ -153,6 +153,36 @@ pub const InternalState = struct {
     // === Event handlers storage (using string keys for handler names) ===
     event_handlers: std.StringHashMap(typedefs.EventHandler),
 
+    // === Script execution state (HTML Standard §4.12.1.1) ===
+
+    /// Pending parsing-blocking script
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#pending-parsing-blocking-script
+    pending_parsing_blocking_script: ?*runtime.Instance,
+
+    /// Set of scripts that will execute as soon as possible
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
+    scripts_to_execute_asap: std.ArrayList(*runtime.Instance),
+
+    /// List of scripts that will execute in order as soon as possible
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible
+    scripts_to_execute_in_order_asap: std.ArrayList(*runtime.Instance),
+
+    /// List of scripts that will execute when document has finished parsing
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing
+    scripts_to_execute_when_parsing_finished: std.ArrayList(*runtime.Instance),
+
+    /// The currently executing script element (for document.currentScript)
+    /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
+    current_script: ?*runtime.Instance,
+
+    /// Ignore-destructive-writes counter
+    /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
+    ignore_destructive_writes_counter: u32,
+
+    /// Whether scripting is enabled for this document
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
+    scripting_enabled: bool,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -196,6 +226,14 @@ pub const InternalState = struct {
             .style_sheets = null,
             // Event handlers
             .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
+            // Script execution state
+            .pending_parsing_blocking_script = null,
+            .scripts_to_execute_asap = .{},
+            .scripts_to_execute_in_order_asap = .{},
+            .scripts_to_execute_when_parsing_finished = .{},
+            .current_script = null,
+            .ignore_destructive_writes_counter = 0,
+            .scripting_enabled = true, // Default to true for browser environments
         };
     }
 
@@ -239,6 +277,11 @@ pub const InternalState = struct {
 
         // Event handlers
         self.event_handlers.deinit();
+
+        // Script execution lists (don't own the script elements, just the list storage)
+        self.scripts_to_execute_asap.deinit(self.allocator);
+        self.scripts_to_execute_in_order_asap.deinit(self.allocator);
+        self.scripts_to_execute_when_parsing_finished.deinit(self.allocator);
     }
 };
 
@@ -3998,4 +4041,135 @@ pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const source_internal = getInternal(source) orelse return error.InvalidStateError;
     internal.origin = source_internal.origin;
+}
+
+// =============================================================================
+// Script Execution Management (HTML Standard §4.12.1.1)
+// =============================================================================
+
+/// Get pending parsing-blocking script
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#pending-parsing-blocking-script
+pub fn getPendingParsingBlockingScript(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.pending_parsing_blocking_script;
+}
+
+/// Set pending parsing-blocking script
+pub fn setPendingParsingBlockingScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.pending_parsing_blocking_script = script;
+    }
+}
+
+/// Add script to "execute as soon as possible" set
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
+pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.scripts_to_execute_asap.append(script);
+}
+
+/// Remove script from "execute as soon as possible" set
+pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    for (internal.scripts_to_execute_asap.items, 0..) |s, i| {
+        if (s == script) {
+            _ = internal.scripts_to_execute_asap.orderedRemove(i);
+            return;
+        }
+    }
+}
+
+/// Add script to "execute in order as soon as possible" list
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible
+pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.scripts_to_execute_in_order_asap.append(script);
+}
+
+/// Get first script in "execute in order" list
+pub fn getFirstScriptToExecuteInOrder(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
+        return internal.scripts_to_execute_in_order_asap.items[0];
+    }
+    return null;
+}
+
+/// Remove first script from "execute in order" list
+pub fn removeFirstScriptFromExecuteInOrder(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
+        _ = internal.scripts_to_execute_in_order_asap.orderedRemove(0);
+    }
+}
+
+/// Add script to "execute when document has finished parsing" list
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing
+pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.scripts_to_execute_when_parsing_finished.append(script);
+}
+
+/// Get scripts to execute when parsing finished
+pub fn getScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) []const *runtime.Instance {
+    const internal = getInternal(instance) orelse return &.{};
+    return internal.scripts_to_execute_when_parsing_finished.items;
+}
+
+/// Clear scripts to execute when parsing finished
+pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.scripts_to_execute_when_parsing_finished.clearRetainingCapacity();
+    }
+}
+
+/// Get currently executing script (for document.currentScript)
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
+pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.current_script;
+}
+
+/// Set currently executing script
+pub fn setCurrentScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.current_script = script;
+    }
+}
+
+/// Increment ignore-destructive-writes counter
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
+pub fn incrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.ignore_destructive_writes_counter += 1;
+    }
+}
+
+/// Decrement ignore-destructive-writes counter
+pub fn decrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        if (internal.ignore_destructive_writes_counter > 0) {
+            internal.ignore_destructive_writes_counter -= 1;
+        }
+    }
+}
+
+/// Check if destructive writes should be ignored
+pub fn shouldIgnoreDestructiveWrites(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.ignore_destructive_writes_counter > 0;
+}
+
+/// Check if scripting is enabled
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
+pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.scripting_enabled;
+}
+
+/// Set scripting enabled flag
+pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
+    if (getInternal(instance)) |internal| {
+        internal.scripting_enabled = enabled;
+    }
 }

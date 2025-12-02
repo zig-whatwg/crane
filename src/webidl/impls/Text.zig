@@ -62,7 +62,8 @@ pub const InternalState = struct {
 };
 
 /// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+/// Made public for use by HTMLParser and other modules that need text content
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return getInternalFromRegistry(instance);
 }
 
