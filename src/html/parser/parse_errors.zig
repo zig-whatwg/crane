@@ -79,6 +79,9 @@ pub const ParseErrorCode = enum {
     control_character_in_input_stream,
     noncharacter_in_input_stream,
     surrogate_in_input_stream,
+
+    // Tree construction errors (for foreign content, etc.)
+    unexpected_token_in_foreign_content,
 };
 
 /// Get a human-readable description for a parse error code.
@@ -133,6 +136,7 @@ pub fn getErrorDescription(code: ParseErrorCode) []const u8 {
         .control_character_in_input_stream => "Control character in input stream",
         .noncharacter_in_input_stream => "Noncharacter in input stream",
         .surrogate_in_input_stream => "Surrogate in input stream",
+        .unexpected_token_in_foreign_content => "Unexpected token in foreign content",
     };
 }
 

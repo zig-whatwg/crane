@@ -654,10 +654,348 @@ pub const TreeBuilder = struct {
     }
 
     /// Process token in foreign content.
+    ///
+    /// HTML Standard §13.2.6.5: The rules for parsing tokens in foreign content.
     fn processTokenInForeignContent(self: *TreeBuilder, token: Token) Allocator.Error!void {
-        // TODO: Implement foreign content handling
-        // For now, fall back to HTML content handling
-        try self.processTokenInHtmlContent(token);
+        switch (token) {
+            .character => |char| {
+                if (char == 0x0000) {
+                    // NULL: Parse error, insert U+FFFD REPLACEMENT CHARACTER
+                    self.reportError(.unexpected_null_character);
+                    try self.insertCharacter(0xFFFD);
+                } else if (isHtmlWhitespace(char)) {
+                    // Whitespace: Insert the token's character
+                    try self.insertCharacter(char);
+                } else {
+                    // Any other character: Insert and set frameset-ok to "not ok"
+                    try self.insertCharacter(char);
+                    self.frameset_ok = false;
+                }
+            },
+            .comment => |comment| {
+                // Insert a comment
+                try self.insertComment(comment);
+            },
+            .doctype => {
+                // Parse error, ignore the token
+                self.reportError(.unexpected_token_in_foreign_content);
+            },
+            .start_tag => |tag| {
+                const name = tag.getTagName();
+
+                // Check for HTML breakout tags
+                if (isForeignContentHtmlBreakout(name) or
+                    (std.mem.eql(u8, name, "font") and hasFontBreakoutAttribute(tag)))
+                {
+                    // Parse error
+                    self.reportError(.unexpected_token_in_foreign_content);
+
+                    // Pop elements until we're back in HTML namespace or at an integration point
+                    while (self.open_elements.len > 0) {
+                        const current = self.currentNode() orelse break;
+                        if (current.namespace == .html or
+                            self.isMathMLTextIntegrationPoint(current) or
+                            self.isHtmlIntegrationPoint(current))
+                        {
+                            break;
+                        }
+                        _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                    }
+
+                    // Reprocess the token according to the current insertion mode
+                    try self.processTokenInHtmlContent(token);
+                } else {
+                    // Any other start tag
+                    const adjusted_current = self.adjustedCurrentNode() orelse {
+                        try self.processTokenInHtmlContent(token);
+                        return;
+                    };
+
+                    // Determine namespace for the new element
+                    const element_namespace = adjusted_current.namespace;
+                    var element_name = name;
+
+                    // If in SVG namespace, adjust tag name
+                    if (adjusted_current.namespace == .svg) {
+                        element_name = adjustSvgTagName(name);
+                    }
+
+                    // Create and insert the foreign element
+                    const element = try TreeNode.initElement(self.allocator, element_name, element_namespace);
+
+                    // Copy attributes (with namespace adjustments)
+                    const attrs = tag.attributes.toSlice();
+                    for (attrs) |attr| {
+                        var attr_name = attr.getName();
+                        var attr_namespace: ?Namespace = null;
+
+                        // Adjust foreign attributes
+                        if (adjusted_current.namespace == .mathml) {
+                            const adjusted = adjustMathMLAttribute(attr_name);
+                            attr_name = adjusted.name;
+                        } else if (adjusted_current.namespace == .svg) {
+                            const adjusted = adjustSvgAttribute(attr_name);
+                            attr_name = adjusted.name;
+                        }
+
+                        // Check for namespaced attributes (xlink:, xml:, xmlns:)
+                        const foreign_adjusted = adjustForeignAttribute(attr_name);
+                        attr_name = foreign_adjusted.name;
+                        attr_namespace = foreign_adjusted.namespace;
+
+                        try element.addAttribute(attr_name, attr.getValue(), attr_namespace);
+                    }
+
+                    self.insertAtAppropriatePlace(element);
+                    try self.open_elements.append(element);
+
+                    // If self-closing, pop the element
+                    if (tag.self_closing) {
+                        _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                        // Acknowledge the self-closing flag
+                    }
+                }
+            },
+            .end_tag => |tag| {
+                const name = tag.getTagName();
+
+                // "br" or "p" end tags break out of foreign content
+                if (std.mem.eql(u8, name, "br") or std.mem.eql(u8, name, "p")) {
+                    // Parse error
+                    self.reportError(.unexpected_token_in_foreign_content);
+
+                    // Pop elements until we're back in HTML namespace
+                    while (self.open_elements.len > 0) {
+                        const current = self.currentNode() orelse break;
+                        if (current.namespace == .html or
+                            self.isMathMLTextIntegrationPoint(current) or
+                            self.isHtmlIntegrationPoint(current))
+                        {
+                            break;
+                        }
+                        _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                    }
+
+                    // Reprocess the token
+                    try self.processTokenInHtmlContent(token);
+                } else if (std.mem.eql(u8, name, "script") and
+                    self.currentNode() != null and
+                    self.currentNode().?.namespace == .svg and
+                    self.currentNode().?.hasTagName("script"))
+                {
+                    // SVG script end tag - pop the script element
+                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    // Script execution would happen here
+                } else {
+                    // Any other end tag
+                    var node_index: usize = self.open_elements.len;
+                    while (node_index > 0) {
+                        node_index -= 1;
+                        const node = self.open_elements.get(node_index) orelse break;
+
+                        if (node.namespace == .html) {
+                            // Process according to current insertion mode
+                            try self.processTokenInHtmlContent(token);
+                            return;
+                        }
+
+                        if (node.local_name != null and
+                            std.ascii.eqlIgnoreCase(node.local_name.?, name))
+                        {
+                            // Pop elements up to and including this node
+                            while (self.open_elements.len > node_index) {
+                                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                            }
+                            return;
+                        }
+                    }
+                }
+            },
+            .eof => {
+                // Should not happen - EOF uses HTML content rules
+                try self.processTokenInHtmlContent(token);
+            },
+        }
+    }
+
+    /// Check if tag name is an HTML breakout tag for foreign content.
+    fn isForeignContentHtmlBreakout(name: []const u8) bool {
+        const breakout_tags = [_][]const u8{
+            "b",       "big",  "blockquote", "body",  "br",   "center",
+            "code",    "dd",   "div",        "dl",    "dt",   "em",
+            "embed",   "h1",   "h2",         "h3",    "h4",   "h5",
+            "h6",      "head", "hr",         "i",     "img",  "li",
+            "listing", "menu", "meta",       "nobr",  "ol",   "p",
+            "pre",     "ruby", "s",          "small", "span", "strong",
+            "strike",  "sub",  "sup",        "table", "tt",   "u",
+            "ul",      "var",
+        };
+        for (breakout_tags) |tag| {
+            if (std.mem.eql(u8, name, tag)) return true;
+        }
+        return false;
+    }
+
+    /// Check if font tag has breakout attributes (color, face, size).
+    fn hasFontBreakoutAttribute(tag: TagToken) bool {
+        const attrs = tag.attributes.toSlice();
+        for (attrs) |attr| {
+            const attr_name = attr.getName();
+            if (std.mem.eql(u8, attr_name, "color") or
+                std.mem.eql(u8, attr_name, "face") or
+                std.mem.eql(u8, attr_name, "size"))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Adjust SVG tag name (case correction).
+    fn adjustSvgTagName(name: []const u8) []const u8 {
+        // Map lowercase to proper case for SVG elements
+        const svg_tag_map = [_]struct { from: []const u8, to: []const u8 }{
+            .{ .from = "altglyph", .to = "altGlyph" },
+            .{ .from = "altglyphdef", .to = "altGlyphDef" },
+            .{ .from = "altglyphitem", .to = "altGlyphItem" },
+            .{ .from = "animatecolor", .to = "animateColor" },
+            .{ .from = "animatemotion", .to = "animateMotion" },
+            .{ .from = "animatetransform", .to = "animateTransform" },
+            .{ .from = "clippath", .to = "clipPath" },
+            .{ .from = "feblend", .to = "feBlend" },
+            .{ .from = "fecolormatrix", .to = "feColorMatrix" },
+            .{ .from = "fecomponenttransfer", .to = "feComponentTransfer" },
+            .{ .from = "fecomposite", .to = "feComposite" },
+            .{ .from = "feconvolvematrix", .to = "feConvolveMatrix" },
+            .{ .from = "fediffuselighting", .to = "feDiffuseLighting" },
+            .{ .from = "fedisplacementmap", .to = "feDisplacementMap" },
+            .{ .from = "fedistantlight", .to = "feDistantLight" },
+            .{ .from = "fedropshadow", .to = "feDropShadow" },
+            .{ .from = "feflood", .to = "feFlood" },
+            .{ .from = "fefunca", .to = "feFuncA" },
+            .{ .from = "fefuncb", .to = "feFuncB" },
+            .{ .from = "fefuncg", .to = "feFuncG" },
+            .{ .from = "fefuncr", .to = "feFuncR" },
+            .{ .from = "fegaussianblur", .to = "feGaussianBlur" },
+            .{ .from = "feimage", .to = "feImage" },
+            .{ .from = "femerge", .to = "feMerge" },
+            .{ .from = "femergenode", .to = "feMergeNode" },
+            .{ .from = "femorphology", .to = "feMorphology" },
+            .{ .from = "feoffset", .to = "feOffset" },
+            .{ .from = "fepointlight", .to = "fePointLight" },
+            .{ .from = "fespecularlighting", .to = "feSpecularLighting" },
+            .{ .from = "fespotlight", .to = "feSpotLight" },
+            .{ .from = "fetile", .to = "feTile" },
+            .{ .from = "feturbulence", .to = "feTurbulence" },
+            .{ .from = "foreignobject", .to = "foreignObject" },
+            .{ .from = "glyphref", .to = "glyphRef" },
+            .{ .from = "lineargradient", .to = "linearGradient" },
+            .{ .from = "radialgradient", .to = "radialGradient" },
+            .{ .from = "textpath", .to = "textPath" },
+        };
+
+        for (svg_tag_map) |entry| {
+            if (std.mem.eql(u8, name, entry.from)) {
+                return entry.to;
+            }
+        }
+        return name;
+    }
+
+    /// Adjust MathML attribute (case correction).
+    fn adjustMathMLAttribute(name: []const u8) struct { name: []const u8 } {
+        // MathML attribute adjustment (definitionurl -> definitionURL)
+        if (std.mem.eql(u8, name, "definitionurl")) {
+            return .{ .name = "definitionURL" };
+        }
+        return .{ .name = name };
+    }
+
+    /// Adjust SVG attribute (case correction).
+    fn adjustSvgAttribute(name: []const u8) struct { name: []const u8 } {
+        // SVG attribute case adjustments
+        const svg_attr_map = [_]struct { from: []const u8, to: []const u8 }{
+            .{ .from = "attributename", .to = "attributeName" },
+            .{ .from = "attributetype", .to = "attributeType" },
+            .{ .from = "basefrequency", .to = "baseFrequency" },
+            .{ .from = "baseprofile", .to = "baseProfile" },
+            .{ .from = "calcmode", .to = "calcMode" },
+            .{ .from = "clippathunits", .to = "clipPathUnits" },
+            .{ .from = "diffuseconstant", .to = "diffuseConstant" },
+            .{ .from = "edgemode", .to = "edgeMode" },
+            .{ .from = "filterunits", .to = "filterUnits" },
+            .{ .from = "glyphref", .to = "glyphRef" },
+            .{ .from = "gradienttransform", .to = "gradientTransform" },
+            .{ .from = "gradientunits", .to = "gradientUnits" },
+            .{ .from = "kernelmatrix", .to = "kernelMatrix" },
+            .{ .from = "kernelunitlength", .to = "kernelUnitLength" },
+            .{ .from = "keypoints", .to = "keyPoints" },
+            .{ .from = "keysplines", .to = "keySplines" },
+            .{ .from = "keytimes", .to = "keyTimes" },
+            .{ .from = "lengthadjust", .to = "lengthAdjust" },
+            .{ .from = "limitingconeangle", .to = "limitingConeAngle" },
+            .{ .from = "markerheight", .to = "markerHeight" },
+            .{ .from = "markerunits", .to = "markerUnits" },
+            .{ .from = "markerwidth", .to = "markerWidth" },
+            .{ .from = "maskcontentunits", .to = "maskContentUnits" },
+            .{ .from = "maskunits", .to = "maskUnits" },
+            .{ .from = "numoctaves", .to = "numOctaves" },
+            .{ .from = "pathlength", .to = "pathLength" },
+            .{ .from = "patterncontentunits", .to = "patternContentUnits" },
+            .{ .from = "patterntransform", .to = "patternTransform" },
+            .{ .from = "patternunits", .to = "patternUnits" },
+            .{ .from = "pointsatx", .to = "pointsAtX" },
+            .{ .from = "pointsaty", .to = "pointsAtY" },
+            .{ .from = "pointsatz", .to = "pointsAtZ" },
+            .{ .from = "preservealpha", .to = "preserveAlpha" },
+            .{ .from = "preserveaspectratio", .to = "preserveAspectRatio" },
+            .{ .from = "primitiveunits", .to = "primitiveUnits" },
+            .{ .from = "refx", .to = "refX" },
+            .{ .from = "refy", .to = "refY" },
+            .{ .from = "repeatcount", .to = "repeatCount" },
+            .{ .from = "repeatdur", .to = "repeatDur" },
+            .{ .from = "requiredextensions", .to = "requiredExtensions" },
+            .{ .from = "requiredfeatures", .to = "requiredFeatures" },
+            .{ .from = "specularconstant", .to = "specularConstant" },
+            .{ .from = "specularexponent", .to = "specularExponent" },
+            .{ .from = "spreadmethod", .to = "spreadMethod" },
+            .{ .from = "startoffset", .to = "startOffset" },
+            .{ .from = "stddeviation", .to = "stdDeviation" },
+            .{ .from = "stitchtiles", .to = "stitchTiles" },
+            .{ .from = "surfacescale", .to = "surfaceScale" },
+            .{ .from = "systemlanguage", .to = "systemLanguage" },
+            .{ .from = "tablevalues", .to = "tableValues" },
+            .{ .from = "targetx", .to = "targetX" },
+            .{ .from = "targety", .to = "targetY" },
+            .{ .from = "textlength", .to = "textLength" },
+            .{ .from = "viewbox", .to = "viewBox" },
+            .{ .from = "viewtarget", .to = "viewTarget" },
+            .{ .from = "xchannelselector", .to = "xChannelSelector" },
+            .{ .from = "ychannelselector", .to = "yChannelSelector" },
+            .{ .from = "zoomandpan", .to = "zoomAndPan" },
+        };
+
+        for (svg_attr_map) |entry| {
+            if (std.mem.eql(u8, name, entry.from)) {
+                return .{ .name = entry.to };
+            }
+        }
+        return .{ .name = name };
+    }
+
+    /// Adjust foreign attributes (xlink:, xml:, xmlns: namespace handling).
+    fn adjustForeignAttribute(name: []const u8) struct { name: []const u8, namespace: ?Namespace } {
+        // Check for namespaced attributes
+        if (std.mem.startsWith(u8, name, "xlink:")) {
+            return .{ .name = name[6..], .namespace = null }; // XLink namespace
+        }
+        if (std.mem.startsWith(u8, name, "xml:")) {
+            return .{ .name = name[4..], .namespace = null }; // XML namespace
+        }
+        if (std.mem.eql(u8, name, "xmlns") or std.mem.startsWith(u8, name, "xmlns:")) {
+            return .{ .name = name, .namespace = null }; // XMLNS namespace
+        }
+        return .{ .name = name, .namespace = null };
     }
 
     // =========================================================================
@@ -944,7 +1282,24 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "meta")) {
                     _ = try self.insertHtmlElement(tag);
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
-                    // TODO: Handle charset/encoding
+
+                    // Handle charset/encoding from meta element
+                    // HTML Standard §4.2.5.4: Specifying the document's character encoding
+                    // Check for charset attribute or http-equiv="Content-Type" with charset
+                    if (tag.getAttribute("charset") != null) {
+                        // charset attribute specifies encoding directly
+                        // In a full implementation, this would trigger encoding change
+                        // if parsing a byte stream with tentative encoding
+                    } else if (tag.getAttribute("http-equiv")) |http_equiv| {
+                        const http_equiv_val = http_equiv.getValue();
+                        if (std.ascii.eqlIgnoreCase(http_equiv_val, "Content-Type")) {
+                            // content attribute should contain charset parameter
+                            if (tag.getAttribute("content")) |content| {
+                                _ = extractCharsetFromContentType(content.getValue());
+                                // Would trigger encoding change if needed
+                            }
+                        }
+                    }
                 } else if (std.mem.eql(u8, name, "title")) {
                     try self.parseGenericRCDATA(tag);
                 } else if (std.mem.eql(u8, name, "noscript") and self.scripting_enabled) {
@@ -1248,7 +1603,17 @@ pub const TreeBuilder = struct {
 
         if (std.mem.eql(u8, name, "html")) {
             self.reportError(.invalid_first_character_of_tag_name);
-            // TODO: Add attributes to html element
+
+            // Add attributes from the token to the html element if they don't exist
+            // HTML Standard §13.2.6.4.7: "Otherwise, for each attribute on the token,
+            // check to see if the attribute is already present on the top element of
+            // the stack of open elements. If it is not, add the attribute and its
+            // corresponding value to that element."
+            if (self.open_elements.len > 0) {
+                if (self.open_elements.get(0)) |html_element| {
+                    try self.copyMissingAttributes(html_element, tag);
+                }
+            }
         } else if (std.mem.eql(u8, name, "base") or
             std.mem.eql(u8, name, "basefont") or
             std.mem.eql(u8, name, "bgsound") or
@@ -1263,7 +1628,18 @@ pub const TreeBuilder = struct {
             try self.handleInHeadMode(Token{ .start_tag = tag });
         } else if (std.mem.eql(u8, name, "body")) {
             self.reportError(.invalid_first_character_of_tag_name);
-            // TODO: Add attributes to body element
+
+            // Add attributes to body element if not already present
+            // HTML Standard §13.2.6.4.7: Similar to html element handling
+            // Find the body element (second element on stack if present)
+            if (self.open_elements.len >= 2) {
+                if (self.open_elements.get(1)) |body_candidate| {
+                    if (body_candidate.hasTagName("body")) {
+                        try self.copyMissingAttributes(body_candidate, tag);
+                        self.frameset_ok = false;
+                    }
+                }
+            }
         } else if (std.mem.eql(u8, name, "frameset")) {
             self.reportError(.invalid_first_character_of_tag_name);
             // Ignore unless frameset_ok
@@ -2735,21 +3111,105 @@ pub const TreeBuilder = struct {
     }
 
     /// Reconstruct active formatting elements.
+    /// Reconstruct the active formatting elements.
+    ///
+    /// HTML Standard §13.2.4.3: When the steps below require the UA to
+    /// reconstruct the active formatting elements, the UA must perform
+    /// the following steps.
     fn reconstructActiveFormattingElements(self: *TreeBuilder) !void {
+        // 1. If there are no entries in the list of active formatting elements,
+        //    then there is nothing to reconstruct; stop this algorithm.
         if (self.active_formatting_elements.len == 0) return;
 
-        const last = self.active_formatting_elements.get(self.active_formatting_elements.len - 1) orelse return;
+        // 2. If the last (most recently added) entry in the list of active
+        //    formatting elements is a marker, or if it is an element that is
+        //    in the stack of open elements, then there is nothing to reconstruct;
+        //    stop this algorithm.
+        const last_idx = self.active_formatting_elements.len - 1;
+        const last = self.active_formatting_elements.get(last_idx) orelse return;
         switch (last) {
             .marker => return,
             .element => |elem| {
-                // Check if element is in stack
+                // Check if element is in stack of open elements
                 for (self.open_elements.toSlice()) |open| {
                     if (open == elem.node) return;
                 }
             },
         }
 
-        // TODO: Full reconstruction algorithm
+        // 3. Let entry be the last (most recently added) element in the list
+        //    of active formatting elements.
+        var entry_idx: usize = last_idx;
+
+        // 4. Rewind: If there are no entries before entry in the list of active
+        //    formatting elements, then jump to the step labeled create.
+        rewind: while (entry_idx > 0) {
+            // 5. Let entry be the entry one earlier than entry in the list of
+            //    active formatting elements.
+            entry_idx -= 1;
+
+            // 6. If entry is neither a marker nor an element that is also in
+            //    the stack of open elements, go to the step labeled rewind.
+            const entry = self.active_formatting_elements.get(entry_idx) orelse break :rewind;
+            switch (entry) {
+                .marker => break :rewind,
+                .element => |elem| {
+                    // Check if element is in stack of open elements
+                    var in_stack = false;
+                    for (self.open_elements.toSlice()) |open| {
+                        if (open == elem.node) {
+                            in_stack = true;
+                            break;
+                        }
+                    }
+                    if (in_stack) break :rewind;
+                    // Otherwise continue rewinding
+                },
+            }
+        }
+
+        // 7. Advance: Let entry be the element one later than entry in the
+        //    list of active formatting elements.
+        // 8. Create: Insert an HTML element for the token for which the element
+        //    entry was created, to obtain new element.
+        // 9. Replace the entry for entry in the list with an entry for new element.
+        // 10. If the entry for new element in the list of active formatting
+        //     elements is not the last entry in the list, return to the step
+        //     labeled advance.
+        while (entry_idx < self.active_formatting_elements.len) {
+            // Advance to next entry
+            if (entry_idx < self.active_formatting_elements.len - 1) {
+                entry_idx += 1;
+            }
+
+            const entry = self.active_formatting_elements.get(entry_idx) orelse break;
+            switch (entry) {
+                .marker => break,
+                .element => |elem| {
+                    // Create: Insert an HTML element for the token
+                    const new_element = try self.createElementForToken(elem.token, .html);
+                    self.insertAtAppropriatePlace(new_element);
+                    try self.open_elements.append(new_element);
+
+                    // Replace the entry in the list with the new element
+                    // We need to update the node reference while keeping the same token
+                    const updated_entry = FormattingEntry{
+                        .element = .{
+                            .node = new_element,
+                            .token = elem.token,
+                        },
+                    };
+                    // Replace entry at index
+                    if (entry_idx < self.active_formatting_elements.len) {
+                        const slice = self.active_formatting_elements.toSliceMut();
+                        slice[entry_idx] = updated_entry;
+                    }
+
+                    // If this is the last entry, stop
+                    if (entry_idx >= self.active_formatting_elements.len - 1) break;
+                },
+            }
+        }
     }
 
     /// Adoption agency algorithm (simplified).
@@ -3022,6 +3482,33 @@ pub const TreeBuilder = struct {
         self.clearActiveFormattingToMarker();
         self.insertion_mode = .in_row;
     }
+
+    /// Copy attributes from a token to an element if they don't already exist.
+    ///
+    /// HTML Standard: For each attribute on the token, check if already present
+    /// on the element. If not, add it.
+    fn copyMissingAttributes(self: *TreeBuilder, element: *TreeNode, tag: TagToken) !void {
+        _ = self; // Mark as used
+        const token_attrs = tag.attributes.toSlice();
+        for (token_attrs) |attr| {
+            const attr_name = attr.getName();
+
+            // Check if attribute already exists on element
+            var exists = false;
+            const elem_attrs = element.attributes.toSlice();
+            for (elem_attrs) |existing| {
+                if (std.mem.eql(u8, existing.name, attr_name)) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            // If not present, add it
+            if (!exists) {
+                try element.addAttribute(attr_name, attr.getValue(), null);
+            }
+        }
+    }
 };
 
 // =========================================================================
@@ -3069,6 +3556,40 @@ fn isVoidElement(name: []const u8) bool {
         if (std.mem.eql(u8, name, v)) return true;
     }
     return false;
+}
+
+/// Extract charset from Content-Type header value.
+///
+/// HTML Standard §4.2.5.4: Extracting character encoding from meta element.
+/// Looks for "charset=" parameter in the content-type value.
+fn extractCharsetFromContentType(content: []const u8) ?[]const u8 {
+    // Simple implementation: look for "charset=" case-insensitively
+    var i: usize = 0;
+    while (i + 8 <= content.len) {
+        if (std.ascii.eqlIgnoreCase(content[i .. i + 8], "charset=")) {
+            var start = i + 8;
+            // Skip optional quotes
+            if (start < content.len and (content[start] == '"' or content[start] == '\'')) {
+                const quote = content[start];
+                start += 1;
+                // Find closing quote
+                var end = start;
+                while (end < content.len and content[end] != quote) {
+                    end += 1;
+                }
+                return content[start..end];
+            } else {
+                // Find end of value (semicolon or end of string)
+                var end = start;
+                while (end < content.len and content[end] != ';' and content[end] != ' ') {
+                    end += 1;
+                }
+                return content[start..end];
+            }
+        }
+        i += 1;
+    }
+    return null;
 }
 
 // =========================================================================
