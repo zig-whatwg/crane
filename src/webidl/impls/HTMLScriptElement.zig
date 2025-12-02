@@ -718,17 +718,51 @@ pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 }
 
 /// Setter for attributionSrc
+/// Setter for attributionSrc
 /// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
 pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     try setContentAttribute(instance, "attributionsrc", runtime.DOMString.initInterned(value));
-    return error.NotImplemented;
 }
 
-/// Operation: supports
+/// Operation: supports (static method)
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-supports
+///
+/// The static supports(type) method steps are:
+/// 1. If type is "classic", then return true.
+/// 2. If type is "module", then return true.
+/// 3. If type is "importmap", then return true.
+/// 4. If type is "speculationrules", then return true.
+/// 5. Return false.
+///
+/// Note: The type argument has to exactly match these values; we do not perform
+/// an ASCII case-insensitive match.
 pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = @"type";
-    return error.NotImplemented;
+    _ = instance; // Static method - instance not used
+
+    const type_str = @"type".asSlice();
+
+    // Step 1: If type is "classic", return true
+    if (std.mem.eql(u8, type_str, "classic")) {
+        return true;
+    }
+
+    // Step 2: If type is "module", return true
+    if (std.mem.eql(u8, type_str, "module")) {
+        return true;
+    }
+
+    // Step 3: If type is "importmap", return true
+    if (std.mem.eql(u8, type_str, "importmap")) {
+        return true;
+    }
+
+    // Step 4: If type is "speculationrules", return true
+    if (std.mem.eql(u8, type_str, "speculationrules")) {
+        return true;
+    }
+
+    // Step 5: Return false
+    return false;
 }
 
 // =============================================================================
