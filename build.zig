@@ -1265,6 +1265,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Add csp to impls for Document CSP checks
+    impls_mod.addImport("csp", csp_mod);
+
     // HR-Time module (W3C High Resolution Time)
     const hr_time_mod = b.addModule("hr_time", .{
         .root_source_file = b.path("src/hr_time/root.zig"),

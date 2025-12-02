@@ -64,6 +64,9 @@ pub const External = opaque {};
 /// V8 Script - Compiled JavaScript code
 pub const Script = opaque {};
 
+/// V8 Module - ES Module
+pub const Module = opaque {};
+
 /// Property attributes (flags for property descriptors)
 /// These match V8's PropertyAttribute enum
 pub const PropertyAttribute = struct {
@@ -420,6 +423,128 @@ pub extern fn v8_Array_Dispose(arr: *Array) void;
 pub extern fn v8_Script_Compile(context: *Context, source: *String) ?*Script;
 pub extern fn v8_Script_Run(context: *Context, script: *Script) ?*Value;
 pub extern fn v8_Script_Dispose(script: *Script) void;
+
+// ============================================================================
+// ES Module API
+// ============================================================================
+
+/// Module status values
+/// Spec: https://tc39.es/ecma262/#sec-moduleevaluation
+pub const ModuleStatus = enum(c_int) {
+    Uninstantiated = 0,
+    Instantiating = 1,
+    Instantiated = 2,
+    Evaluating = 3,
+    Evaluated = 4,
+    Errored = 5,
+};
+
+/// Module resolve callback function type
+/// Called by V8 when a module imports another module.
+/// Arguments:
+///   user_data: Context pointer passed to v8_Module_SetResolveCallback
+///   specifier: The import specifier (e.g., "./module.js")
+///   specifier_len: Length of specifier string
+///   referrer_module: The module that contains the import
+/// Returns:
+///   Global<Module>* for the resolved module, or null on error
+pub const ModuleResolveCallback = *const fn (
+    user_data: ?*anyopaque,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    referrer_module: ?*anyopaque,
+) callconv(.c) ?*anyopaque;
+
+/// Set the module resolve callback for import resolution
+/// This callback is invoked when V8 needs to resolve module imports.
+///
+/// @param user_data - Context pointer passed to callback
+/// @param callback - Function called to resolve imports
+pub extern fn v8_Module_SetResolveCallback(
+    user_data: ?*anyopaque,
+    callback: ModuleResolveCallback,
+) void;
+
+/// Compile source code as an ES Module
+/// Returns null on compilation error (syntax error, etc.)
+///
+/// @param context - V8 context for compilation
+/// @param source - Module source code as V8 String
+/// @param resource_name - Module specifier/URL (for error messages and source maps)
+/// @return Global<Module>* or null on error
+pub extern fn v8_Module_Compile(
+    context: *Context,
+    source: *String,
+    resource_name: ?*String,
+) ?*Module;
+
+/// Get the number of import requests in a module
+/// Used to iterate over module's import statements.
+///
+/// @param module - The compiled module
+/// @return Number of imports
+pub extern fn v8_Module_GetModuleRequestsLength(module: *Module) c_int;
+
+/// Get the module specifier (import path) at the given index
+/// Caller must free the returned string with v8_FreeString.
+///
+/// @param module - The compiled module
+/// @param index - Import index (0 to GetModuleRequestsLength-1)
+/// @return Import specifier string (owned by caller) or null
+pub extern fn v8_Module_GetModuleRequest(module: *Module, index: c_int) ?[*:0]u8;
+
+/// Free a string allocated by v8_Module_GetModuleRequest
+pub extern fn v8_FreeString(str: ?[*:0]u8) void;
+
+/// Get the module's current status
+///
+/// @param module - The module to query
+/// @return ModuleStatus value
+pub extern fn v8_Module_GetStatus(module: *Module) c_int;
+
+/// Instantiate the module (link all imports)
+/// This resolves all import statements using the registered resolve callback.
+/// Returns false if linking fails (missing imports, circular dependency errors).
+///
+/// @param context - V8 context
+/// @param module - The module to instantiate
+/// @return true on success, false on error
+pub extern fn v8_Module_Instantiate(context: *Context, module: *Module) bool;
+
+/// Evaluate the module (execute top-level code)
+/// The module must be instantiated first.
+/// Returns the module's completion value, or null on error.
+///
+/// @param context - V8 context
+/// @param module - The instantiated module
+/// @return Evaluation result value, or null on error
+pub extern fn v8_Module_Evaluate(context: *Context, module: *Module) ?*Value;
+
+/// Get the module's exception (if status is Errored)
+/// Only valid when GetStatus returns ModuleStatus.Errored.
+///
+/// @param module - The errored module
+/// @return Exception value, or null if not errored
+pub extern fn v8_Module_GetException(module: *Module) ?*Value;
+
+/// Get the module's namespace object (exports)
+/// Returns an object with the module's exported bindings.
+///
+/// @param module - The evaluated module
+/// @return Namespace object, or null if not yet evaluated
+pub extern fn v8_Module_GetModuleNamespace(module: *Module) ?*Object;
+
+/// Get the module's identity hash (for use as map key)
+/// This is a stable identifier for the module instance.
+///
+/// @param module - The module
+/// @return Hash value suitable for use in hash maps
+pub extern fn v8_Module_GetIdentityHash(module: *Module) c_int;
+
+/// Dispose a module handle
+///
+/// @param module - The module to dispose
+pub extern fn v8_Module_Dispose(module: *Module) void;
 
 // Exception handling
 pub extern fn v8_Exception_TypeError(message: *String) ?*Value;

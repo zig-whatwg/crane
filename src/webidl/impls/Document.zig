@@ -37,6 +37,9 @@ const TreeWalkerImpl = @import("TreeWalker.zig");
 const mixins = @import("mixins");
 const ParentNode = mixins.ParentNode;
 
+// Content Security Policy
+const csp = @import("csp");
+
 pub const State = Document.State;
 
 pub const ImplError = error{
@@ -183,6 +186,35 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
     scripting_enabled: bool,
 
+    // === Module Map (HTML Standard §8.1.3.10) ===
+
+    /// Module map for caching compiled ES modules
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
+    /// Key: module specifier (resolved URL), Value: V8 Module handle
+    module_map: std.StringHashMap(*anyopaque),
+
+    /// Import map for the document (type="importmap")
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
+    /// Key: bare specifier, Value: resolved URL
+    import_map_imports: std.StringHashMap([]const u8),
+
+    /// Import map scopes
+    /// Key: scope prefix URL, Value: map of specifier -> resolved URL
+    import_map_scopes: std.StringHashMap(std.StringHashMap([]const u8)),
+
+    /// Whether an import map has been acquired for this document
+    import_map_acquired: bool,
+
+    // === Content Security Policy (CSP Level 3) ===
+
+    /// CSP list for this document
+    /// Spec: https://www.w3.org/TR/CSP3/ §2.2
+    /// Contains all policies applied to this document via headers or meta tags.
+    csp_list: ?*csp.CSPList,
+
+    /// Document origin for CSP 'self' matching
+    csp_self_origin: ?csp.Origin,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -234,6 +266,14 @@ pub const InternalState = struct {
             .current_script = null,
             .ignore_destructive_writes_counter = 0,
             .scripting_enabled = true, // Default to true for browser environments
+            // Module map and import map
+            .module_map = std.StringHashMap(*anyopaque).init(allocator),
+            .import_map_imports = std.StringHashMap([]const u8).init(allocator),
+            .import_map_scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(allocator),
+            .import_map_acquired = false,
+            // CSP
+            .csp_list = null,
+            .csp_self_origin = null,
         };
     }
 
@@ -282,6 +322,55 @@ pub const InternalState = struct {
         self.scripts_to_execute_asap.deinit(self.allocator);
         self.scripts_to_execute_in_order_asap.deinit(self.allocator);
         self.scripts_to_execute_when_parsing_finished.deinit(self.allocator);
+
+        // Module map - dispose V8 module handles and free keys
+        {
+            const v8 = @import("v8");
+            var mod_it = self.module_map.iterator();
+            while (mod_it.next()) |entry| {
+                // Dispose V8 module handle
+                const module: *v8.ffi.Module = @ptrCast(@alignCast(entry.value_ptr.*));
+                v8.ffi.v8_Module_Dispose(module);
+                // Free the key (URL string)
+                self.allocator.free(entry.key_ptr.*);
+            }
+            self.module_map.deinit();
+        }
+
+        // Import map - free keys and values
+        {
+            var imp_it = self.import_map_imports.iterator();
+            while (imp_it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
+            self.import_map_imports.deinit();
+        }
+
+        // Import map scopes
+        {
+            var scope_it = self.import_map_scopes.iterator();
+            while (scope_it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                // Free nested map
+                var nested_it = entry.value_ptr.iterator();
+                while (nested_it.next()) |nested_entry| {
+                    self.allocator.free(nested_entry.key_ptr.*);
+                    self.allocator.free(nested_entry.value_ptr.*);
+                }
+                entry.value_ptr.deinit();
+            }
+            self.import_map_scopes.deinit();
+        }
+
+        // CSP list and origin
+        if (self.csp_list) |csp_list| {
+            csp_list.deinit();
+            self.allocator.destroy(csp_list);
+        }
+        if (self.csp_self_origin) |*origin| {
+            origin.deinit();
+        }
     }
 };
 
@@ -2686,10 +2775,31 @@ pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instan
 /// HTML §8.4.3 - Writes text to the document
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-write
 ///
-/// Simplified implementation that appends parsed HTML to document body.
-/// Full implementation requires insertion point tracking and parser integration.
+/// Algorithm (HTML §8.4.3.2 "document.write()"):
+/// 1. If document is an XML document, throw InvalidStateError
+/// 2. If document's throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+/// 3. If document is not active, return
+/// 4. If document's origin is opaque, return
+/// 5. If ignore-destructive-writes counter > 0 and insert-only-flag is not set, return
+/// 6. (Steps 6-13 handle document open/parser state - simplified here)
+///
+/// This implementation handles the ignore-destructive-writes counter check.
 pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If this is an XML document, throw InvalidStateError
+    if (internal.doc_type == .xml) {
+        return error.InvalidStateError;
+    }
+
+    // Step 5: If ignore-destructive-writes counter > 0, return
+    // This prevents document.write() from being called during external script execution
+    // or module script execution, which would be destructive to the document.
+    // Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
+    if (internal.ignore_destructive_writes_counter > 0) {
+        // The call is silently ignored per spec - not an error
+        return;
+    }
 
     // Concatenate all text arguments
     var total_len: usize = 0;
@@ -3698,8 +3808,19 @@ fn collectElementsByName(
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-writeln
 ///
 /// Same as write() but appends a newline character.
+/// Follows the same algorithm as write() with ignore-destructive-writes handling.
 pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If this is an XML document, throw InvalidStateError
+    if (internal.doc_type == .xml) {
+        return error.InvalidStateError;
+    }
+
+    // Step 5: If ignore-destructive-writes counter > 0, return
+    if (internal.ignore_destructive_writes_counter > 0) {
+        return;
+    }
 
     // Calculate total length including newline
     var total_len: usize = 0;
@@ -4187,4 +4308,376 @@ pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
     if (getInternal(instance)) |internal| {
         internal.scripting_enabled = enabled;
     }
+}
+
+// =============================================================================
+// Module Map Management (HTML Standard §8.1.3.10)
+// =============================================================================
+
+/// Get a module from the module map by URL
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
+///
+/// Returns the cached V8 Module handle if found, null otherwise.
+pub fn getModule(instance: *runtime.Instance, url: []const u8) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return internal.module_map.get(url);
+}
+
+/// Store a module in the module map
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
+///
+/// The module handle will be disposed when the document is destroyed.
+pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaque) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // If a module already exists for this URL, dispose the old one first
+    if (internal.module_map.get(url)) |old_module| {
+        const v8 = @import("v8");
+        const mod: *v8.ffi.Module = @ptrCast(@alignCast(old_module));
+        v8.ffi.v8_Module_Dispose(mod);
+        // Remove old entry (key is already allocated)
+        _ = internal.module_map.remove(url);
+    }
+
+    // Clone the URL for storage
+    const owned_url = try internal.allocator.dupe(u8, url);
+    errdefer internal.allocator.free(owned_url);
+
+    try internal.module_map.put(owned_url, module);
+}
+
+/// Check if a module exists in the module map
+pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.module_map.contains(url);
+}
+
+// =============================================================================
+// Import Map Management (HTML Standard §8.1.6)
+// =============================================================================
+
+/// Check if import map has been acquired
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
+///
+/// Once an import map is acquired, subsequent import maps are ignored.
+pub fn hasImportMapAcquired(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.import_map_acquired;
+}
+
+/// Mark import map as acquired
+pub fn setImportMapAcquired(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.import_map_acquired = true;
+    }
+}
+
+/// Add an import mapping
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
+///
+/// Maps a bare specifier to a resolved URL.
+pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Clone strings for storage
+    const owned_specifier = try internal.allocator.dupe(u8, specifier);
+    errdefer internal.allocator.free(owned_specifier);
+
+    const owned_url = try internal.allocator.dupe(u8, resolved_url);
+    errdefer internal.allocator.free(owned_url);
+
+    // Remove old mapping if exists
+    if (internal.import_map_imports.getKey(specifier)) |old_key| {
+        if (internal.import_map_imports.get(old_key)) |old_value| {
+            internal.allocator.free(old_value);
+        }
+        _ = internal.import_map_imports.remove(old_key);
+        internal.allocator.free(old_key);
+    }
+
+    try internal.import_map_imports.put(owned_specifier, owned_url);
+}
+
+/// Resolve an import specifier using the import map
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+///
+/// Returns the resolved URL if found in the import map, null otherwise.
+pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+
+    // Step 1: Check scopes (more specific takes precedence)
+    // Find the longest matching scope prefix
+    var best_scope: ?[]const u8 = null;
+    var best_scope_len: usize = 0;
+
+    var scope_it = internal.import_map_scopes.keyIterator();
+    while (scope_it.next()) |scope_key| {
+        if (std.mem.startsWith(u8, referrer_url, scope_key.*)) {
+            if (scope_key.len > best_scope_len) {
+                best_scope = scope_key.*;
+                best_scope_len = scope_key.len;
+            }
+        }
+    }
+
+    // Check the matching scope's mappings
+    if (best_scope) |scope| {
+        if (internal.import_map_scopes.get(scope)) |scope_map| {
+            if (scope_map.get(specifier)) |resolved| {
+                return resolved;
+            }
+        }
+    }
+
+    // Step 2: Check top-level imports
+    return internal.import_map_imports.get(specifier);
+}
+
+/// Add a scoped import mapping
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
+pub fn addScopedImportMapping(
+    instance: *runtime.Instance,
+    scope_prefix: []const u8,
+    specifier: []const u8,
+    resolved_url: []const u8,
+) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Get or create the scope map
+    const scope_map_ptr = internal.import_map_scopes.getPtr(scope_prefix) orelse blk: {
+        const owned_scope = try internal.allocator.dupe(u8, scope_prefix);
+        errdefer internal.allocator.free(owned_scope);
+
+        const new_map = std.StringHashMap([]const u8).init(internal.allocator);
+        try internal.import_map_scopes.put(owned_scope, new_map);
+        break :blk internal.import_map_scopes.getPtr(scope_prefix).?;
+    };
+
+    // Clone strings for storage
+    const owned_specifier = try internal.allocator.dupe(u8, specifier);
+    errdefer internal.allocator.free(owned_specifier);
+
+    const owned_url = try internal.allocator.dupe(u8, resolved_url);
+    errdefer internal.allocator.free(owned_url);
+
+    try scope_map_ptr.put(owned_specifier, owned_url);
+}
+
+// =============================================================================
+// Content Security Policy Management (CSP Level 3)
+// =============================================================================
+
+/// Get the CSP list for this document
+/// Spec: https://www.w3.org/TR/CSP3/ §2.2
+pub fn getCSPList(instance: *runtime.Instance) ?*csp.CSPList {
+    const internal = getInternal(instance) orelse return null;
+    return internal.csp_list;
+}
+
+/// Set the CSP list for this document
+/// Takes ownership of the CSP list.
+pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Clean up existing CSP list if any
+    if (internal.csp_list) |old_list| {
+        old_list.deinit();
+        internal.allocator.destroy(old_list);
+    }
+
+    internal.csp_list = csp_list;
+}
+
+/// Add a policy to the document's CSP list
+/// Spec: https://www.w3.org/TR/CSP3/ §2.2.1
+pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Create CSP list if it doesn't exist
+    if (internal.csp_list == null) {
+        const new_list = try internal.allocator.create(csp.CSPList);
+        new_list.* = csp.CSPList.init(internal.allocator);
+        internal.csp_list = new_list;
+    }
+
+    try internal.csp_list.?.append(policy);
+}
+
+/// Get the document's CSP self-origin for 'self' matching
+pub fn getCSPSelfOrigin(instance: *runtime.Instance) ?*const csp.Origin {
+    const internal = getInternal(instance) orelse return null;
+    if (internal.csp_self_origin) |*origin| {
+        return origin;
+    }
+    return null;
+}
+
+/// Set the document's CSP self-origin
+/// Used for 'self' keyword matching in CSP directives.
+pub fn setCSPSelfOrigin(instance: *runtime.Instance, scheme: []const u8, host: []const u8, port: ?u16) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Clean up existing origin if any
+    if (internal.csp_self_origin) |*origin| {
+        origin.deinit();
+    }
+
+    internal.csp_self_origin = try csp.Origin.create(internal.allocator, scheme, host, port);
+}
+
+/// Check if an inline script is allowed by CSP
+/// Spec: https://www.w3.org/TR/CSP3/ §6.7.3
+///
+/// Returns true if the script is allowed, false if blocked.
+/// This checks script-src (or default-src fallback) for:
+/// - 'unsafe-inline' keyword
+/// - Nonce matching
+/// - Hash matching
+pub fn isInlineScriptAllowedByCSP(
+    instance: *runtime.Instance,
+    nonce: ?[]const u8,
+    hash_algorithm: ?[]const u8,
+    hash_value: ?[]const u8,
+) bool {
+    const internal = getInternal(instance) orelse return true; // No document = allow
+    const csp_list = internal.csp_list orelse return true; // No CSP = allow
+
+    // Check each policy
+    for (csp_list.policies.items) |*policy| {
+        // Only check enforcing policies for blocking
+        if (policy.disposition != .enforce) continue;
+
+        // Get effective script-src directive (with fallback to default-src)
+        const directive = csp.fallback.getEffectiveScriptSrcElem(&policy.directive_set) orelse continue;
+
+        // Check if 'strict-dynamic' is present
+        // With strict-dynamic, inline scripts are blocked unless nonced
+        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
+
+        // Check nonce
+        if (nonce) |n| {
+            if (csp.matching.doesNonceMatch(n, &directive.value)) {
+                continue; // Allowed by nonce
+            }
+        }
+
+        // Check hash
+        if (hash_algorithm) |algo| {
+            if (hash_value) |hash| {
+                if (csp.matching.doesHashMatch(algo, hash, &directive.value)) {
+                    continue; // Allowed by hash
+                }
+            }
+        }
+
+        // Check 'unsafe-inline'
+        // Note: 'unsafe-inline' is ignored if nonce or hash is present in the directive
+        if (!has_strict_dynamic and csp.matching.allowsUnsafeInline(&directive.value)) {
+            // Check if there are any nonces or hashes in the directive
+            var has_nonce_or_hash = false;
+            for (directive.value.expressions.items) |expr| {
+                if (expr.type == .nonce or expr.type == .hash) {
+                    has_nonce_or_hash = true;
+                    break;
+                }
+            }
+
+            if (!has_nonce_or_hash) {
+                continue; // Allowed by 'unsafe-inline'
+            }
+        }
+
+        // Script blocked by this policy
+        return false;
+    }
+
+    return true;
+}
+
+/// Check if an external script URL is allowed by CSP
+/// Spec: https://www.w3.org/TR/CSP3/ §6.7.2
+///
+/// Returns true if the URL is allowed, false if blocked.
+pub fn isExternalScriptAllowedByCSP(
+    instance: *runtime.Instance,
+    url_scheme: []const u8,
+    url_host: []const u8,
+    url_port: ?u16,
+    url_path: []const u8,
+    nonce: ?[]const u8,
+) bool {
+    const internal = getInternal(instance) orelse return true; // No document = allow
+    const csp_list = internal.csp_list orelse return true; // No CSP = allow
+
+    // Get self origin for 'self' matching
+    const self_origin = if (internal.csp_self_origin) |*o| o else null;
+
+    // Check each policy
+    for (csp_list.policies.items) |*policy| {
+        // Only check enforcing policies for blocking
+        if (policy.disposition != .enforce) continue;
+
+        // Get effective script-src directive (with fallback to default-src)
+        const directive = csp.fallback.getEffectiveScriptSrcElem(&policy.directive_set) orelse continue;
+
+        // Check if 'strict-dynamic' is present
+        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
+
+        // With 'strict-dynamic', only nonced/hashed scripts can load other scripts
+        if (has_strict_dynamic) {
+            // If we have a nonce, check it
+            if (nonce) |n| {
+                if (csp.matching.doesNonceMatch(n, &directive.value)) {
+                    continue; // Allowed by nonce with strict-dynamic
+                }
+            }
+            // Without valid nonce, strict-dynamic blocks URL-based loads
+            return false;
+        }
+
+        // Check nonce first (takes precedence)
+        if (nonce) |n| {
+            if (csp.matching.doesNonceMatch(n, &directive.value)) {
+                continue; // Allowed by nonce
+            }
+        }
+
+        // Check URL matching
+        if (csp.matching.doesUrlMatchSourceList(
+            url_scheme,
+            url_host,
+            url_port,
+            url_path,
+            &directive.value,
+            self_origin,
+            0, // redirect_count
+        )) {
+            continue; // Allowed by URL
+        }
+
+        // Script blocked by this policy
+        return false;
+    }
+
+    return true;
+}
+
+/// Check if eval() is allowed by CSP
+/// Spec: https://www.w3.org/TR/CSP3/ §6.7.4
+pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return true;
+    const csp_list = internal.csp_list orelse return true;
+
+    for (csp_list.policies.items) |*policy| {
+        if (policy.disposition != .enforce) continue;
+
+        const directive = csp.fallback.getEffectiveScriptSrc(&policy.directive_set) orelse continue;
+
+        // Check for 'unsafe-eval'
+        if (!csp.matching.allowsUnsafeEval(&directive.value)) {
+            return false;
+        }
+    }
+
+    return true;
 }

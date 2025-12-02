@@ -600,6 +600,250 @@ void v8_Script_Dispose(Global<Script>* script) {
 }
 
 // ============================================================================
+// Module Functions (ES Modules support)
+// ============================================================================
+
+/// Module resolve callback data structure
+struct ModuleResolveCallbackData {
+    void* user_data;
+    void* (*callback)(void* user_data, const char* specifier, int specifier_len, void* referrer_module);
+};
+
+/// Global module resolve callback (set per isolate)
+static ModuleResolveCallbackData* g_module_resolve_callback = nullptr;
+
+/// V8 Module resolve callback wrapper
+static MaybeLocal<Module> V8ModuleResolveCallback(
+    Local<Context> context,
+    Local<String> specifier,
+    Local<FixedArray> import_assertions,
+    Local<Module> referrer
+) {
+    (void)import_assertions;  // Not used currently
+    
+    if (!g_module_resolve_callback || !g_module_resolve_callback->callback) {
+        return MaybeLocal<Module>();
+    }
+    
+    Isolate* isolate = context->GetIsolate();
+    
+    // Convert specifier to C string
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    const char* specifier_cstr = *specifier_utf8;
+    int specifier_len = specifier_utf8.length();
+    
+    // Create a Global handle for the referrer module
+    Global<Module>* referrer_global = new Global<Module>(isolate, referrer);
+    
+    // Call the Zig callback
+    void* result = g_module_resolve_callback->callback(
+        g_module_resolve_callback->user_data,
+        specifier_cstr,
+        specifier_len,
+        referrer_global
+    );
+    
+    if (!result) {
+        delete referrer_global;
+        return MaybeLocal<Module>();
+    }
+    
+    // Result should be a Global<Module>*
+    Global<Module>* resolved = static_cast<Global<Module>*>(result);
+    Local<Module> local_resolved = resolved->Get(isolate);
+    
+    delete referrer_global;
+    
+    return local_resolved;
+}
+
+/// Set the module resolve callback for the current isolate
+void v8_Module_SetResolveCallback(
+    void* user_data,
+    void* (*callback)(void* user_data, const char* specifier, int specifier_len, void* referrer_module)
+) {
+    if (!g_module_resolve_callback) {
+        g_module_resolve_callback = new ModuleResolveCallbackData();
+    }
+    g_module_resolve_callback->user_data = user_data;
+    g_module_resolve_callback->callback = callback;
+}
+
+/// Compile source code as an ES Module
+/// Returns nullptr on compilation error
+Global<Module>* v8_Module_Compile(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<String> local_source = source->Get(isolate);
+    Local<String> local_name = resource_name ? resource_name->Get(isolate) : String::Empty(isolate);
+    
+    // Create ScriptOrigin for module (is_module = true)
+    ScriptOrigin origin(
+        local_name,        // resource name
+        0,                 // line offset
+        0,                 // column offset
+        false,             // is_shared_cross_origin
+        -1,                // script id
+        Local<Value>(),    // source_map_url
+        false,             // is_opaque
+        false,             // is_wasm
+        true               // is_module
+    );
+    
+    // Create ScriptCompiler::Source
+    ScriptCompiler::Source script_source(local_source, origin);
+    
+    // Compile the module
+    MaybeLocal<Module> maybe_module = ScriptCompiler::CompileModule(isolate, &script_source);
+    
+    if (maybe_module.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Module> module = maybe_module.ToLocalChecked();
+    return new Global<Module>(isolate, module);
+}
+
+/// Get the number of module requests (imports) in a module
+int v8_Module_GetModuleRequestsLength(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    Local<FixedArray> requests = local_module->GetModuleRequests();
+    return requests->Length();
+}
+
+/// Get the module specifier (import path) at the given index
+/// Caller must free the returned string with v8_FreeString
+char* v8_Module_GetModuleRequest(Global<Module>* module, int index) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    Local<FixedArray> requests = local_module->GetModuleRequests();
+    
+    if (index < 0 || index >= requests->Length()) {
+        return nullptr;
+    }
+    
+    // FixedArray::Get returns Local<Data>, cast to ModuleRequest
+    Local<Data> data = requests->Get(isolate->GetCurrentContext(), index);
+    Local<ModuleRequest> request = data.As<ModuleRequest>();
+    Local<String> specifier = request->GetSpecifier();
+    
+    String::Utf8Value utf8(isolate, specifier);
+    int len = utf8.length();
+    char* result = new char[len + 1];
+    memcpy(result, *utf8, len);
+    result[len] = '\0';
+    
+    return result;
+}
+
+/// Free a string allocated by v8_Module_GetModuleRequest
+void v8_FreeString(char* str) {
+    if (str) {
+        delete[] str;
+    }
+}
+
+/// Get the module's status (0=Uninstantiated, 1=Instantiating, 2=Instantiated, 3=Evaluating, 4=Evaluated, 5=Errored)
+int v8_Module_GetStatus(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    return static_cast<int>(local_module->GetStatus());
+}
+
+/// Instantiate the module (link all imports)
+/// Returns true on success, false on error
+bool v8_Module_Instantiate(Global<Context>* context, Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Module> local_module = module->Get(isolate);
+    
+    Maybe<bool> result = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
+    
+    return result.FromMaybe(false);
+}
+
+/// Evaluate the module (execute the top-level code)
+/// Returns the result value or nullptr on error
+Global<Value>* v8_Module_Evaluate(Global<Context>* context, Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Module> local_module = module->Get(isolate);
+    
+    MaybeLocal<Value> maybe_result = local_module->Evaluate(local_context);
+    
+    if (maybe_result.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Value> result = maybe_result.ToLocalChecked();
+    return new Global<Value>(isolate, result);
+}
+
+/// Get the module's exception (if status is Errored)
+Global<Value>* v8_Module_GetException(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    
+    if (local_module->GetStatus() != Module::kErrored) {
+        return nullptr;
+    }
+    
+    Local<Value> exception = local_module->GetException();
+    return new Global<Value>(isolate, exception);
+}
+
+/// Get the module's namespace object (exports)
+Global<Object>* v8_Module_GetModuleNamespace(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    Local<Value> ns = local_module->GetModuleNamespace();
+    
+    if (!ns->IsObject()) {
+        return nullptr;
+    }
+    
+    return new Global<Object>(isolate, ns.As<Object>());
+}
+
+/// Get the module's identity hash (for use as map key)
+int v8_Module_GetIdentityHash(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    return local_module->GetIdentityHash();
+}
+
+/// Dispose a module handle
+void v8_Module_Dispose(Global<Module>* module) {
+    if (module) {
+        module->Reset();
+        delete module;
+    }
+}
+
+// ============================================================================
 // Exception Functions
 // ============================================================================
 

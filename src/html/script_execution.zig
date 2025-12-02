@@ -40,6 +40,9 @@ const infra = @import("infra");
 // Fetch for external scripts
 const fetch = @import("fetch");
 
+// Content Security Policy
+const csp = @import("csp");
+
 pub const ScriptExecutionError = error{
     InvalidScriptElement,
     ScriptingDisabled,
@@ -142,9 +145,36 @@ pub fn prepareScriptElement(
         return false;
     }
 
-    // Step 20: Let cspType... (CSP not implemented yet, skip)
+    // Step 20: Let cspType be "script" if type is classic/module, "import map" if importmap
+    // Step 21: CSP check for inline scripts
+    // Spec: https://www.w3.org/TR/CSP3/ §6.7.3
+    //
+    // For inline scripts, we need to check:
+    // - 'unsafe-inline' keyword (only if no nonce/hash in directive)
+    // - Nonce matching (nonce attribute)
+    // - Hash matching (computed from source text)
+    if (!hasSrcAttribute(script_element)) {
+        // This is an inline script
+        if (node_document) |doc| {
+            // Get nonce attribute if present
+            const nonce = getNonceAttribute(script_element);
 
-    // Step 21: CSP check for inline scripts (not implemented yet, skip)
+            // TODO: Compute hash of source text for hash-based CSP
+            // For now, we only check nonce and 'unsafe-inline'
+
+            // Check if inline script is allowed by CSP
+            if (!DocumentImpl.isInlineScriptAllowedByCSP(
+                doc,
+                if (nonce.len > 0) nonce else null,
+                null, // hash_algorithm (TODO: compute from source)
+                null, // hash_value (TODO: compute from source)
+            )) {
+                // CSP blocked inline script
+                std.debug.print("CSP blocked inline script\n", .{});
+                return false;
+            }
+        }
+    }
 
     // Step 22: Handle obsolete event/for attributes for classic scripts
     if (script_type == .classic) {
@@ -198,6 +228,27 @@ pub fn prepareScriptElement(
             return ScriptExecutionError.OutOfMemory;
         };
         defer if (script_url.ptr != src.ptr) allocator.free(script_url);
+
+        // CSP check for external script URL
+        // Spec: https://www.w3.org/TR/CSP3/ §6.7.2
+        if (node_document) |doc| {
+            // Parse URL components for CSP check
+            const url_parts = parseUrlForCSP(script_url);
+            const nonce = getNonceAttribute(script_element);
+
+            if (!DocumentImpl.isExternalScriptAllowedByCSP(
+                doc,
+                url_parts.scheme,
+                url_parts.host,
+                url_parts.port,
+                url_parts.path,
+                if (nonce.len > 0) nonce else null,
+            )) {
+                // CSP blocked external script
+                std.debug.print("CSP blocked external script: {s}\n", .{script_url});
+                return false;
+            }
+        }
 
         // Step 33.8: Fetch the script
         // This is a synchronous fetch for now - in a full implementation this would be async
@@ -264,8 +315,42 @@ pub fn prepareScriptElement(
                 // Full implementation would parse imports and fetch dependencies
             },
             .importmap => {
-                // Import maps - not yet implemented
-                return false;
+                // Parse and register import map
+                // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map-parse-result
+
+                // Step 1: Check if import map has already been acquired
+                if (DocumentImpl.hasImportMapAcquired(doc)) {
+                    // Only one import map per document is allowed
+                    // Subsequent import maps are ignored with a console warning
+                    std.debug.print("Import map ignored: document already has an import map\n", .{});
+                    return false;
+                }
+
+                // Step 2: Parse the import map JSON
+                const import_map_result = parseImportMap(allocator, source_text, base_url);
+                defer {
+                    if (import_map_result.allocator) |alloc| {
+                        if (import_map_result.error_message) |msg| {
+                            alloc.free(msg);
+                        }
+                    }
+                }
+
+                if (import_map_result.error_message) |err_msg| {
+                    std.debug.print("Import map parse error: {s}\n", .{err_msg});
+                    return false;
+                }
+
+                // Step 3: Register the import map
+                registerImportMap(doc, import_map_result) catch |err| {
+                    std.debug.print("Failed to register import map: {}\n", .{err});
+                    return false;
+                };
+
+                // Step 4: Mark import map as acquired
+                DocumentImpl.setImportMapAcquired(doc);
+
+                return true;
             },
             .speculationrules => {
                 // Speculation rules - not yet implemented
@@ -651,26 +736,50 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
 fn runModuleScript(script_element: *runtime.Instance) !void {
     const result = HTMLScriptElementImpl.getResult(script_element);
-    const source = switch (result) {
-        .module_script => |m| m.source_text,
-        else => HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return,
+    const module_script = switch (result) {
+        .module_script => |m| m,
+        else => {
+            // Try to get cached source and create inline module
+            const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
+            return runModuleFromSource(script_element, source, "inline");
+        },
     };
 
-    // Get V8 FFI
+    return runModuleFromSource(script_element, module_script.source_text, module_script.base_url);
+}
+
+/// Run a module from source text using proper V8 Module API
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+fn runModuleFromSource(
+    script_element: *runtime.Instance,
+    source: []const u8,
+    base_url: []const u8,
+) !void {
     const v8 = @import("v8");
     const ffi = v8.ffi;
 
-    // Get current isolate
+    // Get current isolate and context
     const isolate = ffi.v8_Isolate_GetCurrent() orelse {
         std.debug.print("No V8 isolate available for module script execution\n", .{});
         return;
     };
 
-    // Get current context
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
         std.debug.print("No V8 context available for module script execution\n", .{});
         return;
     };
+
+    // Get document for module map caching
+    const node_document = getNodeDocument(script_element);
+
+    // Check if this module is already compiled and cached
+    if (node_document) |doc| {
+        if (DocumentImpl.hasModule(doc, base_url)) {
+            // Module already compiled and executed - skip
+            // Per spec, modules are only executed once
+            return;
+        }
+    }
 
     // Create V8 string from source
     const source_str = ffi.v8_String_NewFromUtf8(
@@ -683,53 +792,200 @@ fn runModuleScript(script_element: *runtime.Instance) !void {
     };
     defer ffi.v8_String_Dispose(source_str);
 
-    // For ES modules, we need to use v8::ScriptCompiler::CompileModule
-    // However, this requires additional V8 module resolution callbacks
-    // For now, we use a workaround: wrap the module code in a function scope
-    // to simulate module semantics (strict mode, own scope)
+    // Create resource name (module URL) for source maps and error messages
+    const resource_name = ffi.v8_String_NewFromUtf8(
+        isolate,
+        base_url.ptr,
+        @intCast(base_url.len),
+    );
+    defer if (resource_name) |name| ffi.v8_String_Dispose(name);
 
-    // V8 module compilation would look like:
-    // const module = ffi.v8_Module_Compile(context, source_str, ...) orelse ...
-    // _ = ffi.v8_Module_Instantiate(context, module, resolve_callback) orelse ...
-    // _ = ffi.v8_Module_Evaluate(context, module) orelse ...
+    // Compile as ES Module
+    const module = ffi.v8_Module_Compile(context, source_str, resource_name) orelse {
+        std.debug.print("Failed to compile ES module: {s}\n", .{base_url});
+        // TODO: Get exception details from V8
+        return;
+    };
 
-    // For now, compile as a script with strict mode
-    // This is a simplified approach - full module support requires:
-    // 1. Module resolution callbacks for imports
-    // 2. Module map for caching
-    // 3. Proper module linking
-
-    // Prefix with "use strict" to enforce strict mode (modules are always strict)
-    // Note: This is a temporary workaround; proper module compilation should be used
-    const strict_prefix = "'use strict';\n";
-    var full_source: [65536]u8 = undefined;
-    if (source.len + strict_prefix.len < full_source.len) {
-        @memcpy(full_source[0..strict_prefix.len], strict_prefix);
-        @memcpy(full_source[strict_prefix.len .. strict_prefix.len + source.len], source);
-
-        const full_source_str = ffi.v8_String_NewFromUtf8(
-            isolate,
-            &full_source,
-            @intCast(strict_prefix.len + source.len),
-        ) orelse {
-            std.debug.print("Failed to create V8 string for module wrapper\n", .{});
-            return;
+    // Store in document's module map for caching and dependency resolution
+    if (node_document) |doc| {
+        DocumentImpl.setModule(doc, base_url, module) catch |err| {
+            std.debug.print("Failed to cache module: {}\n", .{err});
+            // Continue execution even if caching fails
         };
-        defer ffi.v8_String_Dispose(full_source_str);
-
-        const script = ffi.v8_Script_Compile(context, full_source_str) orelse {
-            std.debug.print("Failed to compile module script\n", .{});
-            return;
-        };
-        defer ffi.v8_Script_Dispose(script);
-
-        _ = ffi.v8_Script_Run(context, script) orelse {
-            std.debug.print("Module script execution threw an exception\n", .{});
-            return;
-        };
-    } else {
-        std.debug.print("Module script too large\n", .{});
     }
+
+    // Set up module resolution callback
+    // This callback is called when V8 encounters import statements
+    ffi.v8_Module_SetResolveCallback(
+        @ptrCast(@alignCast(script_element)),
+        moduleResolveCallback,
+    );
+
+    // Instantiate the module (link imports)
+    // This resolves all import statements using the resolve callback
+    if (!ffi.v8_Module_Instantiate(context, module)) {
+        std.debug.print("Failed to instantiate module: {s}\n", .{base_url});
+
+        // Get and report the exception
+        const status = ffi.v8_Module_GetStatus(module);
+        if (status == @intFromEnum(ffi.ModuleStatus.Errored)) {
+            if (ffi.v8_Module_GetException(module)) |exception| {
+                defer ffi.v8_Value_Dispose(exception);
+                // TODO: Convert exception to string and report
+            }
+        }
+        return;
+    }
+
+    // Evaluate the module (execute top-level code)
+    _ = ffi.v8_Module_Evaluate(context, module) orelse {
+        std.debug.print("Module evaluation failed: {s}\n", .{base_url});
+
+        // Check module status for errors
+        const status = ffi.v8_Module_GetStatus(module);
+        if (status == @intFromEnum(ffi.ModuleStatus.Errored)) {
+            if (ffi.v8_Module_GetException(module)) |exception| {
+                defer ffi.v8_Value_Dispose(exception);
+                // TODO: Convert exception to string and report
+            }
+        }
+        return;
+    };
+}
+
+/// Module resolution callback for V8
+/// Called when V8 encounters an import statement and needs to resolve the specifier
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+fn moduleResolveCallback(
+    user_data: ?*anyopaque,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    referrer_module: ?*anyopaque,
+) callconv(.c) ?*anyopaque {
+    _ = referrer_module;
+
+    const v8 = @import("v8");
+    const ffi = v8.ffi;
+
+    // Get script element from user data (passed when setting up the callback)
+    const script_element: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return null));
+
+    // Get the specifier as a Zig slice
+    const specifier_slice = specifier[0..@intCast(specifier_len)];
+
+    // Get document for import map resolution
+    const node_document = getNodeDocument(script_element) orelse return null;
+
+    // Get base URL for resolution
+    const doc_internal = DocumentImpl.getInternal(node_document) orelse return null;
+    const base_url = doc_internal.base_uri;
+
+    // Step 1: Try to resolve via import map
+    var resolved_url: ?[]const u8 = DocumentImpl.resolveImportSpecifier(
+        node_document,
+        specifier_slice,
+        base_url,
+    );
+
+    // Step 2: If not found in import map, try URL resolution
+    if (resolved_url == null) {
+        // Check if it's a URL-like specifier (starts with /, ./, ../, or is absolute)
+        if (isUrlLikeSpecifier(specifier_slice)) {
+            // Resolve relative to base URL
+            // For simplicity, just use the specifier as-is for absolute URLs
+            // A full implementation would use proper URL resolution
+            resolved_url = specifier_slice;
+        } else {
+            // Bare specifier without import map entry - error
+            std.debug.print("Module specifier '{s}' could not be resolved\n", .{specifier_slice});
+            return null;
+        }
+    }
+
+    const final_url = resolved_url orelse return null;
+
+    // Step 3: Check module map for cached module
+    if (DocumentImpl.getModule(node_document, final_url)) |cached_module| {
+        return cached_module;
+    }
+
+    // Step 4: Module not in cache - need to fetch and compile
+    // For now, we only support modules that are already in the cache
+    // Full implementation would:
+    // 1. Fetch the module source
+    // 2. Compile it
+    // 3. Add to module map
+    // 4. Return the compiled module
+
+    // Get allocator for fetch
+    const allocator = doc_internal.allocator;
+
+    // Try to fetch the module (synchronous for now - ideally would be async)
+    const fetch_result = fetchExternalScript(allocator, final_url) catch {
+        std.debug.print("Failed to fetch module: {s}\n", .{final_url});
+        return null;
+    };
+
+    if (fetch_result.body) |body| {
+        defer allocator.free(body);
+
+        // Get V8 context
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
+        const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+
+        // Create source string
+        const source_str = ffi.v8_String_NewFromUtf8(
+            isolate,
+            body.ptr,
+            @intCast(body.len),
+        ) orelse return null;
+        defer ffi.v8_String_Dispose(source_str);
+
+        // Create resource name
+        const resource_name = ffi.v8_String_NewFromUtf8(
+            isolate,
+            final_url.ptr,
+            @intCast(final_url.len),
+        );
+        defer if (resource_name) |name| ffi.v8_String_Dispose(name);
+
+        // Compile the module
+        const module = ffi.v8_Module_Compile(context, source_str, resource_name) orelse {
+            std.debug.print("Failed to compile fetched module: {s}\n", .{final_url});
+            return null;
+        };
+
+        // Cache in module map
+        DocumentImpl.setModule(node_document, final_url, module) catch {
+            // Continue even if caching fails
+        };
+
+        return module;
+    }
+
+    std.debug.print("Module fetch returned no body: {s}\n", .{final_url});
+    return null;
+}
+
+/// Check if a specifier looks like a URL (starts with /, ./, ../, or has a scheme)
+fn isUrlLikeSpecifier(specifier: []const u8) bool {
+    if (specifier.len == 0) return false;
+
+    // Starts with /
+    if (specifier[0] == '/') return true;
+
+    // Starts with ./ or ../
+    if (specifier.len >= 2 and specifier[0] == '.') {
+        if (specifier[1] == '/') return true;
+        if (specifier.len >= 3 and specifier[1] == '.' and specifier[2] == '/') return true;
+    }
+
+    // Has a scheme (e.g., https://, http://)
+    if (std.mem.indexOf(u8, specifier, "://") != null) return true;
+
+    return false;
 }
 
 // =============================================================================
@@ -759,6 +1015,12 @@ fn getSrcAttribute(element: *runtime.Instance) []const u8 {
 /// Check if element has nomodule attribute
 fn hasNoModuleAttribute(element: *runtime.Instance) bool {
     return hasAttribute(element, "nomodule");
+}
+
+/// Get nonce attribute value
+/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#attr-nonce
+fn getNonceAttribute(element: *runtime.Instance) []const u8 {
+    return getAttribute(element, "nonce") orelse "";
 }
 
 /// Check if element has event attribute (obsolete)
@@ -1038,6 +1300,53 @@ fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u
     return result;
 }
 
+/// URL parts for CSP checking
+const UrlPartsForCSP = struct {
+    scheme: []const u8,
+    host: []const u8,
+    port: ?u16,
+    path: []const u8,
+};
+
+/// Parse a URL into components for CSP checking
+/// This is a simplified URL parser for CSP purposes.
+fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
+    var result = UrlPartsForCSP{
+        .scheme = "",
+        .host = "",
+        .port = null,
+        .path = "/",
+    };
+
+    // Find scheme (before ://)
+    if (std.mem.indexOf(u8, url, "://")) |scheme_end| {
+        result.scheme = url[0..scheme_end];
+
+        // Find host (after :// and before / or : or end)
+        const after_scheme = url[scheme_end + 3 ..];
+
+        // Find end of authority (first / or end of string)
+        var authority_end = after_scheme.len;
+        if (std.mem.indexOf(u8, after_scheme, "/")) |slash| {
+            authority_end = slash;
+            result.path = after_scheme[slash..];
+        }
+
+        const authority = after_scheme[0..authority_end];
+
+        // Check for port (: in authority)
+        if (std.mem.lastIndexOf(u8, authority, ":")) |colon| {
+            result.host = authority[0..colon];
+            const port_str = authority[colon + 1 ..];
+            result.port = std.fmt.parseInt(u16, port_str, 10) catch null;
+        } else {
+            result.host = authority;
+        }
+    }
+
+    return result;
+}
+
 /// Fetch an external script using the Fetch API
 /// This is a synchronous fetch for parser-blocking scripts
 fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) !ExternalScriptFetchResult {
@@ -1089,6 +1398,199 @@ fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) !ExternalS
         .content_type = content_type,
         .status = response.status,
     };
+}
+
+// =============================================================================
+// Import Map Support (HTML Standard §8.1.6)
+// =============================================================================
+
+/// Result of parsing an import map
+const ImportMapParseResult = struct {
+    /// Imports mapping: bare specifier -> resolved URL
+    imports: std.StringHashMap([]const u8),
+
+    /// Scopes mapping: scope prefix -> (specifier -> URL)
+    scopes: std.StringHashMap(std.StringHashMap([]const u8)),
+
+    /// Error message if parsing failed
+    error_message: ?[]const u8,
+
+    /// Allocator used for error message (for cleanup)
+    allocator: ?std.mem.Allocator,
+
+    pub fn init(alloc: std.mem.Allocator) ImportMapParseResult {
+        return .{
+            .imports = std.StringHashMap([]const u8).init(alloc),
+            .scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(alloc),
+            .error_message = null,
+            .allocator = null,
+        };
+    }
+
+    pub fn deinit(self: *ImportMapParseResult, alloc: std.mem.Allocator) void {
+        // Free imports
+        var imp_it = self.imports.iterator();
+        while (imp_it.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+            alloc.free(entry.value_ptr.*);
+        }
+        self.imports.deinit();
+
+        // Free scopes
+        var scope_it = self.scopes.iterator();
+        while (scope_it.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+            var nested_it = entry.value_ptr.iterator();
+            while (nested_it.next()) |nested_entry| {
+                alloc.free(nested_entry.key_ptr.*);
+                alloc.free(nested_entry.value_ptr.*);
+            }
+            entry.value_ptr.deinit();
+        }
+        self.scopes.deinit();
+    }
+};
+
+/// Parse an import map JSON
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#parse-an-import-map-string
+fn parseImportMap(
+    allocator: std.mem.Allocator,
+    json_text: []const u8,
+    base_url: []const u8,
+) ImportMapParseResult {
+    var result = ImportMapParseResult.init(allocator);
+
+    // Parse JSON
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_text, .{}) catch {
+        result.error_message = allocator.dupe(u8, "Invalid JSON in import map") catch null;
+        result.allocator = allocator;
+        return result;
+    };
+    defer parsed.deinit();
+
+    const root = parsed.value;
+
+    // Import map must be an object
+    if (root != .object) {
+        result.error_message = allocator.dupe(u8, "Import map must be a JSON object") catch null;
+        result.allocator = allocator;
+        return result;
+    }
+
+    const root_obj = root.object;
+
+    // Process "imports" if present
+    if (root_obj.get("imports")) |imports_value| {
+        if (imports_value == .object) {
+            var imp_it = imports_value.object.iterator();
+            while (imp_it.next()) |entry| {
+                const specifier = entry.key_ptr.*;
+                if (entry.value_ptr.* == .string) {
+                    const target = entry.value_ptr.string;
+
+                    // Resolve target URL relative to base URL
+                    const resolved = resolveUrl(allocator, target, base_url) catch continue;
+
+                    // Store owned copies
+                    const owned_specifier = allocator.dupe(u8, specifier) catch continue;
+                    const owned_url = if (resolved.ptr != target.ptr)
+                        resolved
+                    else
+                        allocator.dupe(u8, resolved) catch continue;
+
+                    result.imports.put(owned_specifier, owned_url) catch {
+                        allocator.free(owned_specifier);
+                        if (resolved.ptr != target.ptr) allocator.free(resolved);
+                        continue;
+                    };
+                }
+            }
+        }
+    }
+
+    // Process "scopes" if present
+    if (root_obj.get("scopes")) |scopes_value| {
+        if (scopes_value == .object) {
+            var scope_it = scopes_value.object.iterator();
+            while (scope_it.next()) |scope_entry| {
+                const scope_prefix = scope_entry.key_ptr.*;
+                if (scope_entry.value_ptr.* == .object) {
+                    // Resolve scope prefix URL
+                    const resolved_scope = resolveUrl(allocator, scope_prefix, base_url) catch continue;
+                    const owned_scope = if (resolved_scope.ptr != scope_prefix.ptr)
+                        resolved_scope
+                    else
+                        allocator.dupe(u8, resolved_scope) catch continue;
+
+                    var scope_imports = std.StringHashMap([]const u8).init(allocator);
+
+                    var inner_it = scope_entry.value_ptr.object.iterator();
+                    while (inner_it.next()) |inner_entry| {
+                        const specifier = inner_entry.key_ptr.*;
+                        if (inner_entry.value_ptr.* == .string) {
+                            const target = inner_entry.value_ptr.string;
+
+                            // Resolve target URL relative to base URL
+                            const resolved = resolveUrl(allocator, target, base_url) catch continue;
+
+                            const owned_specifier = allocator.dupe(u8, specifier) catch continue;
+                            const owned_url = if (resolved.ptr != target.ptr)
+                                resolved
+                            else
+                                allocator.dupe(u8, resolved) catch continue;
+
+                            scope_imports.put(owned_specifier, owned_url) catch {
+                                allocator.free(owned_specifier);
+                                if (resolved.ptr != target.ptr) allocator.free(resolved);
+                                continue;
+                            };
+                        }
+                    }
+
+                    result.scopes.put(owned_scope, scope_imports) catch {
+                        allocator.free(owned_scope);
+                        // Free scope_imports contents
+                        var cleanup_it = scope_imports.iterator();
+                        while (cleanup_it.next()) |cleanup_entry| {
+                            allocator.free(cleanup_entry.key_ptr.*);
+                            allocator.free(cleanup_entry.value_ptr.*);
+                        }
+                        scope_imports.deinit();
+                        continue;
+                    };
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/// Register an import map with the document
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#register-an-import-map
+fn registerImportMap(
+    doc: *runtime.Instance,
+    import_map: ImportMapParseResult,
+) !void {
+    // Register all top-level imports
+    var imp_it = import_map.imports.iterator();
+    while (imp_it.next()) |entry| {
+        try DocumentImpl.addImportMapping(doc, entry.key_ptr.*, entry.value_ptr.*);
+    }
+
+    // Register all scoped imports
+    var scope_it = import_map.scopes.iterator();
+    while (scope_it.next()) |scope_entry| {
+        var inner_it = scope_entry.value_ptr.iterator();
+        while (inner_it.next()) |inner_entry| {
+            try DocumentImpl.addScopedImportMapping(
+                doc,
+                scope_entry.key_ptr.*,
+                inner_entry.key_ptr.*,
+                inner_entry.value_ptr.*,
+            );
+        }
+    }
 }
 
 // =============================================================================
