@@ -92,6 +92,14 @@ pub const parseHTMLFromString = parser.parseHTMLFromString;
 pub const FragmentParseResult = parser.FragmentParseResult;
 pub const FragmentParseOptions = parser.FragmentParseOptions;
 
+// Document write support (§8.4 - document.write/writeln/open/close)
+pub const DocumentWriteState = parser.DocumentWriteState;
+pub const DocumentWriteError = parser.DocumentWriteError;
+pub const documentOpen = parser.documentOpen;
+pub const documentWrite = parser.documentWrite;
+pub const documentWriteln = parser.documentWriteln;
+pub const documentClose = parser.documentClose;
+
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");
 

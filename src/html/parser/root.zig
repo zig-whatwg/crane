@@ -62,6 +62,15 @@ pub const parseHTMLFromString = fragment_parser.parseHTMLFromString;
 pub const FragmentParseResult = fragment_parser.FragmentParseResult;
 pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 
+// Document write support (document.write/writeln/open/close)
+pub const document_write = @import("document_write.zig");
+pub const DocumentWriteState = document_write.DocumentWriteState;
+pub const DocumentWriteError = document_write.DocumentWriteError;
+pub const documentOpen = document_write.documentOpen;
+pub const documentWrite = document_write.documentWrite;
+pub const documentWriteln = document_write.documentWriteln;
+pub const documentClose = document_write.documentClose;
+
 test {
     // Run all parser tests
     std.testing.refAllDecls(@This());
@@ -73,4 +82,5 @@ test {
     _ = @import("tree_builder.zig");
     _ = @import("entities.zig");
     _ = @import("fragment_parser.zig");
+    _ = @import("document_write.zig");
 }
