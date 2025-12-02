@@ -492,11 +492,11 @@ test "StubLayoutBackend - basic operations" {
     const layout = stub.backend();
     defer layout.deinit();
 
-    // All metrics should return 0 for stub
-    // We can't test with real runtime.Instance without full runtime setup
-    // but we can verify the vtable is properly constructed
-    try std.testing.expect(layout.vtable.getOffsetWidth != undefined);
-    try std.testing.expect(layout.vtable.getBoundingClientRect != undefined);
+    // Verify the vtable is properly constructed with non-null function pointers
+    try std.testing.expect(@intFromPtr(layout.vtable.getOffsetWidth) != 0);
+    try std.testing.expect(@intFromPtr(layout.vtable.getBoundingClientRect) != 0);
+    try std.testing.expect(@intFromPtr(layout.vtable.getRenderedText) != 0);
+    try std.testing.expect(@intFromPtr(layout.vtable.isElementRendered) != 0);
 }
 
 test "DOMRect - basic properties" {
