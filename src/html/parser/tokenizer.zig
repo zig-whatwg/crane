@@ -22,6 +22,7 @@ const InputStream = @import("input_stream.zig").InputStream;
 const InputCharacter = @import("input_stream.zig").InputCharacter;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
+const entities = @import("entities.zig");
 
 /// HTML Tokenizer.
 ///
@@ -2038,13 +2039,136 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// §13.2.5.73 Named character reference state (simplified)
+    /// §13.2.5.73 Named character reference state
+    /// Implements the full named character reference lookup algorithm.
     fn namedCharacterReferenceState(self: *Tokenizer) !?Token {
-        // Simplified implementation - just flush and return
-        // A full implementation would look up named character references
-        try self.flushCodePointsAsCharacterReference();
-        self.state = .ambiguous_ampersand;
-        return null;
+        // Collect characters that could be part of a named character reference
+        // We need to peek ahead to find the longest matching entity
+        var entity_buffer: [64]u8 = undefined;
+        var entity_len: usize = 0;
+
+        // Copy what we have in the temporary buffer (after the &)
+        const temp_slice = self.temporary_buffer.items();
+        // Skip the '&' at the start
+        const start_offset: usize = if (temp_slice.len > 0 and temp_slice[0] == '&') 1 else 0;
+        for (temp_slice[start_offset..]) |c| {
+            if (entity_len < entity_buffer.len) {
+                entity_buffer[entity_len] = c;
+                entity_len += 1;
+            }
+        }
+
+        // Include the current character
+        if (self.current_char.getCodepoint()) |cp| {
+            if (cp < 128) {
+                if (entity_len < entity_buffer.len) {
+                    entity_buffer[entity_len] = @intCast(cp);
+                    entity_len += 1;
+                }
+            }
+        }
+
+        // Keep consuming alphanumeric characters to build the potential entity name
+        while (true) {
+            const next_char = self.input.peek();
+            if (next_char.isAsciiAlphanumeric() or next_char.is(';')) {
+                if (next_char.getCodepoint()) |cp| {
+                    if (entity_len < entity_buffer.len) {
+                        entity_buffer[entity_len] = @intCast(cp);
+                        entity_len += 1;
+                    }
+                    _ = self.input.consume();
+                    // Stop if we hit a semicolon
+                    if (next_char.is(';')) break;
+                } else break;
+            } else {
+                break;
+            }
+        }
+
+        // Look up the longest matching entity
+        const input_slice = entity_buffer[0..entity_len];
+        const result = entities.lookup(input_slice);
+
+        if (result.entity) |entity| {
+            // Check if this is an entity being consumed as part of an attribute
+            // Per spec: If the character reference was consumed as part of an attribute,
+            // and the last character matched is not ';', and the next input character
+            // is either '=' or an ASCII alphanumeric, then flush and switch to return state
+            const ends_with_semicolon = entities.hasSemicolon(entity.name);
+
+            if (!ends_with_semicolon and self.isConsumedAsPartOfAttribute()) {
+                // Check the next character
+                const next = self.input.peek();
+                if (next.is('=') or next.isAsciiAlphanumeric()) {
+                    // Flush the temporary buffer and don't treat as character reference
+                    try self.flushCodePointsAsCharacterReference();
+                    // Append what we consumed
+                    for (input_slice) |c| {
+                        if (self.isConsumedAsPartOfAttribute()) {
+                            try self.appendToCurrentAttributeValue(c);
+                        }
+                    }
+                    self.state = self.return_state;
+                    return null;
+                }
+            }
+
+            // Report parse error if entity doesn't end with semicolon
+            if (!ends_with_semicolon) {
+                self.reportError(.missing_semicolon_after_character_reference);
+            }
+
+            // Clear the temporary buffer
+            self.temporary_buffer.clear();
+
+            // Emit the codepoints from the entity
+            // We need to handle this differently based on whether we're in an attribute or not
+            if (self.isConsumedAsPartOfAttribute()) {
+                for (entity.codepoints) |cp| {
+                    try self.appendToCurrentAttributeValue(cp);
+                }
+                // Append any unconsumed characters after the matched entity
+                if (result.consumed < entity_len) {
+                    for (input_slice[result.consumed..]) |c| {
+                        try self.appendToCurrentAttributeValue(c);
+                    }
+                }
+            } else {
+                // Emit character tokens for each codepoint
+                // First codepoint returned now, rest will be handled by pending_tokens mechanism
+                // For simplicity, emit as characters
+                for (entity.codepoints) |cp| {
+                    try self.temporary_buffer.append(@intCast(cp & 0xFF));
+                    if (cp > 0xFF) {
+                        // Handle multi-byte codepoints
+                        try self.temporary_buffer.append(@intCast((cp >> 8) & 0xFF));
+                        if (cp > 0xFFFF) {
+                            try self.temporary_buffer.append(@intCast((cp >> 16) & 0xFF));
+                        }
+                    }
+                }
+            }
+
+            self.state = self.return_state;
+
+            // If not in attribute, return the first codepoint as a character token
+            if (!self.isConsumedAsPartOfAttribute() and entity.codepoints.len > 0) {
+                return Token{ .character = entity.codepoints[0] };
+            }
+            return null;
+        } else {
+            // No match found - flush and switch to ambiguous ampersand state
+            try self.flushCodePointsAsCharacterReference();
+            // Also append the characters we consumed
+            for (input_slice) |c| {
+                if (self.isConsumedAsPartOfAttribute()) {
+                    try self.appendToCurrentAttributeValue(c);
+                }
+            }
+            self.state = .ambiguous_ampersand;
+            return null;
+        }
     }
 
     /// §13.2.5.74 Ambiguous ampersand state

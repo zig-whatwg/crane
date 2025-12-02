@@ -52,6 +52,9 @@ pub const Namespace = @import("tree_builder.zig").Namespace;
 pub const FormattingEntry = @import("tree_builder.zig").FormattingEntry;
 pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
 
+// Named character references (entities)
+pub const entities = @import("entities.zig");
+
 test {
     // Run all parser tests
     std.testing.refAllDecls(@This());
@@ -61,4 +64,5 @@ test {
     _ = @import("input_stream.zig");
     _ = @import("tokenizer.zig");
     _ = @import("tree_builder.zig");
+    _ = @import("entities.zig");
 }
