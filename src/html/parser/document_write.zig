@@ -97,7 +97,7 @@ pub const DocumentWriteState = struct {
             .active_parser_was_aborted = false,
             .unload_counter = 0,
             .insertion_point = null,
-            .write_buffer = std.ArrayList(u8).init(allocator),
+            .write_buffer = .{},
             .script_nesting_level = 0,
             .parser_pause_flag = false,
         };
@@ -105,7 +105,7 @@ pub const DocumentWriteState = struct {
 
     /// Free resources.
     pub fn deinit(self: *DocumentWriteState) void {
-        self.write_buffer.deinit();
+        self.write_buffer.deinit(self.allocator);
     }
 
     /// Reset state for a new parser.
@@ -223,7 +223,7 @@ pub fn documentWrite(state: *DocumentWriteState, text: []const u8) DocumentWrite
 
     // Step 10: Insert string into input stream at insertion point
     // For now, we just append to the buffer
-    try state.write_buffer.appendSlice(text);
+    try state.write_buffer.appendSlice(state.allocator, text);
 }
 
 /// Simplified document.writeln() implementation.
@@ -231,7 +231,7 @@ pub fn documentWrite(state: *DocumentWriteState, text: []const u8) DocumentWrite
 /// Same as document.write() but appends a newline.
 pub fn documentWriteln(state: *DocumentWriteState, text: []const u8) DocumentWriteError!void {
     try documentWrite(state, text);
-    try state.write_buffer.append('\n');
+    try state.write_buffer.append(state.allocator, '\n');
 }
 
 /// Simplified document.close() implementation.
@@ -271,6 +271,304 @@ pub fn parseWriteBuffer(allocator: Allocator, state: *const DocumentWriteState) 
     const fragment_parser = @import("fragment_parser.zig");
     return try fragment_parser.parseHTMLFromString(allocator, state.write_buffer.items);
 }
+
+// ============================================================================
+// Input Stream Manager for document.write() Integration
+// ============================================================================
+
+/// Pending insertion entry for document.write() content.
+pub const PendingInsertion = struct {
+    /// Position in the logical stream where this insertion begins.
+    position: usize,
+
+    /// The content to insert.
+    content: []const u8,
+
+    /// Current read position within this insertion.
+    read_offset: usize,
+};
+
+/// Input stream manager that supports dynamic content insertion.
+///
+/// HTML Standard §13.2.3.1: The insertion point is a position in the input stream
+/// where document.write() content is inserted during parsing.
+///
+/// This manager wraps an original input stream and handles insertions from
+/// document.write() calls during script execution.
+pub const InputStreamManager = struct {
+    /// Allocator for dynamic memory.
+    allocator: Allocator,
+
+    /// Original document source (UTF-8 encoded).
+    original_input: []const u8,
+
+    /// Current position in the original input.
+    original_position: usize,
+
+    /// Logical position (accounts for insertions).
+    logical_position: usize,
+
+    /// Pending insertions from document.write().
+    pending_insertions: std.ArrayList(PendingInsertion),
+
+    /// Currently active insertion (if reading from inserted content).
+    active_insertion_index: ?usize,
+
+    /// Current insertion point position (null = no active parser).
+    /// HTML Standard: Points to where new content should be inserted.
+    insertion_point: ?usize,
+
+    /// Line number (1-based).
+    line: u32,
+
+    /// Column number (1-based).
+    column: u32,
+
+    /// Whether we just saw a CR (for CRLF handling).
+    last_was_cr: bool,
+
+    /// Initialize an input stream manager.
+    pub fn init(allocator: Allocator, input: []const u8) InputStreamManager {
+        return .{
+            .allocator = allocator,
+            .original_input = input,
+            .original_position = 0,
+            .logical_position = 0,
+            .pending_insertions = .{},
+            .active_insertion_index = null,
+            .insertion_point = 0, // Start at beginning
+            .line = 1,
+            .column = 1,
+            .last_was_cr = false,
+        };
+    }
+
+    /// Free resources.
+    pub fn deinit(self: *InputStreamManager) void {
+        // Free allocated content strings
+        for (self.pending_insertions.items) |insertion| {
+            self.allocator.free(insertion.content);
+        }
+        self.pending_insertions.deinit(self.allocator);
+    }
+
+    /// Insert content at the current insertion point.
+    ///
+    /// HTML Standard §13.2.3.1: "Insert the string input into the input stream
+    /// just before the insertion point."
+    pub fn insert(self: *InputStreamManager, content: []const u8) !void {
+        if (self.insertion_point == null) {
+            return; // No active parser
+        }
+
+        if (content.len == 0) {
+            return; // Nothing to insert
+        }
+
+        // Copy content (we own it)
+        const owned_content = try self.allocator.dupe(u8, content);
+        errdefer self.allocator.free(owned_content);
+
+        // Insert at current insertion point
+        const insertion = PendingInsertion{
+            .position = self.insertion_point.?,
+            .content = owned_content,
+            .read_offset = 0,
+        };
+
+        // Insert sorted by position (later insertions at same position come after)
+        var insert_idx: usize = self.pending_insertions.items.len;
+        for (self.pending_insertions.items, 0..) |existing, i| {
+            if (existing.position > insertion.position) {
+                insert_idx = i;
+                break;
+            }
+        }
+
+        try self.pending_insertions.insert(self.allocator, insert_idx, insertion);
+    }
+
+    /// Get the next character from the stream (considering insertions).
+    ///
+    /// Returns the next Unicode code point, or null for EOF.
+    pub fn getNextChar(self: *InputStreamManager) ?u21 {
+        // First, check if we're reading from an active insertion
+        if (self.active_insertion_index) |idx| {
+            if (idx < self.pending_insertions.items.len) {
+                const insertion = &self.pending_insertions.items[idx];
+                if (insertion.read_offset < insertion.content.len) {
+                    const result = self.decodeUtf8FromSlice(insertion.content, insertion.read_offset);
+                    if (result.codepoint) |cp| {
+                        insertion.read_offset += result.bytes_consumed;
+                        self.logical_position += 1;
+                        self.updateLineColumn(cp);
+                        return self.normalizeNewline(cp);
+                    }
+                }
+            }
+            // Finished with this insertion, move to next or back to original
+            self.active_insertion_index = null;
+        }
+
+        // Check for insertions at current logical position
+        for (self.pending_insertions.items, 0..) |*insertion, i| {
+            if (insertion.position == self.logical_position and insertion.read_offset < insertion.content.len) {
+                self.active_insertion_index = i;
+                return self.getNextChar(); // Recurse to read from insertion
+            }
+        }
+
+        // Read from original input
+        if (self.original_position >= self.original_input.len) {
+            return null; // EOF
+        }
+
+        const result = self.decodeUtf8FromSlice(self.original_input, self.original_position);
+        if (result.codepoint) |cp| {
+            self.original_position += result.bytes_consumed;
+            self.logical_position += 1;
+
+            // Update insertion point if still defined
+            if (self.insertion_point) |ip| {
+                if (ip < self.logical_position) {
+                    self.insertion_point = self.logical_position;
+                }
+            }
+
+            self.updateLineColumn(cp);
+            return self.normalizeNewline(cp);
+        }
+
+        // Invalid UTF-8 - return replacement character
+        self.original_position += 1;
+        self.logical_position += 1;
+        self.column += 1;
+        return 0xFFFD;
+    }
+
+    /// Normalize newlines per HTML spec.
+    fn normalizeNewline(self: *InputStreamManager, cp: u21) u21 {
+        if (cp == 0x0D) {
+            // CR -> LF
+            self.last_was_cr = true;
+            return 0x0A;
+        } else if (cp == 0x0A and self.last_was_cr) {
+            // LF after CR - skip it (CRLF already emitted as single LF)
+            self.last_was_cr = false;
+            return self.getNextChar() orelse 0x0A; // Recurse, or return LF if EOF
+        }
+        self.last_was_cr = false;
+        return cp;
+    }
+
+    /// Update line/column tracking.
+    fn updateLineColumn(self: *InputStreamManager, cp: u21) void {
+        if (cp == 0x0A or cp == 0x0D) {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+    }
+
+    /// Decode UTF-8 from a slice at the given offset.
+    fn decodeUtf8FromSlice(self: *InputStreamManager, data: []const u8, offset: usize) struct { codepoint: ?u21, bytes_consumed: usize } {
+        _ = self;
+        if (offset >= data.len) {
+            return .{ .codepoint = null, .bytes_consumed = 0 };
+        }
+
+        const first = data[offset];
+
+        // Single byte (ASCII)
+        if (first & 0x80 == 0) {
+            return .{ .codepoint = first, .bytes_consumed = 1 };
+        }
+
+        // Multi-byte sequence
+        const len: usize = if (first & 0xE0 == 0xC0)
+            2
+        else if (first & 0xF0 == 0xE0)
+            3
+        else if (first & 0xF8 == 0xF0)
+            4
+        else
+            return .{ .codepoint = null, .bytes_consumed = 1 };
+
+        if (offset + len > data.len) {
+            return .{ .codepoint = null, .bytes_consumed = 1 };
+        }
+
+        var cp: u21 = switch (len) {
+            2 => @as(u21, first & 0x1F),
+            3 => @as(u21, first & 0x0F),
+            4 => @as(u21, first & 0x07),
+            else => unreachable,
+        };
+
+        for (1..len) |i| {
+            const byte = data[offset + i];
+            if (byte & 0xC0 != 0x80) {
+                return .{ .codepoint = null, .bytes_consumed = 1 };
+            }
+            cp = (cp << 6) | @as(u21, byte & 0x3F);
+        }
+
+        // Check for overlong encoding
+        const min_cp: u21 = switch (len) {
+            2 => 0x80,
+            3 => 0x800,
+            4 => 0x10000,
+            else => unreachable,
+        };
+
+        if (cp < min_cp or cp > 0x10FFFF) {
+            return .{ .codepoint = null, .bytes_consumed = len };
+        }
+
+        return .{ .codepoint = cp, .bytes_consumed = len };
+    }
+
+    /// Check if at end of input (including insertions).
+    pub fn isAtEnd(self: *const InputStreamManager) bool {
+        // Check if there are unread insertions
+        for (self.pending_insertions.items) |insertion| {
+            if (insertion.read_offset < insertion.content.len) {
+                return false;
+            }
+        }
+        return self.original_position >= self.original_input.len;
+    }
+
+    /// Get current position info.
+    pub fn getPosition(self: *const InputStreamManager) struct { line: u32, column: u32, logical_offset: usize } {
+        return .{
+            .line = self.line,
+            .column = self.column,
+            .logical_offset = self.logical_position,
+        };
+    }
+
+    /// Set the insertion point (called when parser reaches a specific position).
+    pub fn setInsertionPoint(self: *InputStreamManager, position: ?usize) void {
+        self.insertion_point = position;
+    }
+
+    /// Get the current insertion point.
+    pub fn getInsertionPoint(self: *const InputStreamManager) ?usize {
+        return self.insertion_point;
+    }
+
+    /// Check if there is an active insertion point.
+    pub fn hasInsertionPoint(self: *const InputStreamManager) bool {
+        return self.insertion_point != null;
+    }
+
+    /// Clear the insertion point (called when parsing completes or is aborted).
+    pub fn clearInsertionPoint(self: *InputStreamManager) void {
+        self.insertion_point = null;
+    }
+};
 
 // ============================================================================
 // Tests
@@ -377,4 +675,175 @@ test "DocumentWriteState - ignore destructive writes during unload" {
     // Write should be ignored
     try documentWrite(&state, "ignored");
     try std.testing.expectEqualStrings("", getWriteBuffer(&state));
+}
+
+// ============================================================================
+// InputStreamManager Tests
+// ============================================================================
+
+test "InputStreamManager - basic reading without insertions" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "hello");
+    defer manager.deinit();
+
+    try std.testing.expectEqual(@as(u21, 'h'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'e'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'l'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'l'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'o'), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null); // EOF
+}
+
+test "InputStreamManager - insertion at beginning" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "world");
+    defer manager.deinit();
+
+    // Insert at position 0 (beginning)
+    manager.setInsertionPoint(0);
+    try manager.insert("hello ");
+
+    // Should read: "hello world"
+    try std.testing.expectEqual(@as(u21, 'h'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'e'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'l'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'l'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'o'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, ' '), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'w'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'o'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'r'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'l'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'd'), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null);
+}
+
+test "InputStreamManager - insertion mid-stream" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "ab");
+    defer manager.deinit();
+
+    // Read first char
+    try std.testing.expectEqual(@as(u21, 'a'), manager.getNextChar().?);
+
+    // Insert at current position (after 'a')
+    manager.setInsertionPoint(1);
+    try manager.insert("XY");
+
+    // Should read: "XY" then "b"
+    try std.testing.expectEqual(@as(u21, 'X'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'Y'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'b'), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null);
+}
+
+test "InputStreamManager - multiple insertions" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "ac");
+    defer manager.deinit();
+
+    // Insert 'b' at position 1
+    manager.setInsertionPoint(1);
+    try manager.insert("b");
+
+    // Read everything
+    try std.testing.expectEqual(@as(u21, 'a'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'b'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'c'), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null);
+}
+
+test "InputStreamManager - newline normalization" {
+    const allocator = std.testing.allocator;
+
+    // Test CR -> LF
+    var manager1 = InputStreamManager.init(allocator, "a\rb");
+    defer manager1.deinit();
+
+    try std.testing.expectEqual(@as(u21, 'a'), manager1.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, '\n'), manager1.getNextChar().?); // CR normalized
+    try std.testing.expectEqual(@as(u21, 'b'), manager1.getNextChar().?);
+}
+
+test "InputStreamManager - UTF-8 decoding" {
+    const allocator = std.testing.allocator;
+
+    // Test multi-byte UTF-8 (€ = U+20AC = E2 82 AC)
+    var manager = InputStreamManager.init(allocator, "\xE2\x82\xAC");
+    defer manager.deinit();
+
+    try std.testing.expectEqual(@as(u21, 0x20AC), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null);
+}
+
+test "InputStreamManager - insertion point tracking" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "test");
+    defer manager.deinit();
+
+    try std.testing.expect(manager.hasInsertionPoint());
+    try std.testing.expectEqual(@as(?usize, 0), manager.getInsertionPoint());
+
+    manager.clearInsertionPoint();
+    try std.testing.expect(!manager.hasInsertionPoint());
+    try std.testing.expectEqual(@as(?usize, null), manager.getInsertionPoint());
+
+    manager.setInsertionPoint(5);
+    try std.testing.expect(manager.hasInsertionPoint());
+    try std.testing.expectEqual(@as(?usize, 5), manager.getInsertionPoint());
+}
+
+test "InputStreamManager - no insertion when no insertion point" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "test");
+    defer manager.deinit();
+
+    // Clear insertion point
+    manager.clearInsertionPoint();
+
+    // Insert should be ignored
+    try manager.insert("ignored");
+
+    // Should just read original
+    try std.testing.expectEqual(@as(u21, 't'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 'e'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 's'), manager.getNextChar().?);
+    try std.testing.expectEqual(@as(u21, 't'), manager.getNextChar().?);
+    try std.testing.expect(manager.getNextChar() == null);
+}
+
+test "InputStreamManager - line column tracking" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "ab\ncd");
+    defer manager.deinit();
+
+    _ = manager.getNextChar(); // a
+    const pos1 = manager.getPosition();
+    try std.testing.expectEqual(@as(u32, 1), pos1.line);
+    try std.testing.expectEqual(@as(u32, 2), pos1.column);
+
+    _ = manager.getNextChar(); // b
+    _ = manager.getNextChar(); // \n
+
+    const pos2 = manager.getPosition();
+    try std.testing.expectEqual(@as(u32, 2), pos2.line);
+    try std.testing.expectEqual(@as(u32, 1), pos2.column);
+}
+
+test "InputStreamManager - isAtEnd" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "a");
+    defer manager.deinit();
+
+    try std.testing.expect(!manager.isAtEnd());
+    _ = manager.getNextChar();
+    try std.testing.expect(manager.isAtEnd());
 }
