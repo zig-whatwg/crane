@@ -1241,3 +1241,10 @@ pub const GPUTextureUsage = @import("GPUTextureUsage.zig");
 pub const TestUtils = @import("TestUtils.zig");
 pub const WebAssembly = @import("WebAssembly.zig");
 pub const console = @import("console.zig");
+
+// Script execution utilities (HTML Standard §4.12.1.1)
+// These are manually added (not auto-generated) to break the circular dependency
+// between html_mod and impls_mod. The html module re-exports these.
+pub const script_execution = @import("script_execution.zig");
+pub const script_runner = @import("script_runner.zig");
+pub const event_utils = @import("event_utils.zig");

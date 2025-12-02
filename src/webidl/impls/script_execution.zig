@@ -26,15 +26,13 @@ const Document = interfaces.Document;
 const Node = interfaces.Node;
 const Element = interfaces.Element;
 const Text = interfaces.Text;
+const CharacterData = interfaces.CharacterData;
 
 // Script element types re-exported from interface
 const ScriptType = HTMLScriptElement.ScriptType;
 const ScriptResult = HTMLScriptElement.ScriptResult;
 const ClassicScript = HTMLScriptElement.ClassicScript;
 const ModuleScript = HTMLScriptElement.ModuleScript;
-
-// MIME type checking
-const mimesniff = @import("mimesniff");
 
 // Infra primitives
 const infra = @import("infra");
@@ -93,7 +91,7 @@ pub fn prepareScriptElement(
     // Step 5: Let source text be el's child text content
     const source_text = getChildTextContent(allocator, script_element) catch |err| {
         if (err == error.OutOfMemory) return ScriptExecutionError.OutOfMemory;
-        return "";
+        return false; // Abort on other errors
     };
     defer if (source_text.len > 0) allocator.free(source_text);
 
@@ -443,7 +441,7 @@ fn handleScriptScheduling(
                     // Deferred external script
                     // Step 35.2: Add to list of scripts that will execute when document finishes parsing
                     if (node_document) |doc| {
-                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
                     }
                     return true;
                 } else if (has_async and has_src) {
@@ -451,12 +449,12 @@ fn handleScriptScheduling(
                     if (!force_async) {
                         // Step 35.3: Add to list of scripts that will execute in order
                         if (node_document) |doc| {
-                            Document.addScriptToExecuteInOrderAsap(doc, script_element);
+                            Document.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
                         }
                     } else {
                         // Step 35.4: Add to set of scripts that will execute ASAP
                         if (node_document) |doc| {
-                            Document.addScriptToExecuteAsap(doc, script_element);
+                            Document.addScriptToExecuteAsap(doc, script_element) catch {};
                         }
                     }
                     return true;
@@ -473,7 +471,7 @@ fn handleScriptScheduling(
                 if (is_parser_inserted and !has_async) {
                     // Parser-inserted inline module without async - defer until parsing finishes
                     if (node_document) |doc| {
-                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
                     }
                     return true;
                 } else {
@@ -488,13 +486,13 @@ fn handleScriptScheduling(
                     // Parser-inserted external module - deferred by default
                     // Step 35.2: Add to list of scripts that will execute when document finishes parsing
                     if (node_document) |doc| {
-                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element);
+                        Document.addScriptToExecuteWhenParsingFinished(doc, script_element) catch {};
                     }
                     return true;
                 } else {
                     // Async external module script
                     if (node_document) |doc| {
-                        Document.addScriptToExecuteAsap(doc, script_element);
+                        Document.addScriptToExecuteAsap(doc, script_element) catch {};
                     }
                     return true;
                 }
@@ -571,7 +569,7 @@ pub fn executeScriptsInOrderAsap(
         // Check if ready
         if (!HTMLScriptElement.isReadyToBeParserExecuted(script)) {
             // Re-add to list and stop - must maintain order
-            Document.addScriptToExecuteInOrderAsap(document, script);
+            Document.addScriptToExecuteInOrderAsap(document, script) catch {};
             break;
         }
 
@@ -1071,7 +1069,7 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
     if (Element.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.local_name.asSlice(), name)) {
+            if (std.mem.eql(u8, attr.local_name, name)) {
                 return true;
             }
         }
@@ -1083,8 +1081,8 @@ fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
     if (Element.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.local_name.asSlice(), name)) {
-                return attr.value.asSlice();
+            if (std.mem.eql(u8, attr.local_name, name)) {
+                return attr.value;
             }
         }
     }
@@ -1157,8 +1155,10 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
 /// Check if a MIME type is a JavaScript MIME type essence match
 /// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
 fn isJavaScriptMimeType(mime_type: []const u8) bool {
-    const normalized = std.ascii.lowerString(mime_type[0..@min(mime_type.len, 64)]);
-    const lower = normalized[0..@min(mime_type.len, 64)];
+    // Lowercase the input into a stack buffer
+    var buffer: [64]u8 = undefined;
+    const len = @min(mime_type.len, 64);
+    const lower = std.ascii.lowerString(buffer[0..len], mime_type[0..len]);
 
     // JavaScript MIME type essence matches
     const js_types = [_][]const u8{
@@ -1210,12 +1210,12 @@ fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
 
 /// Get child text content of an element
 fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance) ![]const u8 {
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
     try collectTextContent(element, &result);
 
-    if (result.items.len == 0) {
+    if (result.size() == 0) {
         result.deinit();
         return "";
     }
@@ -1224,16 +1224,16 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
 }
 
 /// Recursively collect text content from a node and its descendants
-fn collectTextContent(node: *runtime.Instance, result: *std.ArrayList(u8)) !void {
+fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
     const node_type = Node.getNodeType(node) orelse return;
 
     if (node_type == Node.NodeType.TEXT_NODE or
         node_type == Node.NodeType.CDATA_SECTION_NODE)
     {
-        // Get text content from Text/CDATASection node
-        if (Text.getInternal(node)) |internal| {
-            try result.appendSlice(internal.data.asSlice());
-        }
+        // Get text content from Text/CDATASection node via CharacterData interface
+        // Text and CDATASection inherit from CharacterData which stores the data
+        const data = CharacterData.get_data(node) catch return;
+        try result.appendSlice(data.asSlice());
     } else {
         // Recurse into children
         var child = Node.getFirstChild(node);
@@ -1395,24 +1395,18 @@ fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) !ExternalS
 
     // Get Content-Type header
     var content_type: ?[]const u8 = null;
-    if (response.header_list) |headers| {
-        const ct_values = headers.getValues(allocator, "content-type") catch null;
-        if (ct_values) |values| {
-            if (values.len > 0) {
-                content_type = try allocator.dupe(u8, values[0]);
-            }
-            for (values) |v| {
-                allocator.free(v);
-            }
-            allocator.free(values);
+    {
+        const headers = &response.header_list;
+        if (headers.getFirstValue("content-type")) |ct| {
+            content_type = try allocator.dupe(u8, ct);
         }
     }
 
     // Extract body
     var body: ?[]const u8 = null;
     if (response.body) |resp_body| {
-        if (resp_body.bytes) |bytes| {
-            body = try allocator.dupe(u8, bytes);
+        if (resp_body.data.items.len > 0) {
+            body = try allocator.dupe(u8, resp_body.data.items);
         }
     }
 

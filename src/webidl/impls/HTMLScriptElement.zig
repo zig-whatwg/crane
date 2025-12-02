@@ -783,9 +783,8 @@ pub fn prepareScriptElement(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
 ) ScriptExecutionError!bool {
-    // Import the script_execution module which contains the algorithm implementation
-    // This is a transitional pattern - eventually all logic will move here
-    const script_execution = @import("html").script_execution;
+    // Import the script_execution module - now a local import in impls/
+    const script_execution = @import("script_execution.zig");
     return script_execution.prepareScriptElement(allocator, script_element);
 }
 
@@ -797,7 +796,7 @@ pub fn executeScriptElement(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
 ) ScriptExecutionError!void {
-    const script_execution = @import("html").script_execution;
+    const script_execution = @import("script_execution.zig");
     return script_execution.executeScriptElement(allocator, script_element);
 }
 

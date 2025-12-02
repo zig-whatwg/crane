@@ -111,37 +111,18 @@ pub const documentClose = parser.documentClose;
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");
 
-// Script Execution (§4.12.1)
-// NOTE: Temporarily disabled due to circular dependency - script_execution.zig
-// requires 'interfaces' module which creates a cycle: html → interfaces → impls → html
-// TODO: Refactor to break the circular dependency
-// pub const script_execution = @import("script_execution.zig");
-
-// Re-export script execution types
-// pub const prepareScriptElement = script_execution.prepareScriptElement;
-// pub const executeScriptElement = script_execution.executeScriptElement;
-// pub const ScriptExecutionError = script_execution.ScriptExecutionError;
-
-// Script Runner (§4.12.1.1 - Script execution coordination)
-// NOTE: Temporarily disabled - requires script_execution.zig
-// pub const script_runner = @import("script_runner.zig");
-
-// Re-export script runner types
-// pub const ScriptRunner = script_runner.ScriptRunner;
-
-// Event Utilities (DOM §2.9.4 and HTML §8.1.6.1)
-// NOTE: Temporarily disabled due to circular dependency - event_utils.zig
-// requires 'webidl' module which creates a cycle: html → webidl → impls → html
-// TODO: Refactor to break the circular dependency
-// pub const event_utils = @import("event_utils.zig");
-
-// Re-export commonly used event utility types
-// pub const ErrorInfo = event_utils.ErrorInfo;
-// pub const extractErrorInfo = event_utils.extractErrorInfo;
-// pub const fireEvent = event_utils.fireEvent;
-// pub const fireErrorEvent = event_utils.fireErrorEvent;
-// pub const fireSimpleEvent = event_utils.fireSimpleEvent;
-// pub const reportException = event_utils.reportException;
+// Script Execution (§4.12.1), Script Runner (§4.12.1.1), and Event Utilities
+// MOVED to src/webidl/impls/ to break circular dependency:
+//   html_mod → interfaces_mod → impls_mod → html_mod (CYCLE!)
+//
+// These modules are now available via the impls module:
+//   - impls.script_execution (prepareScriptElement, executeScriptElement, etc.)
+//   - impls.script_runner (ScriptRunner)
+//   - impls.event_utils (fireEvent, fireErrorEvent, reportException, etc.)
+//
+// Example usage:
+//   const impls = @import("impls");
+//   try impls.script_execution.prepareScriptElement(allocator, script_element);
 
 // Structured Clone (§2.7)
 pub const structured_clone = @import("structured_clone/root.zig");

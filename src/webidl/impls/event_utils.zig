@@ -11,10 +11,14 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const webidl = @import("webidl");
-const interfaces = webidl.interfaces;
-const impls = webidl.impls;
-const dictionaries = webidl.dictionaries;
+const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
+
+// Access to Event impl for setting internal state (relative imports since we're in impls/)
+const impls = struct {
+    pub const Event = @import("Event.zig");
+    pub const ErrorEvent = @import("ErrorEvent.zig");
+};
 
 // =============================================================================
 // Error Information

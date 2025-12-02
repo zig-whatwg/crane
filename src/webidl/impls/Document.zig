@@ -4124,7 +4124,7 @@ pub fn setPendingParsingBlockingScript(instance: *runtime.Instance, script: ?*ru
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
 pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_asap.append(script);
+    try internal.scripts_to_execute_asap.append(internal.allocator, script);
 }
 
 /// Remove script from "execute as soon as possible" set
@@ -4142,7 +4142,7 @@ pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible
 pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_in_order_asap.append(script);
+    try internal.scripts_to_execute_in_order_asap.append(internal.allocator, script);
 }
 
 /// Get first script in "execute in order" list
@@ -4166,7 +4166,7 @@ pub fn removeFirstScriptFromExecuteInOrder(instance: *runtime.Instance) void {
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing
 pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_when_parsing_finished.append(script);
+    try internal.scripts_to_execute_when_parsing_finished.append(internal.allocator, script);
 }
 
 /// Get scripts to execute when parsing finished
@@ -4486,7 +4486,7 @@ pub fn isInlineScriptAllowedByCSP(
         if (policy.disposition != .enforce) continue;
 
         // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(&policy.directive_set) orelse continue;
+        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
 
         // Check if 'strict-dynamic' is present
         // With strict-dynamic, inline scripts are blocked unless nonced
@@ -4556,7 +4556,7 @@ pub fn isExternalScriptAllowedByCSP(
         if (policy.disposition != .enforce) continue;
 
         // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(&policy.directive_set) orelse continue;
+        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
 
         // Check if 'strict-dynamic' is present
         const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);

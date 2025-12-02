@@ -39,7 +39,8 @@ const interfaces = @import("interfaces");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 const Document = interfaces.Document;
 const script_execution = @import("script_execution.zig");
-const EventLoop = @import("event_loop/root.zig").EventLoop;
+const html = @import("html");
+const EventLoop = html.EventLoop;
 
 /// Script Runner manages script execution scheduling
 ///

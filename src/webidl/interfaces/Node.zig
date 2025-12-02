@@ -511,8 +511,8 @@ pub const Node = struct {
     // Internal State Access (for script execution algorithms)
     // =============================================================================
 
-    /// Get the node type
-    pub fn getNodeType(instance: *runtime.Instance) ?NodeImpl.NodeType {
+    /// Get the node type (returns u16 constant like NodeType.TEXT_NODE)
+    pub fn getNodeType(instance: *runtime.Instance) ?u16 {
         return NodeImpl.getNodeType(instance);
     }
 
