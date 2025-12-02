@@ -1961,34 +1961,78 @@ fn registerSpeculationRules(
 // Event Firing for Script Elements
 // =============================================================================
 
-/// Fire a simple event on an element
-/// Spec: https://dom.spec.whatwg.org/#concept-event-fire
-fn fireSimpleEvent(
-    allocator: std.mem.Allocator,
-    target: *runtime.Instance,
-    event_type: []const u8,
-) void {
-    _ = allocator;
-    _ = target;
-    // TODO: Full implementation requires:
-    // 1. Create Event with type
-    // 2. Set bubbles and cancelable appropriately
-    // 3. Dispatch event to target
-
-    // For now, just log the event
-    std.debug.print("Event fired: {s}\n", .{event_type});
-}
+// Event utilities for proper event creation and dispatch
+const event_utils = @import("event_utils.zig");
 
 /// Fire a load event on a script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element (step 8)
+///
+/// The load event is fired after successful script execution to indicate
+/// the script has loaded and executed successfully.
 pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
-    fireSimpleEvent(allocator, script_element, "load");
+    // Fire a simple "load" event - not cancelable, doesn't bubble
+    event_utils.fireSimpleEvent(allocator, null, script_element, "load") catch |err| {
+        std.debug.print("Failed to fire load event: {any}\n", .{err});
+    };
 }
 
 /// Fire an error event on a script element
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+///
+/// The error event is fired when:
+/// - Script source cannot be loaded (network error, 404, etc.)
+/// - Script type is not supported
+/// - URL parsing fails
+/// - CSP blocks the script
+///
+/// Note: This is different from reportScriptError which handles runtime errors.
+/// This function handles load-time errors.
 pub fn fireErrorEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
-    fireSimpleEvent(allocator, script_element, "error");
+    // Fire a simple "error" event - not cancelable by default for load errors
+    event_utils.fireSimpleEvent(allocator, null, script_element, "error") catch |err| {
+        std.debug.print("Failed to fire error event: {any}\n", .{err});
+    };
+}
+
+/// Report a script execution error
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
+///
+/// This is called when a script throws an exception during execution.
+/// The error event is fired at the global object, not the script element.
+///
+/// Parameters:
+/// - allocator: Memory allocator
+/// - global: The global object (Window or WorkerGlobalScope)
+/// - message: The error message
+/// - filename: URL of the script where the error occurred
+/// - lineno: Line number where the error occurred
+/// - colno: Column number where the error occurred
+/// - error_value: The JavaScript error object (may be null for muted errors)
+/// - muted_errors: Whether this script has muted errors (cross-origin without CORS)
+pub fn reportScriptError(
+    allocator: std.mem.Allocator,
+    global: *runtime.Instance,
+    message: ?[]const u8,
+    filename: ?[]const u8,
+    lineno: ?u32,
+    colno: ?u32,
+    error_value: ?*const anyopaque,
+    muted_errors: bool,
+) void {
+    _ = event_utils.reportException(
+        allocator,
+        null,
+        global,
+        error_value,
+        message,
+        filename,
+        lineno,
+        colno,
+        muted_errors,
+        false, // omit_error = false
+    ) catch |err| {
+        std.debug.print("Failed to report script error: {any}\n", .{err});
+    };
 }
 
 // =============================================================================

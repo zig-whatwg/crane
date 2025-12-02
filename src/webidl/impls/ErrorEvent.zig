@@ -1,4 +1,10 @@
 //! Implementation for ErrorEvent interface
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#errorevent
+//! HTML Standard §8.1.6.1 Runtime script errors
+//!
+//! The ErrorEvent interface represents errors from script execution.
+//! It provides message, filename, line number, column number, and error value.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -9,6 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const ErrorEvent = interfaces.ErrorEvent;
+const EventImpl = @import("Event.zig");
 
 pub const State = ErrorEvent.State;
 
@@ -16,11 +23,54 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for ErrorEvent
+/// Stores the error-specific attributes initialized from ErrorEventInit
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// The error message
+    /// Spec: "represents the error message"
+    message: runtime.DOMString,
+
+    /// The URL of the script where the error occurred
+    /// Spec: "represents the URL of the script in which the error originally occurred"
+    /// Note: USVString is []const u8 in Zig
+    filename: []const u8,
+
+    /// The line number where the error occurred
+    /// Spec: "represents the line number where the error occurred in the script"
+    lineno: u32,
+
+    /// The column number where the error occurred
+    /// Spec: "represents the column number where the error occurred in the script"
+    colno: u32,
+
+    /// The error object (may be null)
+    /// Spec: "represents the error (e.g., the exception object in the case of an uncaught exception)"
+    @"error": ?*const anyopaque,
+
+    pub fn init(allocator: std.mem.Allocator) InternalState {
+        return .{
+            .allocator = allocator,
+            .message = runtime.DOMString.initEmpty(),
+            .filename = "", // Empty string for USVString
+            .lineno = 0,
+            .colno = 0,
+            .@"error" = null,
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // DOMString cleanup handled by arena allocator
+        _ = self;
+    }
+};
+
+/// Get the internal state from an instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,57 +80,184 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#errorevent
+///
+/// The ErrorEvent(type, eventInitDict) constructor steps are:
+/// 1. Set the Event-related attributes (type, bubbles, cancelable, composed)
+/// 2. Set the ErrorEvent-specific attributes from eventInitDict
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ErrorEvent.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
+    // Get state
+    const state = instance.getState(State);
+
+    // Create internal state
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = InternalState.init(allocator);
+    state.own._internal = internal;
+
+    // Initialize Event base class attributes (Event fields are in state.base.own)
+    // Get EventInit from ErrorEventInit.base
+    const event_init = if (eventInitDict.was_passed) eventInitDict.value.base else dictionaries.EventInit{};
+    const bubbles = event_init.bubbles orelse false;
+    const cancelable = event_init.cancelable orelse false;
+    const composed = event_init.composed orelse false;
+
+    // Store event type - clone the string to ensure we own it
+    state.base.own.type = try @"type".clone(allocator);
+
+    // Initialize Event attributes (all in state.base.own)
+    state.base.own.bubbles = bubbles;
+    state.base.own.cancelable = cancelable;
+    state.base.own.composed = composed;
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = interfaces.Event.get_NONE();
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
+    state.base.own.isTrusted = false;
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+
+    // Initialize ErrorEvent-specific attributes from eventInitDict
+    if (eventInitDict.was_passed) {
+        const init_dict = eventInitDict.value;
+
+        // message defaults to ""
+        if (init_dict.message) |msg| {
+            internal.message = try msg.clone(allocator);
+        }
+
+        // filename defaults to "" (USVString is []const u8)
+        if (init_dict.filename) |fname| {
+            internal.filename = try allocator.dupe(u8, fname);
+        }
+
+        // lineno defaults to 0
+        if (init_dict.lineno) |line| {
+            internal.lineno = line;
+        }
+
+        // colno defaults to 0
+        if (init_dict.colno) |col| {
+            internal.colno = col;
+        }
+
+        // error defaults to undefined (null in our representation)
+        if (init_dict.@"error") |err| {
+            internal.@"error" = err;
+        }
+    }
 
     return instance;
 }
 
 /// Getter for message
+/// Spec: "The message attribute must return the value it was initialized to."
 pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    return internal.message;
 }
 
 /// Getter for filename
+/// Spec: "The filename attribute must return the value it was initialized to."
 pub fn get_filename(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return "";
+    return internal.filename;
 }
 
 /// Getter for lineno
+/// Spec: "The lineno attribute must return the value it was initialized to."
 pub fn get_lineno(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.lineno;
 }
 
 /// Getter for colno
+/// Spec: "The colno attribute must return the value it was initialized to."
 pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.colno;
 }
 
 /// Getter for error
+/// Spec: "The error attribute must return the value it was initialized to.
+///        It must initially be initialized to undefined."
+/// Note: Returns a pointer or null, represented as an anyopaque pointer.
+///       Null is represented by returning a special "undefined" marker pointer.
 pub fn get_error(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse {
+        // Return a marker for "undefined" - caller must handle this
+        return @as(*const anyopaque, @ptrCast(&undefined_marker));
+    };
+    return internal.@"error" orelse @as(*const anyopaque, @ptrCast(&undefined_marker));
 }
 
+/// Marker value for JavaScript "undefined"
+/// This is a static address that can be checked by callers
+const undefined_marker: u8 = 0;
+
+// =============================================================================
+// Factory functions for creating ErrorEvent instances
+// =============================================================================
+
+/// Create an ErrorEvent with the given attributes
+/// This is used by the "report an exception" algorithm
+pub fn createErrorEvent(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    message: []const u8,
+    filename: []const u8,
+    lineno: u32,
+    colno: u32,
+    err: ?*const anyopaque,
+    cancelable: bool,
+) !*runtime.Instance {
+    // Create ErrorEventInit dictionary
+    const event_init = dictionaries.EventInit{
+        .bubbles = false, // Error events don't bubble by default
+        .cancelable = cancelable,
+        .composed = false,
+    };
+
+    const error_init = dictionaries.ErrorEventInit{
+        .base = event_init,
+        .message = runtime.DOMString.initInterned(message),
+        .filename = filename, // USVString is []const u8
+        .lineno = lineno,
+        .colno = colno,
+        .@"error" = err,
+    };
+
+    // Construct the ErrorEvent
+    return call_constructor(
+        allocator,
+        ctx,
+        runtime.DOMString.initInterned("error"),
+        .{ .was_passed = true, .value = error_init },
+    );
+}
+
+/// Set the isTrusted flag on an ErrorEvent
+/// Called when creating events via the "fire an event" algorithm
+pub fn setIsTrusted(instance: *runtime.Instance, value: bool) void {
+    const state = instance.getState(State);
+    state.own.isTrusted = value;
+}

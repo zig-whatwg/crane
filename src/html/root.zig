@@ -125,6 +125,17 @@ pub const script_runner = @import("script_runner.zig");
 // Re-export script runner types
 pub const ScriptRunner = script_runner.ScriptRunner;
 
+// Event Utilities (DOM §2.9.4 and HTML §8.1.6.1)
+pub const event_utils = @import("event_utils.zig");
+
+// Re-export commonly used event utility types
+pub const ErrorInfo = event_utils.ErrorInfo;
+pub const extractErrorInfo = event_utils.extractErrorInfo;
+pub const fireEvent = event_utils.fireEvent;
+pub const fireErrorEvent = event_utils.fireErrorEvent;
+pub const fireSimpleEvent = event_utils.fireSimpleEvent;
+pub const reportException = event_utils.reportException;
+
 // Structured Clone (§2.7)
 pub const structured_clone = @import("structured_clone/root.zig");
 
