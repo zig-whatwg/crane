@@ -31,6 +31,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const types = @import("types.zig");
 const serialize = @import("serialize.zig");
 const deserialize = @import("deserialize.zig");
@@ -260,7 +261,7 @@ pub fn structuredSerializeWithTransfer(
     }
 
     // Step 4-5: Transfer each object
-    var transfer_data_holders = std.ArrayList(TransferDataHolder).init(allocator);
+    var transfer_data_holders = infra.List(TransferDataHolder).init(allocator);
     errdefer transfer_data_holders.deinit();
 
     for (transfer_list) |transferable| {
@@ -356,10 +357,10 @@ pub fn structuredDeserializeWithTransfer(
     defer memory.deinit();
 
     // Step 2-3: Recreate transferred objects
-    var transferred_values = std.ArrayList(*anyopaque).init(allocator);
+    var transferred_values = infra.List(*anyopaque).init(allocator);
     errdefer transferred_values.deinit();
 
-    for (result.transfer_data_holders.items) |data_holder| {
+    for (result.transfer_data_holders.toSlice()) |data_holder| {
         const value: *anyopaque = switch (data_holder.type) {
             .array_buffer => blk: {
                 const ab = try allocator.create(TransferableArrayBuffer);
@@ -481,8 +482,8 @@ test "structuredSerializeWithTransfer - ArrayBuffer" {
     try testing.expectEqual(@as(usize, 0), ab.data.len);
 
     // Transfer data should contain the data
-    try testing.expectEqual(@as(usize, 1), result.transfer_data_holders.items.len);
-    try testing.expectEqual(@as(usize, 10), result.transfer_data_holders.items[0].data.array_buffer.byte_length);
+    try testing.expectEqual(@as(usize, 1), result.transfer_data_holders.size());
+    try testing.expectEqual(@as(usize, 10), result.transfer_data_holders.get(0).?.data.array_buffer.byte_length);
 }
 
 test "structuredSerializeWithTransfer - duplicate transfer throws" {

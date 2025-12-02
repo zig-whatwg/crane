@@ -10,8 +10,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
-const timer_backend = @import("../../platform/timer_backend.zig");
+const infra = @import("infra");
+const platform_mod = @import("platform");
+const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
 
 /// A scheduled timer.

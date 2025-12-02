@@ -93,7 +93,7 @@ pub fn fireEvent(
     // If no context, create a null context for testing
     var ctx_data: runtime.ContextData = undefined;
     const actual_ctx = if (ctx) |c| c else blk: {
-        ctx_data = try @import("runtime").context.createNullContext(allocator);
+        ctx_data = try @import("runtime").createNullContext(allocator);
         break :blk &ctx_data;
     };
     defer if (ctx == null) ctx_data.deinit();
@@ -134,7 +134,7 @@ pub fn fireErrorEvent(
     // If no context, create a null context for testing
     var ctx_data: runtime.ContextData = undefined;
     const actual_ctx = if (ctx) |c| c else blk: {
-        ctx_data = try @import("runtime").context.createNullContext(allocator);
+        ctx_data = try @import("runtime").createNullContext(allocator);
         break :blk &ctx_data;
     };
     defer if (ctx == null) ctx_data.deinit();

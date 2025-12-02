@@ -344,7 +344,7 @@ pub fn build(b: *std.Build) void {
             "trusted_types",
             "csp",
             "permissions",
-            // NOTE: "html" is not yet available as a test spec due to module ownership conflicts
+            "html",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -355,7 +355,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html\n", .{});
             std.process.exit(1);
         }
     }
@@ -1290,44 +1290,25 @@ pub fn build(b: *std.Build) void {
     // Add websocket to impls for WebSocket interface implementation
     impls_mod.addImport("websocket", websocket_mod);
 
-    // HTML Parser module (WHATWG HTML Standard §13)
-    const html_parser_mod = b.addModule("html_parser", .{
-        .root_source_file = b.path("src/html/parser/root.zig"),
-        .target = target,
-    });
-    html_parser_mod.addImport("infra", infra_mod);
-
-    // Add html_parser to impls for DOMParser, innerHTML, document.write implementations
-    impls_mod.addImport("html_parser", html_parser_mod);
-
-    // HTML Window infrastructure modules (WHATWG HTML Standard §7)
-    const html_browsing_context_mod = b.addModule("html_browsing_context", .{
-        .root_source_file = b.path("src/html/window/browsing_context.zig"),
+    // Platform module (Platform abstraction layer)
+    const platform_mod = b.addModule("platform", .{
+        .root_source_file = b.path("src/platform/root.zig"),
         .target = target,
     });
 
-    const html_ui_backend_mod = b.addModule("html_ui_backend", .{
-        .root_source_file = b.path("src/html/window/ui_backend.zig"),
+    // HTML module (WHATWG HTML Standard)
+    // Unified module covering parser (§13), window (§7), event loop (§8.1.7), etc.
+    const html_mod = b.addModule("html", .{
+        .root_source_file = b.path("src/html/root.zig"),
         .target = target,
     });
+    html_mod.addImport("infra", infra_mod);
+    html_mod.addImport("dom", dom_mod);
+    html_mod.addImport("platform", platform_mod);
+    html_mod.addImport("runtime", runtime_mod);
 
-    const html_animation_frame_mod = b.addModule("html_animation_frame", .{
-        .root_source_file = b.path("src/html/window/animation_frame.zig"),
-        .target = target,
-    });
-
-    // Add HTML window modules to impls for Window implementation
-    impls_mod.addImport("html_browsing_context", html_browsing_context_mod);
-    impls_mod.addImport("html_ui_backend", html_ui_backend_mod);
-    impls_mod.addImport("html_animation_frame", html_animation_frame_mod);
-
-    // NOTE: A unified "html" module is not yet supported due to module ownership conflicts.
-    // The HTML spec implementation is split across:
-    // - html_parser_mod (src/html/parser/root.zig)
-    // - html_browsing_context_mod (src/html/window/browsing_context.zig)
-    // - html_ui_backend_mod (src/html/window/ui_backend.zig)
-    // - html_animation_frame_mod (src/html/window/animation_frame.zig)
-    // See whatwg-4f6j for the unification work.
+    // Add html to impls for DOMParser, innerHTML, document.write, Window implementations
+    impls_mod.addImport("html", html_mod);
 
     // Permissions module (W3C Permissions API)
     const permissions_mod = b.addModule("permissions", .{
@@ -1360,7 +1341,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("hr_time", hr_time_mod);
     whatwg_mod.addImport("websocket", websocket_mod);
     whatwg_mod.addImport("permissions", permissions_mod);
-    // NOTE: html module not added due to ownership conflicts with html_parser, html_browsing_context, etc.
+    whatwg_mod.addImport("html", html_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1563,11 +1544,21 @@ pub fn build(b: *std.Build) void {
     }
 
     // HTML tests
-    // NOTE: HTML tests are currently disabled due to module ownership conflicts.
-    // The HTML spec implementation is split across multiple modules (html_parser, html_browsing_context, etc.)
-    // and cannot be unified into a single "html" module without refactoring the build system.
-    // See whatwg-4f6j for the test integration work.
-    // const test_html = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "html"));
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "html")) {
+        const html_tests = b.addTest(.{ .root_module = html_mod });
+        const run_html_tests = b.addRunArtifact(html_tests);
+        test_step.dependOn(&run_html_tests.step);
+
+        // Add dedicated test files from tests/html/
+        const html_imports = [_]std.Build.Module.Import{
+            .{ .name = "html", .module = html_mod },
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
+        };
+    }
 
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {

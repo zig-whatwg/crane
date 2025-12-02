@@ -69,7 +69,7 @@ test "ErrorInfo - partial error info" {
 test "ScriptRunner - initialization" {
     const allocator = testing.allocator;
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     // Initially no pending scripts
@@ -82,7 +82,7 @@ test "ScriptRunner - queue deferred script" {
     const allocator = testing.allocator;
     const runtime = @import("runtime");
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     // Create a mock script (using pointer from int as placeholder)
@@ -96,7 +96,7 @@ test "ScriptRunner - queue async script" {
     const allocator = testing.allocator;
     const runtime = @import("runtime");
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
@@ -109,7 +109,7 @@ test "ScriptRunner - set parser blocking script" {
     const allocator = testing.allocator;
     const runtime = @import("runtime");
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
@@ -126,7 +126,7 @@ test "ScriptRunner - multiple deferred scripts in order" {
     const allocator = testing.allocator;
     const runtime = @import("runtime");
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     // Queue multiple deferred scripts
@@ -146,7 +146,7 @@ test "ScriptRunner - queue in-order async script" {
     const allocator = testing.allocator;
     const runtime = @import("runtime");
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
@@ -158,7 +158,7 @@ test "ScriptRunner - queue in-order async script" {
 test "ScriptRunner - parser finished notification" {
     const allocator = testing.allocator;
 
-    var runner = html.ScriptRunner.init(allocator);
+    var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
     // Notify that parser is finished (should not crash)

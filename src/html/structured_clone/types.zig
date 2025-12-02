@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 
 /// Error types for structured clone operations
 ///
@@ -292,7 +293,7 @@ pub const SerializedValue = struct {
                 }
             },
             .map => |m| {
-                for (m.entries.items) |entry| {
+                for (m.entries.toSlice()) |entry| {
                     var mutable_key = @constCast(entry.key);
                     mutable_key.deinit();
                     self.allocator.destroy(mutable_key);
@@ -303,7 +304,7 @@ pub const SerializedValue = struct {
                 @constCast(&m.entries).deinit();
             },
             .set => |s| {
-                for (s.entries.items) |entry| {
+                for (s.entries.toSlice()) |entry| {
                     var mutable_entry = @constCast(entry);
                     mutable_entry.deinit();
                     self.allocator.destroy(mutable_entry);
@@ -315,7 +316,7 @@ pub const SerializedValue = struct {
                 if (e.stack) |stack| self.allocator.free(stack);
             },
             .array => |a| {
-                for (a.properties.items) |prop| {
+                for (a.properties.toSlice()) |prop| {
                     self.allocator.free(prop.key);
                     var mutable_value = @constCast(prop.value);
                     mutable_value.deinit();
@@ -324,7 +325,7 @@ pub const SerializedValue = struct {
                 @constCast(&a.properties).deinit();
             },
             .object => |o| {
-                for (o.properties.items) |prop| {
+                for (o.properties.toSlice()) |prop| {
                     self.allocator.free(prop.key);
                     var mutable_value = @constCast(prop.value);
                     mutable_value.deinit();
@@ -342,7 +343,7 @@ pub const SerializedValue = struct {
                 self.allocator.free(f.content_type);
             },
             .file_list => |fl| {
-                for (fl.files.items) |file| {
+                for (fl.files.toSlice()) |file| {
                     var mutable_file = @constCast(file);
                     mutable_file.deinit();
                     self.allocator.destroy(mutable_file);
@@ -399,7 +400,7 @@ pub const ArrayBufferViewData = struct {
 
 /// Map serialization data
 pub const MapData = struct {
-    entries: std.ArrayList(MapEntry),
+    entries: infra.List(MapEntry),
 
     pub const MapEntry = struct {
         key: *const SerializedValue,
@@ -409,7 +410,7 @@ pub const MapData = struct {
 
 /// Set serialization data
 pub const SetData = struct {
-    entries: std.ArrayList(*const SerializedValue),
+    entries: infra.List(*const SerializedValue),
 };
 
 /// Error serialization data
@@ -422,12 +423,12 @@ pub const ErrorData = struct {
 /// Array serialization data
 pub const ArrayData = struct {
     length: usize,
-    properties: std.ArrayList(PropertyEntry),
+    properties: infra.List(PropertyEntry),
 };
 
 /// Object serialization data
 pub const ObjectData = struct {
-    properties: std.ArrayList(PropertyEntry),
+    properties: infra.List(PropertyEntry),
 };
 
 /// Property entry for objects and arrays
@@ -452,7 +453,7 @@ pub const FileData = struct {
 
 /// FileList serialization data
 pub const FileListData = struct {
-    files: std.ArrayList(*const SerializedValue),
+    files: infra.List(*const SerializedValue),
 };
 
 /// ImageBitmap serialization data
@@ -563,7 +564,7 @@ pub const OffscreenCanvasTransfer = struct {
 /// Result of StructuredSerializeWithTransfer
 pub const SerializeWithTransferResult = struct {
     serialized: *SerializedValue,
-    transfer_data_holders: std.ArrayList(TransferDataHolder),
+    transfer_data_holders: infra.List(TransferDataHolder),
     allocator: Allocator,
 
     pub fn deinit(self: *SerializeWithTransferResult) void {
@@ -576,7 +577,7 @@ pub const SerializeWithTransferResult = struct {
 /// Result of StructuredDeserializeWithTransfer
 pub const DeserializeWithTransferResult = struct {
     deserialized: *anyopaque, // The deserialized JavaScript value
-    transferred_values: std.ArrayList(*anyopaque),
+    transferred_values: infra.List(*anyopaque),
 };
 
 test "ErrorName.fromString" {

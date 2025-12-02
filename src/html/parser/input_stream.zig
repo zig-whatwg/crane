@@ -557,7 +557,7 @@ test "InputCharacter - type checks" {
     const ws = InputCharacter{ .codepoint = ' ' };
     try std.testing.expect(ws.isHtmlWhitespace());
 
-    const eof = InputCharacter.eof;
+    const eof: InputCharacter = .eof;
     try std.testing.expect(eof.isEof());
     try std.testing.expect(!eof.isAsciiAlpha());
 }

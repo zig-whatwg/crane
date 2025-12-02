@@ -190,10 +190,10 @@ fn structuredDeserializeInternal(
             try memory.put(identity, value);
 
             const m = serialized.data.map;
-            var entries = try allocator.alloc(JSValue.MapValue.MapEntry, m.entries.items.len);
+            var entries = try allocator.alloc(JSValue.MapValue.MapEntry, m.entries.size());
             errdefer allocator.free(entries);
 
-            for (m.entries.items, 0..) |entry, i| {
+            for (m.entries.toSlice(), 0..) |entry, i| {
                 const key_value = try structuredDeserializeInternal(
                     allocator,
                     entry.key,
@@ -218,10 +218,10 @@ fn structuredDeserializeInternal(
             try memory.put(identity, value);
 
             const s = serialized.data.set;
-            var entries = try allocator.alloc(*const JSValue, s.entries.items.len);
+            var entries = try allocator.alloc(*const JSValue, s.entries.size());
             errdefer allocator.free(entries);
 
-            for (s.entries.items, 0..) |entry, i| {
+            for (s.entries.toSlice(), 0..) |entry, i| {
                 entries[i] = try structuredDeserializeInternal(
                     allocator,
                     entry,
@@ -253,7 +253,7 @@ fn structuredDeserializeInternal(
             @memset(elements, null);
 
             // Fill in the serialized properties
-            for (a.properties.items) |prop| {
+            for (a.properties.toSlice()) |prop| {
                 const index = std.fmt.parseInt(usize, prop.key, 10) catch continue;
                 if (index < a.length) {
                     elements[index] = try structuredDeserializeInternal(
@@ -275,10 +275,10 @@ fn structuredDeserializeInternal(
             try memory.put(identity, value);
 
             const o = serialized.data.object;
-            var properties = try allocator.alloc(JSValue.ObjectValue.ObjectProperty, o.properties.items.len);
+            var properties = try allocator.alloc(JSValue.ObjectValue.ObjectProperty, o.properties.size());
             errdefer allocator.free(properties);
 
-            for (o.properties.items, 0..) |prop, i| {
+            for (o.properties.toSlice(), 0..) |prop, i| {
                 const val_value = try structuredDeserializeInternal(
                     allocator,
                     prop.value,

@@ -28,17 +28,13 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Window = interfaces.Window;
 
-// HTML Window infrastructure modules
-const browsing_context = @import("html_browsing_context");
-const BrowsingContext = browsing_context.BrowsingContext;
-
-const ui_backend = @import("html_ui_backend");
-const UIBackend = ui_backend.UIBackend;
-const StubUIBackend = ui_backend.StubUIBackend;
-
-const animation_frame = @import("html_animation_frame");
-const AnimationFrameScheduler = animation_frame.AnimationFrameScheduler;
-const StubFrameTimingBackend = animation_frame.StubFrameTimingBackend;
+// HTML Window infrastructure modules (unified html module)
+const html = @import("html");
+const BrowsingContext = html.window.BrowsingContext;
+const UIBackend = html.window.UIBackend;
+const StubUIBackend = html.window.StubUIBackend;
+const AnimationFrameScheduler = html.window.AnimationFrameScheduler;
+const StubFrameTimingBackend = html.window.StubFrameTimingBackend;
 
 pub const State = Window.State;
 

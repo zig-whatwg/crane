@@ -6,7 +6,8 @@
 //! Spec: https://html.spec.whatwg.org/#custom-elements
 
 const std = @import("std");
-const Node = @import("../dom/node.zig").Node;
+const dom = @import("dom");
+const Node = dom.node.Node;
 
 /// Enqueue a custom element callback reaction
 /// Spec: https://html.spec.whatwg.org/#enqueue-a-custom-element-callback-reaction
@@ -132,6 +133,6 @@ fn customElementMovingSteps(node: *Node, old_parent: ?*Node) void {
 /// Initialize custom element moving steps
 /// Call this during DOM initialization to register the moving steps callback
 pub fn initializeCustomElementMovingSteps() !void {
-    const mutation = @import("../dom/mutation.zig");
-    try mutation.registerMovingStepsCallback(customElementMovingSteps);
+    const dom_mod = @import("dom");
+    try dom_mod.mutation.registerMovingStepsCallback(customElementMovingSteps);
 }

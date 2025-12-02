@@ -25,6 +25,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const types = @import("types.zig");
 const SerializedValue = types.SerializedValue;
 const SerializationType = types.SerializationType;
@@ -380,7 +381,7 @@ pub fn structuredSerializeInternal(
         // Step 15: Map
         .map => |m| {
             serialized.type = .map;
-            var entries = std.ArrayList(types.MapData.MapEntry).init(allocator);
+            var entries = infra.List(types.MapData.MapEntry).init(allocator);
             errdefer entries.deinit();
 
             // Store in memory before recursing (for cycles)
@@ -412,7 +413,7 @@ pub fn structuredSerializeInternal(
         // Step 16: Set
         .set => |s| {
             serialized.type = .set;
-            var entries = std.ArrayList(*const SerializedValue).init(allocator);
+            var entries = infra.List(*const SerializedValue).init(allocator);
             errdefer entries.deinit();
 
             try memory.put(identity, serialized);
@@ -444,7 +445,7 @@ pub fn structuredSerializeInternal(
         // Step 18: Array
         .array => |a| {
             serialized.type = .array;
-            var properties = std.ArrayList(types.PropertyEntry).init(allocator);
+            var properties = infra.List(types.PropertyEntry).init(allocator);
             errdefer properties.deinit();
 
             try memory.put(identity, serialized);
@@ -476,7 +477,7 @@ pub fn structuredSerializeInternal(
         // Step 24: Object
         .object => |o| {
             serialized.type = .object;
-            var properties = std.ArrayList(types.PropertyEntry).init(allocator);
+            var properties = infra.List(types.PropertyEntry).init(allocator);
             errdefer properties.deinit();
 
             try memory.put(identity, serialized);

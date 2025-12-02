@@ -8,7 +8,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 /// A callback registered via requestAnimationFrame.
 pub const FrameRequestCallback = struct {

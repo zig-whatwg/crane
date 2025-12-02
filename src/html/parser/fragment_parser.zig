@@ -41,8 +41,6 @@ pub const FragmentParseResult = struct {
     tree_builder: *TreeBuilder,
     /// The tokenizer used for parsing.
     tokenizer: *Tokenizer,
-    /// The input stream used for parsing.
-    input_stream: *InputStream,
     /// Allocator used for allocations.
     allocator: Allocator,
 
@@ -54,12 +52,9 @@ pub const FragmentParseResult = struct {
         // Free the tree builder (which frees the document and all nodes)
         self.tree_builder.deinit();
         self.allocator.destroy(self.tree_builder);
-        // Free tokenizer
+        // Free tokenizer (InputStream is stored inline, no separate cleanup needed)
         self.tokenizer.deinit();
         self.allocator.destroy(self.tokenizer);
-        // Free input stream
-        self.input_stream.deinit();
-        self.allocator.destroy(self.input_stream);
     }
 };
 
@@ -122,16 +117,10 @@ pub fn parseFragment(
     _ = options.allow_declarative_shadow_roots;
     // TODO: Set this on the document when we have full DOM integration
 
-    // Create input stream
-    const input_stream = try allocator.create(InputStream);
-    errdefer allocator.destroy(input_stream);
-    input_stream.* = InputStream.init(allocator);
-    try input_stream.setInput(input);
-
-    // Step 5: Create a new HTML parser
+    // Step 5: Create a new HTML parser (tokenizer creates its own InputStream internally)
     const tokenizer = try allocator.create(Tokenizer);
     errdefer allocator.destroy(tokenizer);
-    tokenizer.* = Tokenizer.init(allocator, input_stream);
+    tokenizer.* = Tokenizer.init(allocator, input);
 
     // Step 6: Set tokenizer state based on context element
     const context_name = context_element.local_name orelse "";
@@ -207,7 +196,6 @@ pub fn parseFragment(
         .document = tree_builder.document,
         .tree_builder = tree_builder,
         .tokenizer = tokenizer,
-        .input_stream = input_stream,
         .allocator = allocator,
     };
 }
@@ -337,16 +325,10 @@ fn collectChildren(allocator: Allocator, node: *TreeNode) ![]*TreeNode {
 ///
 /// Unlike parseFragment, this creates a complete document, not just fragment nodes.
 pub fn parseHTMLFromString(allocator: Allocator, html: []const u8) !*TreeBuilder {
-    // Create input stream
-    const input_stream = try allocator.create(InputStream);
-    errdefer allocator.destroy(input_stream);
-    input_stream.* = InputStream.init(allocator);
-    try input_stream.setInput(html);
-
-    // Create tokenizer
+    // Create tokenizer (it creates its own InputStream internally)
     const tokenizer = try allocator.create(Tokenizer);
     errdefer allocator.destroy(tokenizer);
-    tokenizer.* = Tokenizer.init(allocator, input_stream);
+    tokenizer.* = Tokenizer.init(allocator, html);
 
     // Create tree builder
     const tree_builder = try allocator.create(TreeBuilder);

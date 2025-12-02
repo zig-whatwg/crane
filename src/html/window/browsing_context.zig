@@ -25,6 +25,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 
 /// Unique ID generator for browsing contexts
 var next_context_id: u64 = 1;
@@ -273,7 +274,7 @@ pub const BrowsingContext = struct {
 pub const BrowsingContextGroup = struct {
     allocator: Allocator,
     id: u64,
-    contexts: std.ArrayList(*BrowsingContext),
+    contexts: infra.List(*BrowsingContext),
 
     /// Create a new browsing context group
     pub fn init(allocator: Allocator) !*BrowsingContextGroup {
@@ -281,7 +282,7 @@ pub const BrowsingContextGroup = struct {
         group.* = .{
             .allocator = allocator,
             .id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic),
-            .contexts = std.ArrayList(*BrowsingContext).init(allocator),
+            .contexts = infra.List(*BrowsingContext).init(allocator),
         };
         return group;
     }
@@ -309,8 +310,8 @@ pub const BrowsingContextGroup = struct {
     }
 
     /// Get the number of contexts in this group
-    pub fn size(self: *const BrowsingContextGroup) usize {
-        return self.contexts.items.len;
+    pub fn getSize(self: *const BrowsingContextGroup) usize {
+        return self.contexts.size();
     }
 };
 
@@ -417,6 +418,6 @@ test "BrowsingContextGroup - basic operations" {
     try group.addContext(ctx1);
     try group.addContext(ctx2);
 
-    try std.testing.expectEqual(@as(usize, 2), group.size());
+    try std.testing.expectEqual(@as(usize, 2), group.getSize());
     try std.testing.expect(ctx1.isInSameGroup(ctx2));
 }

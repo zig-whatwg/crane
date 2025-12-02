@@ -404,29 +404,32 @@ test "AnimationFrameScheduler - multiple callbacks in order" {
     var order: [3]u32 = .{ 0, 0, 0 };
     var order_index: usize = 0;
 
-    _ = try scheduler.requestAnimationFrame(struct {
-        fn callback(_: DOMHighResTimeStamp, ctx: ?*anyopaque) void {
-            const state = @as(*struct { order: *[3]u32, index: *usize }, @ptrCast(@alignCast(ctx.?)));
-            state.order[state.index.*] = 1;
-            state.index.* += 1;
-        }
-    }.callback, &.{ .order = &order, .index = &order_index });
+    const State = struct { order: *[3]u32, index: *usize };
+    var state = State{ .order = &order, .index = &order_index };
 
     _ = try scheduler.requestAnimationFrame(struct {
         fn callback(_: DOMHighResTimeStamp, ctx: ?*anyopaque) void {
-            const state = @as(*struct { order: *[3]u32, index: *usize }, @ptrCast(@alignCast(ctx.?)));
-            state.order[state.index.*] = 2;
-            state.index.* += 1;
+            const s = @as(*State, @ptrCast(@alignCast(ctx.?)));
+            s.order[s.index.*] = 1;
+            s.index.* += 1;
         }
-    }.callback, &.{ .order = &order, .index = &order_index });
+    }.callback, @ptrCast(&state));
 
     _ = try scheduler.requestAnimationFrame(struct {
         fn callback(_: DOMHighResTimeStamp, ctx: ?*anyopaque) void {
-            const state = @as(*struct { order: *[3]u32, index: *usize }, @ptrCast(@alignCast(ctx.?)));
-            state.order[state.index.*] = 3;
-            state.index.* += 1;
+            const s = @as(*State, @ptrCast(@alignCast(ctx.?)));
+            s.order[s.index.*] = 2;
+            s.index.* += 1;
         }
-    }.callback, &.{ .order = &order, .index = &order_index });
+    }.callback, @ptrCast(&state));
+
+    _ = try scheduler.requestAnimationFrame(struct {
+        fn callback(_: DOMHighResTimeStamp, ctx: ?*anyopaque) void {
+            const s = @as(*State, @ptrCast(@alignCast(ctx.?)));
+            s.order[s.index.*] = 3;
+            s.index.* += 1;
+        }
+    }.callback, @ptrCast(&state));
 
     try std.testing.expectEqual(@as(usize, 3), scheduler.getPendingCount());
 
@@ -466,7 +469,7 @@ test "StubFrameTimingBackend - basic operations" {
     var timing = StubFrameTimingBackend.init();
 
     const t1 = timing.backend().now();
-    std.time.sleep(1_000_000); // 1ms
+    std.Thread.sleep(1_000_000); // 1ms
     const t2 = timing.backend().now();
 
     try std.testing.expect(t2 >= t1);

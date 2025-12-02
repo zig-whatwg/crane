@@ -10,7 +10,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 const task_mod = @import("task.zig");
 const Task = task_mod.Task;
 const TaskSource = task_mod.TaskSource;

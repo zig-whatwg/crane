@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const infra = @import("../../infra/root.zig");
+const infra = @import("infra");
 
 const task_mod = @import("task.zig");
 const Task = task_mod.Task;
@@ -34,7 +34,8 @@ const TimerManager = timers_mod.TimerManager;
 const Timer = timers_mod.Timer;
 const VisibilityState = timers_mod.VisibilityState;
 
-const timer_backend = @import("../../platform/timer_backend.zig");
+const platform_mod = @import("platform");
+const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
 
 /// Type of event loop.
