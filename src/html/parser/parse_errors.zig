@@ -159,6 +159,10 @@ pub const ParseError = struct {
 pub const ParseErrorCallback = *const fn (error_info: ParseError, context: ?*anyopaque) void;
 
 /// Parse error handler that collects all errors.
+///
+/// HTML Standard §13.2.2: Parse errors are syntax errors in the HTML.
+/// This collector can be used to gather all errors for reporting to
+/// conformance checkers or development tools.
 pub const ParseErrorCollector = struct {
     /// Collected errors.
     errors: infra.List(ParseError),
@@ -169,12 +173,16 @@ pub const ParseErrorCollector = struct {
     /// Maximum number of errors to collect (0 = unlimited).
     max_errors: usize,
 
+    /// Whether to stop parsing on first error (strict mode).
+    strict_mode: bool,
+
     /// Initialize a new error collector.
     pub fn init(allocator: Allocator) ParseErrorCollector {
         return ParseErrorCollector{
             .errors = infra.List(ParseError).init(allocator),
             .allocator = allocator,
             .max_errors = 0,
+            .strict_mode = false,
         };
     }
 
@@ -184,6 +192,17 @@ pub const ParseErrorCollector = struct {
             .errors = infra.List(ParseError).init(allocator),
             .allocator = allocator,
             .max_errors = max_errors,
+            .strict_mode = false,
+        };
+    }
+
+    /// Initialize in strict mode (stop on first error).
+    pub fn initStrict(allocator: Allocator) ParseErrorCollector {
+        return ParseErrorCollector{
+            .errors = infra.List(ParseError).init(allocator),
+            .allocator = allocator,
+            .max_errors = 1,
+            .strict_mode = true,
         };
     }
 
@@ -220,11 +239,110 @@ pub const ParseErrorCollector = struct {
         self.errors.clear();
     }
 
+    /// Get the first error (if any).
+    pub fn firstError(self: *const ParseErrorCollector) ?ParseError {
+        return self.errors.get(0);
+    }
+
+    /// Get errors of a specific type.
+    pub fn getErrorsByCode(self: *const ParseErrorCollector, code: ParseErrorCode, out_allocator: Allocator) ![]ParseError {
+        var result = infra.List(ParseError).init(out_allocator);
+        errdefer result.deinit();
+
+        for (self.errors.toSlice()) |err| {
+            if (err.code == code) {
+                try result.append(err);
+            }
+        }
+
+        return result.toSlice();
+    }
+
+    /// Format errors as human-readable strings.
+    pub fn formatErrors(self: *const ParseErrorCollector, out_allocator: Allocator) ![]u8 {
+        var buffer = std.ArrayList(u8).init(out_allocator);
+        errdefer buffer.deinit();
+
+        const writer = buffer.writer();
+        for (self.errors.toSlice()) |err| {
+            try writer.print("{d}:{d}: {s}\n", .{
+                err.line,
+                err.column,
+                getErrorDescription(err.code),
+            });
+        }
+
+        return buffer.toOwnedSlice();
+    }
+
     /// Static callback function for use with the tokenizer.
     pub fn callback(error_info: ParseError, context: ?*anyopaque) void {
         if (context) |ctx| {
             const collector: *ParseErrorCollector = @ptrCast(@alignCast(ctx));
             collector.addError(error_info) catch {};
+        }
+    }
+};
+
+/// Parse error reporter that logs errors immediately.
+///
+/// Use this for immediate feedback during development or debugging.
+pub const ParseErrorLogger = struct {
+    /// Callback type for custom logging.
+    pub const LogCallback = *const fn ([]const u8) void;
+
+    /// Custom log callback (null = use stderr).
+    log_callback: ?LogCallback,
+
+    /// Whether to include location info.
+    include_location: bool,
+
+    /// Initialize a new error logger.
+    pub fn init() ParseErrorLogger {
+        return ParseErrorLogger{
+            .log_callback = null,
+            .include_location = true,
+        };
+    }
+
+    /// Initialize with a custom log callback.
+    pub fn initWithCallback(log_callback: LogCallback) ParseErrorLogger {
+        return ParseErrorLogger{
+            .log_callback = log_callback,
+            .include_location = true,
+        };
+    }
+
+    /// Static callback function for use with the tokenizer.
+    pub fn callback(error_info: ParseError, context: ?*anyopaque) void {
+        if (context) |ctx| {
+            const logger: *ParseErrorLogger = @ptrCast(@alignCast(ctx));
+            logger.logError(error_info);
+        } else {
+            // Default: log to stderr
+            std.debug.print("Parse error: {s}\n", .{getErrorDescription(error_info.code)});
+        }
+    }
+
+    /// Log a single error.
+    fn logError(self: *ParseErrorLogger, err: ParseError) void {
+        const desc = getErrorDescription(err.code);
+
+        if (self.log_callback) |log| {
+            // Custom logging - build message
+            var buf: [256]u8 = undefined;
+            const msg = if (self.include_location)
+                std.fmt.bufPrint(&buf, "{d}:{d}: {s}", .{ err.line, err.column, desc }) catch desc
+            else
+                desc;
+            log(msg);
+        } else {
+            // Default: stderr
+            if (self.include_location) {
+                std.debug.print("{d}:{d}: Parse error: {s}\n", .{ err.line, err.column, desc });
+            } else {
+                std.debug.print("Parse error: {s}\n", .{desc});
+            }
         }
     }
 };

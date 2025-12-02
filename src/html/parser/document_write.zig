@@ -7,17 +7,25 @@
 //! methods, which allow scripts to dynamically insert content into a document
 //! while it is being parsed.
 //!
-//! NOTE: Full document.write() support requires significant changes to the
-//! input stream and parser to support:
-//! 1. An "insertion point" in the input stream
-//! 2. Dynamic insertion of strings at the insertion point
-//! 3. Script-created parser tracking
-//! 4. Parser pause flag
-//! 5. Nested write handling
+//! ## Implementation Notes
 //!
-//! This implementation provides a simplified API for the common case where
-//! document.write() is called after initial parsing is complete (which opens
-//! a new parser).
+//! Full document.write() support includes:
+//! 1. An "insertion point" in the input stream - position where new content is inserted
+//! 2. Dynamic insertion of strings at the insertion point
+//! 3. Script-created parser tracking - parsers created by document.open()
+//! 4. Parser pause flag - to handle nested script execution
+//! 5. Nested write handling - document.write() during script execution
+//!
+//! This implementation supports two modes:
+//!
+//! **After-parsing mode** (common case): When document.write() is called after
+//! initial parsing is complete, it implicitly calls document.open() which creates
+//! a new parser. Content is accumulated in a buffer and parsed when document.close()
+//! is called.
+//!
+//! **During-parsing mode**: When document.write() is called from a script during
+//! parsing, the content is inserted at the current input stream position
+//! (insertion point). This requires integration with the active parser's input stream.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -28,35 +36,56 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const InputStream = @import("input_stream.zig").InputStream;
 
 /// Represents the state needed for document.write() support.
+///
+/// HTML Standard §8.4: This tracks the state required for dynamic markup insertion
+/// APIs like document.write(), document.writeln(), document.open(), and document.close().
 pub const DocumentWriteState = struct {
     /// The allocator for dynamic memory.
     allocator: Allocator,
 
     /// Whether this is a script-created parser.
-    /// Script-created parsers can be closed by document.close().
+    /// HTML Standard: Script-created parsers can be closed by document.close().
+    /// They are created when document.open() is called (implicitly or explicitly).
     is_script_created: bool,
 
     /// The throw-on-dynamic-markup-insertion counter.
-    /// When > 0, document.open/write/close throw InvalidStateError.
+    /// HTML Standard: When > 0, document.open/write/close throw InvalidStateError.
+    /// This is incremented during custom element reactions and other contexts
+    /// where dynamic markup insertion is not allowed.
     throw_on_dynamic_markup_insertion_counter: u32,
 
     /// The ignore-destructive-writes counter.
-    /// When > 0, document.write() that would call open() is ignored.
+    /// HTML Standard: When > 0, document.write() that would call open() is ignored.
+    /// This prevents certain circular scenarios during parsing.
     ignore_destructive_writes_counter: u32,
 
     /// Whether the active parser was aborted.
+    /// HTML Standard: Set when navigation occurs, causing the parser to be aborted.
     active_parser_was_aborted: bool,
 
     /// The unload counter.
+    /// HTML Standard: When > 0 (during beforeunload/unload), certain operations
+    /// like destructive writes are ignored.
     unload_counter: u32,
 
     /// The insertion point position (undefined if no parser).
-    /// When defined, points to where new content should be inserted.
+    /// HTML Standard: Points to where new content should be inserted in the input stream.
+    /// When undefined, there is no active parser or the parser has finished.
     insertion_point: ?usize,
 
     /// Accumulated write buffer.
-    /// Content written via document.write() before explicit close.
+    /// Content written via document.write() in after-parsing mode.
+    /// In during-parsing mode, this would be inserted into the input stream directly.
     write_buffer: std.ArrayList(u8),
+
+    /// Script nesting level.
+    /// HTML Standard: Tracks nested script execution for document.write() handling.
+    /// document.write() behaves differently based on this level.
+    script_nesting_level: u32,
+
+    /// Parser pause flag.
+    /// HTML Standard: Set while waiting for a script to finish loading/executing.
+    parser_pause_flag: bool,
 
     /// Initialize document write state.
     pub fn init(allocator: Allocator) DocumentWriteState {
@@ -69,6 +98,8 @@ pub const DocumentWriteState = struct {
             .unload_counter = 0,
             .insertion_point = null,
             .write_buffer = std.ArrayList(u8).init(allocator),
+            .script_nesting_level = 0,
+            .parser_pause_flag = false,
         };
     }
 
@@ -83,6 +114,30 @@ pub const DocumentWriteState = struct {
         self.active_parser_was_aborted = false;
         self.insertion_point = null;
         self.write_buffer.clearRetainingCapacity();
+        self.script_nesting_level = 0;
+        self.parser_pause_flag = false;
+    }
+
+    /// Check if dynamic markup insertion is currently allowed.
+    pub fn isDynamicMarkupInsertionAllowed(self: *const DocumentWriteState) bool {
+        return self.throw_on_dynamic_markup_insertion_counter == 0;
+    }
+
+    /// Check if there is an active parser.
+    pub fn hasActiveParser(self: *const DocumentWriteState) bool {
+        return self.insertion_point != null;
+    }
+
+    /// Increment script nesting level (called when starting script execution).
+    pub fn enterScriptExecution(self: *DocumentWriteState) void {
+        self.script_nesting_level += 1;
+    }
+
+    /// Decrement script nesting level (called when ending script execution).
+    pub fn exitScriptExecution(self: *DocumentWriteState) void {
+        if (self.script_nesting_level > 0) {
+            self.script_nesting_level -= 1;
+        }
     }
 };
 

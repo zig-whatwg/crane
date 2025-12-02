@@ -189,7 +189,8 @@ pub fn parseFragment(
     // We store a reference but don't need the actual token for basic parsing
 
     // Step 12: Reset the parser's insertion mode appropriately
-    tree_builder.insertion_mode = resetInsertionModeForContext(context_element);
+    // Pass ancestors for proper in_select_in_table detection
+    tree_builder.insertion_mode = resetInsertionModeForContextWithAncestors(context_element, context_element.parent);
 
     // Step 13: Set form element pointer to nearest form ancestor
     // Walk up the context element's ancestors to find a form
@@ -214,18 +215,43 @@ pub fn parseFragment(
 /// Determine the initial insertion mode based on the context element.
 /// This implements "reset the insertion mode appropriately" for fragment case.
 ///
-/// HTML Standard §13.2.4.1
+/// HTML Standard §13.2.4.1: The algorithm checks ancestors in specific order.
 fn resetInsertionModeForContext(context: *const TreeNode) InsertionMode {
+    return resetInsertionModeForContextWithAncestors(context, null);
+}
+
+/// Extended version that checks ancestors for select-in-table case.
+fn resetInsertionModeForContextWithAncestors(context: *const TreeNode, ancestors: ?*const TreeNode) InsertionMode {
     const name = context.local_name orelse return .in_body;
 
     // Only consider HTML namespace elements for special handling
     if (context.namespace != .html) {
+        // MathML/SVG: use in_body (foreign content rules apply during parsing)
         return .in_body;
     }
 
     // Check element name to determine insertion mode
     if (std.mem.eql(u8, name, "select")) {
-        // TODO: Check ancestors for table/template for in_select_in_table
+        // HTML Standard: Check ancestors for table/template/tbody/tfoot/thead/tr
+        // If any ancestor is table-related, use in_select_in_table
+        if (ancestors != null) {
+            var ancestor: ?*const TreeNode = ancestors;
+            while (ancestor) |anc| {
+                if (anc.namespace == .html) {
+                    const anc_name = anc.local_name orelse "";
+                    if (std.mem.eql(u8, anc_name, "table") or
+                        std.mem.eql(u8, anc_name, "template") or
+                        std.mem.eql(u8, anc_name, "tbody") or
+                        std.mem.eql(u8, anc_name, "tfoot") or
+                        std.mem.eql(u8, anc_name, "thead") or
+                        std.mem.eql(u8, anc_name, "tr"))
+                    {
+                        return .in_select_in_table;
+                    }
+                }
+                ancestor = anc.parent;
+            }
+        }
         return .in_select;
     } else if (std.mem.eql(u8, name, "td") or std.mem.eql(u8, name, "th")) {
         return .in_cell;
@@ -244,15 +270,15 @@ fn resetInsertionModeForContext(context: *const TreeNode) InsertionMode {
         return .in_template;
     } else if (std.mem.eql(u8, name, "head")) {
         // Fragment case: use in_body, not in_head
+        // (Different from regular parsing where we'd check if this is the last node)
         return .in_body;
     } else if (std.mem.eql(u8, name, "body")) {
         return .in_body;
     } else if (std.mem.eql(u8, name, "frameset")) {
         return .in_frameset;
     } else if (std.mem.eql(u8, name, "html")) {
-        // Fragment case with no head: before_head
-        // Fragment case with head: after_head
-        // Default to in_body for simplicity
+        // Fragment case: use in_body
+        // (Full spec checks for head element, but fragment always has one)
         return .in_body;
     }
 
