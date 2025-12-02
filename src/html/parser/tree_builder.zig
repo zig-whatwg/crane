@@ -444,6 +444,24 @@ pub const TreeBuilder = struct {
     /// Pending table character tokens for "in table text" mode.
     pending_table_char_tokens: infra.List(u21),
 
+    /// Script nesting level.
+    /// HTML Standard §13.2.6: Tracks nested script execution. When > 0,
+    /// certain operations like document.open() are blocked.
+    script_nesting_level: u32,
+
+    /// Parser pause flag.
+    /// HTML Standard: Set while waiting for scripts to load/execute.
+    parser_pause_flag: bool,
+
+    /// Callback for script execution.
+    /// HTML Standard §13.2.6.4.7: When a script end tag is encountered,
+    /// the script should be prepared and potentially executed.
+    /// This callback is invoked with the script element node.
+    script_execution_callback: ?*const fn (*TreeNode, ?*anyopaque) void,
+
+    /// Script execution callback context.
+    script_execution_context: ?*anyopaque,
+
     /// Initialize a new tree builder.
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) !TreeBuilder {
         const document = try TreeNode.initDocument(allocator);
@@ -466,7 +484,32 @@ pub const TreeBuilder = struct {
             .error_callback = null,
             .error_context = null,
             .pending_table_char_tokens = infra.List(u21).init(allocator),
+            .script_nesting_level = 0,
+            .parser_pause_flag = false,
+            .script_execution_callback = null,
+            .script_execution_context = null,
         };
+    }
+
+    /// Set script execution callback.
+    /// The callback will be invoked when a script element's end tag is processed.
+    pub fn setScriptExecutionCallback(
+        self: *TreeBuilder,
+        callback: *const fn (*TreeNode, ?*anyopaque) void,
+        context: ?*anyopaque,
+    ) void {
+        self.script_execution_callback = callback;
+        self.script_execution_context = context;
+    }
+
+    /// Check if the parser is currently paused waiting for scripts.
+    pub fn isPaused(self: *const TreeBuilder) bool {
+        return self.parser_pause_flag;
+    }
+
+    /// Check if currently executing scripts (nesting level > 0).
+    pub fn isExecutingScript(self: *const TreeBuilder) bool {
+        return self.script_nesting_level > 0;
     }
 
     /// Free all resources.
@@ -784,8 +827,22 @@ pub const TreeBuilder = struct {
                     self.currentNode().?.hasTagName("script"))
                 {
                     // SVG script end tag - pop the script element
+                    const script_element = self.open_elements.get(self.open_elements.len - 1);
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
-                    // Script execution would happen here
+
+                    // Execute SVG script element (via callback)
+                    // HTML Standard: SVG script elements follow a similar execution model
+                    if (self.scripting_enabled) {
+                        if (script_element) |script| {
+                            if (self.script_execution_callback) |callback| {
+                                self.script_nesting_level += 1;
+                                callback(script, self.script_execution_context);
+                                if (self.script_nesting_level > 0) {
+                                    self.script_nesting_level -= 1;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Any other end tag
                     var node_index: usize = self.open_elements.len;
@@ -1752,9 +1809,30 @@ pub const TreeBuilder = struct {
             .end_tag => |tag| {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "script")) {
-                    // TODO: Execute script
+                    // HTML Standard §13.2.6.4.20: Script end tag processing
+                    // 1. Pop the current node (script element)
+                    const script_element = self.open_elements.get(self.open_elements.len - 1);
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+
+                    // 2. Switch back to original insertion mode
                     self.insertion_mode = self.original_insertion_mode;
+
+                    // 3-4. Execute the script (via callback)
+                    // HTML Standard: If scripting is enabled for the Document, then:
+                    // - Increment script nesting level
+                    // - Prepare the script element
+                    // - Decrement script nesting level
+                    if (self.scripting_enabled) {
+                        if (script_element) |script| {
+                            if (self.script_execution_callback) |callback| {
+                                self.script_nesting_level += 1;
+                                callback(script, self.script_execution_context);
+                                if (self.script_nesting_level > 0) {
+                                    self.script_nesting_level -= 1;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
                     self.insertion_mode = self.original_insertion_mode;
