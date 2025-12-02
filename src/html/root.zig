@@ -119,6 +119,12 @@ pub const prepareScriptElement = script_execution.prepareScriptElement;
 pub const executeScriptElement = script_execution.executeScriptElement;
 pub const ScriptExecutionError = script_execution.ScriptExecutionError;
 
+// Script Runner (§4.12.1.1 - Script execution coordination)
+pub const script_runner = @import("script_runner.zig");
+
+// Re-export script runner types
+pub const ScriptRunner = script_runner.ScriptRunner;
+
 // Structured Clone (§2.7)
 pub const structured_clone = @import("structured_clone/root.zig");
 
