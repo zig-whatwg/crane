@@ -344,6 +344,7 @@ pub fn build(b: *std.Build) void {
             "trusted_types",
             "csp",
             "permissions",
+            // NOTE: "html" is not yet available as a test spec due to module ownership conflicts
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -1320,6 +1321,14 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("html_ui_backend", html_ui_backend_mod);
     impls_mod.addImport("html_animation_frame", html_animation_frame_mod);
 
+    // NOTE: A unified "html" module is not yet supported due to module ownership conflicts.
+    // The HTML spec implementation is split across:
+    // - html_parser_mod (src/html/parser/root.zig)
+    // - html_browsing_context_mod (src/html/window/browsing_context.zig)
+    // - html_ui_backend_mod (src/html/window/ui_backend.zig)
+    // - html_animation_frame_mod (src/html/window/animation_frame.zig)
+    // See whatwg-4f6j for the unification work.
+
     // Permissions module (W3C Permissions API)
     const permissions_mod = b.addModule("permissions", .{
         .root_source_file = b.path("src/permissions/root.zig"),
@@ -1351,6 +1360,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("hr_time", hr_time_mod);
     whatwg_mod.addImport("websocket", websocket_mod);
     whatwg_mod.addImport("permissions", permissions_mod);
+    // NOTE: html module not added due to ownership conflicts with html_parser, html_browsing_context, etc.
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1551,6 +1561,13 @@ pub fn build(b: *std.Build) void {
             std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
         };
     }
+
+    // HTML tests
+    // NOTE: HTML tests are currently disabled due to module ownership conflicts.
+    // The HTML spec implementation is split across multiple modules (html_parser, html_browsing_context, etc.)
+    // and cannot be unified into a single "html" module without refactoring the build system.
+    // See whatwg-4f6j for the test integration work.
+    // const test_html = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "html"));
 
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
