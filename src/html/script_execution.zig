@@ -36,6 +36,9 @@ const mimesniff = @import("mimesniff");
 // Infra primitives
 const infra = @import("infra");
 
+// Fetch for external scripts
+const fetch = @import("fetch");
+
 pub const ScriptExecutionError = error{
     InvalidScriptElement,
     ScriptingDisabled,
@@ -176,19 +179,54 @@ pub fn prepareScriptElement(
         // External scripts - mark as from external file
         HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
-        // TODO: Implement external script fetching
-        // For now, we'll skip external scripts and handle only inline scripts
-
         // Step 33.3: If src is empty, queue error event and return
         const src = getSrcAttribute(script_element);
         if (src.len == 0) {
-            // TODO: Queue error event
+            // Queue error event (TODO: proper event dispatch)
             return false;
         }
 
-        // For external scripts, we need to fetch and then handle based on script type
-        // This is complex and requires async handling - defer for now
-        return false;
+        // Step 33.4-33.7: Build script URL, set request parameters
+        // Resolve src against base URL
+        const base_url = if (node_document) |doc|
+            if (DocumentImpl.getInternal(doc)) |internal| internal.base_uri else ""
+        else
+            "";
+
+        const script_url = resolveUrl(allocator, src, base_url) catch {
+            return ScriptExecutionError.OutOfMemory;
+        };
+        defer if (script_url.ptr != src.ptr) allocator.free(script_url);
+
+        // Step 33.8: Fetch the script
+        // This is a synchronous fetch for now - in a full implementation this would be async
+        const fetch_result = fetchExternalScript(allocator, script_url) catch |err| {
+            std.debug.print("External script fetch error: {}\n", .{err});
+            return false;
+        };
+
+        if (fetch_result.body) |body| {
+            defer allocator.free(body);
+
+            // Create a classic script from the fetched content
+            const script = ClassicScript.init(body, script_url);
+            HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
+
+            // Cache source text for execution
+            HTMLScriptElementImpl.cacheSourceText(script_element, body) catch {
+                return ScriptExecutionError.OutOfMemory;
+            };
+
+            // Mark as ready to be parser-executed
+            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
+        } else {
+            // Network error - set result to null
+            HTMLScriptElementImpl.setResult(script_element, .null);
+            return false;
+        }
+
+        // Handle scheduling (will set pending-parsing-blocking, etc.)
+        return handleScriptScheduling(allocator, script_element, parser_document, script_type);
     }
 
     // Step 34: Inline script (no src attribute)
@@ -807,8 +845,173 @@ fn collectTextContent(node: *runtime.Instance, result: *std.ArrayList(u8)) !void
 }
 
 // =============================================================================
+// External Script Loading
+// =============================================================================
+
+/// Result of fetching an external script
+const ExternalScriptFetchResult = struct {
+    body: ?[]const u8,
+    content_type: ?[]const u8,
+    status: u16,
+
+    pub fn deinit(self: *ExternalScriptFetchResult, allocator: std.mem.Allocator) void {
+        if (self.body) |b| allocator.free(b);
+        if (self.content_type) |ct| allocator.free(ct);
+    }
+};
+
+/// Resolve a URL relative to a base URL
+/// For now, this is a simple implementation that handles absolute URLs
+/// and simple relative paths
+fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u8) ![]const u8 {
+    // If URL starts with a scheme, it's absolute
+    if (std.mem.indexOf(u8, url, "://") != null) {
+        return url; // Return the original slice, don't allocate
+    }
+
+    // If URL starts with //, it's protocol-relative
+    if (std.mem.startsWith(u8, url, "//")) {
+        // Extract scheme from base URL
+        if (std.mem.indexOf(u8, base_url, "://")) |scheme_end| {
+            const scheme = base_url[0..scheme_end];
+            const result = try allocator.alloc(u8, scheme.len + 1 + url.len);
+            @memcpy(result[0..scheme.len], scheme);
+            result[scheme.len] = ':';
+            @memcpy(result[scheme.len + 1 ..], url);
+            return result;
+        }
+        // Fallback to https
+        const result = try allocator.alloc(u8, 6 + url.len);
+        @memcpy(result[0..6], "https:");
+        @memcpy(result[6..], url);
+        return result;
+    }
+
+    // Relative URL - resolve against base
+    if (base_url.len == 0) {
+        return url; // Can't resolve without base
+    }
+
+    // Find the base path (everything up to and including the last /)
+    var base_path_end: usize = 0;
+    if (std.mem.lastIndexOf(u8, base_url, "/")) |last_slash| {
+        base_path_end = last_slash + 1;
+    }
+
+    // If URL starts with /, it's root-relative
+    if (std.mem.startsWith(u8, url, "/")) {
+        // Find the origin (scheme + authority)
+        if (std.mem.indexOf(u8, base_url, "://")) |scheme_end| {
+            const after_scheme = scheme_end + 3; // Skip "://"
+            const origin_end = if (std.mem.indexOfPos(u8, base_url, after_scheme, "/")) |slash|
+                slash
+            else
+                base_url.len;
+
+            const result = try allocator.alloc(u8, origin_end + url.len);
+            @memcpy(result[0..origin_end], base_url[0..origin_end]);
+            @memcpy(result[origin_end..], url);
+            return result;
+        }
+        return url;
+    }
+
+    // Regular relative URL - append to base path
+    const result = try allocator.alloc(u8, base_path_end + url.len);
+    @memcpy(result[0..base_path_end], base_url[0..base_path_end]);
+    @memcpy(result[base_path_end..], url);
+    return result;
+}
+
+/// Fetch an external script using the Fetch API
+/// This is a synchronous fetch for parser-blocking scripts
+fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) !ExternalScriptFetchResult {
+    // Use the fetch module to retrieve the script
+    const response = fetch.fetchSimple(allocator, url) catch |err| {
+        std.debug.print("Fetch error for script {s}: {}\n", .{ url, err });
+        return ExternalScriptFetchResult{
+            .body = null,
+            .content_type = null,
+            .status = 0,
+        };
+    };
+    defer response.deinit();
+
+    // Check for successful response
+    if (response.status < 200 or response.status >= 300) {
+        return ExternalScriptFetchResult{
+            .body = null,
+            .content_type = null,
+            .status = response.status,
+        };
+    }
+
+    // Get Content-Type header
+    var content_type: ?[]const u8 = null;
+    if (response.header_list) |headers| {
+        const ct_values = headers.getValues(allocator, "content-type") catch null;
+        if (ct_values) |values| {
+            if (values.len > 0) {
+                content_type = try allocator.dupe(u8, values[0]);
+            }
+            for (values) |v| {
+                allocator.free(v);
+            }
+            allocator.free(values);
+        }
+    }
+
+    // Extract body
+    var body: ?[]const u8 = null;
+    if (response.body) |resp_body| {
+        if (resp_body.bytes) |bytes| {
+            body = try allocator.dupe(u8, bytes);
+        }
+    }
+
+    return ExternalScriptFetchResult{
+        .body = body,
+        .content_type = content_type,
+        .status = response.status,
+    };
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
+
+test "resolveUrl - absolute URLs" {
+    const allocator = std.testing.allocator;
+
+    // Absolute URLs should be returned as-is (same pointer)
+    const abs_url = "https://example.com/script.js";
+    const resolved = try resolveUrl(allocator, abs_url, "https://other.com/page.html");
+    try std.testing.expectEqual(abs_url.ptr, resolved.ptr);
+}
+
+test "resolveUrl - protocol-relative URLs" {
+    const allocator = std.testing.allocator;
+
+    const result = try resolveUrl(allocator, "//cdn.example.com/script.js", "https://example.com/page.html");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("https://cdn.example.com/script.js", result);
+}
+
+test "resolveUrl - root-relative URLs" {
+    const allocator = std.testing.allocator;
+
+    const result = try resolveUrl(allocator, "/scripts/app.js", "https://example.com/path/to/page.html");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("https://example.com/scripts/app.js", result);
+}
+
+test "resolveUrl - relative URLs" {
+    const allocator = std.testing.allocator;
+
+    const result = try resolveUrl(allocator, "lib.js", "https://example.com/scripts/");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("https://example.com/scripts/lib.js", result);
+}
 
 test "isJavaScriptMimeType" {
     try std.testing.expect(isJavaScriptMimeType("text/javascript"));
