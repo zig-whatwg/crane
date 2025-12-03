@@ -22,6 +22,7 @@ pub const navigable = @import("navigable.zig");
 pub const algorithms = @import("algorithms.zig");
 pub const fetch_integration = @import("fetch_integration.zig");
 pub const document_creation = @import("document_creation.zig");
+pub const event_dispatcher = @import("event_dispatcher.zig");
 
 // Re-export commonly used types
 
@@ -107,6 +108,23 @@ pub const runDocumentLoadCompletionSteps = document_creation.runDocumentLoadComp
 pub const DocumentCreationError = document_creation.DocumentCreationError;
 pub const DocumentCreationOptions = document_creation.DocumentCreationOptions;
 pub const CreatedDocument = document_creation.CreatedDocument;
+
+// DOM Event Dispatcher (integration with DOM event system)
+pub const DOMEventDispatcher = event_dispatcher.NavigationEventDispatcher;
+pub const DOMDispatchCallbacks = event_dispatcher.DispatchCallbacks;
+pub const PopStateEventData = event_dispatcher.PopStateEventData;
+pub const HashChangeEventData = event_dispatcher.HashChangeEventData;
+pub const BeforeUnloadEventData = event_dispatcher.BeforeUnloadEventData;
+pub const PageTransitionEventData = event_dispatcher.PageTransitionEventData;
+pub const UnloadEventData = event_dispatcher.UnloadEventData;
+pub const WindowId = event_dispatcher.WindowId;
+pub const EventPhase = event_dispatcher.EventPhase;
+pub const fireHashChangeEvent = event_dispatcher.fireHashChangeEvent;
+pub const firePopStateEvent = event_dispatcher.firePopStateEvent;
+pub const fireBeforeUnloadEvent = event_dispatcher.fireBeforeUnloadEvent;
+pub const firePageHideEvent = event_dispatcher.firePageHideEvent;
+pub const firePageShowEvent = event_dispatcher.firePageShowEvent;
+pub const fireUnloadEvent = event_dispatcher.fireUnloadEvent;
 
 // Tests
 test {

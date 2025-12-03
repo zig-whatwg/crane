@@ -909,6 +909,130 @@ pub fn getV8Context(ctx: runtime.Context) ?*ffi.Context {
 }
 
 // ============================================================================
+// Dynamic Import Support
+// ============================================================================
+
+/// Callback type for handling dynamic imports
+///
+/// This is the Zig-side callback that receives dynamic import requests from V8.
+/// The callback receives:
+///   - ctx: Context passed during registration
+///   - referrer: Module specifier of the calling module (may be empty)
+///   - specifier: The specifier passed to import()
+///   - resolver: Handle to resolve/reject the import promise
+///
+/// The callback must call resolveDynamicImport or rejectDynamicImport to complete.
+pub const DynamicImportHandler = struct {
+    callback: *const fn (ctx: ?*anyopaque, referrer: []const u8, specifier: []const u8, resolver: DynamicImportResolver) void,
+    context: ?*anyopaque,
+};
+
+/// Handle for resolving/rejecting a dynamic import
+pub const DynamicImportResolver = struct {
+    context: *anyopaque,
+    resolver: *anyopaque,
+
+    /// Resolve with a successfully loaded module's namespace
+    pub fn resolve(self: DynamicImportResolver, module_namespace: *ffi.Object) void {
+        ffi.v8_DynamicImport_Resolve(self.context, self.resolver, module_namespace);
+    }
+
+    /// Reject with an error message
+    pub fn reject(self: DynamicImportResolver, error_message: []const u8) void {
+        ffi.v8_DynamicImport_Reject(
+            self.context,
+            self.resolver,
+            error_message.ptr,
+            @intCast(error_message.len),
+        );
+    }
+};
+
+/// Global dynamic import handler (set per isolate)
+var g_dynamic_import_handler: ?DynamicImportHandler = null;
+
+/// FFI callback wrapper that converts C types to Zig types
+fn dynamicImportCallbackWrapper(
+    user_data: ?*anyopaque,
+    context: ?*anyopaque,
+    referrer_specifier: ?[*]const u8,
+    referrer_len: c_int,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    promise_resolver: *anyopaque,
+) callconv(.C) void {
+    _ = user_data;
+
+    const handler = g_dynamic_import_handler orelse {
+        // No handler registered, reject with error
+        const ctx = context orelse return;
+        ffi.v8_DynamicImport_Reject(
+            ctx,
+            promise_resolver,
+            "No dynamic import handler registered".ptr,
+            @intCast("No dynamic import handler registered".len),
+        );
+        return;
+    };
+
+    const ctx = context orelse return;
+
+    // Convert referrer to slice
+    const referrer = if (referrer_specifier) |ref|
+        ref[0..@intCast(referrer_len)]
+    else
+        "";
+
+    // Convert specifier to slice
+    const spec = specifier[0..@intCast(specifier_len)];
+
+    // Create resolver handle
+    const resolver = DynamicImportResolver{
+        .context = ctx,
+        .resolver = promise_resolver,
+    };
+
+    // Call the Zig handler
+    handler.callback(handler.context, referrer, spec, resolver);
+}
+
+/// Register a dynamic import handler for the given isolate
+///
+/// This enables import() expressions in JavaScript. When JavaScript calls import(),
+/// V8 will invoke the handler which must:
+/// 1. Fetch the requested module
+/// 2. Compile and instantiate it
+/// 3. Call resolver.resolve(namespace) or resolver.reject(error)
+///
+/// Example:
+/// ```zig
+/// fn handleDynamicImport(ctx: ?*anyopaque, referrer: []const u8, specifier: []const u8, resolver: DynamicImportResolver) void {
+///     // Fetch and compile module...
+///     const module = try compileModule(specifier);
+///     const namespace = ffi.v8_Module_GetModuleNamespace(module);
+///     resolver.resolve(namespace.?);
+/// }
+///
+/// setDynamicImportHandler(isolate, .{
+///     .callback = handleDynamicImport,
+///     .context = my_context,
+/// });
+/// ```
+pub fn setDynamicImportHandler(isolate: *ffi.Isolate, handler: DynamicImportHandler) void {
+    g_dynamic_import_handler = handler;
+    ffi.v8_Isolate_SetHostImportModuleDynamicallyCallback(
+        isolate,
+        handler.context,
+        dynamicImportCallbackWrapper,
+    );
+}
+
+/// Clear the dynamic import handler
+pub fn clearDynamicImportHandler() void {
+    g_dynamic_import_handler = null;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

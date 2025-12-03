@@ -31,6 +31,10 @@ const message_port_internal = @import("streams_internal");
 const InternalMessagePort = message_port_internal.MessagePort;
 const MessagePort = interfaces.MessagePort;
 
+// Import WorkerPortPair for proper entangled ports
+const WorkerPortPair = workers.WorkerPortPair;
+const SharedWorkerConnection = workers.SharedWorkerConnection;
+
 pub const State = SharedWorker.State;
 
 pub const ImplError = error{
@@ -52,7 +56,11 @@ pub const InternalState = struct {
     /// Reference to the internal shared worker (created when platform is set)
     shared_worker: ?*InternalSharedWorker = null,
 
-    /// The MessagePort for this connection (exposed via .port)
+    /// Connection to the shared worker (contains port pair)
+    connection: ?*SharedWorkerConnection = null,
+
+    /// The MessagePort WebIDL instance for this connection (exposed via .port)
+    /// This wraps the outside port from the WorkerPortPair
     message_port: ?*runtime.Instance = null,
 
     /// Worker configuration
@@ -73,6 +81,7 @@ pub const InternalState = struct {
                 worker.deinit();
             }
         }
+        // Connection port pair is owned by SharedWorker, not us
         self.allocator.free(self.script_url);
         if (self.name.len > 0) {
             self.allocator.free(self.name);
@@ -109,6 +118,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// This is called when the interface is constructed from JavaScript:
 /// new SharedWorker(scriptURL, options)
+///
+/// The constructor creates the SharedWorker instance but defers port pair
+/// creation until connectToWorker() is called. The entangled MessagePort pair:
+/// - outside_port: Returned via sharedWorker.port to the connecting context
+/// - inside_port: Passed in the connect event's ports array to the worker
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(*const anyopaque)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
@@ -126,10 +140,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
     const origin_copy = try allocator.dupe(u8, origin);
     errdefer allocator.free(origin_copy);
 
-    // Create MessagePort instance for the outside port
+    // Create a placeholder MessagePort instance
+    // This will be replaced with the proper entangled port when connectToWorker() is called
     const internal_port = try InternalMessagePort.init(allocator);
     errdefer internal_port.deinit();
 
+    // Create WebIDL MessagePort instance
     const port_instance = try MessagePortImpl.initWithInternal(
         allocator,
         MessagePort.State,
@@ -140,12 +156,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
     errdefer runtime.Instance.deinit(port_instance);
 
     // Create internal state
-    // Note: The actual SharedWorker will be created when platform is available
+    // Note: The actual SharedWorker connection will be established when
+    // connectToWorker() is called with the platform's internal SharedWorker
     const internal_state = try allocator.create(InternalState);
     errdefer allocator.destroy(internal_state);
 
     internal_state.* = .{
-        .shared_worker = null, // Created when platform is set
+        .shared_worker = null, // Set when connected to actual worker
+        .connection = null, // Set when connected to actual worker
         .message_port = port_instance,
         .script_url = url_copy,
         .name = "", // Default empty name
@@ -155,12 +173,40 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
     };
 
     // Store internal state
-    var state = instance.getState(State);
+    const state = instance.getState(State);
     state.own._internal = internal_state;
 
-    // Note: Worker will be started when the platform provides a timer backend
+    // Note: The actual entangled port pair is created by InternalSharedWorker.connect()
+    // When connectToWorker() is called, the connection's port pair will be used
+    // for messaging between the connecting context and the worker.
 
     return instance;
+}
+
+/// Connect this SharedWorker instance to an internal SharedWorker
+///
+/// This is called when the platform is available and we have an actual
+/// SharedWorker to connect to. It:
+/// 1. Calls connect() on the internal SharedWorker to get a connection
+/// 2. Sets up message routing between ports
+///
+/// Spec: HTML Standard § 10.2.4.1 step 17
+/// "queue a global task on the DOM manipulation task source given
+/// workerGlobalScope to fire an event named connect..."
+pub fn connectToWorker(instance: *runtime.Instance, internal_worker: *InternalSharedWorker) !void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // Connect to the internal shared worker
+        // This creates a WorkerPortPair inside the SharedWorker
+        const connection = try internal_worker.connect();
+
+        // Store references
+        internal.shared_worker = internal_worker;
+        internal.connection = connection;
+
+        // The outside port from the connection is what we expose via .port
+        // The inside port will be passed to the worker's connect event
+    }
 }
 
 /// Getter for port

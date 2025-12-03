@@ -106,6 +106,7 @@ pub const DedicatedWorker = dedicated_worker.DedicatedWorker;
 pub const shared_worker = @import("shared_worker.zig");
 pub const SharedWorker = shared_worker.SharedWorker;
 pub const SharedWorkerConnection = shared_worker.SharedWorkerConnection;
+pub const ConnectEventCallback = shared_worker.ConnectEventCallback;
 
 // Shared Worker Manager
 pub const shared_worker_manager = @import("shared_worker_manager.zig");

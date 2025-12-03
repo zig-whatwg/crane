@@ -38,6 +38,10 @@ const PageTransitionEvent = events.PageTransitionEvent;
 const BeforeUnloadEvent = events.BeforeUnloadEvent;
 const NavigationType = events.NavigationType;
 
+// DOM event dispatcher integration
+const event_dispatcher = @import("event_dispatcher.zig");
+const DOMEventDispatcher = event_dispatcher.NavigationEventDispatcher;
+
 const hist = @import("history.zig");
 const HistoryHandlingBehavior = hist.HistoryHandlingBehavior;
 const NavigationHistoryBehavior = hist.NavigationHistoryBehavior;
@@ -486,8 +490,20 @@ pub fn navigateToFragment(
     };
 
     if (fragments_differ) {
-        // Would fire hashchange event here
-        // The event dispatcher would be called with old_url and url
+        // Fire hashchange event per HTML Standard §7.2.7.3
+        // The event targets the Window object of the navigable's active document
+        //
+        // Note: To fire this event, the integration layer must have registered
+        // a DOM event dispatcher via DOMEventDispatcher.setGlobal().
+        // If no dispatcher is set, the event is silently skipped (allows
+        // navigation algorithms to work without full DOM integration).
+        if (DOMEventDispatcher.getGlobal()) |dispatcher| {
+            // Get the Window for this navigable (via active document)
+            // For now we use the navigable itself as the window ID since
+            // we don't have the full Window<->Navigable relationship wired
+            const window_id: event_dispatcher.WindowId = @ptrCast(navigable);
+            try dispatcher.fireHashChange(window_id, old_url, url);
+        }
     }
 }
 
@@ -596,11 +612,17 @@ pub fn applyHistoryStep(
 
     // 9. Fire events
     if (is_same_document) {
-        // Fire popstate
-        const state = target_entry.classic_history_api_state;
-        const event = try PopStateEvent.init(allocator, try state.clone(allocator), false);
-        defer event.deinit();
-        // Would dispatch event to document here
+        // Fire popstate event per HTML Standard §7.2.7.2
+        // The popstate event is fired when traversing to a session history entry
+        // for the same document.
+        //
+        // Note: To fire this event, the integration layer must have registered
+        // a DOM event dispatcher via DOMEventDispatcher.setGlobal().
+        if (DOMEventDispatcher.getGlobal()) |dispatcher| {
+            const state = target_entry.classic_history_api_state;
+            const window_id: event_dispatcher.WindowId = @ptrCast(traversable.navigable);
+            try dispatcher.firePopState(window_id, try state.clone(allocator), false);
+        }
     }
 
     // 10. Handle scroll restoration
@@ -676,17 +698,23 @@ pub fn unloadDocument(
     // 2. Let unloadTimingInfo be a new document unload timing info
     // (Timing info omitted for simplicity)
 
+    // Get the window ID for event dispatch
+    const window_id: event_dispatcher.WindowId = @ptrCast(navigable);
+
     // 3. If document's page showing flag is true...
-    // Fire pagehide event
-    const pagehide_event = try PageTransitionEvent.init(allocator, "pagehide", false);
-    defer pagehide_event.deinit();
-    // Would dispatch event here
+    // Fire pagehide event per HTML Standard §7.2.7.6
+    if (DOMEventDispatcher.getGlobal()) |dispatcher| {
+        // persisted = false: document is going away for the last time
+        try dispatcher.firePageHide(window_id, false);
+    }
 
     // 4. Update document's page showing flag
     // (Would set to false)
 
-    // 5. Fire unload event
-    // (Would fire unload event here)
+    // 5. Fire unload event per HTML Standard §8.1.5.6
+    if (DOMEventDispatcher.getGlobal()) |dispatcher| {
+        try dispatcher.fireUnload(window_id);
+    }
 
     // 6. Unload all nested navigables
     for (navigable.children.items) |child| {
@@ -706,16 +734,22 @@ pub fn promptToUnload(
     allocator: Allocator,
     navigable: *Navigable,
 ) !bool {
+    _ = allocator;
+
     // 1. Let document be navigable's active document
     _ = navigable.activeDocument() orelse return true;
 
-    // 2. Fire a beforeunload event
-    const event = try BeforeUnloadEvent.init(allocator);
-    defer event.deinit();
-    // Would dispatch event here
+    // 2. Fire a beforeunload event per HTML Standard §7.2.7.7
+    // The beforeunload event is cancellable - if canceled, show a prompt
+    const window_id: event_dispatcher.WindowId = @ptrCast(navigable);
+    var was_canceled = false;
+
+    if (DOMEventDispatcher.getGlobal()) |dispatcher| {
+        was_canceled = try dispatcher.fireBeforeUnload(window_id);
+    }
 
     // 3. Check if canceled
-    if (event.shouldShowPrompt()) {
+    if (was_canceled) {
         // In a real implementation, this would show a confirmation dialog
         // For now, always allow unload
         return true;

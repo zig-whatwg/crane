@@ -20,6 +20,11 @@ const RequestCredentials = types.RequestCredentials;
 const worker_agent = @import("worker_agent.zig");
 const WorkerAgent = worker_agent.WorkerAgent;
 
+// MessagePort pair infrastructure
+const message_channel = @import("message_channel.zig");
+const WorkerPortPair = message_channel.WorkerPortPair;
+const WorkerPort = message_channel.WorkerPort;
+
 const platform_mod = @import("platform");
 const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
@@ -27,14 +32,49 @@ const TimerBackend = timer_backend.TimerBackend;
 /// Connection to a shared worker.
 ///
 /// Each connection has its own MessagePort pair.
+///
+/// Spec: HTML Standard § 10.2.4.1 SharedWorker constructor
+/// "Let port be a new MessagePort object..."
+/// "Entangle port with inside port."
 pub const SharedWorkerConnection = struct {
-    /// Port exposed to the connecting context
-    outside_port: ?*anyopaque = null,
-    /// Port inside the worker for this connection
-    inside_port: ?*anyopaque = null,
+    /// Port pair for this connection (owns both ports)
+    port_pair: ?*WorkerPortPair = null,
+
     /// Whether the connection is active
     active: bool = true,
+
+    /// Get the outside port (exposed to the connecting context)
+    /// This is the port returned by sharedWorker.port
+    pub fn getOutsidePort(self: *const SharedWorkerConnection) ?*WorkerPort {
+        if (self.port_pair) |pair| {
+            return pair.outside_port;
+        }
+        return null;
+    }
+
+    /// Get the inside port (for the worker's connect event)
+    /// This is the port passed in the connect event's ports array
+    pub fn getInsidePort(self: *const SharedWorkerConnection) ?*WorkerPort {
+        if (self.port_pair) |pair| {
+            return pair.inside_port;
+        }
+        return null;
+    }
+
+    /// Clean up the connection
+    pub fn deinit(self: *SharedWorkerConnection, allocator: Allocator) void {
+        if (self.port_pair) |pair| {
+            pair.deinit();
+        }
+        _ = allocator; // Port pair handles its own cleanup
+    }
 };
+
+/// Callback type for connect events
+///
+/// Called when a new connection is established, allowing the caller
+/// to fire the connect event on the SharedWorkerGlobalScope.
+pub const ConnectEventCallback = *const fn (*SharedWorker, *SharedWorkerConnection, ?*anyopaque) void;
 
 /// Shared Worker implementation.
 ///
@@ -62,6 +102,10 @@ pub const SharedWorker = struct {
 
     /// Allocator
     allocator: Allocator,
+
+    /// Connect callback (for firing connect events)
+    on_connect_callback: ?ConnectEventCallback = null,
+    on_connect_context: ?*anyopaque = null,
 
     /// Create a new shared worker.
     ///
@@ -115,7 +159,12 @@ pub const SharedWorker = struct {
 
     /// Clean up resources.
     pub fn deinit(self: *SharedWorker) void {
-        // Clean up connections
+        // Clean up connections and their port pairs
+        for (0..self.connections.len) |i| {
+            if (self.connections.getPtr(i)) |conn| {
+                conn.deinit(self.allocator);
+            }
+        }
         self.connections.deinit();
 
         self.agent.deinit();
@@ -138,13 +187,21 @@ pub const SharedWorker = struct {
     /// "If workerGlobalScope is not null, then:
     ///  ...queue a global task on the DOM manipulation task source given
     ///  workerGlobalScope to fire an event named connect..."
+    ///
+    /// Creates a MessagePort pair:
+    /// - outside_port: returned to the connecting context (sharedWorker.port)
+    /// - inside_port: passed in the connect event's ports array
     pub fn connect(self: *SharedWorker) !*SharedWorkerConnection {
-        // Create connection
-        const conn = SharedWorkerConnection{};
+        // Spec Step: "Let port be a new MessagePort object..."
+        // Create MessagePort pair for this connection
+        const port_pair = try WorkerPortPair.init(self.allocator);
+        errdefer port_pair.deinit();
 
-        // TODO: Create MessagePort pair
-        // - outside_port goes to the connecting context
-        // - inside_port fires in the worker's connect event
+        // Create connection with the port pair
+        const conn = SharedWorkerConnection{
+            .port_pair = port_pair,
+            .active = true,
+        };
 
         try self.connections.append(conn);
 
@@ -153,7 +210,25 @@ pub const SharedWorker = struct {
 
         // Get the connection we just added
         const index = self.connections.len - 1;
-        return self.connections.getPtr(index).?;
+        const connection = self.connections.getPtr(index).?;
+
+        // Queue connect event firing (if callback is set)
+        // The actual event dispatch is handled by the caller through
+        // the ConnectEventCallback mechanism
+        if (self.on_connect_callback) |callback| {
+            callback(self, connection, self.on_connect_context);
+        }
+
+        return connection;
+    }
+
+    /// Set connect event callback
+    ///
+    /// This callback is invoked when a new connection is made, passing
+    /// the inside port so the caller can fire the connect event.
+    pub fn setConnectCallback(self: *SharedWorker, callback: ConnectEventCallback, context: ?*anyopaque) void {
+        self.on_connect_callback = callback;
+        self.on_connect_context = context;
     }
 
     /// Disconnect a client.
@@ -353,4 +428,110 @@ test "SharedWorker - matches" {
         "test",
         .include,
     ));
+}
+
+test "SharedWorker - connection has MessagePort pair" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try SharedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/shared.js",
+        .{},
+        "https://example.com",
+    );
+    defer worker.deinit();
+
+    try worker.start();
+
+    // Connect creates a MessagePort pair
+    const conn = try worker.connect();
+
+    // Connection should have both ports
+    try std.testing.expect(conn.port_pair != null);
+
+    const outside_port = conn.getOutsidePort();
+    const inside_port = conn.getInsidePort();
+
+    try std.testing.expect(outside_port != null);
+    try std.testing.expect(inside_port != null);
+
+    // Ports should be entangled
+    try std.testing.expect(outside_port.?.entangled == inside_port.?);
+    try std.testing.expect(inside_port.?.entangled == outside_port.?);
+}
+
+test "SharedWorker - multiple connections have separate ports" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try SharedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/shared.js",
+        .{},
+        "https://example.com",
+    );
+    defer worker.deinit();
+
+    try worker.start();
+
+    // Create two connections
+    const conn1 = try worker.connect();
+    const conn2 = try worker.connect();
+
+    // Each connection should have its own port pair
+    try std.testing.expect(conn1.port_pair != conn2.port_pair);
+
+    // Each port pair should have unique ports
+    const port1_outside = conn1.getOutsidePort();
+    const port2_outside = conn2.getOutsidePort();
+
+    try std.testing.expect(port1_outside != port2_outside);
+    try std.testing.expect(port1_outside.?.id != port2_outside.?.id);
+}
+
+test "SharedWorker - connect callback fires" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try SharedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/shared.js",
+        .{},
+        "https://example.com",
+    );
+    defer worker.deinit();
+
+    try worker.start();
+
+    // Track callback invocations
+    const Context = struct {
+        var callback_count: usize = 0;
+        var last_connection: ?*SharedWorkerConnection = null;
+    };
+    Context.callback_count = 0;
+    Context.last_connection = null;
+
+    // Set up connect callback
+    worker.setConnectCallback(struct {
+        fn callback(_: *SharedWorker, conn: *SharedWorkerConnection, _: ?*anyopaque) void {
+            Context.callback_count += 1;
+            Context.last_connection = conn;
+        }
+    }.callback, null);
+
+    // Connect should trigger callback
+    const conn = try worker.connect();
+    try std.testing.expectEqual(@as(usize, 1), Context.callback_count);
+    try std.testing.expect(Context.last_connection == conn);
+
+    // Second connection should trigger again
+    _ = try worker.connect();
+    try std.testing.expectEqual(@as(usize, 2), Context.callback_count);
 }

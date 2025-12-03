@@ -844,6 +844,189 @@ void v8_Module_Dispose(Global<Module>* module) {
 }
 
 // ============================================================================
+// Dynamic Import (import() expression) Support
+// ============================================================================
+
+/// Dynamic import callback data structure
+struct DynamicImportCallbackData {
+    void* user_data;
+    /// Callback signature:
+    ///   user_data: Context passed during setup
+    ///   context: V8 Context* where import() was called
+    ///   referrer_module_specifier: Module specifier string of the calling module (or null)
+    ///   referrer_module_specifier_len: Length of specifier string
+    ///   specifier: The specifier passed to import()
+    ///   specifier_len: Length of specifier
+    ///   promise_resolver: V8 PromiseResolver* to resolve/reject with result
+    /// Returns: void (result communicated via promise_resolver)
+    void (*callback)(
+        void* user_data,
+        void* context,
+        const char* referrer_module_specifier,
+        int referrer_module_specifier_len,
+        const char* specifier,
+        int specifier_len,
+        void* promise_resolver
+    );
+};
+
+/// Global dynamic import callback (set per isolate)
+static DynamicImportCallbackData* g_dynamic_import_callback = nullptr;
+
+/// V8 Host dynamic import callback wrapper
+/// This is called by V8 whenever import() is used in JavaScript
+static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
+    Local<Context> context,
+    Local<Data> host_defined_options,
+    Local<Value> resource_name,
+    Local<String> specifier,
+    Local<FixedArray> import_assertions
+) {
+    (void)host_defined_options;
+    (void)import_assertions;
+    
+    Isolate* isolate = context->GetIsolate();
+    EscapableHandleScope handle_scope(isolate);
+    
+    // Create promise resolver to return
+    Local<Promise::Resolver> resolver;
+    if (!Promise::Resolver::New(context).ToLocal(&resolver)) {
+        return MaybeLocal<Promise>();
+    }
+    
+    // If no callback registered, reject with error
+    if (!g_dynamic_import_callback || !g_dynamic_import_callback->callback) {
+        Local<String> error_msg = String::NewFromUtf8Literal(isolate, "Dynamic import not supported");
+        Local<Value> error = Exception::Error(error_msg);
+        resolver->Reject(context, error).Check();
+        return handle_scope.Escape(resolver->GetPromise());
+    }
+    
+    // Convert specifier to C string
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    const char* specifier_cstr = *specifier_utf8;
+    int specifier_len = specifier_utf8.length();
+    
+    // Convert resource name (referrer) to C string if present
+    const char* referrer_cstr = nullptr;
+    int referrer_len = 0;
+    String::Utf8Value* referrer_utf8 = nullptr;
+    if (!resource_name.IsEmpty() && resource_name->IsString()) {
+        referrer_utf8 = new String::Utf8Value(isolate, resource_name);
+        referrer_cstr = **referrer_utf8;
+        referrer_len = referrer_utf8->length();
+    }
+    
+    // Create Global handles for context and resolver to pass to Zig
+    Global<Context>* context_global = new Global<Context>(isolate, context);
+    Global<Promise::Resolver>* resolver_global = new Global<Promise::Resolver>(isolate, resolver);
+    
+    // Call the Zig callback - it will resolve/reject the promise
+    g_dynamic_import_callback->callback(
+        g_dynamic_import_callback->user_data,
+        context_global,
+        referrer_cstr,
+        referrer_len,
+        specifier_cstr,
+        specifier_len,
+        resolver_global
+    );
+    
+    // Clean up referrer string (if allocated)
+    if (referrer_utf8) {
+        delete referrer_utf8;
+    }
+    
+    // Return the promise - Zig callback will resolve/reject it asynchronously
+    return handle_scope.Escape(resolver->GetPromise());
+}
+
+/// Set the dynamic import callback for the current isolate
+/// This callback is invoked whenever import() is used in JavaScript
+void v8_Isolate_SetHostImportModuleDynamicallyCallback(
+    Isolate* isolate,
+    void* user_data,
+    void (*callback)(
+        void* user_data,
+        void* context,
+        const char* referrer_module_specifier,
+        int referrer_module_specifier_len,
+        const char* specifier,
+        int specifier_len,
+        void* promise_resolver
+    )
+) {
+    // Store callback data
+    if (!g_dynamic_import_callback) {
+        g_dynamic_import_callback = new DynamicImportCallbackData();
+    }
+    g_dynamic_import_callback->user_data = user_data;
+    g_dynamic_import_callback->callback = callback;
+    
+    // Register with V8
+    isolate->SetHostImportModuleDynamicallyCallback(V8HostImportModuleDynamicallyCallback);
+}
+
+/// Resolve a dynamic import promise with a module namespace
+/// Called from Zig when module loading succeeds
+void v8_DynamicImport_Resolve(
+    void* context_ptr,
+    void* resolver_ptr,
+    void* module_namespace_ptr
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
+    Global<Promise::Resolver>* resolver_global = static_cast<Global<Promise::Resolver>*>(resolver_ptr);
+    Global<Object>* namespace_global = static_cast<Global<Object>*>(module_namespace_ptr);
+    
+    Local<Context> context = context_global->Get(isolate);
+    Local<Promise::Resolver> resolver = resolver_global->Get(isolate);
+    Local<Object> module_namespace = namespace_global->Get(isolate);
+    
+    // Resolve the promise with the module namespace
+    resolver->Resolve(context, module_namespace).Check();
+    
+    // Clean up Global handles
+    delete context_global;
+    resolver_global->Reset();
+    delete resolver_global;
+    // Don't delete namespace_global - caller owns it
+}
+
+/// Reject a dynamic import promise with an error
+/// Called from Zig when module loading fails
+void v8_DynamicImport_Reject(
+    void* context_ptr,
+    void* resolver_ptr,
+    const char* error_message,
+    int error_message_len
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Global<Context>* context_global = static_cast<Global<Context>*>(context_ptr);
+    Global<Promise::Resolver>* resolver_global = static_cast<Global<Promise::Resolver>*>(resolver_ptr);
+    
+    Local<Context> context = context_global->Get(isolate);
+    Local<Promise::Resolver> resolver = resolver_global->Get(isolate);
+    
+    // Create error from message
+    Local<String> msg = String::NewFromUtf8(isolate, error_message, NewStringType::kNormal, error_message_len)
+        .ToLocalChecked();
+    Local<Value> error = Exception::Error(msg);
+    
+    // Reject the promise
+    resolver->Reject(context, error).Check();
+    
+    // Clean up Global handles
+    delete context_global;
+    resolver_global->Reset();
+    delete resolver_global;
+}
+
+// ============================================================================
 // Exception Functions
 // ============================================================================
 

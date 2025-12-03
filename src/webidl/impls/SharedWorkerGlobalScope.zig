@@ -20,6 +20,8 @@ const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
 const html_core = @import("html_core");
 const workers = html_core.workers;
 const InternalSharedWorker = workers.SharedWorker;
+const SharedWorkerConnection = workers.SharedWorkerConnection;
+const WorkerPort = workers.WorkerPort;
 
 pub const State = SharedWorkerGlobalScope.State;
 
@@ -137,4 +139,50 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
             worker.close();
         }
     }
+}
+
+/// Fire a connect event for a new connection
+///
+/// Spec: HTML Standard § 10.2.4.1 step 17
+/// "queue a global task on the DOM manipulation task source given
+/// workerGlobalScope to fire an event named connect at workerGlobalScope,
+/// using MessageEvent, with the data attribute initialized to the empty string,
+/// the ports attribute initialized to a new frozen array containing inside port..."
+///
+/// This is called when a new client connects to the shared worker.
+/// The inside port from the connection is passed in the event's ports array.
+pub fn fireConnectEvent(instance: *runtime.Instance, connection: *SharedWorkerConnection) void {
+    const state = instance.getState(State);
+
+    // Get the inside port from the connection
+    const inside_port = connection.getInsidePort();
+    if (inside_port == null) {
+        return; // No port to pass
+    }
+
+    // Check if onconnect handler is set
+    const handler = state.own.onconnect;
+    if (handler == null or handler.? == null) {
+        // No handler set, enable the port's queue anyway
+        // so messages aren't lost if handler is set later
+        inside_port.?.start();
+        return;
+    }
+
+    // In a full implementation, we would:
+    // 1. Create a MessageEvent
+    // 2. Set event.data = ""
+    // 3. Set event.ports = [inside_port]
+    // 4. Dispatch the event to the global scope
+    //
+    // For now, we just enable the port's queue so it can receive messages
+    inside_port.?.start();
+
+    // TODO: Actually dispatch the MessageEvent through the DOM event system
+    // This requires integration with the event loop and event dispatch mechanism
+}
+
+/// Get the inside port for a connection (for event dispatch)
+pub fn getInsidePort(_: *runtime.Instance, connection: *SharedWorkerConnection) ?*WorkerPort {
+    return connection.getInsidePort();
 }

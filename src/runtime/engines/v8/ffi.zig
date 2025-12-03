@@ -548,6 +548,76 @@ pub extern fn v8_Module_GetIdentityHash(module: *Module) c_int;
 /// @param module - The module to dispose
 pub extern fn v8_Module_Dispose(module: *Module) void;
 
+// ============================================================================
+// Dynamic Import (import() expression) Support
+// ============================================================================
+
+/// Callback function type for dynamic import (import() expression)
+///
+/// This callback is invoked by V8 whenever JavaScript code uses import().
+/// The callback receives:
+///   - user_data: Context passed when registering the callback
+///   - context: V8 Context* where import() was called
+///   - referrer_specifier: Module specifier of the calling module (or null)
+///   - referrer_len: Length of referrer specifier
+///   - specifier: The specifier passed to import()
+///   - specifier_len: Length of specifier
+///   - promise_resolver: V8 PromiseResolver* to resolve/reject with result
+///
+/// The callback must eventually call v8_DynamicImport_Resolve or v8_DynamicImport_Reject
+/// to settle the promise.
+pub const DynamicImportCallback = *const fn (
+    user_data: ?*anyopaque,
+    context: ?*anyopaque,
+    referrer_specifier: ?[*]const u8,
+    referrer_len: c_int,
+    specifier: [*]const u8,
+    specifier_len: c_int,
+    promise_resolver: *anyopaque,
+) void;
+
+/// Set the dynamic import callback for an isolate
+///
+/// This callback is invoked whenever import() is used in JavaScript.
+/// Must be called on the isolate before any modules that use import() are executed.
+///
+/// @param isolate - V8 Isolate
+/// @param user_data - Context passed to callback
+/// @param callback - Function called to handle dynamic imports
+pub extern fn v8_Isolate_SetHostImportModuleDynamicallyCallback(
+    isolate: *Isolate,
+    user_data: ?*anyopaque,
+    callback: DynamicImportCallback,
+) void;
+
+/// Resolve a dynamic import promise with a module namespace
+///
+/// Called from Zig when module loading succeeds.
+///
+/// @param context - V8 Context* from callback
+/// @param resolver - V8 PromiseResolver* from callback
+/// @param module_namespace - V8 Object* (module namespace from v8_Module_GetModuleNamespace)
+pub extern fn v8_DynamicImport_Resolve(
+    context: *anyopaque,
+    resolver: *anyopaque,
+    module_namespace: *Object,
+) void;
+
+/// Reject a dynamic import promise with an error
+///
+/// Called from Zig when module loading fails.
+///
+/// @param context - V8 Context* from callback
+/// @param resolver - V8 PromiseResolver* from callback
+/// @param error_message - Error message string
+/// @param error_message_len - Length of error message
+pub extern fn v8_DynamicImport_Reject(
+    context: *anyopaque,
+    resolver: *anyopaque,
+    error_message: [*]const u8,
+    error_message_len: c_int,
+) void;
+
 // Exception handling
 pub extern fn v8_Exception_TypeError(message: *String) ?*Value;
 pub extern fn v8_Exception_RangeError(message: *String) ?*Value;
