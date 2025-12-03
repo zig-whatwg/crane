@@ -165,6 +165,19 @@ pub const createErrorEventFromException = worker_error.createErrorEventFromExcep
 pub const canAcceptTasks = worker_error.canAcceptTasks;
 pub const canContinueExecution = worker_error.canContinueExecution;
 
+// Worker Threading (true multi-threaded execution)
+pub const worker_threading = @import("worker_threading.zig");
+pub const ThreadSafeMessageQueue = worker_threading.ThreadSafeMessageQueue;
+pub const WorkerThreadState = worker_threading.WorkerThreadState;
+pub const WorkerThreadRunner = worker_threading.WorkerThreadRunner;
+pub const ThreadedWorkerManager = worker_threading.ThreadedWorkerManager;
+
+// Worker V8 Integration (V8 isolate per worker thread)
+pub const worker_v8_integration = @import("worker_v8_integration.zig");
+pub const WorkerIsolateData = worker_v8_integration.WorkerIsolateData;
+pub const WorkerV8Integration = worker_v8_integration.WorkerV8Integration;
+pub const V8WorkerError = worker_v8_integration.V8WorkerError;
+
 test {
     std.testing.refAllDecls(@This());
 }
