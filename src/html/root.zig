@@ -11,6 +11,7 @@
 //! - **Parser** (§13) - HTML parsing algorithm with tokenizer and tree builder
 //! - **Custom Elements** - Custom element registry and lifecycle
 //! - **Structured Clone** (§2.7) - Safe passing of structured data
+//! - **Web Workers** (§10) - Dedicated and shared workers for background processing
 //!
 //! ## Architecture
 //!
@@ -38,6 +39,15 @@
 //! │   ├── deserialize.zig  # StructuredDeserialize implementation
 //! │   ├── transfer.zig     # Transfer algorithm for transferable objects
 //! │   ├── clone.zig        # High-level structuredClone() API
+//! │   └── root.zig         # Module exports
+//! ├── workers/             # Web Workers (§10)
+//! │   ├── types.zig        # Core type definitions
+//! │   ├── worker_agent.zig # Worker agent (event loop + state)
+//! │   ├── dedicated_worker.zig  # DedicatedWorker implementation
+//! │   ├── shared_worker.zig     # SharedWorker implementation
+//! │   ├── shared_worker_manager.zig  # Registry for shared workers
+//! │   ├── worker_location.zig   # WorkerLocation implementation
+//! │   ├── worker_navigator.zig  # WorkerNavigator implementation
 //! │   └── root.zig         # Module exports
 //! ├── custom_elements.zig  # Custom element definitions
 //! └── root.zig             # This file
@@ -174,6 +184,22 @@ pub const PageTransitionEvent = navigation.PageTransitionEvent;
 pub const BeforeUnloadEvent = navigation.BeforeUnloadEvent;
 pub const NavigationType = navigation.NavigationType;
 pub const ScrollRestorationMode = navigation.ScrollRestorationMode;
+
+// Web Workers (§10)
+pub const workers = @import("workers/root.zig");
+
+// Re-export commonly used worker types
+pub const WorkerType = workers.WorkerType;
+pub const WorkerOptions = workers.WorkerOptions;
+pub const WorkerState = workers.WorkerState;
+pub const WorkerError = workers.WorkerError;
+pub const WorkerAgent = workers.WorkerAgent;
+pub const DedicatedWorker = workers.DedicatedWorker;
+pub const SharedWorker = workers.SharedWorker;
+pub const SharedWorkerConnection = workers.SharedWorkerConnection;
+pub const SharedWorkerManager = workers.SharedWorkerManager;
+pub const WorkerLocation = workers.WorkerLocation;
+pub const WorkerNavigator = workers.WorkerNavigator;
 
 test {
     std.testing.refAllDecls(@This());
