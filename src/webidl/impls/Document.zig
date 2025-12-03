@@ -45,6 +45,10 @@ const ParentNode = mixins.ParentNode;
 // Content Security Policy
 const csp = @import("csp");
 
+// HTML module for stylesheet blocking
+const html_core = @import("html_core");
+const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
+
 pub const State = Document.State;
 
 pub const ImplError = error{
@@ -237,6 +241,13 @@ pub const InternalState = struct {
     /// Used to dispose V8/JSC module handles without compile-time dependency
     dispose_module_fn: ?*const fn (*anyopaque) void,
 
+    // === Stylesheet Blocking (HTML Standard §14.3.3) ===
+
+    /// Stylesheet blocking tracker
+    /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
+    /// Tracks pending stylesheets to block script execution until CSS loads.
+    stylesheet_tracker: StylesheetBlockingTracker,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -300,6 +311,8 @@ pub const InternalState = struct {
             .csp_self_origin = null,
             // Speculation rules
             .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
+            // Stylesheet blocking tracker
+            .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
         };
     }
 
@@ -407,6 +420,9 @@ pub const InternalState = struct {
             }
             self.prefetch_hints.deinit();
         }
+
+        // Stylesheet blocking tracker
+        self.stylesheet_tracker.deinit();
     }
 };
 
@@ -4690,4 +4706,85 @@ pub fn hasPrefetchHint(instance: *runtime.Instance, url: []const u8) bool {
 pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?SpeculationEagerness {
     const internal = getInternal(instance) orelse return null;
     return internal.prefetch_hints.get(url);
+}
+
+// =============================================================================
+// Stylesheet Blocking (HTML Standard §14.3.3)
+// =============================================================================
+
+/// Check if document has a style sheet that is blocking scripts
+/// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
+///
+/// "A Document has a style sheet that is blocking scripts if it has a
+/// pending parsing-blocking style sheet or a pending render-blocking element."
+///
+/// This should be called before executing parser-inserted scripts per
+/// HTML Standard §4.12.1.1 step 36.2.
+pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.stylesheet_tracker.hasBlockingStylesheet();
+}
+
+/// Get the stylesheet blocking tracker for direct manipulation
+/// Used by HTMLParser and link element processing to track stylesheet loads.
+pub fn getStylesheetTracker(instance: *runtime.Instance) ?*StylesheetBlockingTracker {
+    const internal = getInternal(instance) orelse return null;
+    return &internal.stylesheet_tracker;
+}
+
+/// Add a stylesheet to the blocking tracker
+/// Spec: HTML Standard § 4.2.4 "A link element that creates a style sheet"
+///
+/// Call this when a parser-inserted stylesheet link element starts loading.
+/// The id parameter should be unique (typically the resolved URL).
+pub fn addBlockingStylesheet(
+    instance: *runtime.Instance,
+    id: []const u8,
+    url: []const u8,
+    is_blocking: bool,
+) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.stylesheet_tracker.addStylesheet(id, url, is_blocking);
+}
+
+/// Mark a stylesheet as loaded
+/// Call this when a stylesheet finishes loading successfully.
+/// This may unblock pending script execution.
+pub fn markStylesheetLoaded(instance: *runtime.Instance, id: []const u8) void {
+    const internal = getInternal(instance) orelse return;
+    internal.stylesheet_tracker.markLoaded(id);
+}
+
+/// Mark a stylesheet as failed
+/// Call this when a stylesheet fails to load (network error, 404, etc.).
+/// Per spec, failed stylesheets should unblock scripts to prevent permanent hangs.
+pub fn markStylesheetFailed(instance: *runtime.Instance, id: []const u8) void {
+    const internal = getInternal(instance) orelse return;
+    internal.stylesheet_tracker.markFailed(id);
+}
+
+/// Remove a stylesheet from tracking
+/// Call this when a link element is removed from the document.
+pub fn removeBlockingStylesheet(instance: *runtime.Instance, id: []const u8) void {
+    const internal = getInternal(instance) orelse return;
+    internal.stylesheet_tracker.removeStylesheet(id);
+}
+
+/// Get the count of blocking stylesheets
+/// Useful for debugging and determining if scripts are being blocked.
+pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
+    const internal = getInternal(instance) orelse return 0;
+    return internal.stylesheet_tracker.getBlockingCount();
+}
+
+/// Set callback for when all blocking stylesheets are resolved
+/// This callback is invoked when the blocking count reaches zero.
+/// Can be used to resume deferred script execution.
+pub fn setStylesheetBlockingResolvedCallback(
+    instance: *runtime.Instance,
+    callback: StylesheetBlockingTracker.BlockingResolvedCallback,
+    context: ?*anyopaque,
+) void {
+    const internal = getInternal(instance) orelse return;
+    internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
 }

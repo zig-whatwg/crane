@@ -422,7 +422,17 @@ fn handleScriptScheduling(
                 if (is_parser_inserted) {
                     // Parser-inserted inline classic script
                     // Step 36.2: Check if document has a style sheet that is blocking scripts
-                    // (not implemented - assume no blocking stylesheets)
+                    // Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
+                    if (node_document) |doc| {
+                        if (Document.hasStyleSheetBlockingScripts(doc)) {
+                            // Document has blocking stylesheets - defer execution
+                            // The script will be executed when stylesheets complete loading
+                            // via the blocking resolved callback mechanism
+                            HTMLScriptElement.setReadyToBeParserExecuted(script_element, true);
+                            Document.setPendingParsingBlockingScript(doc, script_element);
+                            return true;
+                        }
+                    }
 
                     // Step 36.3: Immediately execute the script element
                     _ = executeScriptElement(allocator, script_element) catch {

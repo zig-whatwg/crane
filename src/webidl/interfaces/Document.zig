@@ -3085,6 +3085,51 @@ pub const Document = struct {
     }
 
     // =============================================================================
+    // Stylesheet Blocking (HTML Standard §14.3.3)
+    // =============================================================================
+
+    /// Check if document has a style sheet that is blocking scripts
+    /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
+    ///
+    /// This should be called before executing parser-inserted scripts.
+    pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
+        return DocumentImpl.hasStyleSheetBlockingScripts(instance);
+    }
+
+    /// Add a stylesheet to the blocking tracker
+    /// Call this when a parser-inserted stylesheet link element starts loading.
+    pub fn addBlockingStylesheet(
+        instance: *runtime.Instance,
+        id: []const u8,
+        url: []const u8,
+        is_blocking: bool,
+    ) !void {
+        return DocumentImpl.addBlockingStylesheet(instance, id, url, is_blocking);
+    }
+
+    /// Mark a stylesheet as loaded
+    /// Call this when a stylesheet finishes loading successfully.
+    pub fn markStylesheetLoaded(instance: *runtime.Instance, id: []const u8) void {
+        DocumentImpl.markStylesheetLoaded(instance, id);
+    }
+
+    /// Mark a stylesheet as failed
+    /// Call this when a stylesheet fails to load.
+    pub fn markStylesheetFailed(instance: *runtime.Instance, id: []const u8) void {
+        DocumentImpl.markStylesheetFailed(instance, id);
+    }
+
+    /// Remove a stylesheet from tracking
+    pub fn removeBlockingStylesheet(instance: *runtime.Instance, id: []const u8) void {
+        DocumentImpl.removeBlockingStylesheet(instance, id);
+    }
+
+    /// Get the count of blocking stylesheets
+    pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
+        return DocumentImpl.getBlockingStylesheetCount(instance);
+    }
+
+    // =============================================================================
     // Module Map and Import Map (HTML Standard §8.1.3.10, §8.1.6)
     // =============================================================================
 
