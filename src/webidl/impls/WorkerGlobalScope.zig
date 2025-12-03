@@ -29,6 +29,11 @@ const WorkerType = workers.WorkerType;
 // Import structured clone
 const structured_clone = html_core.structured_clone;
 
+// Import event loop for timer support
+const event_loop_mod = html_core.event_loop;
+const EventLoop = event_loop_mod.EventLoop;
+const Timer = event_loop_mod.Timer;
+
 pub const State = WorkerGlobalScope.State;
 
 pub const ImplError = error{
@@ -41,7 +46,7 @@ pub const ImplError = error{
 /// Internal state for WorkerGlobalScope implementation
 ///
 /// Contains cached WorkerLocation and WorkerNavigator objects,
-/// as well as worker type information.
+/// as well as worker type information and event loop reference.
 pub const InternalState = struct {
     /// Internal WorkerLocation (from src/html/workers/)
     internal_location: ?*InternalWorkerLocation = null,
@@ -54,6 +59,10 @@ pub const InternalState = struct {
 
     /// Cached WebIDL WorkerNavigator interface instance
     navigator_instance: ?*runtime.Instance = null,
+
+    /// Reference to the worker's event loop (for timer APIs)
+    /// This is set when the worker is fully initialized with an event loop.
+    event_loop: ?*EventLoop = null,
 
     /// Worker script URL
     url: []const u8 = "",
@@ -88,6 +97,12 @@ pub const InternalState = struct {
         if (self.internal_navigator) |nav| {
             nav.deinit();
         }
+        // Note: event_loop is not owned, so we don't deinit it
+    }
+
+    /// Set the event loop reference (called after worker initialization)
+    pub fn setEventLoop(self: *InternalState, loop: *EventLoop) void {
+        self.event_loop = loop;
     }
 };
 
@@ -498,12 +513,46 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 }
 
 /// Operation: setInterval
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/#dom-setinterval
+///
+/// Sets a repeating timer that fires at the specified interval.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            // Get delay (default to 0 if not provided)
+            const delay_ms: i64 = if (timeout.wasPassed())
+                @intCast(timeout.getValue())
+            else
+                0;
+
+            // TODO: Proper callback conversion
+            // The handler needs to be wrapped to call the JavaScript function.
+            // For now, we create a no-op callback - real implementation needs V8 integration.
+            _ = handler;
+            _ = arguments;
+
+            const timer_id = event_loop.setInterval(
+                &noopTimerCallback,
+                delay_ms,
+                null,
+            ) catch return error.OutOfMemory;
+
+            return @intCast(timer_id);
+        }
+    }
     return error.NotImplemented;
+}
+
+/// No-op timer callback used as placeholder until proper V8 callback integration
+fn noopTimerCallback(_: ?*anyopaque) void {
+    // TODO: This should invoke the actual JavaScript callback
+    // Real implementation needs:
+    // 1. Store timer_id -> handler mapping
+    // 2. When callback fires, look up handler
+    // 3. Call JavaScript function via V8
 }
 
 /// Operation: createImageBitmap
@@ -515,9 +564,23 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 }
 
 /// Operation: clearInterval
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/#dom-clearinterval
+///
+/// Cancels a repeating timer.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
+    if (!id.wasPassed()) {
+        return; // No-op if no ID provided
+    }
+
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            event_loop.clearInterval(@intCast(id.getValue()));
+            return;
+        }
+    }
     return error.NotImplemented;
 }
 
@@ -620,18 +683,57 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
 }
 
 /// Operation: clearTimeout
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/#dom-cleartimeout
+///
+/// Cancels a one-shot timer.
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
+    if (!id.wasPassed()) {
+        return; // No-op if no ID provided
+    }
+
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            event_loop.clearTimeout(@intCast(id.getValue()));
+            return;
+        }
+    }
     return error.NotImplemented;
 }
 
 /// Operation: setTimeout
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/#dom-settimeout
+///
+/// Sets a one-shot timer that fires after the specified delay.
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            // Get delay (default to 0 if not provided)
+            const delay_ms: i64 = if (timeout.wasPassed())
+                @intCast(timeout.getValue())
+            else
+                0;
+
+            // TODO: Proper callback conversion
+            // The handler needs to be wrapped to call the JavaScript function.
+            // For now, we create a no-op callback - real implementation needs V8 integration.
+            _ = handler;
+            _ = arguments;
+
+            const timer_id = event_loop.setTimeout(
+                &noopTimerCallback,
+                delay_ms,
+                null,
+            ) catch return error.OutOfMemory;
+
+            return @intCast(timer_id);
+        }
+    }
     return error.NotImplemented;
 }
 
