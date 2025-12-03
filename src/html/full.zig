@@ -136,6 +136,20 @@ pub const script_runner = @import("script_runner.zig");
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");
 
+// ============================================================================
+// Re-exports for Testing Convenience
+// ============================================================================
+
+/// ScriptRunner type for coordinating script execution
+pub const ScriptRunner = script_runner.ScriptRunner;
+
+/// Extract error information from a JavaScript exception
+/// Re-exported from event_utils for convenience
+pub const extractErrorInfo = event_utils.extractErrorInfo;
+
+/// Error information structure
+pub const ErrorInfo = event_utils.ErrorInfo;
+
 test {
     std.testing.refAllDecls(@This());
 }

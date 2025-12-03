@@ -85,8 +85,9 @@ test "ScriptRunner - queue deferred script" {
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    // Create a mock script (using pointer from int as placeholder)
-    const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
+    // Create a mock script using properly aligned pointer
+    const alignment = @alignOf(runtime.Instance);
+    const mock_script: *runtime.Instance = @ptrFromInt(alignment * 1);
 
     try runner.queueDeferredScript(mock_script);
     try testing.expect(runner.hasDeferredScripts());
@@ -99,7 +100,9 @@ test "ScriptRunner - queue async script" {
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
+    // Create a mock script using properly aligned pointer
+    const alignment = @alignOf(runtime.Instance);
+    const mock_script: *runtime.Instance = @ptrFromInt(alignment * 1);
 
     try runner.queueAsyncScript(mock_script);
     try testing.expect(runner.hasAsyncScripts());
@@ -112,7 +115,9 @@ test "ScriptRunner - set parser blocking script" {
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
+    // Create a mock script using properly aligned pointer
+    const alignment = @alignOf(runtime.Instance);
+    const mock_script: *runtime.Instance = @ptrFromInt(alignment * 1);
 
     runner.setParserBlockingScript(mock_script);
     try testing.expect(runner.hasPendingParserBlockingScript());
@@ -129,10 +134,11 @@ test "ScriptRunner - multiple deferred scripts in order" {
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    // Queue multiple deferred scripts
-    const script1: *runtime.Instance = @ptrFromInt(0x1001);
-    const script2: *runtime.Instance = @ptrFromInt(0x1002);
-    const script3: *runtime.Instance = @ptrFromInt(0x1003);
+    // Queue multiple deferred scripts using properly aligned pointers
+    const alignment = @alignOf(runtime.Instance);
+    const script1: *runtime.Instance = @ptrFromInt(alignment * 1);
+    const script2: *runtime.Instance = @ptrFromInt(alignment * 2);
+    const script3: *runtime.Instance = @ptrFromInt(alignment * 3);
 
     try runner.queueDeferredScript(script1);
     try runner.queueDeferredScript(script2);
@@ -149,7 +155,9 @@ test "ScriptRunner - queue in-order async script" {
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    const mock_script: *runtime.Instance = @ptrFromInt(0x1234);
+    // Create a mock script using properly aligned pointer
+    const alignment = @alignOf(runtime.Instance);
+    const mock_script: *runtime.Instance = @ptrFromInt(alignment * 1);
 
     try runner.queueInOrderAsyncScript(mock_script);
     try testing.expect(runner.hasInOrderAsyncScripts());

@@ -38,9 +38,12 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 const Document = interfaces.Document;
-const script_execution = @import("script_execution.zig");
 const html_core = @import("html_core");
 const EventLoop = html_core.EventLoop;
+
+// Note: script_execution.zig is imported lazily inside executeScript()
+// to avoid pulling in V8 FFI symbols at compile time. This allows tests
+// to use ScriptRunner for queue management without needing V8 linked.
 
 /// Script Runner manages script execution scheduling
 ///
@@ -108,6 +111,22 @@ pub const ScriptRunner = struct {
         return self.pending_parsing_blocking_script;
     }
 
+    /// Check if there is a pending parsing-blocking script
+    /// Convenience method for testing
+    pub fn hasPendingParserBlockingScript(self: *ScriptRunner) bool {
+        return self.pending_parsing_blocking_script != null;
+    }
+
+    /// Alias for setPendingParsingBlockingScript (test compatibility)
+    pub fn setParserBlockingScript(self: *ScriptRunner, script: *runtime.Instance) void {
+        self.setPendingParsingBlockingScript(script);
+    }
+
+    /// Clear the pending parsing-blocking script
+    pub fn clearParserBlockingScript(self: *ScriptRunner) void {
+        self.pending_parsing_blocking_script = null;
+    }
+
     /// Execute the pending parsing-blocking script if ready
     /// Called by parser after each token processing
     ///
@@ -137,6 +156,16 @@ pub const ScriptRunner = struct {
         try self.deferred_scripts.append(self.allocator, script);
     }
 
+    /// Alias for addDeferredScript (test compatibility)
+    pub fn queueDeferredScript(self: *ScriptRunner, script: *runtime.Instance) !void {
+        try self.addDeferredScript(script);
+    }
+
+    /// Check if there are deferred scripts
+    pub fn hasDeferredScripts(self: *ScriptRunner) bool {
+        return self.deferred_scripts.items.len > 0;
+    }
+
     /// Execute all deferred scripts
     /// Called when document parsing completes
     ///
@@ -162,6 +191,16 @@ pub const ScriptRunner = struct {
     /// Used for async scripts (no ordering guarantee)
     pub fn addAsyncScript(self: *ScriptRunner, script: *runtime.Instance) !void {
         try self.async_scripts.append(self.allocator, script);
+    }
+
+    /// Alias for addAsyncScript (test compatibility)
+    pub fn queueAsyncScript(self: *ScriptRunner, script: *runtime.Instance) !void {
+        try self.addAsyncScript(script);
+    }
+
+    /// Check if there are async scripts
+    pub fn hasAsyncScripts(self: *ScriptRunner) bool {
+        return self.async_scripts.items.len > 0;
     }
 
     /// Remove an async script from the set
@@ -202,6 +241,16 @@ pub const ScriptRunner = struct {
         try self.in_order_async_scripts.append(self.allocator, script);
     }
 
+    /// Alias for addInOrderAsyncScript (test compatibility)
+    pub fn queueInOrderAsyncScript(self: *ScriptRunner, script: *runtime.Instance) !void {
+        try self.addInOrderAsyncScript(script);
+    }
+
+    /// Check if there are in-order async scripts
+    pub fn hasInOrderAsyncScripts(self: *ScriptRunner) bool {
+        return self.in_order_async_scripts.items.len > 0;
+    }
+
     /// Execute in-order async scripts
     /// These must execute in order, so we stop at the first non-ready script
     pub fn executeInOrderAsyncScripts(self: *ScriptRunner) !void {
@@ -235,6 +284,8 @@ pub const ScriptRunner = struct {
         self.is_executing = true;
         defer self.is_executing = false;
 
+        // Use lazy import to avoid pulling in V8 symbols at compile time
+        const script_execution = @import("script_execution.zig");
         script_execution.executeScriptElement(self.allocator, script) catch |err| {
             std.debug.print("Script execution error: {}\n", .{err});
             // Errors are handled internally, don't propagate
@@ -247,15 +298,21 @@ pub const ScriptRunner = struct {
 
     /// Notify that the parser has finished
     /// Triggers execution of deferred scripts
-    pub fn notifyParserFinished(self: *ScriptRunner) !void {
+    pub fn notifyParserFinished(self: *ScriptRunner) void {
         self.parser_finished = true;
 
         // Step 3: Execute deferred scripts
-        try self.executeDeferredScripts();
+        self.executeDeferredScripts() catch |err| {
+            std.debug.print("Deferred script execution error: {}\n", .{err});
+        };
 
         // Also try to execute any pending async scripts
-        try self.executeAsyncScripts();
-        try self.executeInOrderAsyncScripts();
+        self.executeAsyncScripts() catch |err| {
+            std.debug.print("Async script execution error: {}\n", .{err});
+        };
+        self.executeInOrderAsyncScripts() catch |err| {
+            std.debug.print("In-order async script execution error: {}\n", .{err});
+        };
     }
 
     /// Process all ready scripts
