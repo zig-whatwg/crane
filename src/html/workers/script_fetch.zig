@@ -26,6 +26,9 @@ const types = @import("types.zig");
 const WorkerType = types.WorkerType;
 const WorkerOptions = types.WorkerOptions;
 
+// Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
+const fetch = @import("fetch");
+
 // ============================================================================
 // Worker Script Fetch Errors
 // ============================================================================
@@ -149,17 +152,9 @@ pub fn fetchWorkerScript(
         return handleBlobUrl(allocator, url);
     }
 
-    // Step 3: For HTTP(S) URLs, need actual fetch
+    // Step 3: For HTTP(S) URLs, use the fetch module
     if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-        // In a full implementation, this would:
-        // 1. Create InternalRequest with destination = .worker
-        // 2. Set credentials mode based on options
-        // 3. Execute fetch
-        // 4. Return script source from response body
-
-        // For now, return a stub indicating fetch is needed
-        // The actual fetch integration happens when wiring to the full fetch module
-        return WorkerScriptError.FetchFailed;
+        return fetchHttpWorkerScript(allocator, url, options);
     }
 
     // Step 4: Check for import scripts mode (stricter)
@@ -238,6 +233,121 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
     // Blob URLs require access to the blob store
     // For now, return an error
     return WorkerScriptError.FetchFailed;
+}
+
+/// Fetch an HTTP(S) worker script using the fetch module.
+///
+/// HTML Standard §10.2.5 "Run a worker" step 9:
+/// Creates an internal request with destination=worker and executes fetch.
+fn fetchHttpWorkerScript(
+    allocator: Allocator,
+    url: []const u8,
+    options: WorkerScriptFetchOptions,
+) WorkerScriptError!FetchedScript {
+    // Step 1: Create an internal request
+    const internal_request = fetch.internal.InternalRequest.init(allocator, url) catch {
+        return WorkerScriptError.OutOfMemory;
+    };
+    errdefer internal_request.deinit();
+
+    // Step 2: Set request properties per HTML Standard §10.2.5
+    // Set destination based on worker type
+    internal_request.destination = if (options.is_import_scripts)
+        .script // importScripts uses script destination
+    else switch (options.worker_type) {
+        .classic => .worker,
+        .module => .worker,
+    };
+
+    // Set credentials mode
+    internal_request.credentials_mode = switch (options.credentials) {
+        .omit => .omit,
+        .same_origin => .same_origin,
+        .include => .include,
+    };
+
+    // Set mode - workers use same-origin by default
+    internal_request.mode = .same_origin;
+
+    // Set origin if provided
+    if (options.origin) |org| {
+        internal_request.origin = .{ .origin = org };
+    }
+
+    // Step 3: Execute fetch
+    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
+        internal_request.deinit();
+        return switch (err) {
+            fetch.FetchError.OutOfMemory => WorkerScriptError.OutOfMemory,
+            fetch.FetchError.NetworkError => WorkerScriptError.NetworkError,
+            fetch.FetchError.AbortError => WorkerScriptError.NetworkError,
+        };
+    };
+    defer fetch_result.timing_info.deinit();
+    internal_request.deinit();
+
+    const response = fetch_result.response;
+    defer response.deinit();
+
+    // Step 4: Check for network error
+    if (response.response_type == .@"error") {
+        return WorkerScriptError.NetworkError;
+    }
+
+    // Step 5: Check status code
+    if (response.status < 200 or response.status >= 300) {
+        return WorkerScriptError.FetchFailed;
+    }
+
+    // Step 6: Validate Content-Type for JavaScript
+    const content_type = response.header_list.get("content-type") orelse "text/javascript";
+    if (!isValidWorkerScriptType(content_type, options.worker_type)) {
+        return WorkerScriptError.ParseError;
+    }
+
+    // Step 7: Get response body
+    const body_bytes = if (response.body) |body|
+        body.getBytes() orelse return WorkerScriptError.FetchFailed
+    else
+        return WorkerScriptError.FetchFailed;
+
+    // Step 8: Get final URL (after redirects)
+    const final_url = response.url() orelse url;
+
+    // Step 9: Determine same-origin status
+    const same_origin = if (options.origin) |org|
+        isSameOrigin(org, final_url)
+    else
+        true;
+
+    // Step 10: Create FetchedScript result
+    return FetchedScript.init(
+        allocator,
+        body_bytes,
+        final_url,
+        content_type,
+        same_origin,
+    ) catch {
+        return WorkerScriptError.OutOfMemory;
+    };
+}
+
+/// Check if two URLs have the same origin
+fn isSameOrigin(origin: []const u8, url: []const u8) bool {
+    // Extract origin from URL
+    const url_origin = extractOrigin(url) orelse return false;
+    return std.mem.eql(u8, origin, url_origin);
+}
+
+/// Extract origin (scheme://host:port) from URL
+fn extractOrigin(url: []const u8) ?[]const u8 {
+    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
+    const after_scheme = url[scheme_end + 3 ..];
+    const path_start = std.mem.indexOf(u8, after_scheme, "/");
+    if (path_start) |ps| {
+        return url[0 .. scheme_end + 3 + ps];
+    }
+    return url;
 }
 
 /// Simple percent-decoding for data URLs

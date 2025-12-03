@@ -1300,6 +1300,11 @@ pub fn build(b: *std.Build) void {
     // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)
     // This module can be safely imported by impls without creating a cycle.
     // NO imports of: interfaces, impls, runtime
+    //
+    // ARCHITECTURAL NOTE: fetch_mod is safe to import here because:
+    // - fetch_mod only imports: referrer_policy_mod (no cycles possible)
+    // - This enables real HTTP(S) fetching for navigation and workers
+    // - See whatwg-aujed for the analysis that led to this decision
     const html_core_mod = b.addModule("html_core", .{
         .root_source_file = b.path("src/html/root.zig"),
         .target = target,
@@ -1307,6 +1312,7 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("infra", infra_mod);
     html_core_mod.addImport("dom", dom_mod);
     html_core_mod.addImport("platform", platform_mod);
+    html_core_mod.addImport("fetch", fetch_mod);
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.

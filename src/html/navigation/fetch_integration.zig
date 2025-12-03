@@ -14,9 +14,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// The fetch module is conditionally available - when not available,
-// navigation will work in offline mode without actual fetching.
-// This allows html_core to be used without fetch dependency.
+// Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
+const fetch = @import("fetch");
 
 /// Fetch result for navigation
 pub const NavigationFetchResult = struct {
@@ -171,15 +170,6 @@ pub fn fetchNavigationResource(
     url: []const u8,
     options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
-    // For now, we'll use a stub implementation until the fetch module
-    // is properly integrated. This allows the navigation infrastructure
-    // to be built without blocking on fetch integration.
-    //
-    // TODO: Wire up actual fetch module when build.zig is updated to
-    // include fetch import in html_core_mod
-
-    _ = options;
-
     // Check for special URLs that don't need fetching
     if (std.mem.startsWith(u8, url, "about:")) {
         return handleAboutUrl(allocator, url);
@@ -193,11 +183,159 @@ pub fn fetchNavigationResource(
         return handleJavascriptUrl(allocator, url);
     }
 
-    // For HTTP(S) URLs, we need the actual fetch module
-    // Return a placeholder that indicates fetch is not yet wired
+    // For HTTP(S) URLs, use the fetch module
+    return fetchHttpResource(allocator, url, options);
+}
+
+/// Fetch an HTTP(S) resource using the fetch module.
+///
+/// HTML Standard §7.4.3:
+/// Creates an internal request with appropriate destination and mode,
+/// then executes the fetch algorithm.
+fn fetchHttpResource(
+    allocator: Allocator,
+    url: []const u8,
+    options: NavigationFetchOptions,
+) NavigationFetchError!NavigationFetchResult {
+    // Step 1: Create an internal request
+    // Per Fetch spec §5.1, create request with URL
+    const internal_request = fetch.internal.InternalRequest.init(allocator, url) catch {
+        return NavigationFetchError.OutOfMemory;
+    };
+    errdefer internal_request.deinit();
+
+    // Step 2: Set request properties per HTML Standard §7.4.3
+    // Set method
+    if (!std.mem.eql(u8, options.method, "GET")) {
+        allocator.free(internal_request.method);
+        internal_request.method = allocator.dupe(u8, options.method) catch {
+            return NavigationFetchError.OutOfMemory;
+        };
+    }
+
+    // Set destination based on navigation options
+    internal_request.destination = switch (options.destination) {
+        .document => .document,
+        .iframe => .iframe,
+        .frame => .frame,
+        .embed => .embed,
+        .object => .object,
+    };
+
+    // Set mode to navigate for navigation requests
+    internal_request.mode = switch (options.mode) {
+        .navigate => .navigate,
+        .same_origin => .same_origin,
+        .cors => .cors,
+        .no_cors => .no_cors,
+    };
+
+    // Set credentials mode
+    internal_request.credentials_mode = if (options.include_credentials)
+        .include
+    else
+        .same_origin;
+
+    // Set redirect mode
+    internal_request.redirect_mode = switch (options.redirect) {
+        .follow => .follow,
+        .@"error" => .@"error",
+        .manual => .manual,
+    };
+
+    // Set referrer if provided
+    if (options.referrer) |ref| {
+        internal_request.referrer = .{ .url = ref };
+    }
+
+    // Set origin if provided
+    if (options.origin) |org| {
+        internal_request.origin = .{ .origin = org };
+    }
+
+    // Step 3: Execute fetch
+    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
+        internal_request.deinit();
+        return switch (err) {
+            fetch.FetchError.OutOfMemory => NavigationFetchError.OutOfMemory,
+            fetch.FetchError.NetworkError => NavigationFetchError.NetworkError,
+            fetch.FetchError.AbortError => NavigationFetchError.AbortError,
+        };
+    };
+    defer fetch_result.timing_info.deinit();
+    internal_request.deinit();
+
+    const response = fetch_result.response;
+    defer response.deinit();
+
+    // Step 4: Convert InternalResponse to NavigationFetchResult
     var result = NavigationFetchResult.init(allocator);
-    result.is_network_error = true;
-    result.final_url = try allocator.dupe(u8, url);
+    errdefer result.deinit();
+
+    // Set status
+    result.status = response.status;
+    result.ok = response.status >= 200 and response.status < 300;
+
+    // Check if this is a network error response
+    result.is_network_error = response.response_type == .@"error";
+
+    // Get final URL from response URL list
+    if (response.url()) |final_url| {
+        result.final_url = allocator.dupe(u8, final_url) catch {
+            return NavigationFetchError.OutOfMemory;
+        };
+    } else {
+        result.final_url = allocator.dupe(u8, url) catch {
+            return NavigationFetchError.OutOfMemory;
+        };
+    }
+
+    // Get Content-Type header
+    if (response.header_list.get("content-type")) |ct| {
+        result.content_type = allocator.dupe(u8, ct) catch {
+            return NavigationFetchError.OutOfMemory;
+        };
+    }
+
+    // Get body bytes
+    if (response.body) |body| {
+        if (body.getBytes()) |bytes| {
+            result.body = allocator.dupe(u8, bytes) catch {
+                return NavigationFetchError.OutOfMemory;
+            };
+        }
+    }
+
+    // Determine cross-origin status
+    result.is_cross_origin = isCrossOrigin(options.origin, url);
+
+    // Copy relevant headers for COOP/COEP
+    result.headers = NavigationFetchResult.HeaderMap.init(allocator);
+    const security_headers = [_][]const u8{
+        "cross-origin-opener-policy",
+        "cross-origin-embedder-policy",
+        "cross-origin-resource-policy",
+        "content-security-policy",
+        "x-frame-options",
+    };
+    for (security_headers) |header_name| {
+        if (response.header_list.get(header_name)) |value| {
+            const owned_name = allocator.dupe(u8, header_name) catch {
+                return NavigationFetchError.OutOfMemory;
+            };
+            errdefer allocator.free(owned_name);
+            const owned_value = allocator.dupe(u8, value) catch {
+                allocator.free(owned_name);
+                return NavigationFetchError.OutOfMemory;
+            };
+            result.headers.?.put(owned_name, owned_value) catch {
+                allocator.free(owned_name);
+                allocator.free(owned_value);
+                return NavigationFetchError.OutOfMemory;
+            };
+        }
+    }
+
     return result;
 }
 
