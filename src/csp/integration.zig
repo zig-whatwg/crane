@@ -13,6 +13,7 @@ const matching = @import("matching.zig");
 const fallback = @import("fallback.zig");
 const violations = @import("violations.zig");
 const directives = @import("directives/root.zig");
+const hash = @import("hash.zig");
 
 // ============================================================================
 // Document Loading Integration
@@ -242,6 +243,8 @@ pub const InlineContext = struct {
     source_file: ?[]const u8 = null,
     /// Line number for violation reporting
     line_number: ?u32 = null,
+    /// Allocator for hash computation (optional - if null, hash checking is skipped)
+    allocator: ?std.mem.Allocator = null,
 };
 
 /// Check if inline script should be blocked.
@@ -267,8 +270,13 @@ pub fn shouldBlockInlineScript(
                 }
             }
 
-            // Check hash (compute if needed)
-            // TODO: Implement hash computation and matching
+            // Check hash - compute hash of content and match against source list
+            // Spec: CSP Level 3 § 6.7.2.4 "Does element match hash source?"
+            if (context.allocator) |alloc| {
+                if (hash.doesContentMatchHashSource(alloc, context.content, &d.value) catch false) {
+                    continue; // Allowed by hash
+                }
+            }
 
             // Check 'unsafe-inline'
             if (matching.allowsUnsafeInline(&d.value)) {
@@ -317,6 +325,14 @@ pub fn shouldBlockInlineStyle(
             if (context.nonce) |nonce| {
                 if (matching.doesNonceMatch(nonce, &d.value)) {
                     continue;
+                }
+            }
+
+            // Check hash - compute hash of content and match against source list
+            // Spec: CSP Level 3 § 6.7.2.4 "Does element match hash source?"
+            if (context.allocator) |alloc| {
+                if (hash.doesContentMatchHashSource(alloc, context.content, &d.value) catch false) {
+                    continue; // Allowed by hash
                 }
             }
 

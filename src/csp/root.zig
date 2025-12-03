@@ -113,6 +113,13 @@ pub const getEffectiveScriptSrcElem = fallback.getEffectiveScriptSrcElem;
 pub const getEffectiveStyleSrc = fallback.getEffectiveStyleSrc;
 pub const getEffectiveConnectSrc = fallback.getEffectiveConnectSrc;
 
+// Hash computation for inline scripts/styles
+pub const hash = @import("hash.zig");
+
+pub const computeHash = hash.computeHash;
+pub const doesContentMatchHashSource = hash.doesContentMatchHashSource;
+pub const HashAlgorithm = hash.HashAlgorithm;
+
 // Violations
 pub const violations = @import("violations.zig");
 
