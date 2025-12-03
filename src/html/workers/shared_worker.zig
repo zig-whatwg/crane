@@ -29,6 +29,12 @@ const platform_mod = @import("platform");
 const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
 
+// Script fetching for worker scripts
+const script_fetch = @import("script_fetch.zig");
+const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
+const FetchedScript = script_fetch.FetchedScript;
+const WorkerScriptError = script_fetch.WorkerScriptError;
+
 /// Connection to a shared worker.
 ///
 /// Each connection has its own MessagePort pair.
@@ -179,6 +185,57 @@ pub const SharedWorker = struct {
     /// Start the worker.
     pub fn start(self: *SharedWorker) !void {
         try self.agent.start();
+    }
+
+    /// Start the worker, fetch, and execute the script.
+    ///
+    /// This is the complete "run a worker" algorithm per HTML Standard § 10.2.5:
+    /// 1. Create worker agent
+    /// 2. Fetch the worker script
+    /// 3. Execute the script in the worker context
+    pub fn startAndFetch(self: *SharedWorker) !void {
+        try self.agent.start();
+
+        // Fetch the worker script
+        var fetched_script = try self.fetchScript();
+        defer fetched_script.deinit();
+
+        // Execute the fetched script
+        try self.agent.executeScript(fetched_script.source);
+    }
+
+    /// Start with V8 context, fetch, and execute the script.
+    pub fn startWithContextAndFetch(self: *SharedWorker) !void {
+        try self.agent.startWithContext(
+            self.script_url,
+            self.agent.data.worker_type,
+            self.name,
+        );
+
+        // Fetch the worker script
+        var fetched_script = try self.fetchScript();
+        defer fetched_script.deinit();
+
+        // Execute based on worker type
+        if (self.agent.data.worker_type == .module) {
+            try self.agent.executeModule(fetched_script.source);
+        } else {
+            try self.agent.executeScript(fetched_script.source);
+        }
+    }
+
+    /// Fetch the worker script from the script_url.
+    fn fetchScript(self: *SharedWorker) !FetchedScript {
+        return script_fetch.fetchWorkerScript(self.allocator, self.script_url, .{
+            .worker_type = self.agent.data.worker_type,
+            .origin = self.constructor_origin,
+            .credentials = switch (self.credentials) {
+                .omit => .omit,
+                .same_origin => .same_origin,
+                .include => .include,
+            },
+            .is_import_scripts = false,
+        });
     }
 
     /// Connect a new client to this shared worker.

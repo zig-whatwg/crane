@@ -300,14 +300,17 @@ fn fetchHttpWorkerScript(
     }
 
     // Step 6: Validate Content-Type for JavaScript
-    const content_type = response.header_list.get("content-type") orelse "text/javascript";
+    const content_type = response.header_list.get(allocator, "content-type") catch {
+        return WorkerScriptError.OutOfMemory;
+    } orelse "text/javascript";
+    defer if (content_type.ptr != "text/javascript".ptr) allocator.free(content_type);
     if (!isValidWorkerScriptType(content_type, options.worker_type)) {
         return WorkerScriptError.ParseError;
     }
 
     // Step 7: Get response body
     const body_bytes = if (response.body) |body|
-        body.getBytes() orelse return WorkerScriptError.FetchFailed
+        body.getBytes()
     else
         return WorkerScriptError.FetchFailed;
 

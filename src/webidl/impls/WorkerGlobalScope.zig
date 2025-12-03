@@ -34,6 +34,10 @@ const event_loop_mod = html_core.event_loop;
 const EventLoop = event_loop_mod.EventLoop;
 const Timer = event_loop_mod.Timer;
 
+// Import script fetching for importScripts
+const script_fetch = html_core.workers.script_fetch;
+const FetchedScript = script_fetch.FetchedScript;
+
 pub const State = WorkerGlobalScope.State;
 
 pub const ImplError = error{
@@ -650,13 +654,12 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 /// 5. For each url in the resulting URL records, fetch the script..."
 pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.NotImplemented;
 
     // Step 1: Check if module worker
-    if (state.own._internal) |internal| {
-        if (internal.worker_type == .module) {
-            // Spec: "throw a TypeError exception" for module workers
-            return error.TypeError;
-        }
+    // Spec: "throw a TypeError exception" for module workers
+    if (internal.worker_type == .module) {
+        return error.TypeError;
     }
 
     // Step 3: If urls is empty, return
@@ -664,21 +667,42 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         return;
     }
 
-    // Steps 4-5: Parse and fetch each script
-    // TODO: Actually fetch and execute scripts
-    // This requires:
-    // 1. Resolve relative URLs against worker's base URL
-    // 2. Fetch each script synchronously
-    // 3. Execute each script in order
-    //
-    // For now, we just validate URLs and return
+    // Steps 4-5: Parse and fetch each script in order
+    // Per spec, scripts are fetched and executed synchronously in order
     for (urls) |url| {
-        // Validate URL
         const url_str = url.asSlice();
         if (url_str.len == 0) {
             continue;
         }
-        // TODO: Actual fetch and execution
+
+        // Fetch the script using the script_fetch module
+        var fetched = script_fetch.fetchWorkerScript(internal.allocator, url_str, .{
+            .worker_type = .classic,
+            .origin = internal.origin,
+            .credentials = .same_origin,
+            .is_import_scripts = true,
+        }) catch |err| {
+            return switch (err) {
+                script_fetch.WorkerScriptError.NetworkError => error.NetworkError,
+                script_fetch.WorkerScriptError.InvalidUrl => error.TypeError,
+                script_fetch.WorkerScriptError.ModuleNotAllowed => error.TypeError,
+                script_fetch.WorkerScriptError.OutOfMemory => error.OutOfMemory,
+                else => error.NetworkError,
+            };
+        };
+        defer fetched.deinit();
+
+        // Execute the script
+        // NOTE: Script execution requires access to the worker's V8 context.
+        // The WorkerAgent.executeScript() should be called here, but we don't
+        // have direct access to it from the WebIDL implementation layer.
+        // For now, we just verify the script was fetched successfully.
+        // Full integration would need:
+        // 1. Access to the WorkerAgent through a stored reference
+        // 2. Call agent.executeScript(fetched.source)
+        //
+        // The script source is available in fetched.source for execution.
+        _ = fetched.source;
     }
 }
 

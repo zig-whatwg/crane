@@ -28,9 +28,25 @@ const platform_mod = @import("platform");
 const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
 
-// Note: MessagePort communication is handled through the WebIDL interfaces module.
-// The ports (outside_port, inside_port) will be set up when wiring this to the
-// WebIDL Worker interface implementation.
+// Script fetching for worker scripts
+const script_fetch = @import("script_fetch.zig");
+const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
+const FetchedScript = script_fetch.FetchedScript;
+const WorkerScriptError = script_fetch.WorkerScriptError;
+
+// Message channel for postMessage communication
+const message_channel = @import("message_channel.zig");
+const WorkerPortPair = message_channel.WorkerPortPair;
+const WorkerPort = message_channel.WorkerPort;
+const WorkerMessageError = message_channel.WorkerMessageError;
+const QueuedMessage = message_channel.QueuedMessage;
+const SerializedValue = message_channel.SerializedValue;
+const JSValue = message_channel.JSValue;
+
+// Structured clone algorithm for message serialization
+// Note: message_channel.zig has its own serialize/deserialize wrappers
+const serializeForPostMessage = message_channel.serializeForPostMessage;
+const deserializeFromPostMessage = message_channel.deserializeFromPostMessage;
 
 /// Dedicated Worker implementation.
 ///
@@ -41,13 +57,12 @@ pub const DedicatedWorker = struct {
     /// Worker agent (handles event loop and state)
     agent: *WorkerAgent,
 
-    /// Outside port (for communicating with owner)
-    /// Spec: "Each Worker object has an associated outside port"
-    outside_port: ?*anyopaque = null,
-
-    /// Inside port (for communicating from within worker)
-    /// This is the port exposed as the implicit MessagePort
-    inside_port: ?*anyopaque = null,
+    /// Port pair for bidirectional communication
+    ///
+    /// Spec: HTML Standard § 10.2.3
+    /// "Each Worker object has an associated outside port and inside port."
+    /// The ports are entangled: messages sent to one arrive at the other.
+    port_pair: *WorkerPortPair,
 
     /// Script URL
     script_url: []const u8,
@@ -58,10 +73,18 @@ pub const DedicatedWorker = struct {
     /// Allocator
     allocator: Allocator,
 
+    /// Message handler callback for incoming messages on the outside port
+    /// Called when the worker sends a message back to the main thread
+    on_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
     /// "new Worker(scriptURL, options)"
+    ///
+    /// This creates entangled MessagePort pair for communication:
+    /// - `outside_port`: Used by the owner (main thread) to send/receive messages
+    /// - `inside_port`: Used by the worker to send/receive messages
     pub fn init(
         allocator: Allocator,
         platform: TimerBackend,
@@ -74,6 +97,12 @@ pub const DedicatedWorker = struct {
         // Create worker agent
         const agent = try WorkerAgent.init(allocator, platform, false);
         errdefer agent.deinit();
+
+        // Create entangled port pair for message passing
+        // Spec: § 10.2.3 "Let inside port be a new MessagePort in inside settings."
+        // Spec: § 10.2.3 "Associate the worker with outside port."
+        const port_pair = try WorkerPortPair.init(allocator);
+        errdefer port_pair.deinit();
 
         // Copy URL
         const url_copy = try allocator.dupe(u8, script_url);
@@ -93,18 +122,31 @@ pub const DedicatedWorker = struct {
 
         worker.* = .{
             .agent = agent,
+            .port_pair = port_pair,
             .script_url = url_copy,
             .name = name_copy,
             .allocator = allocator,
         };
 
+        // Set up message handler on outside port to forward to worker's on_message callback
+        port_pair.outside_port.setOnMessage(handleOutsidePortMessage, worker);
+
         return worker;
+    }
+
+    /// Internal handler for messages arriving on the outside port (from worker)
+    fn handleOutsidePortMessage(port: *WorkerPort, msg: *QueuedMessage, context: ?*anyopaque) void {
+        _ = port;
+        const self: *DedicatedWorker = @ptrCast(@alignCast(context));
+        if (self.on_message) |handler| {
+            handler(self, msg);
+        }
     }
 
     /// Clean up resources.
     pub fn deinit(self: *DedicatedWorker) void {
-        // Clean up ports
-        // TODO: Properly disentangle and close ports
+        // Clean up port pair (handles disentangling)
+        self.port_pair.deinit();
 
         self.agent.deinit();
         self.allocator.free(self.script_url);
@@ -114,14 +156,87 @@ pub const DedicatedWorker = struct {
         self.allocator.destroy(self);
     }
 
+    /// Get the outside port for communication from owner (main thread)
+    ///
+    /// Use this to send messages TO the worker and receive messages FROM the worker.
+    pub fn getOutsidePort(self: *DedicatedWorker) *WorkerPort {
+        return self.port_pair.outside_port;
+    }
+
+    /// Get the inside port for communication from within worker
+    ///
+    /// This is exposed as the implicit MessagePort on WorkerGlobalScope.
+    pub fn getInsidePort(self: *DedicatedWorker) *WorkerPort {
+        return self.port_pair.inside_port;
+    }
+
     /// Start the worker.
     ///
-    /// This initiates the "run a worker" algorithm.
+    /// This initiates the "run a worker" algorithm without fetching the script.
+    /// Use `startAndFetch()` to fetch and execute the script automatically.
     pub fn start(self: *DedicatedWorker) !void {
         try self.agent.start();
 
         // Add initial owner
         self.agent.addOwner();
+    }
+
+    /// Start the worker, fetch, and execute the script.
+    ///
+    /// This is the complete "run a worker" algorithm per HTML Standard § 10.2.5:
+    /// 1. Create worker agent
+    /// 2. Fetch the worker script
+    /// 3. Execute the script in the worker context
+    ///
+    /// For classic workers, this executes as a script.
+    /// For module workers, this compiles and executes as an ES module.
+    pub fn startAndFetch(self: *DedicatedWorker, origin: ?[]const u8) !void {
+        try self.agent.start();
+        self.agent.addOwner();
+
+        // Fetch the worker script
+        var fetched_script = try self.fetchScript(origin);
+        defer fetched_script.deinit();
+
+        // Execute the fetched script
+        try self.executeScript(fetched_script.source);
+    }
+
+    /// Start with V8 context, fetch, and execute the script.
+    ///
+    /// Creates an isolated V8 context for the worker, fetches the script,
+    /// and executes it. This is the preferred way to start workers with V8.
+    pub fn startWithContextAndFetch(self: *DedicatedWorker, origin: ?[]const u8) !void {
+        try self.agent.startWithContext(
+            self.script_url,
+            self.agent.data.worker_type,
+            self.name,
+        );
+        self.agent.addOwner();
+
+        // Fetch the worker script
+        var fetched_script = try self.fetchScript(origin);
+        defer fetched_script.deinit();
+
+        // Execute based on worker type
+        if (self.agent.data.worker_type == .module) {
+            try self.executeModule(fetched_script.source);
+        } else {
+            try self.executeScript(fetched_script.source);
+        }
+    }
+
+    /// Fetch the worker script from the script_url.
+    ///
+    /// HTML Standard § 10.2.5 step 9:
+    /// "Let script be the result of fetching a classic worker script given url..."
+    fn fetchScript(self: *DedicatedWorker, origin: ?[]const u8) !FetchedScript {
+        return script_fetch.fetchWorkerScript(self.allocator, self.script_url, .{
+            .worker_type = self.agent.data.worker_type,
+            .origin = origin,
+            .credentials = .same_origin,
+            .is_import_scripts = false,
+        });
     }
 
     /// Start the worker with V8 context isolation.
@@ -201,24 +316,150 @@ pub const DedicatedWorker = struct {
         self.agent.handleError(event);
     }
 
-    /// Post a message to the worker.
+    /// Post a message to the worker (from the owner/main thread).
     ///
     /// Spec: HTML Standard § 10.2.3.1 postMessage()
     /// "The postMessage(message, transfer) and postMessage(message, options)
     /// methods on Worker objects..."
-    pub fn postMessage(self: *DedicatedWorker, message: *const anyopaque, transfer: ?*const anyopaque) !void {
+    ///
+    /// The message is serialized using the structured clone algorithm and
+    /// queued to the worker's inside port. When the worker's event loop
+    /// processes the message, a MessageEvent is dispatched to the worker.
+    ///
+    /// ## Message Flow
+    ///
+    /// ```
+    /// Main Thread                          Worker Thread
+    /// ─────────────                        ─────────────
+    /// worker.postMessage(data)
+    ///   → structuredSerialize(data)
+    ///   → queue to outside_port
+    ///                                      inside_port receives
+    ///                                        → structuredDeserialize(data)
+    ///                                        → create MessageEvent
+    ///                                        → dispatch to WorkerGlobalScope
+    /// ```
+    ///
+    /// Note: This overload accepts opaque pointers for compatibility with WebIDL.
+    /// The `message` parameter should be a V8 value handle that will be serialized.
+    /// For now, this creates a minimal serialized value; full V8 integration pending.
+    pub fn postMessage(self: *DedicatedWorker, message: *const anyopaque, transfer: *const anyopaque) !void {
         _ = transfer;
         _ = message;
 
+        // Spec step 1: If closing flag is true, return
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
         }
 
-        // TODO: Use the outside_port to post message
-        // This requires:
-        // 1. StructuredSerialize the message
-        // 2. Post to the entangled inside_port
-        // 3. Queue a task on the worker's event loop to dispatch message event
+        // TODO: Full V8 integration - convert message to JSValue and serialize
+        // For now, create a minimal serialized undefined value
+        const serialized = try self.allocator.create(SerializedValue);
+        errdefer self.allocator.destroy(serialized);
+
+        serialized.* = .{
+            .type = .undefined,
+            .primitive = .{ .undefined = {} },
+            .object_map = null,
+            .array_items = null,
+            .entries = null,
+            .properties = null,
+            .backing_data = null,
+            .allocator = self.allocator,
+            .error_name = null,
+            .error_message = null,
+        };
+
+        // Post to the outside port → arrives at entangled inside port (worker side)
+        self.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+            serialized.deinit();
+            self.allocator.destroy(serialized);
+            return err;
+        };
+    }
+
+    /// Post a message to the worker with typed JSValue.
+    ///
+    /// This is the typed version for internal use and testing.
+    pub fn postMessageTyped(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
+        // Spec step 1: If closing flag is true, return
+        if (self.agent.isClosing() or self.agent.isTerminated()) {
+            return;
+        }
+
+        // Spec step 2: Let serialized be StructuredSerializeWithTransfer(message, transfer)
+        const serialized = try serializeForPostMessage(self.allocator, message);
+        errdefer {
+            var mutable = @constCast(serialized);
+            mutable.deinit();
+            self.allocator.destroy(mutable);
+        }
+
+        // Spec step 3: If that threw an exception, rethrow the exception and abort
+        // (handled by error return above)
+
+        // Spec step 4: Queue a global task on DOM manipulation task source with
+        // worker's relevant global object to:
+        //   - Let targetPort be the port with which this is entangled
+        //   - Let data be StructuredDeserialize(serialized, targetRealm, memory)
+        //   - Let event be MessageEvent with data set to data
+        //   - Dispatch event at targetPort
+
+        // Post to the outside port → arrives at entangled inside port (worker side)
+        self.port_pair.outside_port.postMessage(serialized, transfer) catch |err| {
+            // Clean up serialized value on failure
+            var mutable = @constCast(serialized);
+            mutable.deinit();
+            self.allocator.destroy(mutable);
+            return err;
+        };
+    }
+
+    /// Post a message from worker back to owner (called from inside the worker).
+    ///
+    /// This is the reverse direction: worker → main thread.
+    /// Called by WorkerGlobalScope.postMessage().
+    pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
+        if (self.agent.isClosing() or self.agent.isTerminated()) {
+            return;
+        }
+
+        const serialized = try serializeForPostMessage(self.allocator, message);
+        errdefer {
+            var mutable = @constCast(serialized);
+            mutable.deinit();
+            self.allocator.destroy(mutable);
+        }
+
+        // Post to the inside port → arrives at entangled outside port (owner side)
+        self.port_pair.inside_port.postMessage(serialized, transfer) catch |err| {
+            var mutable = @constCast(serialized);
+            mutable.deinit();
+            self.allocator.destroy(mutable);
+            return err;
+        };
+    }
+
+    /// Set the message handler for messages received from the worker.
+    ///
+    /// This is called when the worker sends a message via postMessage().
+    pub fn setOnMessage(self: *DedicatedWorker, handler: ?*const fn (*DedicatedWorker, *QueuedMessage) void) void {
+        self.on_message = handler;
+    }
+
+    /// Enable message dispatch on the outside port.
+    ///
+    /// Spec: HTML Standard § 9.3.2 start()
+    /// Messages are queued until start() is called.
+    pub fn startMessageQueue(self: *DedicatedWorker) void {
+        self.port_pair.outside_port.start();
+    }
+
+    /// Enable message dispatch on the inside port (worker side).
+    ///
+    /// Called when the worker is ready to receive messages.
+    pub fn startWorkerMessageQueue(self: *DedicatedWorker) void {
+        self.port_pair.inside_port.start();
     }
 
     /// Close the worker from inside.
@@ -319,4 +560,134 @@ test "DedicatedWorker - close from inside" {
     worker.close();
     try std.testing.expect(!worker.isRunning());
     try std.testing.expect(worker.agent.isClosing());
+}
+
+test "DedicatedWorker - startAndFetch with data URL" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    // Use a data URL which can be fetched without network
+    const worker = try DedicatedWorker.init(
+        allocator,
+        mock.backend(),
+        "data:text/javascript,var x = 1;",
+        .{},
+    );
+    defer worker.deinit();
+
+    // startAndFetch should succeed for data URLs
+    // Note: It will fetch but script execution requires V8 context
+    // So we just test that fetching works, execution will return NoWorkerContext
+    worker.startAndFetch(null) catch |err| {
+        // Expected: NoWorkerContext because we didn't use startWithContextAndFetch
+        try std.testing.expect(err == error.NoWorkerContext);
+        return;
+    };
+    // If we get here, execution succeeded (unlikely without V8)
+}
+
+test "DedicatedWorker - port pair is entangled" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try DedicatedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/worker.js",
+        .{},
+    );
+    defer worker.deinit();
+
+    // Verify port pair is created and entangled
+    const outside_port = worker.getOutsidePort();
+    const inside_port = worker.getInsidePort();
+
+    try std.testing.expect(outside_port.entangled == inside_port);
+    try std.testing.expect(inside_port.entangled == outside_port);
+}
+
+test "DedicatedWorker - postMessageTyped queues to inside port" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try DedicatedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/worker.js",
+        .{},
+    );
+    defer worker.deinit();
+
+    try worker.start();
+
+    // Create a test message
+    var message = JSValue{
+        .value_type = .string,
+        .data = .{ .string = "hello worker" },
+    };
+
+    // Post message to worker (don't start the queue yet)
+    try worker.postMessageTyped(&message, null);
+
+    // Message should be queued on inside port
+    try std.testing.expect(worker.getInsidePort().message_queue.items.len == 1);
+}
+
+test "DedicatedWorker - postMessage fails when terminated" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try DedicatedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/worker.js",
+        .{},
+    );
+    defer worker.deinit();
+
+    try worker.start();
+    worker.terminate();
+
+    // Use the opaque pointer version - should silently return without error
+    var dummy: u32 = 0;
+    try worker.postMessage(&dummy, &dummy);
+
+    // No message should be queued
+    try std.testing.expect(worker.getInsidePort().message_queue.items.len == 0);
+}
+
+test "DedicatedWorker - bidirectional messaging" {
+    const allocator = std.testing.allocator;
+    const mock = try timer_backend.MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    const worker = try DedicatedWorker.init(
+        allocator,
+        mock.backend(),
+        "https://example.com/worker.js",
+        .{},
+    );
+    defer worker.deinit();
+
+    try worker.start();
+
+    // Main thread → Worker (using typed version)
+    var msg1 = JSValue{
+        .value_type = .string,
+        .data = .{ .string = "to worker" },
+    };
+    try worker.postMessageTyped(&msg1, null);
+    try std.testing.expect(worker.getInsidePort().message_queue.items.len == 1);
+
+    // Worker → Main thread
+    var msg2 = JSValue{
+        .value_type = .string,
+        .data = .{ .string = "from worker" },
+    };
+    try worker.postMessageFromWorker(&msg2, null);
+    try std.testing.expect(worker.getOutsidePort().message_queue.items.len == 1);
 }
