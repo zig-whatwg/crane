@@ -21,6 +21,7 @@ pub const events = @import("events.zig");
 pub const navigable = @import("navigable.zig");
 pub const algorithms = @import("algorithms.zig");
 pub const fetch_integration = @import("fetch_integration.zig");
+pub const document_creation = @import("document_creation.zig");
 
 // Re-export commonly used types
 
@@ -96,6 +97,16 @@ pub const isHtmlResponse = fetch_integration.isHtmlResponse;
 pub const isXmlResponse = fetch_integration.isXmlResponse;
 pub const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
 pub const isCrossOrigin = fetch_integration.isCrossOrigin;
+
+// Document Creation
+pub const createDocumentFromResponse = document_creation.createDocumentFromResponse;
+pub const createDocumentFromHtml = document_creation.createDocumentFromHtml;
+pub const createAboutBlankDocument = document_creation.createAboutBlankDocument;
+pub const replaceActiveDocument = document_creation.replaceActiveDocument;
+pub const runDocumentLoadCompletionSteps = document_creation.runDocumentLoadCompletionSteps;
+pub const DocumentCreationError = document_creation.DocumentCreationError;
+pub const DocumentCreationOptions = document_creation.DocumentCreationOptions;
+pub const CreatedDocument = document_creation.CreatedDocument;
 
 // Tests
 test {
