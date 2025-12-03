@@ -475,11 +475,13 @@ pub fn getLocalStorage(
     }
 
     // Step 3: Obtain local storage bottle map
-    const proxy_map = storage_standard.obtainLocalStorageBottleMap(
+    const proxy_map_result = storage_standard.obtainLocalStorageBottleMap(
         allocator,
         origin,
         .localStorage,
-    ) catch return error.OutOfMemory orelse return error.SecurityError;
+    ) catch return error.OutOfMemory;
+
+    const proxy_map = proxy_map_result orelse return error.SecurityError;
 
     // Step 4-5: Create and return Storage object
     return Storage.init(allocator, proxy_map, .local, origin);
@@ -511,11 +513,13 @@ pub fn getSessionStorage(
     // For session storage, we use the session storage bottle map
     // Note: The spec says session storage is tied to traversable navigable
     // Here we approximate this with browsing_context_id
-    const proxy_map = storage_standard.obtainSessionStorageBottleMap(
+    const proxy_map_result = storage_standard.obtainSessionStorageBottleMap(
         allocator,
         session_key,
         .sessionStorage,
-    ) catch return error.OutOfMemory orelse return error.SecurityError;
+    ) catch return error.OutOfMemory;
+
+    const proxy_map = proxy_map_result orelse return error.SecurityError;
 
     // Create Storage object with the original origin (not session_key)
     return Storage.init(allocator, proxy_map, .session, origin);

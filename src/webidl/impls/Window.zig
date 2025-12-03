@@ -40,6 +40,24 @@ const StubFrameTimingBackend = html_core.window.StubFrameTimingBackend;
 const event_loop = html_core.event_loop;
 const IdleCallbackManager = event_loop.IdleCallbackManager;
 
+// Web Storage types for localStorage/sessionStorage
+const web_storage = html_core.web_storage;
+const WebStorage = web_storage.Storage;
+const getLocalStorageBackend = web_storage.getLocalStorage;
+const getSessionStorageBackend = web_storage.getSessionStorage;
+
+// Storage WebIDL interface
+const StorageImpl = @import("Storage.zig");
+
+// IndexedDB types for window.indexedDB
+const storage = @import("storage");
+const IDBFactoryBackend = storage.indexeddb.IDBFactory;
+
+// Cache Storage types for window.caches
+// TODO: Add service_worker module to impls in build.zig to enable CacheStorage
+// const service_worker_cache = @import("service_worker").cache;
+// const CacheStorageBackend = service_worker_cache.CacheStorage;
+
 pub const State = Window.State;
 
 pub const ImplError = error{
@@ -112,6 +130,28 @@ pub const InternalState = struct {
     /// Spec: https://w3c.github.io/requestidlecallback/
     idle_callback_manager: ?*IdleCallbackManager = null,
 
+    /// Storage instances (lazily created)
+    /// HTML Standard § 12.2.2 (sessionStorage), § 12.2.3 (localStorage)
+    local_storage: ?*runtime.Instance = null,
+    session_storage: ?*runtime.Instance = null,
+    local_storage_backend: ?*WebStorage = null,
+    session_storage_backend: ?*WebStorage = null,
+
+    /// IndexedDB factory (lazily created)
+    /// IndexedDB spec: window.indexedDB getter
+    indexeddb_factory: ?*runtime.Instance = null,
+    indexeddb_backend: ?*IDBFactoryBackend = null,
+
+    /// Cache storage (lazily created)
+    /// Service Worker spec: window.caches getter
+    /// TODO: Add service_worker module to impls in build.zig to enable CacheStorage backend
+    cache_storage: ?*runtime.Instance = null,
+    // cache_storage_backend: ?*CacheStorageBackend = null,
+
+    /// The window's origin string for storage access
+    /// Derived from the document's URL
+    origin: []const u8 = "null",
+
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
     inner_height: i32 = 768,
@@ -147,6 +187,28 @@ pub const InternalState = struct {
             manager.deinit();
             self.allocator.destroy(manager);
         }
+
+        // Clean up storage backends
+        if (self.local_storage_backend) |storage_backend| {
+            storage_backend.deinit();
+            self.allocator.destroy(storage_backend);
+        }
+        if (self.session_storage_backend) |storage_backend| {
+            storage_backend.deinit();
+            self.allocator.destroy(storage_backend);
+        }
+
+        // Clean up IndexedDB backend
+        if (self.indexeddb_backend) |backend| {
+            backend.deinit();
+            self.allocator.destroy(backend);
+        }
+
+        // Clean up Cache storage backend
+        // TODO: Enable once service_worker module is available to impls
+        // if (self.cache_storage_backend) |backend| {
+        //     backend.deinit();
+        // }
 
         // Free name if allocated
         if (self.name.len > 0) {
@@ -1479,9 +1541,44 @@ pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for indexedDB
+/// IndexedDB spec: Returns the IDBFactory object for this origin.
+/// https://w3c.github.io/IndexedDB/#dom-windoworworkerglobalscope-indexeddb
 pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.indexeddb_factory) |factory_instance| {
+        return factory_instance;
+    }
+
+    // Create the backend IDBFactory
+    const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
+    errdefer internal.allocator.destroy(backend);
+
+    backend.* = IDBFactoryBackend.init(internal.allocator);
+    backend.setStorageKey(internal.origin);
+
+    // Create the WebIDL IDBFactory instance
+    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch {
+        backend.deinit();
+        internal.allocator.destroy(backend);
+        return error.OutOfMemory;
+    };
+
+    // Set the backend in the factory's internal state
+    const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
+    if (factory_state.own._internal) |factory_internal| {
+        // The IDBFactory impl creates its own backend, so we need to replace it
+        factory_internal.factory.deinit();
+        internal.allocator.destroy(factory_internal.factory);
+        factory_internal.factory = backend;
+    }
+
+    // Cache both
+    internal.indexeddb_backend = backend;
+    internal.indexeddb_factory = factory_instance;
+
+    return factory_instance;
 }
 
 /// Getter for trustedTypes
@@ -1497,8 +1594,15 @@ pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for caches
+/// Service Worker spec: Returns the CacheStorage object for this origin.
+/// https://w3c.github.io/ServiceWorker/#self-caches
+///
+/// TODO: Wire to service_worker.cache.CacheStorage backend once service_worker
+/// module is added to impls in build.zig
 pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
+    // TODO: Implement once service_worker module is available to impls
+    // See whatwg-fnfnl and whatwg-5451o for tracking issues
     return error.NotImplemented;
 }
 
@@ -1515,15 +1619,92 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for sessionStorage
+/// HTML Standard § 12.2.2
+/// Returns the Storage object for this browsing context's session storage area.
 pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.session_storage) |storage_instance| {
+        return storage_instance;
+    }
+
+    // Get the browsing context ID for session storage scoping
+    const context_id = internal.browsing_context.id;
+
+    // Create the backend storage for this origin and browsing context
+    const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
+    errdefer internal.allocator.destroy(backend);
+
+    backend.* = getSessionStorageBackend(internal.allocator, context_id, internal.origin) catch |err| {
+        internal.allocator.destroy(backend);
+        return switch (err) {
+            web_storage.StorageError.SecurityError => error.SecurityError,
+            web_storage.StorageError.OutOfMemory => error.OutOfMemory,
+            else => error.InvalidStateError,
+        };
+    };
+
+    // Create the WebIDL Storage instance wrapping the backend
+    const storage_instance = StorageImpl.initWithStorage(
+        internal.allocator,
+        backend,
+        false, // Window owns the backend, not the Storage instance
+        instance.ctx,
+    ) catch {
+        backend.deinit();
+        internal.allocator.destroy(backend);
+        return error.OutOfMemory;
+    };
+
+    // Cache both
+    internal.session_storage_backend = backend;
+    internal.session_storage = storage_instance;
+
+    return storage_instance;
 }
 
 /// Getter for localStorage
+/// HTML Standard § 12.2.3
+/// Returns the Storage object for this origin's local storage area.
 pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.local_storage) |storage_instance| {
+        return storage_instance;
+    }
+
+    // Create the backend storage for this origin
+    const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
+    errdefer internal.allocator.destroy(backend);
+
+    backend.* = getLocalStorageBackend(internal.allocator, internal.origin) catch |err| {
+        internal.allocator.destroy(backend);
+        return switch (err) {
+            web_storage.StorageError.SecurityError => error.SecurityError,
+            web_storage.StorageError.OutOfMemory => error.OutOfMemory,
+            else => error.InvalidStateError,
+        };
+    };
+
+    // Create the WebIDL Storage instance wrapping the backend
+    const storage_instance = StorageImpl.initWithStorage(
+        internal.allocator,
+        backend,
+        false, // Window owns the backend, not the Storage instance
+        instance.ctx,
+    ) catch {
+        backend.deinit();
+        internal.allocator.destroy(backend);
+        return error.OutOfMemory;
+    };
+
+    // Cache both
+    internal.local_storage_backend = backend;
+    internal.local_storage = storage_instance;
+
+    return storage_instance;
 }
 
 /// Setter for name
