@@ -2918,11 +2918,8 @@ fn invokeReadableStreamStartCallback(
     };
 
     // Invoke the pending start callback with the controller wrapper
-    // NOTE: invokePendingStartCallback is an internal V8-specific method not
-    // exposed through the interface. This is legitimate impl access for the
-    // V8 binding layer which needs to trigger internal callbacks.
-    const ReadableStreamImpl = @import("impls").ReadableStream;
-    ReadableStreamImpl.invokePendingStartCallback(
+    // Call through the interface (per Golden Rule #12)
+    ReadableStreamInterface.invokePendingStartCallback(
         instance,
         @ptrCast(controller_v8),
         @ptrCast(isolate),
