@@ -27,6 +27,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 
+// Import Origin type from window module
+const Origin = @import("window_proxy.zig").Origin;
+
 // Import security policy types for COOP/COEP
 const security_policies = @import("../navigation/security_policies.zig");
 const CoopValue = security_policies.CoopValue;
@@ -319,6 +322,11 @@ pub const BrowsingContext = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#coep
     coep_value: CoepValue = .unsafe_none,
 
+    /// Origin of this browsing context's active document
+    /// Used for same-origin checks per HTML Standard §7.5
+    /// Defaults to opaque origin until set by navigation/document creation
+    origin: Origin = Origin.createOpaque(),
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -423,12 +431,21 @@ pub const BrowsingContext = struct {
     }
 
     /// Check if two browsing contexts are same origin
-    /// This is a simplified check - full implementation needs origin comparison
+    /// Per HTML Standard §7.5 - "Two origins are same origin if their schemes,
+    /// hosts, and ports are identical"
     pub fn isSameOrigin(self: *const BrowsingContext, other: *const BrowsingContext) bool {
-        // In a full implementation, this would compare document origins
-        _ = self;
-        _ = other;
-        return true; // Placeholder - always same-origin for now
+        return self.origin.isSameOrigin(other.origin);
+    }
+
+    /// Set the origin for this browsing context
+    /// Called when navigating to a new document or when the document's origin changes
+    pub fn setOrigin(self: *BrowsingContext, origin_value: Origin) void {
+        self.origin = origin_value;
+    }
+
+    /// Get the origin for this browsing context
+    pub fn getOrigin(self: *const BrowsingContext) Origin {
+        return self.origin;
     }
 
     /// Check if two browsing contexts are in the same browsing context group
