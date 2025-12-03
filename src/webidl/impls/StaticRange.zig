@@ -193,3 +193,21 @@ pub fn get_collapsed(instance: *runtime.Instance) !bool {
     return internal.start_container == internal.end_container and
         internal.start_offset == internal.end_offset;
 }
+
+// =============================================================================
+// Setters for boundary points (used by Selection and other code)
+// =============================================================================
+
+/// Set the start boundary point
+pub fn setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.start_container = node;
+    internal.start_offset = offset;
+}
+
+/// Set the end boundary point
+pub fn setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.end_container = node;
+    internal.end_offset = offset;
+}
