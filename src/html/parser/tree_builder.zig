@@ -301,7 +301,16 @@ pub const TreeNode = struct {
     }
 
     /// Free resources.
+    /// Note: This recursively frees all child nodes.
     pub fn deinit(self: *TreeNode) void {
+        // First, recursively free all children
+        var child = self.first_child;
+        while (child) |c| {
+            const next = c.next_sibling;
+            c.deinit();
+            child = next;
+        }
+
         // Free local name
         if (self.local_name) |name| {
             self.allocator.free(name);
@@ -522,16 +531,12 @@ pub const TreeBuilder = struct {
         self.pending_table_char_tokens.deinit();
     }
 
-    /// Recursively free a tree of nodes.
+    /// Free a tree of nodes.
+    /// Note: TreeNode.deinit() recursively frees all child nodes,
+    /// so we just need to call deinit on the root.
     fn freeTree(self: *TreeBuilder, node: *TreeNode) void {
-        // Free children first
-        var child = node.first_child;
-        while (child) |c| {
-            const next = c.next_sibling;
-            self.freeTree(c);
-            child = next;
-        }
-        // Free the node itself
+        _ = self;
+        // TreeNode.deinit() handles recursive child cleanup
         node.deinit();
     }
 
@@ -3916,11 +3921,18 @@ test "TreeBuilder - clearStackBackToTableContext" {
     var builder = try TreeBuilder.init(allocator, &tokenizer);
     defer builder.deinit();
 
-    // Manually set up the stack
+    // Manually set up the stack - nodes must be connected to document tree
+    // so they get freed when builder.deinit() calls freeTree(document)
     const html = try TreeNode.initElement(allocator, "html", .html);
     const table = try TreeNode.initElement(allocator, "table", .html);
     const div = try TreeNode.initElement(allocator, "div", .html);
     const p = try TreeNode.initElement(allocator, "p", .html);
+
+    // Build a proper tree structure - document -> html -> table -> div -> p
+    builder.document.appendChild(html);
+    html.appendChild(table);
+    table.appendChild(div);
+    div.appendChild(p);
 
     try builder.open_elements.append(html);
     try builder.open_elements.append(table);
@@ -3947,11 +3959,19 @@ test "TreeBuilder - hasElementInTableScope" {
     defer builder.deinit();
 
     // Manually set up the stack: html > table > tbody > tr > td
+    // Nodes must be connected to document tree for proper cleanup
     const html = try TreeNode.initElement(allocator, "html", .html);
     const table = try TreeNode.initElement(allocator, "table", .html);
     const tbody = try TreeNode.initElement(allocator, "tbody", .html);
     const tr = try TreeNode.initElement(allocator, "tr", .html);
     const td = try TreeNode.initElement(allocator, "td", .html);
+
+    // Build proper tree structure: document -> html -> table -> tbody -> tr -> td
+    builder.document.appendChild(html);
+    html.appendChild(table);
+    table.appendChild(tbody);
+    tbody.appendChild(tr);
+    tr.appendChild(td);
 
     try builder.open_elements.append(html);
     try builder.open_elements.append(table);
@@ -3979,9 +3999,13 @@ test "TreeBuilder - hasTableBodyElementInTableScope" {
     var builder = try TreeBuilder.init(allocator, &tokenizer);
     defer builder.deinit();
 
-    // Stack without tbody
+    // Stack without tbody - nodes must be connected to document for cleanup
     const html = try TreeNode.initElement(allocator, "html", .html);
     const table = try TreeNode.initElement(allocator, "table", .html);
+
+    // Build tree structure: document -> html -> table
+    builder.document.appendChild(html);
+    html.appendChild(table);
 
     try builder.open_elements.append(html);
     try builder.open_elements.append(table);
@@ -3991,6 +4015,7 @@ test "TreeBuilder - hasTableBodyElementInTableScope" {
 
     // Add tbody
     const tbody = try TreeNode.initElement(allocator, "tbody", .html);
+    table.appendChild(tbody); // Connect to tree
     try builder.open_elements.append(tbody);
 
     // Now has tbody in scope

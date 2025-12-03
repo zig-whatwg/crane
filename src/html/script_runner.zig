@@ -79,18 +79,18 @@ pub const ScriptRunner = struct {
             .allocator = allocator,
             .document = document,
             .pending_parsing_blocking_script = null,
-            .deferred_scripts = std.ArrayList(*runtime.Instance).init(allocator),
-            .async_scripts = std.ArrayList(*runtime.Instance).init(allocator),
-            .in_order_async_scripts = std.ArrayList(*runtime.Instance).init(allocator),
+            .deferred_scripts = .{},
+            .async_scripts = .{},
+            .in_order_async_scripts = .{},
             .parser_finished = false,
             .is_executing = false,
         };
     }
 
     pub fn deinit(self: *ScriptRunner) void {
-        self.deferred_scripts.deinit();
-        self.async_scripts.deinit();
-        self.in_order_async_scripts.deinit();
+        self.deferred_scripts.deinit(self.allocator);
+        self.async_scripts.deinit(self.allocator);
+        self.in_order_async_scripts.deinit(self.allocator);
     }
 
     // =========================================================================
@@ -134,7 +134,7 @@ pub const ScriptRunner = struct {
     /// Add a script to the list of scripts that will execute when parsing finishes
     /// Used for defer scripts
     pub fn addDeferredScript(self: *ScriptRunner, script: *runtime.Instance) !void {
-        try self.deferred_scripts.append(script);
+        try self.deferred_scripts.append(self.allocator, script);
     }
 
     /// Execute all deferred scripts
@@ -161,7 +161,7 @@ pub const ScriptRunner = struct {
     /// Add a script to the set of scripts that will execute ASAP
     /// Used for async scripts (no ordering guarantee)
     pub fn addAsyncScript(self: *ScriptRunner, script: *runtime.Instance) !void {
-        try self.async_scripts.append(script);
+        try self.async_scripts.append(self.allocator, script);
     }
 
     /// Remove an async script from the set
@@ -199,7 +199,7 @@ pub const ScriptRunner = struct {
     /// Add a script to the list of scripts that will execute in order ASAP
     /// Used for dynamically inserted async scripts that need ordering
     pub fn addInOrderAsyncScript(self: *ScriptRunner, script: *runtime.Instance) !void {
-        try self.in_order_async_scripts.append(script);
+        try self.in_order_async_scripts.append(self.allocator, script);
     }
 
     /// Execute in-order async scripts
@@ -334,10 +334,11 @@ test "ScriptRunner - deferred scripts list" {
     var runner = ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    // Add dummy scripts
-    const script1: *runtime.Instance = @ptrFromInt(0x1);
-    const script2: *runtime.Instance = @ptrFromInt(0x2);
-    const script3: *runtime.Instance = @ptrFromInt(0x3);
+    // Use properly aligned dummy script addresses
+    const alignment = @alignOf(runtime.Instance);
+    const script1: *runtime.Instance = @ptrFromInt(alignment * 1);
+    const script2: *runtime.Instance = @ptrFromInt(alignment * 2);
+    const script3: *runtime.Instance = @ptrFromInt(alignment * 3);
 
     try runner.addDeferredScript(script1);
     try runner.addDeferredScript(script2);
@@ -355,8 +356,10 @@ test "ScriptRunner - async scripts set" {
     var runner = ScriptRunner.init(allocator, null);
     defer runner.deinit();
 
-    const script1: *runtime.Instance = @ptrFromInt(0x1);
-    const script2: *runtime.Instance = @ptrFromInt(0x2);
+    // Use properly aligned dummy script addresses
+    const alignment = @alignOf(runtime.Instance);
+    const script1: *runtime.Instance = @ptrFromInt(alignment * 1);
+    const script2: *runtime.Instance = @ptrFromInt(alignment * 2);
 
     try runner.addAsyncScript(script1);
     try runner.addAsyncScript(script2);

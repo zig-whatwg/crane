@@ -262,7 +262,9 @@ pub const Tokenizer = struct {
             self.reportError(.unexpected_null_character);
             return Token{ .character = 0x00 };
         } else if (char.isEof()) {
-            return Token.eof;
+            // EOF in data state - return null to signal end of tokens
+            // The main loop will handle this and return null to caller
+            return null;
         } else {
             return Token{ .character = char.getCodepoint().? };
         }
@@ -1197,46 +1199,67 @@ pub const Tokenizer = struct {
     }
 
     /// §13.2.5.42 Markup declaration open state
+    ///
+    /// Per HTML spec: This state is entered after consuming "<!".
+    /// We need to check for "--", "DOCTYPE", or "[CDATA[" starting from the
+    /// CURRENT character (which was consumed by the main loop).
     fn markupDeclarationOpenState(self: *Tokenizer) !?Token {
-        // Check for "--"
-        if (self.input.matchesAsciiCaseInsensitive("--")) {
-            _ = self.input.consume();
-            _ = self.input.consume();
-            self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
-            self.state = .comment_start;
-            return null;
-        }
-        // Check for "DOCTYPE"
-        else if (self.input.matchesAsciiCaseInsensitive("DOCTYPE")) {
-            for (0..7) |_| {
-                _ = self.input.consume();
+        // The current character is the first char after "<!".
+        // We need to check if current_char + next chars form the patterns.
+
+        // Check for "--" (comment start)
+        if (self.current_char.is('-')) {
+            // Check if next char is also '-'
+            if (self.input.peek().is('-')) {
+                _ = self.input.consume(); // Consume the second '-'
+                self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
+                self.state = .comment_start;
+                return null;
             }
-            self.state = .doctype;
-            return null;
         }
-        // Check for "[CDATA["
-        else if (self.input.matchesAsciiCaseInsensitive("[CDATA[")) {
-            for (0..7) |_| {
-                _ = self.input.consume();
+
+        // Check for "DOCTYPE" (current_char is 'D' or 'd')
+        if (self.current_char.isAsciiAlpha()) {
+            const cp = self.current_char.getCodepoint().?;
+            const lower_cp: u8 = if (cp >= 'A' and cp <= 'Z') @intCast(cp + 0x20) else @intCast(cp);
+            if (lower_cp == 'd') {
+                // Check remaining "OCTYPE"
+                if (self.input.matchesAsciiCaseInsensitive("OCTYPE")) {
+                    for (0..6) |_| {
+                        _ = self.input.consume();
+                    }
+                    self.state = .doctype;
+                    return null;
+                }
             }
-            // Note: In a proper implementation, we'd check if we're in foreign content.
-            // For now, always treat as HTML content (bogus comment)
-            self.reportError(.cdata_in_html_content);
-            self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
-            // Append "[CDATA[" to comment
-            for ("[CDATA[") |c| {
-                try self.appendToCurrentCommentData(c);
-            }
-            self.state = .bogus_comment;
-            return null;
-        } else {
-            self.reportError(.incorrectly_opened_comment);
-            self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
-            self.state = .bogus_comment;
-            // Don't consume - reconsume current char
-            self.reconsume = true;
-            return null;
         }
+
+        // Check for "[CDATA[" (current_char is '[')
+        if (self.current_char.is('[')) {
+            if (self.input.matchesAsciiCaseInsensitive("CDATA[")) {
+                for (0..6) |_| {
+                    _ = self.input.consume();
+                }
+                // Note: In a proper implementation, we'd check if we're in foreign content.
+                // For now, always treat as HTML content (bogus comment)
+                self.reportError(.cdata_in_html_content);
+                self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
+                // Append "[CDATA[" to comment
+                for ("[CDATA[") |c| {
+                    try self.appendToCurrentCommentData(c);
+                }
+                self.state = .bogus_comment;
+                return null;
+            }
+        }
+
+        // Anything else: parse error, bogus comment
+        self.reportError(.incorrectly_opened_comment);
+        self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
+        self.state = .bogus_comment;
+        // Don't consume - reconsume current char
+        self.reconsume = true;
+        return null;
     }
 
     /// §13.2.5.43 Comment start state

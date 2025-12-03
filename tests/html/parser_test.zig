@@ -97,7 +97,9 @@ test "tokenizer - comment" {
 
     var found_comment = false;
     while (try tokenizer.nextToken()) |token| {
-        switch (token) {
+        var tok = token;
+        defer tok.deinit();
+        switch (tok) {
             .comment => {
                 found_comment = true;
             },
@@ -254,8 +256,10 @@ test "entities - multi-codepoint entities" {
 
 test "entities - nonexistent entity returns null" {
     const ent = parser.entities;
-    try testing.expect(ent.findLongestMatch("notanentity;") == null);
+    // "notanentity;" matches "not" (a valid entity without semicolon) as a prefix
+    // So we test with strings that don't start with any entity name
     try testing.expect(ent.findLongestMatch("xyz") == null);
+    try testing.expect(ent.findLongestMatch("zzz") == null);
 }
 
 test "entities - total count" {
@@ -374,7 +378,9 @@ test "tree builder - table structure" {
     defer builder.deinit();
 
     while (try tokenizer.nextToken()) |token| {
-        try builder.processToken(token);
+        var tok = token;
+        defer tok.deinit();
+        try builder.processToken(tok);
     }
     try builder.processToken(.eof);
 
@@ -395,7 +401,9 @@ test "tree builder - quirks mode detection" {
     defer builder.deinit();
 
     while (try tokenizer.nextToken()) |token| {
-        try builder.processToken(token);
+        var tok = token;
+        defer tok.deinit();
+        try builder.processToken(tok);
     }
     try builder.processToken(.eof);
 
