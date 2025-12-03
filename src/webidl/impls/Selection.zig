@@ -492,16 +492,384 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 /// Modifies the selection by moving it by the specified granularity.
 /// This is a complex operation used for keyboard navigation.
 ///
+/// Spec: https://w3c.github.io/selection-api/#dom-selection-modify
+///
 /// alter: "move" | "extend"
+///   - "move": Collapses the selection to the new position
+///   - "extend": Extends the selection to the new position
+///
 /// direction: "forward" | "backward" | "left" | "right"
-/// granularity: "character" | "word" | "sentence" | "line" | "paragraph" | etc.
-pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
-    _ = instance;
-    _ = alter;
-    _ = direction;
-    _ = granularity;
-    // TODO: This is a complex operation that requires text layout information
-    // For now, this is a no-op as it needs rendering engine integration
+///   - In LTR text, "forward"/"right" and "backward"/"left" are equivalent
+///   - In RTL text, they differ (not yet supported)
+///
+/// granularity: "character" | "word" | "sentence" | "line" | "paragraph" |
+///              "lineboundary" | "sentenceboundary" | "paragraphboundary" | "documentboundary"
+///
+/// Note: Layout-dependent granularities (line, lineboundary) require a LayoutBackend.
+/// This implementation supports character and word granularity without layout.
+pub fn call_modify(instance: *runtime.Instance, alter_opt: webidl.Opt(runtime.DOMString), direction_opt: webidl.Opt(runtime.DOMString), granularity_opt: webidl.Opt(runtime.DOMString)) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Must have a selection to modify
+    if (internal.focus_node == null) {
+        return; // No selection, nothing to modify
+    }
+
+    // Parse alter parameter (default: "move")
+    const alter_slice = if (alter_opt.was_passed) alter_opt.value.asSlice() else "move";
+    const is_extend = std.mem.eql(u8, alter_slice, "extend");
+
+    // Parse direction parameter (default: "forward")
+    const direction_slice = if (direction_opt.was_passed) direction_opt.value.asSlice() else "forward";
+    const is_forward = std.mem.eql(u8, direction_slice, "forward") or std.mem.eql(u8, direction_slice, "right");
+
+    // Parse granularity parameter (default: "character")
+    const granularity_slice = if (granularity_opt.was_passed) granularity_opt.value.asSlice() else "character";
+
+    // Get the current focus position
+    const focus_node = internal.focus_node.?;
+    const focus_offset = internal.focus_offset;
+
+    // Determine new position based on granularity
+    var new_node = focus_node;
+    var new_offset: u32 = 0;
+
+    if (std.mem.eql(u8, granularity_slice, "character")) {
+        // Move by one character
+        const result = try moveByCharacter(focus_node, focus_offset, is_forward);
+        new_node = result.node;
+        new_offset = result.offset;
+    } else if (std.mem.eql(u8, granularity_slice, "word")) {
+        // Move by one word
+        const result = try moveByWord(focus_node, focus_offset, is_forward);
+        new_node = result.node;
+        new_offset = result.offset;
+    } else if (std.mem.eql(u8, granularity_slice, "documentboundary")) {
+        // Move to document boundary
+        const result = try moveToDocumentBoundary(focus_node, is_forward);
+        new_node = result.node;
+        new_offset = result.offset;
+    } else {
+        // Layout-dependent granularities: sentence, line, paragraph, lineboundary, etc.
+        // These require LayoutBackend integration - return without modification
+        // TODO: Integrate with LayoutBackend when available
+        return;
+    }
+
+    // Apply the modification based on alter mode
+    if (is_extend) {
+        // Extend: only move focus, keep anchor
+        internal.focus_node = new_node;
+        internal.focus_offset = new_offset;
+
+        // Update direction based on positions
+        if (internal.anchor_node == new_node) {
+            if (internal.anchor_offset == new_offset) {
+                internal.direction = .none;
+            } else if (internal.anchor_offset < new_offset) {
+                internal.direction = .forward;
+            } else {
+                internal.direction = .backward;
+            }
+        } else {
+            // Cross-node: determine direction by document order
+            // For simplicity, use existing direction or default to forward
+            if (internal.direction == .none) {
+                internal.direction = if (is_forward) .forward else .backward;
+            }
+        }
+    } else {
+        // Move: collapse selection to new position
+        internal.anchor_node = new_node;
+        internal.anchor_offset = new_offset;
+        internal.focus_node = new_node;
+        internal.focus_offset = new_offset;
+        internal.direction = .none;
+    }
+
+    // Invalidate cached range
+    internal.range = null;
+}
+
+/// Result of a position calculation
+const PositionResult = struct {
+    node: *runtime.Instance,
+    offset: u32,
+};
+
+/// Move position by one character
+fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
+    const CharacterDataImpl = @import("CharacterData.zig");
+    const node_type = NodeImpl.getNodeType(node) orelse 0;
+
+    // For text nodes, we can move within the text content
+    if (node_type == NodeImpl.NodeType.TEXT_NODE or
+        node_type == NodeImpl.NodeType.COMMENT_NODE or
+        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
+    {
+        if (CharacterDataImpl.getInternalState(node)) |char_internal| {
+            const data_len: u32 = @intCast(char_internal.data.len);
+
+            if (forward) {
+                if (offset < data_len) {
+                    // Move forward within same node
+                    return .{ .node = node, .offset = offset + 1 };
+                } else {
+                    // At end of text node, try to move to next node
+                    if (try getNextTextPosition(node)) |next| {
+                        return next;
+                    }
+                    // Can't move further, stay at end
+                    return .{ .node = node, .offset = offset };
+                }
+            } else {
+                if (offset > 0) {
+                    // Move backward within same node
+                    return .{ .node = node, .offset = offset - 1 };
+                } else {
+                    // At start of text node, try to move to previous node
+                    if (try getPreviousTextPosition(node)) |prev| {
+                        return prev;
+                    }
+                    // Can't move further, stay at start
+                    return .{ .node = node, .offset = 0 };
+                }
+            }
+        }
+    }
+
+    // For element nodes, offset refers to child index
+    const child_count = countChildren(node);
+    if (forward) {
+        if (offset < child_count) {
+            return .{ .node = node, .offset = offset + 1 };
+        }
+    } else {
+        if (offset > 0) {
+            return .{ .node = node, .offset = offset - 1 };
+        }
+    }
+
+    // Can't move within this node
+    return .{ .node = node, .offset = offset };
+}
+
+/// Move position by one word
+fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
+    const CharacterDataImpl = @import("CharacterData.zig");
+    const node_type = NodeImpl.getNodeType(node) orelse 0;
+
+    // Only works for text nodes
+    if (node_type != NodeImpl.NodeType.TEXT_NODE and
+        node_type != NodeImpl.NodeType.COMMENT_NODE and
+        node_type != NodeImpl.NodeType.CDATA_SECTION_NODE)
+    {
+        // For non-text nodes, fall back to character movement
+        return moveByCharacter(node, offset, forward);
+    }
+
+    const char_internal = CharacterDataImpl.getInternalState(node) orelse {
+        return .{ .node = node, .offset = offset };
+    };
+
+    const data = char_internal.data;
+    const data_len: u32 = @intCast(data.len);
+
+    if (forward) {
+        // Find end of current word, then start of next word
+        var pos = offset;
+
+        // Skip current word (non-whitespace)
+        while (pos < data_len and !isWordBoundary(data[pos])) : (pos += 1) {}
+
+        // Skip whitespace between words
+        while (pos < data_len and isWordBoundary(data[pos])) : (pos += 1) {}
+
+        if (pos >= data_len) {
+            // Reached end of this text node, try next
+            if (try getNextTextPosition(node)) |next| {
+                return next;
+            }
+        }
+
+        return .{ .node = node, .offset = pos };
+    } else {
+        // Find start of current/previous word
+        var pos = offset;
+
+        // Skip whitespace going backward
+        while (pos > 0 and isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+
+        // Skip word going backward
+        while (pos > 0 and !isWordBoundary(data[pos - 1])) : (pos -= 1) {}
+
+        if (pos == 0 and offset == 0) {
+            // Already at start, try previous text node
+            if (try getPreviousTextPosition(node)) |prev| {
+                return prev;
+            }
+        }
+
+        return .{ .node = node, .offset = pos };
+    }
+}
+
+/// Move to document boundary
+fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResult {
+    var current = node;
+
+    // Find the root (document or fragment)
+    while (NodeImpl.getParent(current)) |parent| {
+        current = parent;
+    }
+
+    if (forward) {
+        // Move to end of document
+        // Find last descendant text node, position at end
+        if (try findLastTextNode(current)) |last_text| {
+            const CharacterDataImpl = @import("CharacterData.zig");
+            if (CharacterDataImpl.getInternalState(last_text)) |char_internal| {
+                return .{ .node = last_text, .offset = @intCast(char_internal.data.len) };
+            }
+        }
+        // No text nodes, position at end of root's children
+        return .{ .node = current, .offset = countChildren(current) };
+    } else {
+        // Move to start of document
+        // Find first descendant text node, position at start
+        if (try findFirstTextNode(current)) |first_text| {
+            return .{ .node = first_text, .offset = 0 };
+        }
+        // No text nodes, position at start of root
+        return .{ .node = current, .offset = 0 };
+    }
+}
+
+/// Check if character is a word boundary (whitespace or punctuation)
+fn isWordBoundary(c: u8) bool {
+    return std.ascii.isWhitespace(c) or
+        c == '.' or c == ',' or c == '!' or c == '?' or
+        c == ';' or c == ':' or c == '"' or c == '\'' or
+        c == '(' or c == ')' or c == '[' or c == ']' or
+        c == '{' or c == '}' or c == '-' or c == '/';
+}
+
+/// Count children of a node
+fn countChildren(node: *runtime.Instance) u32 {
+    var count: u32 = 0;
+    var child = NodeImpl.getFirstChild(node);
+    while (child != null) {
+        count += 1;
+        child = NodeImpl.getNextSibling(child.?);
+    }
+    return count;
+}
+
+/// Get next text position (first position in next text node)
+fn getNextTextPosition(node: *runtime.Instance) !?PositionResult {
+    var current = node;
+
+    // Try next sibling first
+    while (true) {
+        if (NodeImpl.getNextSibling(current)) |sibling| {
+            // Check if sibling is a text node
+            if (isTextNode(sibling)) {
+                return .{ .node = sibling, .offset = 0 };
+            }
+            // Check sibling's descendants
+            if (try findFirstTextNode(sibling)) |text| {
+                return .{ .node = text, .offset = 0 };
+            }
+            current = sibling;
+        } else {
+            // No more siblings, go up to parent
+            if (NodeImpl.getParent(current)) |parent| {
+                current = parent;
+            } else {
+                return null; // Reached root
+            }
+        }
+    }
+}
+
+/// Get previous text position (last position in previous text node)
+fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
+    var current = node;
+
+    // Try previous sibling first
+    while (true) {
+        if (NodeImpl.getPreviousSibling(current)) |sibling| {
+            // Check sibling's descendants (rightmost text)
+            if (try findLastTextNode(sibling)) |text| {
+                const CharacterDataImpl = @import("CharacterData.zig");
+                if (CharacterDataImpl.getInternalState(text)) |char_internal| {
+                    return .{ .node = text, .offset = @intCast(char_internal.data.len) };
+                }
+            }
+            // Check if sibling itself is a text node
+            if (isTextNode(sibling)) {
+                const CharacterDataImpl = @import("CharacterData.zig");
+                if (CharacterDataImpl.getInternalState(sibling)) |char_internal| {
+                    return .{ .node = sibling, .offset = @intCast(char_internal.data.len) };
+                }
+            }
+            current = sibling;
+        } else {
+            // No more siblings, go up to parent
+            if (NodeImpl.getParent(current)) |parent| {
+                current = parent;
+            } else {
+                return null; // Reached root
+            }
+        }
+    }
+}
+
+/// Find first text node in subtree (depth-first)
+fn findFirstTextNode(root: *runtime.Instance) !?*runtime.Instance {
+    if (isTextNode(root)) {
+        return root;
+    }
+
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        if (try findFirstTextNode(c)) |text| {
+            return text;
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Find last text node in subtree (depth-first, rightmost)
+fn findLastTextNode(root: *runtime.Instance) !?*runtime.Instance {
+    if (isTextNode(root)) {
+        return root;
+    }
+
+    // Start from last child
+    var last_child: ?*runtime.Instance = null;
+    var child = NodeImpl.getFirstChild(root);
+    while (child) |c| {
+        last_child = c;
+        child = NodeImpl.getNextSibling(c);
+    }
+
+    if (last_child) |lc| {
+        if (try findLastTextNode(lc)) |text| {
+            return text;
+        }
+    }
+
+    return null;
+}
+
+/// Check if node is a text-type node
+fn isTextNode(node: *runtime.Instance) bool {
+    const node_type = NodeImpl.getNodeType(node) orelse 0;
+    return node_type == NodeImpl.NodeType.TEXT_NODE or
+        node_type == NodeImpl.NodeType.COMMENT_NODE or
+        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
 }
 
 /// Selection API - deleteFromDocument()
@@ -566,12 +934,169 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 /// Selection API - getComposedRanges(options)
 /// Returns an array of StaticRanges representing the selection,
 /// crossing shadow boundaries if shadowRoots are provided.
+///
+/// Spec: https://w3c.github.io/selection-api/#dom-selection-getcomposedranges
+///
+/// This method returns the selection's range, potentially adjusted to cross
+/// shadow boundaries. If the selection starts or ends inside a shadow tree
+/// that is not in the provided shadowRoots array, the range is adjusted to
+/// be at the shadow host instead.
+///
+/// Steps:
+/// 1. If this is empty, return an empty array.
+/// 2. Get start node/offset and adjust for shadow boundaries
+/// 3. Get end node/offset and adjust for shadow boundaries
+/// 4. Return array with a single StaticRange
 pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = options;
-    // TODO: Implement composed ranges with shadow DOM support
-    // For now, return empty array sentinel
-    return @ptrFromInt(1);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Step 1: If this is empty, return an empty array
+    if (internal.anchor_node == null or internal.focus_node == null) {
+        // Return empty array sentinel
+        return @ptrFromInt(1);
+    }
+
+    // Get allowed shadow roots from options
+    const allowed_shadow_roots: ?*const anyopaque = if (options.was_passed)
+        options.value.shadowRoots
+    else
+        null;
+
+    // Determine start and end based on direction
+    var start_node: *runtime.Instance = undefined;
+    var start_offset: u32 = undefined;
+    var end_node: *runtime.Instance = undefined;
+    var end_offset: u32 = undefined;
+
+    switch (internal.direction) {
+        .backward => {
+            // Focus comes before anchor
+            start_node = internal.focus_node.?;
+            start_offset = internal.focus_offset;
+            end_node = internal.anchor_node.?;
+            end_offset = internal.anchor_offset;
+        },
+        else => {
+            // Anchor comes before focus (or same position)
+            start_node = internal.anchor_node.?;
+            start_offset = internal.anchor_offset;
+            end_node = internal.focus_node.?;
+            end_offset = internal.focus_offset;
+        },
+    }
+
+    // Step 2-3: Adjust start for shadow boundaries
+    // While startNode's root is a shadow root not in the allowed list,
+    // move to the shadow host's parent
+    const adjusted_start = try adjustForShadowBoundary(start_node, start_offset, allowed_shadow_roots, false);
+    const adjusted_end = try adjustForShadowBoundary(end_node, end_offset, allowed_shadow_roots, true);
+
+    // Step 4: Create a StaticRange with the adjusted boundaries
+    // For now, we return a single StaticRange wrapped in an array
+    // TODO: Proper array allocation and StaticRange creation
+    // The StaticRange interface expects:
+    //   - startContainer, startOffset, endContainer, endOffset
+    const static_range = try interfaces.StaticRange.init(internal.allocator, instance.ctx);
+    errdefer interfaces.StaticRange.deinit(static_range);
+
+    // Set the StaticRange boundaries via its implementation
+    const StaticRangeImpl = @import("StaticRange.zig");
+    try StaticRangeImpl.setStart(static_range, adjusted_start.node, adjusted_start.offset);
+    try StaticRangeImpl.setEnd(static_range, adjusted_end.node, adjusted_end.offset);
+
+    // Return pointer to the StaticRange
+    // Note: In a full implementation, this would be a proper sequence/array
+    return @ptrCast(static_range);
+}
+
+/// Adjust a boundary point for shadow boundaries
+/// If the node is in a shadow tree not in the allowed list, move to the host
+fn adjustForShadowBoundary(
+    node: *runtime.Instance,
+    offset: u32,
+    allowed_shadow_roots: ?*const anyopaque,
+    is_end: bool,
+) !PositionResult {
+    const ShadowRootImpl = @import("ShadowRoot.zig");
+    var current_node = node;
+    var current_offset = offset;
+
+    // Loop while node's root is a shadow root not in allowed list
+    while (true) {
+        // Get node's root
+        const root = getRoot(current_node);
+
+        // Check if root is a shadow root
+        const shadow_internal = ShadowRootImpl.getInternalState(root);
+        if (shadow_internal == null) {
+            // Not a shadow root, we're done
+            break;
+        }
+
+        // Check if this shadow root is in the allowed list
+        if (isShadowRootAllowed(root, allowed_shadow_roots)) {
+            break;
+        }
+
+        // Get the shadow root's host
+        const host = shadow_internal.?.host orelse break;
+
+        // Get parent of host
+        const parent = NodeImpl.getParent(host) orelse break;
+
+        // Calculate index of host in parent
+        const host_index = getChildIndex(parent, host);
+
+        // Adjust offset based on whether this is start or end
+        if (is_end) {
+            // For end, offset is index + 1
+            current_offset = host_index + 1;
+        } else {
+            // For start, offset is index
+            current_offset = host_index;
+        }
+
+        current_node = parent;
+    }
+
+    return .{ .node = current_node, .offset = current_offset };
+}
+
+/// Get the root node of a node
+fn getRoot(node: *runtime.Instance) *runtime.Instance {
+    var current = node;
+    while (NodeImpl.getParent(current)) |parent| {
+        current = parent;
+    }
+    return current;
+}
+
+/// Check if a shadow root is in the allowed list
+fn isShadowRootAllowed(shadow_root: *runtime.Instance, allowed_list: ?*const anyopaque) bool {
+    _ = shadow_root;
+    if (allowed_list == null) {
+        return false;
+    }
+    // TODO: Iterate through the sequence of ShadowRoots
+    // For now, return false (no shadow roots allowed)
+    // A full implementation would:
+    // 1. Cast allowed_list to the sequence type
+    // 2. Iterate through each ShadowRoot
+    // 3. Check if shadow_root matches any in the list
+    return false;
+}
+
+/// Get the index of a child in its parent
+fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) u32 {
+    var index: u32 = 0;
+    var current = NodeImpl.getFirstChild(parent);
+    while (current) |c| {
+        if (c == child) {
+            return index;
+        }
+        index += 1;
+        current = NodeImpl.getNextSibling(c);
+    }
+    return index;
 }
 
 // =============================================================================
