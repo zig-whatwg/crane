@@ -8,6 +8,7 @@
 //! - Static import support within worker modules
 //! - import.meta.url implementation for workers
 //! - importScripts TypeError for module workers (per spec)
+//! - Dynamic import() support in worker modules
 //!
 //! ## Module vs Classic Workers
 //!
@@ -20,8 +21,33 @@
 //! - Executed as ES modules
 //! - Support import/export statements
 //! - import.meta.url is set to the worker script URL
+//! - import.meta.resolve() resolves relative URLs
+//! - Dynamic import() loads modules asynchronously
 //! - importScripts() throws TypeError
 //! - Deferred execution (like module scripts in HTML)
+//!
+//! ## Architecture
+//!
+//! ```
+//! Worker Constructor (type: "module")
+//!        │
+//!        ▼
+//! ModuleWorkerExecutor.init()
+//!        │
+//!        ▼
+//! Fetch worker script URL
+//!        │
+//!        ▼
+//! configureImportMeta()
+//!   ├── Set import.meta.url
+//!   └── Set import.meta.resolve()
+//!        │
+//!        ▼
+//! WorkerContext.executeModule()
+//!   ├── V8 Module compilation
+//!   ├── V8 Module instantiation (resolves static imports)
+//!   └── V8 Module evaluation
+//! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

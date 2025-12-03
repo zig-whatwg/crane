@@ -67,6 +67,24 @@ pub const EngineCallbacks = struct {
 
     /// Dispose engine context
     disposeContext: ?*const fn (engine_ctx: *EngineContext) void = null,
+
+    /// Configure import.meta.url for module workers
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 12.4
+    /// "Set realm's module import.meta object hook..."
+    configureImportMeta: ?*const fn (
+        engine_ctx: *EngineContext,
+        script_url: []const u8,
+    ) anyerror!void = null,
+
+    /// Register dynamic import handler for this worker's isolate
+    ///
+    /// Spec: HTML Standard § 10.2.5
+    /// Enables import() expressions in worker modules
+    registerDynamicImportHandler: ?*const fn (
+        engine_ctx: *EngineContext,
+        handler_context: ?*anyopaque,
+    ) anyerror!void = null,
 };
 
 /// Worker Context - Provides isolated execution environment for a worker
@@ -210,7 +228,43 @@ pub const WorkerContext = struct {
         const engine_ctx = self.engine_ctx orelse return error.NoEngineContext;
         const compile_fn = self.callbacks.compileAndRunModule orelse return error.EngineNotConfigured;
 
+        // Configure import.meta before module execution
+        if (self.worker_type == .module) {
+            try self.configureImportMeta();
+        }
+
         try compile_fn(engine_ctx, source, self.script_url);
+    }
+
+    /// Configure import.meta for module workers
+    ///
+    /// Sets up import.meta.url and import.meta.resolve() for the worker's module.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 12.4
+    /// "Set up a worker module map..."
+    /// "Set realm's module import.meta object hook..."
+    pub fn configureImportMeta(self: *WorkerContext) !void {
+        const engine_ctx = self.engine_ctx orelse return error.NoEngineContext;
+
+        // If the engine supports import.meta configuration, use it
+        if (self.callbacks.configureImportMeta) |configure_fn| {
+            try configure_fn(engine_ctx, self.script_url);
+        }
+        // If not, the engine will use the script_url passed to executeModule
+    }
+
+    /// Register dynamic import handler for this worker
+    ///
+    /// Enables import() expressions to work within worker modules.
+    ///
+    /// Spec: HTML Standard § 10.2.5
+    /// Dynamic imports must be resolved relative to the worker's script URL.
+    pub fn registerDynamicImportHandler(self: *WorkerContext, handler_context: ?*anyopaque) !void {
+        const engine_ctx = self.engine_ctx orelse return error.NoEngineContext;
+
+        if (self.callbacks.registerDynamicImportHandler) |register_fn| {
+            try register_fn(engine_ctx, handler_context);
+        }
     }
 
     /// Run a single iteration of the worker's event loop
