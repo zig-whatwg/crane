@@ -14,6 +14,7 @@
 //! ```
 //! src/html/window/
 //! ├── browsing_context.zig   # BrowsingContext, BrowsingContextGroup
+//! ├── window_proxy.zig       # WindowProxy with cross-origin restrictions
 //! ├── ui_backend.zig         # Pluggable UI (alert, confirm, prompt, print)
 //! ├── animation_frame.zig    # requestAnimationFrame scheduling
 //! └── root.zig               # Module exports (this file)
@@ -46,6 +47,13 @@ const std = @import("std");
 pub const browsing_context = @import("browsing_context.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;
+
+// WindowProxy (§7.4)
+pub const window_proxy = @import("window_proxy.zig");
+pub const WindowProxy = window_proxy.WindowProxy;
+pub const Origin = window_proxy.Origin;
+pub const CrossOriginProperty = window_proxy.CrossOriginProperty;
+pub const WindowProxyError = window_proxy.WindowProxyError;
 
 // UI Backend (§8.8 - Simple dialogs)
 pub const ui_backend = @import("ui_backend.zig");

@@ -141,6 +141,10 @@ pub const window = @import("window/root.zig");
 // Re-export commonly used window types
 pub const BrowsingContext = window.BrowsingContext;
 pub const BrowsingContextGroup = window.BrowsingContextGroup;
+pub const WindowProxy = window.WindowProxy;
+pub const Origin = window.Origin;
+pub const CrossOriginProperty = window.CrossOriginProperty;
+pub const WindowProxyError = window.WindowProxyError;
 pub const UIBackend = window.UIBackend;
 pub const StubUIBackend = window.StubUIBackend;
 pub const AnimationFrameScheduler = window.AnimationFrameScheduler;

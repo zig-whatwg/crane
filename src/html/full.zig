@@ -98,6 +98,10 @@ pub const window = core.window;
 // Re-export commonly used window types
 pub const BrowsingContext = core.BrowsingContext;
 pub const BrowsingContextGroup = core.BrowsingContextGroup;
+pub const WindowProxy = core.WindowProxy;
+pub const Origin = core.Origin;
+pub const CrossOriginProperty = core.CrossOriginProperty;
+pub const WindowProxyError = core.WindowProxyError;
 pub const UIBackend = core.UIBackend;
 pub const StubUIBackend = core.StubUIBackend;
 pub const AnimationFrameScheduler = core.AnimationFrameScheduler;
