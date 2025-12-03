@@ -297,7 +297,7 @@ pub const DocumentState = struct {
     about_base_url: ?[]const u8,
 
     /// A list of nested histories, initially an empty list.
-    nested_histories: std.ArrayList(NestedHistory),
+    nested_histories: std.ArrayListUnmanaged(NestedHistory),
 
     /// A string, POST resource or null, initially null.
     resource: ?DocumentResource,
@@ -321,7 +321,7 @@ pub const DocumentState = struct {
             .initiator_origin = null,
             .origin = null,
             .about_base_url = null,
-            .nested_histories = std.ArrayList(NestedHistory).init(allocator),
+            .nested_histories = .{},
             .resource = null,
             .reload_pending = false,
             .ever_populated = false,
@@ -349,7 +349,7 @@ pub const DocumentState = struct {
         for (self.nested_histories.items) |*nh| {
             nh.deinit();
         }
-        self.nested_histories.deinit();
+        self.nested_histories.deinit(self.allocator);
     }
 
     /// Set the origin
@@ -434,7 +434,7 @@ pub const NestedHistory = struct {
     id: u64,
 
     /// List of session history entries for this nested history
-    entries: std.ArrayList(*SessionHistoryEntry),
+    entries: std.ArrayListUnmanaged(*SessionHistoryEntry),
 
     /// Next ID generator
     var next_id: u64 = 1;
@@ -443,18 +443,18 @@ pub const NestedHistory = struct {
         return .{
             .allocator = allocator,
             .id = @atomicRmw(u64, &next_id, .Add, 1, .monotonic),
-            .entries = std.ArrayList(*SessionHistoryEntry).init(allocator),
+            .entries = .{},
         };
     }
 
     pub fn deinit(self: *NestedHistory) void {
         // Note: Don't free entries here - they're owned by the session history
-        self.entries.deinit();
+        self.entries.deinit(self.allocator);
     }
 
     /// Add an entry to this nested history
     pub fn addEntry(self: *NestedHistory, entry: *SessionHistoryEntry) !void {
-        try self.entries.append(entry);
+        try self.entries.append(self.allocator, entry);
     }
 };
 
@@ -605,7 +605,7 @@ pub const SessionHistoryEntry = struct {
 
 /// Generate a random UUID v4 string
 fn generateUUID(buffer: *[36]u8) void {
-    var prng = std.rand.DefaultPrng.init(blk: {
+    var prng = std.Random.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
         std.posix.getrandom(std.mem.asBytes(&seed)) catch {
             seed = @intCast(std.time.timestamp());
@@ -646,7 +646,7 @@ pub const SessionHistoryList = struct {
     allocator: Allocator,
 
     /// The list of entries
-    entries: std.ArrayList(*SessionHistoryEntry),
+    entries: std.ArrayListUnmanaged(*SessionHistoryEntry),
 
     /// Current session history step
     current_step: u64,
@@ -654,7 +654,7 @@ pub const SessionHistoryList = struct {
     pub fn init(allocator: Allocator) SessionHistoryList {
         return .{
             .allocator = allocator,
-            .entries = std.ArrayList(*SessionHistoryEntry).init(allocator),
+            .entries = .{},
             .current_step = 0,
         };
     }
@@ -663,7 +663,7 @@ pub const SessionHistoryList = struct {
         for (self.entries.items) |entry| {
             entry.deinit();
         }
-        self.entries.deinit();
+        self.entries.deinit(self.allocator);
     }
 
     /// Get the number of entries
@@ -699,7 +699,7 @@ pub const SessionHistoryList = struct {
 
     /// Append an entry
     pub fn append(self: *SessionHistoryList, entry: *SessionHistoryEntry) !void {
-        try self.entries.append(entry);
+        try self.entries.append(self.allocator, entry);
     }
 
     /// Remove entries with step greater than the given value
@@ -732,12 +732,12 @@ pub const SessionHistoryList = struct {
 
     /// Get all used history steps, sorted
     pub fn getAllUsedSteps(self: *const SessionHistoryList, allocator: Allocator) ![]u64 {
-        var steps = std.ArrayList(u64).init(allocator);
-        defer steps.deinit();
+        var steps = std.ArrayListUnmanaged(u64){};
+        defer steps.deinit(allocator);
 
         for (self.entries.items) |entry| {
             if (entry.step.getValue()) |s| {
-                try steps.append(s);
+                try steps.append(allocator, s);
             }
         }
 

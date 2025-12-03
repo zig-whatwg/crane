@@ -388,7 +388,7 @@ pub const TraversableNavigable = struct {
 
     /// Enqueue a traversal task
     pub fn enqueueTraversal(self: *TraversableNavigable, task: TraversalTask) !void {
-        try self.traversal_queue.append(task);
+        try self.traversal_queue.append(self.allocator, task);
         // In a real implementation, this would trigger the traversal queue processing
     }
 
