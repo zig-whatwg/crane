@@ -47,8 +47,9 @@ const NodeImpl = @import("Node.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
 
-// Import script execution module - now available as a local import in impls/
-const script_execution = @import("script_execution.zig");
+// Import script execution module from html module
+const html_mod = @import("html");
+const script_execution = html_mod.script_execution;
 
 /// Error type for HTML parsing operations
 pub const ParseError = error{

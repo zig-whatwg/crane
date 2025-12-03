@@ -1329,14 +1329,26 @@ pub fn build(b: *std.Build) void {
     });
     // Import html_core as a module (not file import) to avoid file ownership conflicts
     html_mod.addImport("html_core", html_core_mod);
-    // Interface access for script execution files (will be moved from impls to html)
+    // Interface access for script execution files (now in src/html/)
     html_mod.addImport("interfaces", interfaces_mod);
     html_mod.addImport("impls", impls_mod);
     html_mod.addImport("runtime", runtime_mod);
+    // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
+    html_mod.addImport("infra", infra_mod);
+    html_mod.addImport("fetch", fetch_mod);
+    html_mod.addImport("csp", csp_mod);
+    html_mod.addImport("v8", v8_mod);
+    html_mod.addImport("dictionaries", dictionaries_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
     impls_mod.addImport("html_core", html_core_mod);
+
+    // Add html to impls for script execution algorithms
+    // Note: This creates html ↔ impls mutual dependency. Zig handles this because
+    // the dependency is only at the module level, not at function call time during
+    // module initialization. The imports are lazy (evaluated when used).
+    impls_mod.addImport("html", html_mod);
 
     // Permissions module (W3C Permissions API)
     const permissions_mod = b.addModule("permissions", .{

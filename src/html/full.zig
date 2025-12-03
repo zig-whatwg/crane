@@ -120,6 +120,22 @@ pub const impls = @import("impls");
 // Access to runtime module - for JS execution context
 pub const runtime = @import("runtime");
 
+// ============================================================================
+// Script Execution (HTML §4.12.1.1)
+// ============================================================================
+
+// These modules implement the HTML script processing model.
+// They're in src/html/ because they legitimately need interfaces access.
+
+/// Script execution algorithms (prepare/execute script element)
+pub const script_execution = @import("script_execution.zig");
+
+/// Script runner for coordinating script scheduling
+pub const script_runner = @import("script_runner.zig");
+
+/// Event utilities for firing events during script processing
+pub const event_utils = @import("event_utils.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }

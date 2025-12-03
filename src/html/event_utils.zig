@@ -14,11 +14,8 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 
-// Access to Event impl for setting internal state (relative imports since we're in impls/)
-const impls = struct {
-    pub const Event = @import("Event.zig");
-    pub const ErrorEvent = @import("ErrorEvent.zig");
-};
+// Access to impls module for setting internal state
+const impls = @import("impls");
 
 // =============================================================================
 // Error Information
