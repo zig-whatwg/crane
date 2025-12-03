@@ -53,6 +53,11 @@ pub const v8_engine_interface: EngineInterface = .{
     .invokeStreamCallback = v8InvokeStreamCallback,
     .getWrapperForInstance = v8GetWrapperForInstance,
     .chainPromiseHandlers = v8ChainPromiseHandlers,
+    .compileScript = v8CompileScript,
+    .runScript = v8RunScript,
+    .compileModule = v8CompileModule,
+    .runModule = v8RunModule,
+    .disposeScript = v8DisposeScript,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -680,6 +685,191 @@ fn v8ChainPromiseHandlers(
 
     // Note: The handlers are now owned by the promise chain
     // The callback data will be cleaned up when the handlers are GC'd
+}
+
+// ============================================================================
+// Script Execution Support
+// ============================================================================
+
+/// Compile a classic script from source using V8
+///
+/// Compiles JavaScript source code into a V8 Script object.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - source: UTF-8 encoded JavaScript source code
+///   - source_url: Optional URL for error messages and source maps
+///
+/// Returns:
+///   - V8 Script* on success
+///   - null if compilation failed (syntax error)
+///   - EngineError on engine-level failure
+fn v8CompileScript(
+    engine_ctx: *anyopaque,
+    source: []const u8,
+    source_url: ?[]const u8,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create V8 string from source
+    const source_str = ffi.v8_String_NewFromUtf8(
+        isolate,
+        source.ptr,
+        @intCast(source.len),
+    ) orelse return EngineError.OutOfMemory;
+
+    // Create resource name if URL provided
+    var resource_name: ?*ffi.String = null;
+    if (source_url) |url| {
+        resource_name = ffi.v8_String_NewFromUtf8(
+            isolate,
+            url.ptr,
+            @intCast(url.len),
+        );
+    }
+
+    // Compile the script with optional source origin
+    const script = if (resource_name) |name|
+        ffi.v8_Script_CompileWithOrigin(context, source_str, name)
+    else
+        ffi.v8_Script_Compile(context, source_str);
+
+    // Clean up resource name if created
+    if (resource_name) |name| {
+        ffi.v8_String_Dispose(name);
+    }
+
+    if (script) |s| {
+        return @ptrCast(s);
+    }
+
+    // Compilation failed (likely syntax error)
+    return null;
+}
+
+/// Run a compiled V8 script
+///
+/// Executes a previously compiled script in the current context.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - script: V8 Script* from v8CompileScript
+///
+/// Returns:
+///   - V8 Value* result on success
+///   - null if execution threw an exception
+///   - EngineError on engine-level failure
+fn v8RunScript(
+    engine_ctx: *anyopaque,
+    script: *anyopaque,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_script: *ffi.Script = @ptrCast(@alignCast(script));
+
+    const result = ffi.v8_Script_Run(context, v8_script);
+
+    if (result) |r| {
+        return @ptrCast(r);
+    }
+
+    // Execution threw an exception
+    return null;
+}
+
+/// Compile an ES module from source using V8
+///
+/// Compiles JavaScript module source code into a V8 Module object.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - source: UTF-8 encoded JavaScript module source code
+///   - source_url: URL for the module (required for import resolution)
+///
+/// Returns:
+///   - V8 Module* on success
+///   - null if compilation failed
+///   - EngineError on engine-level failure
+fn v8CompileModule(
+    engine_ctx: *anyopaque,
+    source: []const u8,
+    source_url: []const u8,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Create V8 string from source
+    const source_str = ffi.v8_String_NewFromUtf8(
+        isolate,
+        source.ptr,
+        @intCast(source.len),
+    ) orelse return EngineError.OutOfMemory;
+
+    // Create resource name (required for modules)
+    const resource_name = ffi.v8_String_NewFromUtf8(
+        isolate,
+        source_url.ptr,
+        @intCast(source_url.len),
+    );
+
+    // Compile as ES Module
+    const module = ffi.v8_Module_Compile(context, source_str, resource_name);
+
+    // Clean up strings (V8 manages the V8 string memory)
+    if (resource_name) |name| {
+        ffi.v8_String_Dispose(name);
+    }
+
+    if (module) |m| {
+        return @ptrCast(m);
+    }
+
+    // Compilation failed
+    return null;
+}
+
+/// Instantiate and evaluate a V8 module
+///
+/// Links module dependencies and executes the module's top-level code.
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - module: V8 Module* from v8CompileModule
+///
+/// Returns:
+///   - void on success
+///   - EngineError on instantiation or evaluation failure
+fn v8RunModule(
+    engine_ctx: *anyopaque,
+    module: *anyopaque,
+) EngineError!void {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
+
+    // Instantiate the module (link imports)
+    if (!ffi.v8_Module_Instantiate(context, v8_module)) {
+        return EngineError.OperationFailed;
+    }
+
+    // Evaluate the module (execute top-level code)
+    _ = ffi.v8_Module_Evaluate(context, v8_module) orelse {
+        return EngineError.OperationFailed;
+    };
+}
+
+/// Dispose of a compiled V8 script
+///
+/// Releases resources associated with a compiled script.
+///
+/// Arguments:
+///   - script: V8 Script* from v8CompileScript
+fn v8DisposeScript(
+    script: *anyopaque,
+) void {
+    const v8_script: *ffi.Script = @ptrCast(@alignCast(script));
+    ffi.v8_Script_Dispose(v8_script);
 }
 
 // ============================================================================

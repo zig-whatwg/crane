@@ -471,6 +471,96 @@ pub const EngineInterface = struct {
         on_reject_ctx: ?*anyopaque,
     ) EngineError!void,
 
+    // ========================================================================
+    // Script Execution Support
+    // ========================================================================
+
+    /// Compile a classic script from source
+    ///
+    /// Compiles JavaScript source code into an executable script object.
+    /// The script can then be executed with runScript().
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - source: UTF-8 encoded JavaScript source code
+    ///   - source_url: Optional URL for error messages and source maps
+    ///
+    /// Returns:
+    ///   - Opaque pointer to compiled script object
+    ///   - null if compilation failed (syntax error, etc.)
+    ///   - EngineError on engine-level failure
+    compileScript: ?*const fn (
+        engine_ctx: *anyopaque,
+        source: []const u8,
+        source_url: ?[]const u8,
+    ) EngineError!?*anyopaque,
+
+    /// Run a compiled script
+    ///
+    /// Executes a previously compiled script in the current context.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - script: Compiled script from compileScript()
+    ///
+    /// Returns:
+    ///   - Opaque pointer to result value (may be undefined)
+    ///   - null if execution threw an exception
+    ///   - EngineError on engine-level failure
+    runScript: ?*const fn (
+        engine_ctx: *anyopaque,
+        script: *anyopaque,
+    ) EngineError!?*anyopaque,
+
+    /// Compile an ES module from source
+    ///
+    /// Compiles JavaScript module source code into a module object.
+    /// The module must be instantiated and evaluated with runModule().
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - source: UTF-8 encoded JavaScript module source code
+    ///   - source_url: URL for the module (required for import resolution)
+    ///
+    /// Returns:
+    ///   - Opaque pointer to compiled module object
+    ///   - null if compilation failed
+    ///   - EngineError on engine-level failure
+    compileModule: ?*const fn (
+        engine_ctx: *anyopaque,
+        source: []const u8,
+        source_url: []const u8,
+    ) EngineError!?*anyopaque,
+
+    /// Instantiate and evaluate a module
+    ///
+    /// Links module dependencies and executes the module's top-level code.
+    /// For modules with imports, the engine will use its module resolution
+    /// callback to resolve specifiers.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - module: Compiled module from compileModule()
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError on instantiation or evaluation failure
+    runModule: ?*const fn (
+        engine_ctx: *anyopaque,
+        module: *anyopaque,
+    ) EngineError!void,
+
+    /// Dispose of a compiled script
+    ///
+    /// Releases resources associated with a compiled script.
+    /// Must be called when the script is no longer needed.
+    ///
+    /// Arguments:
+    ///   - script: Compiled script from compileScript()
+    disposeScript: ?*const fn (
+        script: *anyopaque,
+    ) void,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -505,6 +595,11 @@ pub const stub_engine: EngineInterface = .{
     .invokeStreamCallback = stubInvokeStreamCallback,
     .getWrapperForInstance = stubGetWrapperForInstance,
     .chainPromiseHandlers = stubChainPromiseHandlers,
+    .compileScript = stubCompileScript,
+    .runScript = stubRunScript,
+    .compileModule = stubCompileModule,
+    .runModule = stubRunModule,
+    .disposeScript = stubDisposeScript,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -575,6 +670,46 @@ fn stubChainPromiseHandlers(
 ) EngineError!void {
     // Stub: No JS engine available
     return EngineError.NoEngine;
+}
+
+fn stubCompileScript(
+    _: *anyopaque,
+    _: []const u8,
+    _: ?[]const u8,
+) EngineError!?*anyopaque {
+    // Stub: No JS engine available for script compilation
+    return EngineError.NoEngine;
+}
+
+fn stubRunScript(
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!?*anyopaque {
+    // Stub: No JS engine available for script execution
+    return EngineError.NoEngine;
+}
+
+fn stubCompileModule(
+    _: *anyopaque,
+    _: []const u8,
+    _: []const u8,
+) EngineError!?*anyopaque {
+    // Stub: No JS engine available for module compilation
+    return EngineError.NoEngine;
+}
+
+fn stubRunModule(
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No JS engine available for module execution
+    return EngineError.NoEngine;
+}
+
+fn stubDisposeScript(
+    _: *anyopaque,
+) void {
+    // Stub: Nothing to dispose
 }
 
 // ============================================================================

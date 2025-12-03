@@ -708,46 +708,59 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         else => HTMLScriptElement.getCachedSourceText(script_element) orelse return,
     };
 
-    // Get V8 context from document/global
-    // For now, we'll use a simplified execution path
+    // Get source URL for error messages
+    const source_url: ?[]const u8 = switch (result) {
+        .script => |s| if (s.base_url.len > 0) s.base_url else null,
+        else => null,
+    };
 
-    // Import V8 FFI
-    const v8 = @import("v8");
-    const ffi = v8.ffi;
-
-    // Get current isolate
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse {
-        std.debug.print("No V8 isolate available for script execution\n", .{});
+    // Get engine interface from the script element's context
+    const ctx = script_element.ctx;
+    const engine = ctx.getEngine() orelse {
+        // No engine available (testing mode) - silently skip execution
+        // This allows tests to run without V8 linked
+        std.debug.print("No JS engine available for script execution (testing mode)\n", .{});
         return;
     };
 
-    // Get current context
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.debug.print("No V8 context available for script execution\n", .{});
+    // Get engine context (V8 Context, JSC VM, etc.)
+    const engine_ctx = ctx.getEngineContext() orelse {
+        std.debug.print("No engine context available for script execution\n", .{});
         return;
     };
 
-    // Create V8 string from source
-    const source_str = ffi.v8_String_NewFromUtf8(
-        isolate,
-        source.ptr,
-        @intCast(source.len),
-    ) orelse {
-        std.debug.print("Failed to create V8 string from script source\n", .{});
+    // Compile the script using the engine interface
+    const compileScript = engine.compileScript orelse {
+        std.debug.print("Engine does not support script compilation\n", .{});
         return;
     };
-    defer ffi.v8_String_Dispose(source_str);
 
-    // Compile the script
-    const script = ffi.v8_Script_Compile(context, source_str) orelse {
-        std.debug.print("Failed to compile script\n", .{});
+    const script = compileScript(engine_ctx, source, source_url) catch |err| {
+        std.debug.print("Script compilation error: {}\n", .{err});
+        return;
+    } orelse {
+        std.debug.print("Failed to compile script (syntax error)\n", .{});
         // TODO: Fire error event with parse error details
         return;
     };
-    defer ffi.v8_Script_Dispose(script);
 
-    // Run the script
-    _ = ffi.v8_Script_Run(context, script) orelse {
+    // Dispose script when done
+    defer {
+        if (engine.disposeScript) |dispose| {
+            dispose(script);
+        }
+    }
+
+    // Run the script using the engine interface
+    const runScript = engine.runScript orelse {
+        std.debug.print("Engine does not support script execution\n", .{});
+        return;
+    };
+
+    _ = runScript(engine_ctx, script) catch |err| {
+        std.debug.print("Script execution error: {}\n", .{err});
+        return;
+    } orelse {
         std.debug.print("Script execution threw an exception\n", .{});
         // TODO: Handle script exceptions properly
         return;
@@ -770,27 +783,13 @@ fn runModuleScript(script_element: *runtime.Instance) !void {
     return runModuleFromSource(script_element, module_script.source_text, module_script.base_url);
 }
 
-/// Run a module from source text using proper V8 Module API
+/// Run a module from source text using the engine-agnostic EngineInterface
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
 fn runModuleFromSource(
     script_element: *runtime.Instance,
     source: []const u8,
     base_url: []const u8,
 ) !void {
-    const v8 = @import("v8");
-    const ffi = v8.ffi;
-
-    // Get current isolate and context
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse {
-        std.debug.print("No V8 isolate available for module script execution\n", .{});
-        return;
-    };
-
-    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.debug.print("No V8 context available for module script execution\n", .{});
-        return;
-    };
-
     // Get document for module map caching
     const node_document = getNodeDocument(script_element);
 
@@ -803,29 +802,31 @@ fn runModuleFromSource(
         }
     }
 
-    // Create V8 string from source
-    const source_str = ffi.v8_String_NewFromUtf8(
-        isolate,
-        source.ptr,
-        @intCast(source.len),
-    ) orelse {
-        std.debug.print("Failed to create V8 string from module source\n", .{});
+    // Get engine interface from the script element's context
+    const ctx = script_element.ctx;
+    const engine = ctx.getEngine() orelse {
+        // No engine available (testing mode) - silently skip execution
+        std.debug.print("No JS engine available for module execution (testing mode)\n", .{});
         return;
     };
-    defer ffi.v8_String_Dispose(source_str);
 
-    // Create resource name (module URL) for source maps and error messages
-    const resource_name = ffi.v8_String_NewFromUtf8(
-        isolate,
-        base_url.ptr,
-        @intCast(base_url.len),
-    );
-    defer if (resource_name) |name| ffi.v8_String_Dispose(name);
+    // Get engine context
+    const engine_ctx = ctx.getEngineContext() orelse {
+        std.debug.print("No engine context available for module execution\n", .{});
+        return;
+    };
 
-    // Compile as ES Module
-    const module = ffi.v8_Module_Compile(context, source_str, resource_name) orelse {
+    // Compile the module using the engine interface
+    const compileModule = engine.compileModule orelse {
+        std.debug.print("Engine does not support module compilation\n", .{});
+        return;
+    };
+
+    const module = compileModule(engine_ctx, source, base_url) catch |err| {
+        std.debug.print("Module compilation error: {}\n", .{err});
+        return;
+    } orelse {
         std.debug.print("Failed to compile ES module: {s}\n", .{base_url});
-        // TODO: Get exception details from V8
         return;
     };
 
@@ -837,47 +838,26 @@ fn runModuleFromSource(
         };
     }
 
-    // Set up module resolution callback
-    // This callback is called when V8 encounters import statements
-    ffi.v8_Module_SetResolveCallback(
-        @ptrCast(@alignCast(script_element)),
-        moduleResolveCallback,
-    );
-
-    // Instantiate the module (link imports)
-    // This resolves all import statements using the resolve callback
-    if (!ffi.v8_Module_Instantiate(context, module)) {
-        std.debug.print("Failed to instantiate module: {s}\n", .{base_url});
-
-        // Get and report the exception
-        const status = ffi.v8_Module_GetStatus(module);
-        if (status == @intFromEnum(ffi.ModuleStatus.Errored)) {
-            if (ffi.v8_Module_GetException(module)) |exception| {
-                defer ffi.v8_Value_Dispose(exception);
-                // TODO: Convert exception to string and report
-            }
-        }
+    // Run the module using the engine interface
+    // Note: Module resolution callbacks are engine-specific and will be set up
+    // by the engine implementation when needed
+    const runModule = engine.runModule orelse {
+        std.debug.print("Engine does not support module execution\n", .{});
         return;
-    }
+    };
 
-    // Evaluate the module (execute top-level code)
-    _ = ffi.v8_Module_Evaluate(context, module) orelse {
-        std.debug.print("Module evaluation failed: {s}\n", .{base_url});
-
-        // Check module status for errors
-        const status = ffi.v8_Module_GetStatus(module);
-        if (status == @intFromEnum(ffi.ModuleStatus.Errored)) {
-            if (ffi.v8_Module_GetException(module)) |exception| {
-                defer ffi.v8_Value_Dispose(exception);
-                // TODO: Convert exception to string and report
-            }
-        }
+    runModule(engine_ctx, module) catch |err| {
+        std.debug.print("Module execution error: {}\n", .{err});
         return;
     };
 }
 
 /// Module resolution callback for V8
 /// Called when V8 encounters an import statement and needs to resolve the specifier
+///
+/// NOTE: This callback is V8-specific and uses the V8 callconv. It is invoked by the
+/// V8 engine during module instantiation. The callback mechanism is engine-specific,
+/// but we use the EngineInterface for module compilation when available.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
 fn moduleResolveCallback(
@@ -887,9 +867,6 @@ fn moduleResolveCallback(
     referrer_module: ?*anyopaque,
 ) callconv(.c) ?*anyopaque {
     _ = referrer_module;
-
-    const v8 = @import("v8");
-    const ffi = v8.ffi;
 
     // Get script element from user data (passed when setting up the callback)
     const script_element: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return null));
@@ -934,13 +911,6 @@ fn moduleResolveCallback(
     }
 
     // Step 4: Module not in cache - need to fetch and compile
-    // For now, we only support modules that are already in the cache
-    // Full implementation would:
-    // 1. Fetch the module source
-    // 2. Compile it
-    // 3. Add to module map
-    // 4. Return the compiled module
-
     // Get allocator for fetch
     const allocator = doc_internal.allocator;
 
@@ -953,28 +923,27 @@ fn moduleResolveCallback(
     if (fetch_result.body) |body| {
         defer allocator.free(body);
 
-        // Get V8 context
-        const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
-        const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+        // Use engine interface to compile the module
+        const ctx = script_element.ctx;
+        const engine = ctx.getEngine() orelse {
+            std.debug.print("No JS engine available for module compilation\n", .{});
+            return null;
+        };
 
-        // Create source string
-        const source_str = ffi.v8_String_NewFromUtf8(
-            isolate,
-            body.ptr,
-            @intCast(body.len),
-        ) orelse return null;
-        defer ffi.v8_String_Dispose(source_str);
+        const engine_ctx = ctx.getEngineContext() orelse {
+            std.debug.print("No engine context available for module compilation\n", .{});
+            return null;
+        };
 
-        // Create resource name
-        const resource_name = ffi.v8_String_NewFromUtf8(
-            isolate,
-            final_url.ptr,
-            @intCast(final_url.len),
-        );
-        defer if (resource_name) |name| ffi.v8_String_Dispose(name);
+        const compileModule = engine.compileModule orelse {
+            std.debug.print("Engine does not support module compilation\n", .{});
+            return null;
+        };
 
-        // Compile the module
-        const module = ffi.v8_Module_Compile(context, source_str, resource_name) orelse {
+        const module = compileModule(engine_ctx, body, final_url) catch {
+            std.debug.print("Failed to compile fetched module: {s}\n", .{final_url});
+            return null;
+        } orelse {
             std.debug.print("Failed to compile fetched module: {s}\n", .{final_url});
             return null;
         };

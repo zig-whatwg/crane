@@ -421,6 +421,8 @@ pub extern fn v8_Array_Dispose(arr: *Array) void;
 
 // Script compilation and execution
 pub extern fn v8_Script_Compile(context: *Context, source: *String) ?*Script;
+/// Compile a script with source origin information (for error messages and source maps)
+pub extern fn v8_Script_CompileWithOrigin(context: *Context, source: *String, resource_name: *String) ?*Script;
 pub extern fn v8_Script_Run(context: *Context, script: *Script) ?*Value;
 pub extern fn v8_Script_Dispose(script: *Script) void;
 
