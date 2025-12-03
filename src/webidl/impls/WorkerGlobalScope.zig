@@ -43,11 +43,17 @@ pub const ImplError = error{
 /// Contains cached WorkerLocation and WorkerNavigator objects,
 /// as well as worker type information.
 pub const InternalState = struct {
-    /// Cached WorkerLocation instance
-    location: ?*InternalWorkerLocation = null,
+    /// Internal WorkerLocation (from src/html/workers/)
+    internal_location: ?*InternalWorkerLocation = null,
 
-    /// Cached WorkerNavigator instance
-    navigator: ?*InternalWorkerNavigator = null,
+    /// Internal WorkerNavigator (from src/html/workers/)
+    internal_navigator: ?*InternalWorkerNavigator = null,
+
+    /// Cached WebIDL WorkerLocation interface instance
+    location_instance: ?*runtime.Instance = null,
+
+    /// Cached WebIDL WorkerNavigator interface instance
+    navigator_instance: ?*runtime.Instance = null,
 
     /// Worker script URL
     url: []const u8 = "",
@@ -68,10 +74,18 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
-        if (self.location) |loc| {
+        // Clean up WebIDL interface instances
+        if (self.location_instance) |loc_inst| {
+            runtime.Instance.deinit(loc_inst);
+        }
+        if (self.navigator_instance) |nav_inst| {
+            runtime.Instance.deinit(nav_inst);
+        }
+        // Clean up internal implementations
+        if (self.internal_location) |loc| {
             loc.deinit();
         }
-        if (self.navigator) |nav| {
+        if (self.internal_navigator) |nav| {
             nav.deinit();
         }
     }
@@ -118,8 +132,8 @@ pub fn initWithUrl(
         std.mem.startsWith(u8, url, "file://");
 
     internal_state.* = .{
-        .location = location,
-        .navigator = navigator,
+        .internal_location = location,
+        .internal_navigator = navigator,
         .url = url,
         .worker_type = worker_type,
         .origin = location.getOrigin(),
@@ -158,9 +172,40 @@ pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// "The location attribute must return the WorkerLocation object created for
 /// the WorkerGlobalScope object when the worker was created."
 pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // TODO: Return wrapped WorkerLocation instance
-    // For now, return the instance itself (location is accessed through internal state)
-    _ = instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // Return cached instance if already created
+        if (internal.location_instance) |loc_inst| {
+            return loc_inst;
+        }
+
+        // Create WorkerLocation interface instance
+        if (internal.internal_location) |loc| {
+            // Create a new runtime.Instance wrapping the internal location
+            const loc_instance = WorkerLocation.init(internal.allocator, null) catch {
+                return error.OutOfMemory;
+            };
+
+            // Get the location state and wire it to the internal location
+            const loc_state = loc_instance.getState(WorkerLocation.State);
+
+            // Create WorkerLocation's internal state
+            const WorkerLocationImpl = @import("WorkerLocation.zig");
+            const loc_internal = internal.allocator.create(WorkerLocationImpl.InternalState) catch {
+                runtime.Instance.deinit(loc_instance);
+                return error.OutOfMemory;
+            };
+            loc_internal.* = .{
+                .internal_location = loc,
+                .allocator = internal.allocator,
+            };
+            loc_state.own._internal = loc_internal;
+
+            // Cache and return
+            internal.location_instance = loc_instance;
+            return loc_instance;
+        }
+    }
     return error.NotImplemented;
 }
 
@@ -170,8 +215,40 @@ pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// "The navigator attribute must return the WorkerNavigator object created for
 /// the WorkerGlobalScope object when the worker was created."
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // TODO: Return wrapped WorkerNavigator instance
-    _ = instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // Return cached instance if already created
+        if (internal.navigator_instance) |nav_inst| {
+            return nav_inst;
+        }
+
+        // Create WorkerNavigator interface instance
+        if (internal.internal_navigator) |nav| {
+            // Create a new runtime.Instance wrapping the internal navigator
+            const nav_instance = WorkerNavigator.init(internal.allocator, null) catch {
+                return error.OutOfMemory;
+            };
+
+            // Get the navigator state and wire it to the internal navigator
+            const nav_state = nav_instance.getState(WorkerNavigator.State);
+
+            // Create WorkerNavigator's internal state
+            const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
+            const nav_internal = internal.allocator.create(WorkerNavigatorImpl.InternalState) catch {
+                runtime.Instance.deinit(nav_instance);
+                return error.OutOfMemory;
+            };
+            nav_internal.* = .{
+                .internal_navigator = nav,
+                .allocator = internal.allocator,
+            };
+            nav_state.own._internal = nav_internal;
+
+            // Cache and return
+            internal.navigator_instance = nav_instance;
+            return nav_instance;
+        }
+    }
     return error.NotImplemented;
 }
 
@@ -343,17 +420,81 @@ pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerr
 }
 
 /// Operation: atob
+///
+/// Spec: HTML Standard § 8.3 Base64 utility methods
+/// https://html.spec.whatwg.org/#dom-atob
+///
+/// "The atob(data) method must run the following steps:
+/// 1. Let decodedData be the result of running forgiving-base64 decode on data.
+/// 2. If decodedData is failure, then throw an "InvalidCharacterError" DOMException.
+/// 3. Return decodedData."
 pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    const input = data.asSlice();
+
+    // Handle empty input - ByteString is just []const u8
+    if (input.len == 0) {
+        return "";
+    }
+
+    // Calculate decoded length using standard library function
+    const state = instance.getState(State);
+    const allocator = if (state.own._internal) |internal| internal.allocator else std.heap.page_allocator;
+
+    // Use calcSizeForSlice to get exact decoded length
+    const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(input) catch {
+        return error.InvalidCharacter;
+    };
+
+    // Allocate buffer for decoded data
+    const buffer = allocator.alloc(u8, decoded_len) catch return error.OutOfMemory;
+    errdefer allocator.free(buffer);
+
+    // Decode using standard base64 - decode returns void on success
+    std.base64.standard.Decoder.decode(buffer, input) catch {
+        allocator.free(buffer);
+        return error.InvalidCharacter;
+    };
+
+    // Return the buffer - ByteString is just []const u8
+    // NOTE: The caller is responsible for freeing this buffer
+    return buffer;
 }
 
 /// Operation: btoa
+///
+/// Spec: HTML Standard § 8.3 Base64 utility methods
+/// https://html.spec.whatwg.org/#dom-btoa
+///
+/// "The btoa(data) method must run the following steps:
+/// 1. If data contains any character whose code point is greater than U+00FF,
+///    throw an "InvalidCharacterError" DOMException.
+/// 2. Return the forgiving-base64 encode of data."
 pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = data;
-    return error.NotImplemented;
+    const input = data.asSlice();
+
+    // Step 1: Validate all characters are in Latin-1 range (U+0000 to U+00FF)
+    // Since we're dealing with bytes (0-255), this is implicitly satisfied
+
+    // Handle empty input
+    if (input.len == 0) {
+        return runtime.DOMString.initEmpty();
+    }
+
+    // Step 2: Encode to base64
+    const state = instance.getState(State);
+    const allocator = if (state.own._internal) |internal| internal.allocator else std.heap.page_allocator;
+
+    // Calculate encoded length
+    const encoded_len = std.base64.standard.Encoder.calcSize(input.len);
+    const buffer = allocator.alloc(u8, encoded_len) catch return error.OutOfMemory;
+    errdefer allocator.free(buffer);
+
+    // Encode - returns a slice into buffer
+    const encoded = std.base64.standard.Encoder.encode(buffer, input);
+
+    // DOMString.initOwned takes just the slice, allocator is tracked elsewhere
+    // NOTE: The caller is responsible for freeing via DOMString.deinit(allocator)
+    return runtime.DOMString.initOwned(encoded);
 }
 
 /// Operation: setInterval
