@@ -260,7 +260,8 @@ pub fn parseFragment(
     var tree_child = content_root.first_child;
     while (tree_child) |tc| {
         const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tc, owner_doc);
-        _ = NodeImpl.appendChild(fragment, dom_node) catch return error.InvalidStateError;
+        // Use interface instead of impl (per Golden Rule #13)
+        _ = interfaces.Node.call_appendChild(fragment, dom_node) catch return error.InvalidStateError;
 
         // Recursively convert children
         try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc);
@@ -334,8 +335,8 @@ fn convertTreeNodeToDom(
     while (child) |tree_child| {
         const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document);
 
-        // Append to parent
-        _ = NodeImpl.appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
+        // Append to parent (use interface per Golden Rule #13)
+        _ = interfaces.Node.call_appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
 
         // For document element, update document's documentElement pointer
         if (tree_child.node_type == .element and tree_child.hasTagName("html")) {
@@ -374,8 +375,8 @@ fn convertChildrenToDom(
     while (child) |tree_child| {
         const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document);
 
-        // Append to parent
-        _ = NodeImpl.appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
+        // Append to parent (use interface per Golden Rule #13)
+        _ = interfaces.Node.call_appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
 
         // Recursively convert children
         try convertChildrenToDom(allocator, ctx, tree_child, dom_node, owner_document);

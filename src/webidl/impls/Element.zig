@@ -1701,8 +1701,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
         const next = NodeImpl.getNextSibling(fc);
         // Remove from fragment
         _ = interfaces.Node.call_removeChild(fragment, fc) catch break;
-        // Append to this element
-        _ = NodeImpl.appendChild(instance, fc) catch break;
+        // Append to this element (use interface per Golden Rule #13)
+        _ = interfaces.Node.call_appendChild(instance, fc) catch break;
         fragment_child = next;
     }
 

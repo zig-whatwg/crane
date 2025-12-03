@@ -1994,7 +1994,8 @@ pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!
         _ = try interfaces.Node.call_replaceChild(doc_element, value, ob);
     } else {
         // Step 4: Append to html element
-        _ = try NodeImpl.appendChild(doc_element, value);
+        // Use interface instead of impl (per Golden Rule #13)
+        _ = try interfaces.Node.call_appendChild(doc_element, value);
     }
 
     // Set owner document
@@ -2851,7 +2852,7 @@ pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) 
         const next = NodeImpl.getNextSibling(c);
         // Use interface instead of impl (per Golden Rule #13)
         _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-        _ = NodeImpl.appendChild(body.?, c) catch break;
+        _ = interfaces.Node.call_appendChild(body.?, c) catch break;
         child = next;
     }
 }
@@ -3816,7 +3817,7 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
         const next = NodeImpl.getNextSibling(c);
         // Use interface instead of impl (per Golden Rule #13)
         _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-        _ = NodeImpl.appendChild(body.?, c) catch break;
+        _ = interfaces.Node.call_appendChild(body.?, c) catch break;
         child = next;
     }
 }
