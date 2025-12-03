@@ -222,6 +222,20 @@ pub const LayoutBackend = struct {
         /// Force synchronous layout computation
         forceLayout: *const fn (ptr: *anyopaque) void,
 
+        // === Viewport Scroll (for scroll restoration) ===
+
+        /// Get viewport scroll X position
+        /// Spec: https://drafts.csswg.org/cssom-view/#dom-window-scrollx
+        getViewportScrollX: *const fn (ptr: *anyopaque, document: *runtime.Instance) f64,
+
+        /// Get viewport scroll Y position
+        /// Spec: https://drafts.csswg.org/cssom-view/#dom-window-scrolly
+        getViewportScrollY: *const fn (ptr: *anyopaque, document: *runtime.Instance) f64,
+
+        /// Set viewport scroll position
+        /// Spec: https://drafts.csswg.org/cssom-view/#dom-window-scroll
+        setViewportScroll: *const fn (ptr: *anyopaque, document: *runtime.Instance, x: f64, y: f64) void,
+
         /// Free backend resources
         deinit: *const fn (ptr: *anyopaque) void,
     };
@@ -316,6 +330,18 @@ pub const LayoutBackend = struct {
         self.vtable.forceLayout(self.ptr);
     }
 
+    pub fn getViewportScrollX(self: LayoutBackend, document: *runtime.Instance) f64 {
+        return self.vtable.getViewportScrollX(self.ptr, document);
+    }
+
+    pub fn getViewportScrollY(self: LayoutBackend, document: *runtime.Instance) f64 {
+        return self.vtable.getViewportScrollY(self.ptr, document);
+    }
+
+    pub fn setViewportScroll(self: LayoutBackend, document: *runtime.Instance, x: f64, y: f64) void {
+        self.vtable.setViewportScroll(self.ptr, document, x, y);
+    }
+
     pub fn deinit(self: LayoutBackend) void {
         self.vtable.deinit(self.ptr);
     }
@@ -374,6 +400,9 @@ pub const StubLayoutBackend = struct {
         .getCaretRectAtPosition = getCaretRectAtPositionImpl,
         .markDirty = markDirtyImpl,
         .forceLayout = forceLayoutImpl,
+        .getViewportScrollX = getViewportScrollXImpl,
+        .getViewportScrollY = getViewportScrollYImpl,
+        .setViewportScroll = setViewportScrollImpl,
         .deinit = deinitImpl,
     };
 
@@ -472,6 +501,18 @@ pub const StubLayoutBackend = struct {
     }
 
     fn forceLayoutImpl(_: *anyopaque) void {
+        // No-op in stub
+    }
+
+    fn getViewportScrollXImpl(_: *anyopaque, _: *runtime.Instance) f64 {
+        return 0;
+    }
+
+    fn getViewportScrollYImpl(_: *anyopaque, _: *runtime.Instance) f64 {
+        return 0;
+    }
+
+    fn setViewportScrollImpl(_: *anyopaque, _: *runtime.Instance, _: f64, _: f64) void {
         // No-op in stub
     }
 

@@ -59,6 +59,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .runModule = v8RunModule,
     .disposeScript = v8DisposeScript,
     .disposeModule = v8DisposeModule,
+    .runModuleAsync = v8RunModuleAsync,
+    .hasTopLevelAwait = v8HasTopLevelAwait,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -884,6 +886,67 @@ fn v8DisposeModule(
 ) void {
     const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
     ffi.v8_Module_Dispose(v8_module);
+}
+
+/// Evaluate a V8 module asynchronously (for top-level await support)
+///
+/// Returns the evaluation Promise that resolves when the module finishes
+/// executing, including any top-level await expressions.
+///
+/// Per HTML Standard "run a module script":
+/// - Module.Evaluate() returns a Promise for TLA modules
+/// - The Promise resolves with undefined on success
+/// - The Promise rejects if there's an error during evaluation
+///
+/// Arguments:
+///   - engine_ctx: V8 Context pointer
+///   - module: V8 Module* (must be instantiated)
+///
+/// Returns:
+///   - V8 Promise* that resolves when evaluation completes
+///   - null if evaluation cannot start
+///   - EngineError on engine-level failure
+fn v8RunModuleAsync(
+    engine_ctx: *anyopaque,
+    module: *anyopaque,
+) EngineError!?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
+
+    // Instantiate the module if not already done
+    // (idempotent - V8 tracks module status)
+    if (!ffi.v8_Module_Instantiate(context, v8_module)) {
+        return EngineError.OperationFailed;
+    }
+
+    // Evaluate the module - returns a Promise for TLA modules
+    // For non-TLA modules, the Promise resolves immediately
+    const result = ffi.v8_Module_Evaluate(context, v8_module) orelse {
+        return EngineError.OperationFailed;
+    };
+
+    // V8's Module::Evaluate() always returns a Promise (as of V8 9.0+)
+    // For modules without TLA, it's an already-resolved Promise
+    // For modules with TLA, it resolves when async execution completes
+    return @ptrCast(result);
+}
+
+/// Check if a V8 module contains top-level await
+///
+/// Uses V8's IsGraphAsync() to check if the module or any of its
+/// dependencies contain top-level await, requiring async evaluation.
+///
+/// Arguments:
+///   - module: V8 Module* (must be instantiated)
+///
+/// Returns:
+///   - true if the module graph has TLA
+///   - false otherwise
+fn v8HasTopLevelAwait(
+    module: *anyopaque,
+) bool {
+    const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
+    return ffi.v8_Module_IsGraphAsync(v8_module);
 }
 
 // ============================================================================

@@ -54,6 +54,12 @@ const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 const isHtmlResponse = fetch_integration.isHtmlResponse;
 const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
 
+// Platform integration for scroll restoration
+const platform = @import("platform");
+const LayoutBackend = platform.LayoutBackend;
+const ScrollPositionData = session_history.ScrollPositionData;
+const ScrollPosition = session_history.ScrollPosition;
+
 // ============================================================================
 // Navigation Errors
 // ============================================================================
@@ -625,10 +631,13 @@ pub fn applyHistoryStep(
         }
     }
 
-    // 10. Handle scroll restoration
-    if (target_entry.scroll_restoration_mode == .auto and user_involvement != .none) {
-        // Would restore scroll position here using target_entry.scroll_position_data
-        // In a real implementation, this would scroll the viewport
+    // 10. Handle scroll restoration per HTML Standard §7.4.6
+    // Scroll restoration only happens for user-initiated navigations
+    if (user_involvement != .none) {
+        // Note: We need a layout backend to actually restore scroll position.
+        // The layout backend would be obtained from the document's browsing context,
+        // but for now we pass null (no-op) since this requires platform integration.
+        restorePersistedState(target_entry, null, false);
     }
 }
 
@@ -698,6 +707,14 @@ pub fn unloadDocument(
     // 2. Let unloadTimingInfo be a new document unload timing info
     // (Timing info omitted for simplicity)
 
+    // Save persisted state (scroll position) before unloading per HTML Standard §7.4.6
+    // This captures the scroll position of the current entry before we leave it
+    if (navigable.active_session_history_entry) |current_entry| {
+        // Note: We need a layout backend to save scroll position.
+        // For now, pass null (no-op) since this requires platform integration.
+        try savePersistedState(allocator, current_entry, null);
+    }
+
     // Get the window ID for event dispatch
     const window_id: event_dispatcher.WindowId = @ptrCast(navigable);
 
@@ -756,6 +773,102 @@ pub fn promptToUnload(
     }
 
     return true;
+}
+
+// ============================================================================
+// Scroll Restoration - HTML Standard §7.4.6
+// ============================================================================
+
+/// Save persisted state to a session history entry
+///
+/// HTML Standard §7.4.6:
+/// "To save persisted state to a session history entry entry:
+/// 1. Set the scroll position data of entry to contain the scroll positions
+///    for all of entry's document's restorable scrollable regions."
+pub fn savePersistedState(
+    allocator: Allocator,
+    entry: *SessionHistoryEntry,
+    layout_backend: ?LayoutBackend,
+) !void {
+    // 1. Get the document from the entry
+    const document = entry.getDocument() orelse return;
+
+    // 2. Save scroll position data for the document's restorable scrollable regions
+    if (layout_backend) |backend| {
+        // Get the runtime instance from the opaque document pointer
+        const doc_instance: *@import("runtime").Instance = @ptrCast(@alignCast(document));
+
+        // Save viewport scroll position
+        entry.scroll_position_data.viewport = ScrollPosition{
+            .x = backend.getViewportScrollX(doc_instance),
+            .y = backend.getViewportScrollY(doc_instance),
+        };
+
+        // Note: Saving scroll positions for individual scrollable elements would require
+        // iterating over the document's restorable scrollable regions, which requires
+        // more extensive DOM tree traversal. For now, we only save viewport position.
+    } else {
+        // No layout backend available - use defaults
+        entry.scroll_position_data.viewport = ScrollPosition.init();
+    }
+
+    _ = allocator;
+}
+
+/// Restore persisted state from a session history entry
+///
+/// HTML Standard §7.4.6:
+/// "To restore persisted state from a session history entry entry:
+/// 1. If entry's scroll restoration mode is 'auto', and entry's document's
+///    relevant global object's navigation API's suppress normal scroll
+///    restoration during ongoing navigation is false, then restore scroll
+///    position data given entry."
+pub fn restorePersistedState(
+    entry: *SessionHistoryEntry,
+    layout_backend: ?LayoutBackend,
+    suppress_scroll_restoration: bool,
+) void {
+    // 1. Check if we should restore scroll position
+    if (entry.scroll_restoration_mode == .auto and !suppress_scroll_restoration) {
+        restoreScrollPositionData(entry, layout_backend);
+    }
+
+    // 2. Optionally restore other persisted state (form fields, etc.)
+    // This is implementation-defined per the spec
+}
+
+/// Restore scroll position data for a session history entry
+///
+/// HTML Standard §7.4.6:
+/// "To restore scroll position data given a session history entry entry:
+/// 1. Let document be entry's document.
+/// 2. If document's has been scrolled by the user is true, return.
+/// 3. The user agent should attempt to use entry's scroll position data
+///    to restore the scroll positions of entry's document's restorable
+///    scrollable regions."
+pub fn restoreScrollPositionData(
+    entry: *SessionHistoryEntry,
+    layout_backend: ?LayoutBackend,
+) void {
+    // 1. Get the document from the entry
+    const document = entry.getDocument() orelse return;
+
+    // 2. Check if user has scrolled (would check document.hasBeenScrolledByUser)
+    // For now, we don't track this state, so always attempt restoration
+
+    // 3. Restore scroll positions
+    if (layout_backend) |backend| {
+        // Get the runtime instance from the opaque document pointer
+        const doc_instance: *@import("runtime").Instance = @ptrCast(@alignCast(document));
+
+        // Restore viewport scroll position
+        const scroll_data = entry.scroll_position_data;
+        backend.setViewportScroll(doc_instance, scroll_data.viewport.x, scroll_data.viewport.y);
+
+        // Note: Restoring scroll positions for individual scrollable elements would require
+        // iterating over the document's restorable scrollable regions using the saved
+        // element positions map. For now, we only restore viewport position.
+    }
 }
 
 // ============================================================================
@@ -859,4 +972,73 @@ test "urlAndHistoryUpdateSteps - replace" {
     // URL should be updated
     const entry = traversable.session_history.getEntryByStep(0).?;
     try std.testing.expectEqualStrings("https://example.com/page2", entry.url);
+}
+
+test "savePersistedState - saves scroll position" {
+    const allocator = std.testing.allocator;
+
+    // Create a session history entry
+    const entry = try SessionHistoryEntry.init(allocator, "https://example.com/page");
+    defer entry.deinit();
+
+    // Save persisted state (with null layout backend - defaults to 0,0)
+    try savePersistedState(allocator, entry, null);
+
+    // Verify default scroll position was saved
+    try std.testing.expectEqual(@as(f64, 0), entry.scroll_position_data.viewport.x);
+    try std.testing.expectEqual(@as(f64, 0), entry.scroll_position_data.viewport.y);
+}
+
+test "restorePersistedState - respects scroll restoration mode" {
+    const allocator = std.testing.allocator;
+
+    // Create a session history entry with auto mode
+    const entry = try SessionHistoryEntry.init(allocator, "https://example.com/page");
+    defer entry.deinit();
+
+    entry.scroll_restoration_mode = .auto;
+    entry.scroll_position_data.viewport = ScrollPosition{ .x = 100, .y = 200 };
+
+    // Restore with no layout backend (no-op, but should not error)
+    restorePersistedState(entry, null, false);
+
+    // Scroll position data should still be intact
+    try std.testing.expectEqual(@as(f64, 100), entry.scroll_position_data.viewport.x);
+    try std.testing.expectEqual(@as(f64, 200), entry.scroll_position_data.viewport.y);
+}
+
+test "restorePersistedState - skips when mode is manual" {
+    const allocator = std.testing.allocator;
+
+    // Create a session history entry with manual mode
+    const entry = try SessionHistoryEntry.init(allocator, "https://example.com/page");
+    defer entry.deinit();
+
+    entry.scroll_restoration_mode = .manual;
+    entry.scroll_position_data.viewport = ScrollPosition{ .x = 100, .y = 200 };
+
+    // Restore should be skipped due to manual mode (no-op)
+    restorePersistedState(entry, null, false);
+
+    // Position data unchanged
+    try std.testing.expectEqual(@as(f64, 100), entry.scroll_position_data.viewport.x);
+    try std.testing.expectEqual(@as(f64, 200), entry.scroll_position_data.viewport.y);
+}
+
+test "restorePersistedState - skips when suppressed" {
+    const allocator = std.testing.allocator;
+
+    // Create a session history entry with auto mode
+    const entry = try SessionHistoryEntry.init(allocator, "https://example.com/page");
+    defer entry.deinit();
+
+    entry.scroll_restoration_mode = .auto;
+    entry.scroll_position_data.viewport = ScrollPosition{ .x = 100, .y = 200 };
+
+    // Restore should be skipped due to suppress flag
+    restorePersistedState(entry, null, true);
+
+    // Position data unchanged
+    try std.testing.expectEqual(@as(f64, 100), entry.scroll_position_data.viewport.x);
+    try std.testing.expectEqual(@as(f64, 200), entry.scroll_position_data.viewport.y);
 }

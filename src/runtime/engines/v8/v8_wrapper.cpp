@@ -576,6 +576,28 @@ Global<Script>* v8_Script_Compile(Global<Context>* context, Global<String>* sour
     return new Global<Script>(isolate, script);
 }
 
+/// Compile a script with a source URL (for error messages and source maps)
+Global<Script>* v8_Script_CompileWithOrigin(Global<Context>* context, Global<String>* source, Global<String>* resource_name) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<String> local_source = source->Get(isolate);
+    Local<String> local_resource_name = resource_name->Get(isolate);
+    
+    // Create ScriptOrigin with the resource name (URL)
+    // ScriptOrigin takes Local<Value> as first arg, not Isolate
+    ScriptOrigin origin(local_resource_name);
+    
+    MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source, &origin);
+    if (maybe_script.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Script> script = maybe_script.ToLocalChecked();
+    return new Global<Script>(isolate, script);
+}
+
 Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -841,6 +863,25 @@ void v8_Module_Dispose(Global<Module>* module) {
         module->Reset();
         delete module;
     }
+}
+
+/// Check if a module or any of its dependencies has top-level await
+/// 
+/// Per TC39 TLA spec, this returns true if the module graph contains
+/// any async module (i.e., module with top-level await).
+/// Must be called after module instantiation.
+/// 
+/// @param module - Compiled and instantiated module handle
+/// @return true if the module or any dependency has TLA
+bool v8_Module_IsGraphAsync(Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Module> local_module = module->Get(isolate);
+    
+    // V8's IsGraphAsync() checks if this module or any of its dependencies
+    // contain top-level await, requiring async evaluation
+    return local_module->IsGraphAsync();
 }
 
 // ============================================================================

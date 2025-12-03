@@ -548,6 +548,16 @@ pub extern fn v8_Module_GetIdentityHash(module: *Module) c_int;
 /// @param module - The module to dispose
 pub extern fn v8_Module_Dispose(module: *Module) void;
 
+/// Check if a module or any of its dependencies has top-level await
+///
+/// Per TC39 TLA spec, this returns true if the module graph contains
+/// any async module (i.e., module with top-level await).
+/// Must be called after module instantiation.
+///
+/// @param module - Compiled and instantiated module handle
+/// @return true if the module or any dependency has TLA
+pub extern fn v8_Module_IsGraphAsync(module: *Module) bool;
+
 // ============================================================================
 // Dynamic Import (import() expression) Support
 // ============================================================================

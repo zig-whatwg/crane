@@ -572,6 +572,52 @@ pub const EngineInterface = struct {
         module: *anyopaque,
     ) void,
 
+    /// Evaluate a module asynchronously (for top-level await support)
+    ///
+    /// This function is specifically for modules that may contain top-level await.
+    /// It returns a Promise that resolves when the module evaluation completes
+    /// (including any awaited promises in top-level code).
+    ///
+    /// Per HTML Standard and TC39 proposal, top-level await:
+    /// - Makes the module evaluation asynchronous
+    /// - The evaluation Promise resolves when the module finishes executing
+    /// - Parent modules wait for async dependencies before their own evaluation
+    /// - Errors in TLA are propagated via Promise rejection
+    ///
+    /// Spec: https://tc39.es/proposal-top-level-await/
+    /// HTML Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - module: Compiled and instantiated module from compileModule()
+    ///
+    /// Returns:
+    ///   - Promise handle that resolves with the module namespace on success
+    ///   - null if evaluation cannot start (module not instantiated)
+    ///   - EngineError on engine-level failure
+    ///
+    /// Note: The returned Promise must be awaited for modules with TLA.
+    /// For modules without TLA, the Promise resolves immediately.
+    runModuleAsync: ?*const fn (
+        engine_ctx: *anyopaque,
+        module: *anyopaque,
+    ) EngineError!?*anyopaque,
+
+    /// Check if a module contains top-level await
+    ///
+    /// This can be used to determine if async evaluation is needed.
+    /// Must be called after module instantiation.
+    ///
+    /// Arguments:
+    ///   - module: Instantiated module from compileModule()
+    ///
+    /// Returns:
+    ///   - true if the module or any of its dependencies has TLA
+    ///   - false otherwise
+    hasTopLevelAwait: ?*const fn (
+        module: *anyopaque,
+    ) bool,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -612,6 +658,8 @@ pub const stub_engine: EngineInterface = .{
     .runModule = stubRunModule,
     .disposeScript = stubDisposeScript,
     .disposeModule = stubDisposeModule,
+    .runModuleAsync = stubRunModuleAsync,
+    .hasTopLevelAwait = stubHasTopLevelAwait,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -728,6 +776,21 @@ fn stubDisposeModule(
     _: *anyopaque,
 ) void {
     // Stub: Nothing to dispose
+}
+
+fn stubRunModuleAsync(
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!?*anyopaque {
+    // Stub: No JS engine available for async module evaluation
+    return EngineError.NoEngine;
+}
+
+fn stubHasTopLevelAwait(
+    _: *anyopaque,
+) bool {
+    // Stub: No module to check, return false
+    return false;
 }
 
 // ============================================================================

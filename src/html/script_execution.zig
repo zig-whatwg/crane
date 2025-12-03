@@ -842,6 +842,13 @@ fn runModuleScript(script_element: *runtime.Instance) !void {
 
 /// Run a module from source text using the engine-agnostic EngineInterface
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+///
+/// This function supports top-level await (TLA) per TC39 proposal:
+/// - For modules with TLA, uses runModuleAsync to get the evaluation Promise
+/// - The Promise resolves when all TLA expressions complete
+/// - Parent modules wait for async children before their own evaluation
+///
+/// See: https://tc39.es/proposal-top-level-await/
 fn runModuleFromSource(
     script_element: *runtime.Instance,
     source: []const u8,
@@ -895,9 +902,67 @@ fn runModuleFromSource(
         };
     }
 
-    // Run the module using the engine interface
-    // Note: Module resolution callbacks are engine-specific and will be set up
-    // by the engine implementation when needed
+    // Check if module has top-level await (TLA)
+    // Per TC39 spec, we need to use async evaluation for TLA modules
+    const has_tla = if (engine.hasTopLevelAwait) |hasTLA|
+        hasTLA(module)
+    else
+        false;
+
+    if (has_tla) {
+        // Module has TLA - use async evaluation
+        // Per HTML spec "run a module script" step 7:
+        // "If script's record is a Cyclic Module Record whose [[HasTLA]] is true,
+        //  then the result of evaluating script's record is a promise."
+        const runModuleAsync = engine.runModuleAsync orelse {
+            // Fallback to sync execution if async not available
+            std.debug.print("Engine does not support async module execution, falling back to sync\n", .{});
+            return runModuleSync(engine, engine_ctx, module);
+        };
+
+        // Start async evaluation - returns a Promise
+        const evaluation_promise = runModuleAsync(engine_ctx, module) catch |err| {
+            std.debug.print("Module async evaluation error: {}\n", .{err});
+            return;
+        } orelse {
+            std.debug.print("Failed to start async module evaluation: {s}\n", .{base_url});
+            return;
+        };
+
+        // Chain handlers to the evaluation Promise
+        // Per spec, we need to wait for TLA completion before the module is considered "evaluated"
+        if (engine.chainPromiseHandlers) |chainHandlers| {
+            // For now, we just log completion/rejection
+            // A full implementation would:
+            // 1. Update module status when Promise resolves
+            // 2. Fire load/error events appropriately
+            // 3. Unblock dependent modules waiting for this one
+            chainHandlers(
+                engine_ctx,
+                evaluation_promise,
+                tlaFulfillHandler,
+                @ptrCast(@constCast(base_url.ptr)), // Pass URL for logging
+                tlaRejectHandler,
+                @ptrCast(@constCast(base_url.ptr)),
+            ) catch |err| {
+                std.debug.print("Failed to chain TLA handlers: {}\n", .{err});
+            };
+        }
+
+        // Note: For parser-inserted modules, we may need to block further parsing
+        // until TLA completes. This is handled by the module graph system.
+    } else {
+        // No TLA - use synchronous evaluation
+        return runModuleSync(engine, engine_ctx, module);
+    }
+}
+
+/// Synchronous module execution (for modules without TLA)
+fn runModuleSync(
+    engine: *const runtime.EngineInterface,
+    engine_ctx: *anyopaque,
+    module: *anyopaque,
+) void {
     const runModule = engine.runModule orelse {
         std.debug.print("Engine does not support module execution\n", .{});
         return;
@@ -907,6 +972,29 @@ fn runModuleFromSource(
         std.debug.print("Module execution error: {}\n", .{err});
         return;
     };
+}
+
+/// Handler called when TLA module evaluation Promise fulfills
+fn tlaFulfillHandler(context: ?*anyopaque, value: ?*anyopaque) callconv(.c) void {
+    _ = value;
+    // context contains the module URL for logging
+    if (context) |ctx| {
+        const url_ptr: [*]const u8 = @ptrCast(ctx);
+        // We don't know the length, so just log that it completed
+        _ = url_ptr;
+        std.debug.print("TLA module evaluation completed successfully\n", .{});
+    }
+}
+
+/// Handler called when TLA module evaluation Promise rejects
+fn tlaRejectHandler(context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void {
+    _ = reason;
+    // context contains the module URL for logging
+    if (context) |ctx| {
+        const url_ptr: [*]const u8 = @ptrCast(ctx);
+        _ = url_ptr;
+        std.debug.print("TLA module evaluation failed\n", .{});
+    }
 }
 
 /// Module resolution callback for V8

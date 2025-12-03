@@ -42,6 +42,9 @@ const SessionHistoryList = session_history.SessionHistoryList;
 const ScrollRestorationMode = session_history.ScrollRestorationMode;
 const SerializedState = session_history.SerializedState;
 
+const navigable_mod = @import("navigable.zig");
+const Navigable = navigable_mod.Navigable;
+
 // ============================================================================
 // History Error
 // ============================================================================
@@ -86,6 +89,9 @@ pub const History = struct {
     /// Associated document (opaque pointer)
     document: ?*anyopaque,
 
+    /// Associated navigable (for accessing session history entries)
+    navigable: ?*Navigable,
+
     /// Callback for when state changes need to be persisted
     on_state_change: ?*const fn (history: *History, entry: *SessionHistoryEntry) void,
 
@@ -112,6 +118,7 @@ pub const History = struct {
             .length_value = 1,
             .index_value = 0,
             .document = null,
+            .navigable = null,
             .on_state_change = null,
             .on_navigate = null,
             .on_push_replace = null,
@@ -131,6 +138,11 @@ pub const History = struct {
     /// Set the associated document
     pub fn setDocument(self: *History, document: *anyopaque) void {
         self.document = document;
+    }
+
+    /// Set the associated navigable
+    pub fn setNavigable(self: *History, navigable: *Navigable) void {
+        self.navigable = navigable;
     }
 
     /// Set callbacks for integration with the browsing context
@@ -172,8 +184,19 @@ pub const History = struct {
     /// 2. Return this's relevant global object's navigable's active session history
     ///    entry's scroll restoration mode."
     pub fn scrollRestoration(self: *const History) HistoryError!ScrollRestorationMode {
-        // Default to auto - actual implementation would get from active entry
-        _ = self;
+        // 1. Check if document is fully active (simplified check)
+        if (self.navigable) |nav| {
+            if (!nav.isFullyActive()) {
+                return error.SecurityError;
+            }
+
+            // 2. Return the active entry's scroll restoration mode
+            if (nav.active_session_history_entry) |entry| {
+                return entry.scroll_restoration_mode;
+            }
+        }
+
+        // Default to auto if no navigable or entry
         return .auto;
     }
 
@@ -186,9 +209,17 @@ pub const History = struct {
     /// 2. Set this's relevant global object's navigable's active session history
     ///    entry's scroll restoration mode to the given value."
     pub fn setScrollRestoration(self: *History, mode: ScrollRestorationMode) HistoryError!void {
-        // Actual implementation would set on the active session history entry
-        _ = self;
-        _ = mode;
+        // 1. Check if document is fully active (simplified check)
+        if (self.navigable) |nav| {
+            if (!nav.isFullyActive()) {
+                return error.SecurityError;
+            }
+
+            // 2. Set the active entry's scroll restoration mode
+            if (nav.active_session_history_entry) |entry| {
+                entry.scroll_restoration_mode = mode;
+            }
+        }
     }
 
     /// Get the current state
@@ -491,4 +522,46 @@ test "HistoryHandlingBehavior - resolution" {
         HistoryHandlingBehavior.push,
         NavigationHistoryBehavior.push.resolve(true),
     );
+}
+
+test "History - scrollRestoration default is auto" {
+    const allocator = std.testing.allocator;
+
+    const history = try History.init(allocator);
+    defer history.deinit();
+
+    // Without a navigable, should return default (auto)
+    const mode = try history.scrollRestoration();
+    try std.testing.expectEqual(ScrollRestorationMode.auto, mode);
+}
+
+test "History - scrollRestoration with navigable" {
+    const allocator = std.testing.allocator;
+
+    // Create a traversable navigable (includes navigable + entry)
+    const navigable_module = @import("navigable.zig");
+    const traversable = try navigable_module.TraversableNavigable.init(allocator, "https://example.com/");
+    defer traversable.deinit();
+
+    const history = try History.init(allocator);
+    defer history.deinit();
+
+    // Connect history to navigable
+    history.setNavigable(traversable.navigable);
+
+    // Default mode should be auto
+    const mode = try history.scrollRestoration();
+    try std.testing.expectEqual(ScrollRestorationMode.auto, mode);
+
+    // Set to manual
+    try history.setScrollRestoration(.manual);
+
+    // Verify it changed
+    const new_mode = try history.scrollRestoration();
+    try std.testing.expectEqual(ScrollRestorationMode.manual, new_mode);
+
+    // Set back to auto
+    try history.setScrollRestoration(.auto);
+    const final_mode = try history.scrollRestoration();
+    try std.testing.expectEqual(ScrollRestorationMode.auto, final_mode);
 }
