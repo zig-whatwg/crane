@@ -1265,8 +1265,29 @@ const ExternalScriptFetchResult = struct {
 /// and simple relative paths
 fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u8) ![]const u8 {
     // If URL starts with a scheme, it's absolute
+    // Check for "://" (http, https, etc.) or single-colon schemes (javascript:, data:, blob:, etc.)
     if (std.mem.indexOf(u8, url, "://") != null) {
         return url; // Return the original slice, don't allocate
+    }
+
+    // Check for single-colon schemes like javascript:, data:, blob:, mailto:, tel:, etc.
+    // These are absolute URLs that should not be resolved relative to base
+    if (std.mem.indexOf(u8, url, ":")) |colon_pos| {
+        // Only treat as absolute if the scheme part contains only valid scheme characters (letters, digits, +, -, .)
+        // and the colon is not at position 0
+        if (colon_pos > 0) {
+            const potential_scheme = url[0..colon_pos];
+            var is_valid_scheme = true;
+            for (potential_scheme) |c| {
+                if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') {
+                    is_valid_scheme = false;
+                    break;
+                }
+            }
+            if (is_valid_scheme and std.ascii.isAlphabetic(potential_scheme[0])) {
+                return url; // It's an absolute URL with a single-colon scheme
+            }
+        }
     }
 
     // If URL starts with //, it's protocol-relative

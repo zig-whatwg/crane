@@ -154,8 +154,10 @@ pub const DoctypeToken = struct {
     }
 
     /// Get the name as a string slice.
+    /// Note: Uses pointer capture (|*n|) to avoid copying the List struct,
+    /// which would cause the returned slice to point to freed stack memory.
     pub fn getName(self: *const DoctypeToken) ?[]const u8 {
-        if (self.name) |n| return n.toSlice() else return null;
+        if (self.name) |*n| return n.toSlice() else return null;
     }
 
     /// Start the public identifier buffer.
@@ -188,8 +190,9 @@ pub const DoctypeToken = struct {
     }
 
     /// Get the public identifier as a string slice.
+    /// Note: Uses pointer capture (|*p|) to avoid copying the List struct.
     pub fn getPublicIdentifier(self: *const DoctypeToken) ?[]const u8 {
-        if (self.public_identifier) |p| return p.toSlice() else return null;
+        if (self.public_identifier) |*p| return p.toSlice() else return null;
     }
 
     /// Start the system identifier buffer.
@@ -222,8 +225,9 @@ pub const DoctypeToken = struct {
     }
 
     /// Get the system identifier as a string slice.
+    /// Note: Uses pointer capture (|*s|) to avoid copying the List struct.
     pub fn getSystemIdentifier(self: *const DoctypeToken) ?[]const u8 {
-        if (self.system_identifier) |s| return s.toSlice() else return null;
+        if (self.system_identifier) |*s| return s.toSlice() else return null;
     }
 };
 
