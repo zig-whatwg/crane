@@ -127,6 +127,16 @@ pub const firePageHideEvent = event_dispatcher.firePageHideEvent;
 pub const firePageShowEvent = event_dispatcher.firePageShowEvent;
 pub const fireUnloadEvent = event_dispatcher.fireUnloadEvent;
 
+// DOM Dispatch Integration (actual DOM event dispatch)
+pub const dom_dispatch = @import("dom_dispatch.zig");
+pub const createDOMDispatcher = dom_dispatch.createDOMDispatcher;
+pub const initializeGlobalDispatcher = dom_dispatch.initializeGlobalDispatcher;
+pub const firePopStateCallbackImpl = dom_dispatch.firePopStateCallback;
+pub const fireHashChangeCallbackImpl = dom_dispatch.fireHashChangeCallback;
+pub const fireBeforeUnloadCallbackImpl = dom_dispatch.fireBeforeUnloadCallback;
+pub const firePageTransitionCallbackImpl = dom_dispatch.firePageTransitionCallback;
+pub const fireUnloadCallbackImpl = dom_dispatch.fireUnloadCallback;
+
 // Security Policies (COOP, COEP, CORP)
 pub const CoopValue = security_policies.CoopValue;
 pub const CoepValue = security_policies.CoepValue;
