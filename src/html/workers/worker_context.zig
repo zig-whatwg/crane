@@ -260,6 +260,14 @@ pub const WorkerContext = struct {
     pub fn isClosing(self: *const WorkerContext) bool {
         return self.closing;
     }
+
+    /// Get a pointer to the event loop.
+    ///
+    /// Used to wire up timer APIs in WorkerGlobalScope.
+    /// The caller should pass this to WorkerGlobalScope.setEventLoop().
+    pub fn getEventLoop(self: *WorkerContext) *EventLoop {
+        return &self.event_loop;
+    }
 };
 
 /// Worker Context Error types

@@ -177,6 +177,20 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
+/// Set the event loop reference for this WorkerGlobalScope.
+///
+/// Must be called after initialization to wire up timer APIs (setTimeout, setInterval).
+/// The WorkerAgent or WorkerContext should call this after creating the global scope.
+///
+/// Spec: HTML Standard § 10.1.4 Worker Event Loops
+/// "Each worker has an event loop that is responsible for executing tasks"
+pub fn setEventLoop(instance: *runtime.Instance, loop: *EventLoop) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.setEventLoop(loop);
+    }
+}
+
 /// Getter for self
 ///
 /// Spec: HTML Standard § 10.1
