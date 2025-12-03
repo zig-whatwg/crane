@@ -17,10 +17,10 @@
 //! Main Thread                          Worker Thread
 //! ─────────────                        ─────────────
 //! worker.postMessage(data)
-//!   → structuredSerialize(data)
+//!   → structuredSerializeWithTransfer(data)
 //!   → queue to outside_port
 //!                                      inside_port receives
-//!                                        → structuredDeserialize(data)
+//!                                        → structuredDeserializeWithTransfer(data)
 //!                                        → create MessageEvent
 //!                                        → dispatch to WorkerGlobalScope
 //! ```
@@ -32,138 +32,26 @@ const Allocator = std.mem.Allocator;
 const types = @import("types.zig");
 const WorkerType = types.WorkerType;
 
-// Structured clone types - when used in full module context, these come from html_core
-// For standalone testing, we define minimal compatible types
-pub const SerializedValue = struct {
-    /// Serialization type
-    type: SerializationType,
+// Import the real structured clone implementation (direct import, avoiding circular dependency)
+const structured_clone = @import("../structured_clone/root.zig");
 
-    /// Primitive value (if applicable)
-    primitive: PrimitiveValue,
+// Re-export types from the real structured clone module
+pub const SerializedValue = structured_clone.SerializedValue;
+pub const JSValue = structured_clone.JSValue;
+pub const CloneError = structured_clone.CloneError;
+pub const Transferable = structured_clone.Transferable;
+pub const TransferableArrayBuffer = structured_clone.TransferableArrayBuffer;
+pub const TransferableMessagePort = structured_clone.TransferableMessagePort;
+pub const SerializeWithTransferResult = structured_clone.SerializeWithTransferResult;
+pub const DeserializeWithTransferResult = structured_clone.DeserializeWithTransferResult;
 
-    /// Object map for object types
-    object_map: ?*anyopaque,
-
-    /// Array items for array types
-    array_items: ?*anyopaque,
-
-    /// Entries for Map/Set
-    entries: ?*anyopaque,
-
-    /// Additional properties
-    properties: ?*anyopaque,
-
-    /// Backing data (for typed arrays, etc.)
-    backing_data: ?[]u8,
-
-    /// Allocator
-    allocator: Allocator,
-
-    /// Error name (for Error objects)
-    error_name: ?[]const u8,
-
-    /// Error message (for Error objects)
-    error_message: ?[]const u8,
-
-    pub const SerializationType = enum {
-        undefined,
-        null,
-        boolean,
-        number,
-        bigint,
-        string,
-        object,
-        array,
-        map,
-        set,
-        date,
-        regexp,
-        array_buffer,
-        typed_array,
-        error_obj,
-    };
-
-    pub const PrimitiveValue = union(enum) {
-        undefined: void,
-        null: void,
-        boolean: bool,
-        number: f64,
-        bigint: i128,
-        string: []const u8,
-    };
-
-    pub fn deinit(self: *SerializedValue) void {
-        if (self.backing_data) |data| {
-            self.allocator.free(data);
-        }
-        if (self.error_name) |name| {
-            self.allocator.free(name);
-        }
-        if (self.error_message) |msg| {
-            self.allocator.free(msg);
-        }
-    }
-};
-
-pub const JSValue = struct {
-    value_type: ValueType,
-    data: Data,
-
-    pub const ValueType = enum {
-        undefined,
-        null,
-        boolean,
-        number,
-        string,
-        object,
-        array,
-    };
-
-    pub const Data = union {
-        undefined: void,
-        null: void,
-        boolean: bool,
-        number: f64,
-        string: []const u8,
-        object: void,
-        array: void,
-    };
-};
-
-pub const CloneError = error{
-    DataCloneError,
-    TransferError,
-    OutOfMemory,
-};
-
-// Stub implementations for structured clone
-pub fn structuredSerialize(allocator: Allocator, value: *const JSValue) CloneError!*SerializedValue {
-    _ = value;
-    const serialized = allocator.create(SerializedValue) catch return CloneError.OutOfMemory;
-    serialized.* = .{
-        .type = .undefined,
-        .primitive = .{ .undefined = {} },
-        .object_map = null,
-        .array_items = null,
-        .entries = null,
-        .properties = null,
-        .backing_data = null,
-        .allocator = allocator,
-        .error_name = null,
-        .error_message = null,
-    };
-    return serialized;
-}
-
-pub fn structuredDeserialize(allocator: Allocator, serialized: *SerializedValue) CloneError!*JSValue {
-    _ = serialized;
-    const value = allocator.create(JSValue) catch return CloneError.OutOfMemory;
-    value.* = .{
-        .value_type = .undefined,
-        .data = .{ .undefined = {} },
-    };
-    return value;
-}
+// Re-export the real structured clone functions
+pub const structuredSerialize = structured_clone.structuredSerialize;
+pub const structuredDeserialize = structured_clone.structuredDeserialize;
+pub const structuredSerializeWithTransfer = structured_clone.structuredSerializeWithTransfer;
+pub const structuredDeserializeWithTransfer = structured_clone.structuredDeserializeWithTransfer;
+pub const structuredClone = structured_clone.structuredClone;
+pub const freeJSValue = structured_clone.freeJSValue;
 
 // ============================================================================
 // Worker Message Error
@@ -190,18 +78,18 @@ pub const WorkerMessageError = error{
 pub const MessageData = struct {
     allocator: Allocator,
 
-    /// Serialized message data
-    data: SerializedValue,
+    /// Serialized message data (pointer to heap-allocated SerializedValue)
+    data: *SerializedValue,
 
     /// Transferred objects (ports, streams, etc.)
     /// Each entry is an opaque pointer to a transferred object
     transferred: []?*anyopaque,
 
-    pub fn init(allocator: Allocator) !*MessageData {
+    pub fn init(allocator: Allocator, data: *SerializedValue) !*MessageData {
         const msg = try allocator.create(MessageData);
         msg.* = .{
             .allocator = allocator,
-            .data = undefined, // Will be set by caller
+            .data = data,
             .transferred = &[_]?*anyopaque{},
         };
         return msg;
@@ -209,6 +97,7 @@ pub const MessageData = struct {
 
     pub fn deinit(self: *MessageData) void {
         self.data.deinit();
+        self.allocator.destroy(self.data);
         if (self.transferred.len > 0) {
             self.allocator.free(self.transferred);
         }
@@ -343,7 +232,7 @@ pub const WorkerPort = struct {
         }
     }
 
-    /// Post a message to the entangled port
+    /// Post a message to the entangled port (low-level, takes pre-serialized data)
     ///
     /// Spec: HTML Standard §10.2.3 postMessage()
     pub fn postMessage(self: *WorkerPort, data: *SerializedValue, transfer: ?[]?*anyopaque) WorkerMessageError!void {
@@ -357,6 +246,65 @@ pub const WorkerPort = struct {
 
         // Create queued message
         const msg = QueuedMessage.init(self.allocator, data, transfer) catch {
+            return WorkerMessageError.OutOfMemory;
+        };
+        errdefer msg.deinit();
+
+        // Queue to target port
+        target.message_queue.append(target.allocator, msg) catch {
+            return WorkerMessageError.OutOfMemory;
+        };
+
+        // If target queue is enabled, dispatch immediately
+        if (target.queue_enabled) {
+            target.dispatchMessages();
+        }
+    }
+
+    /// Post a JavaScript value to the entangled port (high-level, handles serialization)
+    ///
+    /// This is the main entry point for Worker.postMessage() - it:
+    /// 1. Serializes the JSValue using structured clone
+    /// 2. Queues the message to the entangled port
+    /// 3. Dispatches immediately if the target queue is enabled
+    ///
+    /// Spec: HTML Standard §10.2.3 postMessage()
+    /// "Let serializeWithTransferResult be StructuredSerializeWithTransfer(message, transfer)."
+    pub fn postJSValue(self: *WorkerPort, value: *const JSValue, transfer_list: ?[]Transferable) WorkerMessageError!void {
+        if (self.closed) {
+            return WorkerMessageError.PortClosed;
+        }
+
+        const target = self.entangled orelse {
+            return WorkerMessageError.NotEntangled;
+        };
+
+        // Serialize with transfer (if transfer list provided)
+        const serialized = if (transfer_list) |transfers|
+            structuredSerializeWithTransfer(self.allocator, value, transfers) catch |err| {
+                return switch (err) {
+                    error.DataCloneError => WorkerMessageError.DataCloneError,
+                    error.TransferError => WorkerMessageError.DataCloneError,
+                    error.OutOfMemory => WorkerMessageError.OutOfMemory,
+                    else => WorkerMessageError.DataCloneError,
+                };
+            }
+        else
+            structuredSerialize(self.allocator, value) catch |err| {
+                return switch (err) {
+                    error.DataCloneError => WorkerMessageError.DataCloneError,
+                    error.OutOfMemory => WorkerMessageError.OutOfMemory,
+                    else => WorkerMessageError.DataCloneError,
+                };
+            };
+        errdefer {
+            var mutable_serialized = @constCast(serialized);
+            mutable_serialized.deinit();
+            self.allocator.destroy(mutable_serialized);
+        }
+
+        // Create queued message with the serialized data
+        const msg = QueuedMessage.init(self.allocator, serialized, null) catch {
             return WorkerMessageError.OutOfMemory;
         };
         errdefer msg.deinit();
@@ -523,18 +471,11 @@ test "WorkerPort - message after close fails" {
     // Close outside port
     pair.outside_port.close();
 
-    // Create dummy serialized value for testing
+    // Create dummy serialized value for testing (using proper structured clone format)
     var dummy_data = SerializedValue{
-        .type = .undefined,
-        .primitive = .{ .undefined = {} },
-        .object_map = null,
-        .array_items = null,
-        .entries = null,
-        .properties = null,
-        .backing_data = null,
+        .type = .primitive,
         .allocator = allocator,
-        .error_name = null,
-        .error_message = null,
+        .data = .{ .primitive = .{ .undefined = {} } },
     };
 
     // Try to post message - should fail

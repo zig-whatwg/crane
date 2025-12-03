@@ -353,21 +353,14 @@ pub const DedicatedWorker = struct {
         }
 
         // TODO: Full V8 integration - convert message to JSValue and serialize
-        // For now, create a minimal serialized undefined value
+        // For now, create a minimal serialized undefined value (using correct structured clone format)
         const serialized = try self.allocator.create(SerializedValue);
         errdefer self.allocator.destroy(serialized);
 
         serialized.* = .{
-            .type = .undefined,
-            .primitive = .{ .undefined = {} },
-            .object_map = null,
-            .array_items = null,
-            .entries = null,
-            .properties = null,
-            .backing_data = null,
+            .type = .primitive,
             .allocator = self.allocator,
-            .error_name = null,
-            .error_message = null,
+            .data = .{ .primitive = .{ .undefined = {} } },
         };
 
         // Post to the outside port → arrives at entangled inside port (worker side)
