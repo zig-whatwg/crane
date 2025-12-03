@@ -345,7 +345,12 @@ pub const EventLoop = struct {
             self.last_idle_period_start_time = self.platform.getCurrentTime();
 
             // Step 5.2-3: Compute deadline and start idle period
-            // (TODO: Implement requestIdleCallback)
+            // requestIdleCallback infrastructure is implemented in rendering.zig (IdleCallbackManager)
+            // and exposed via Window.requestIdleCallback/cancelIdleCallback.
+            // Full event loop integration requires the Window to pass its IdleCallbackManager
+            // to the event loop, which would then invoke callbacks during this idle period.
+            // For now, Window stores callbacks via IdleCallbackManager, and apps using
+            // the event loop directly can use IdleCallbackManager for idle scheduling.
         }
 
         // Step 6: If this is a worker event loop
