@@ -1308,11 +1308,31 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("dom", dom_mod);
     html_core_mod.addImport("platform", platform_mod);
 
-    // HTML module alias - currently same as html_core since all html code is interface-free.
-    // When script execution files are moved back from impls to html (they need interface access),
-    // this will become a separate module with additional dependencies (interfaces, runtime).
-    // For now, it's an alias to html_core to maintain API compatibility.
-    const html_mod = html_core_mod;
+    // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
+    // Uses full.zig as root which re-exports html_core plus adds interface access.
+    // Contains everything in html_core PLUS access to:
+    // - interfaces module (for script execution files)
+    // - impls module (for script execution coordination)
+    // - runtime module (for JS execution context)
+    //
+    // Dependency graph (no cycle):
+    //   html_core_mod ← infra, dom, platform (NO interfaces)
+    //        ↓
+    //   impls_mod ← html_core_mod, interfaces_mod, ...
+    //        ↓
+    //   html_mod ← interfaces_mod, impls_mod, runtime_mod (CAN use interfaces)
+    //
+    // html_mod does NOT feed back into impls_mod, so no cycle is created.
+    const html_mod = b.addModule("html", .{
+        .root_source_file = b.path("src/html/full.zig"),
+        .target = target,
+    });
+    // Import html_core as a module (not file import) to avoid file ownership conflicts
+    html_mod.addImport("html_core", html_core_mod);
+    // Interface access for script execution files (will be moved from impls to html)
+    html_mod.addImport("interfaces", interfaces_mod);
+    html_mod.addImport("impls", impls_mod);
+    html_mod.addImport("runtime", runtime_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
