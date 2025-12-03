@@ -54,6 +54,13 @@ const fetchNavigationResource = fetch_integration.fetchNavigationResource;
 const isHtmlResponse = fetch_integration.isHtmlResponse;
 const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
 
+// Security policies (COOP/COEP/CORP)
+const security_policies = @import("security_policies.zig");
+const SecurityPolicies = security_policies.SecurityPolicies;
+const checkNavigationSecurity = security_policies.checkNavigationSecurity;
+const CoopEnforcementResultFromSecurity = security_policies.CoopEnforcementResult;
+const SandboxFlags = security_policies.SandboxFlags;
+
 // Platform integration for scroll restoration
 const platform = @import("platform");
 const LayoutBackend = platform.LayoutBackend;

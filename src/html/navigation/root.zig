@@ -23,6 +23,7 @@ pub const algorithms = @import("algorithms.zig");
 pub const fetch_integration = @import("fetch_integration.zig");
 pub const document_creation = @import("document_creation.zig");
 pub const event_dispatcher = @import("event_dispatcher.zig");
+pub const security_policies = @import("security_policies.zig");
 
 // Re-export commonly used types
 
@@ -125,6 +126,22 @@ pub const fireBeforeUnloadEvent = event_dispatcher.fireBeforeUnloadEvent;
 pub const firePageHideEvent = event_dispatcher.firePageHideEvent;
 pub const firePageShowEvent = event_dispatcher.firePageShowEvent;
 pub const fireUnloadEvent = event_dispatcher.fireUnloadEvent;
+
+// Security Policies (COOP, COEP, CORP)
+pub const CoopValue = security_policies.CoopValue;
+pub const CoepValue = security_policies.CoepValue;
+pub const CorpValue = security_policies.CorpValue;
+pub const CrossOriginOpenerPolicy = security_policies.CrossOriginOpenerPolicy;
+pub const CrossOriginEmbedderPolicy = security_policies.CrossOriginEmbedderPolicy;
+pub const SecurityPolicies = security_policies.SecurityPolicies;
+pub const SecurityPolicyHeaderMap = security_policies.HeaderMap;
+pub const checkCoopEnforcement = security_policies.checkCoopEnforcement;
+pub const checkCoepEnforcement = security_policies.checkCoepEnforcement;
+pub const isCrossOriginIsolated = security_policies.isCrossOriginIsolated;
+pub const isNavigationAllowedBySandbox = security_policies.isNavigationAllowedBySandbox;
+pub const checkNavigationSecurity = security_policies.checkNavigationSecurity;
+pub const XFrameOptions = security_policies.XFrameOptions;
+pub const isFramingAllowed = security_policies.isFramingAllowed;
 
 // Tests
 test {
