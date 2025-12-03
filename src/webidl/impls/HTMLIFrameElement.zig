@@ -182,12 +182,12 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 
 /// Getter for src
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return runtime.USVString.initInterned("");
+    const internal = getInternal(instance) orelse return "";
 
     if (internal.src_attr) |src| {
-        return runtime.USVString.initInterned(src);
+        return src;
     }
-    return runtime.USVString.initInterned("");
+    return "";
 }
 
 /// Setter for src
@@ -200,15 +200,12 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
         internal.allocator.free(old);
     }
 
-    // Store new value
-    const str = value.toSlice();
-    internal.src_attr = try internal.allocator.dupe(u8, str);
+    // Store new value - USVString is []const u8
+    internal.src_attr = try internal.allocator.dupe(u8, value);
 
     // Trigger navigation via integration
-    internal.integration.setSrc(str) catch |err| {
-        _ = err;
-        // Navigation errors are typically silent for iframe src
-    };
+    // Navigation errors are typically silent for iframe src
+    internal.integration.setSrc(value) catch {};
 }
 
 /// Getter for srcdoc
@@ -231,15 +228,13 @@ pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerro
         internal.allocator.free(old);
     }
 
-    // Store new value
-    const str = value.toSlice();
+    // Store new value - DOMString.asSlice() gets the underlying []const u8
+    const str = value.asSlice();
     internal.srcdoc_attr = try internal.allocator.dupe(u8, str);
 
     // Trigger navigation via integration
-    internal.integration.setSrcdoc(str) catch |err| {
-        _ = err;
-        // Navigation errors are typically silent
-    };
+    // Navigation errors are typically silent
+    internal.integration.setSrcdoc(str) catch {};
 }
 
 /// Getter for name
@@ -263,13 +258,11 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     }
 
     // Store new value
-    const str = value.toSlice();
+    const str = value.asSlice();
     internal.name_attr = try internal.allocator.dupe(u8, str);
 
     // Update integration
-    internal.integration.setName(str) catch |err| {
-        _ = err;
-    };
+    internal.integration.setName(str) catch {};
 }
 
 // ============================================================================
@@ -305,7 +298,7 @@ pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     if (internal.allow_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.allow_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.allow_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for allowFullscreen
@@ -341,7 +334,7 @@ pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     if (internal.width_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.width_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.width_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for height
@@ -361,7 +354,7 @@ pub fn set_height(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     if (internal.height_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.height_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.height_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 // ============================================================================
@@ -385,7 +378,7 @@ pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString)
     if (internal.referrer_policy_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.referrer_policy_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.referrer_policy_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for loading
@@ -405,7 +398,7 @@ pub fn set_loading(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     if (internal.loading_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.loading_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.loading_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for browsingTopics
@@ -437,7 +430,7 @@ pub fn set_csp(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
     if (internal.csp_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.csp_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.csp_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for credentialless
@@ -485,7 +478,7 @@ pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     if (internal.align_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.align_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.align_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for scrolling
@@ -505,7 +498,7 @@ pub fn set_scrolling(instance: *runtime.Instance, value: runtime.DOMString) anye
     if (internal.scrolling_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.scrolling_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.scrolling_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for frameBorder
@@ -525,17 +518,17 @@ pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) an
     if (internal.frame_border_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.frame_border_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.frame_border_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for longDesc
 pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const internal = getInternal(instance) orelse return runtime.USVString.initInterned("");
+    const internal = getInternal(instance) orelse return "";
 
     if (internal.long_desc_attr) |ld| {
-        return runtime.USVString.initInterned(ld);
+        return ld;
     }
-    return runtime.USVString.initInterned("");
+    return "";
 }
 
 /// Setter for longDesc
@@ -545,7 +538,8 @@ pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyer
     if (internal.long_desc_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.long_desc_attr = try internal.allocator.dupe(u8, value.toSlice());
+    // USVString is []const u8
+    internal.long_desc_attr = try internal.allocator.dupe(u8, value);
 }
 
 /// Getter for marginHeight
@@ -565,7 +559,7 @@ pub fn set_marginHeight(instance: *runtime.Instance, value: runtime.DOMString) a
     if (internal.margin_height_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.margin_height_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.margin_height_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for marginWidth
@@ -585,7 +579,7 @@ pub fn set_marginWidth(instance: *runtime.Instance, value: runtime.DOMString) an
     if (internal.margin_width_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.margin_width_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.margin_width_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 // ============================================================================
@@ -609,7 +603,7 @@ pub fn set_privateToken(instance: *runtime.Instance, value: runtime.DOMString) a
     if (internal.private_token_attr) |old| {
         internal.allocator.free(old);
     }
-    internal.private_token_attr = try internal.allocator.dupe(u8, value.toSlice());
+    internal.private_token_attr = try internal.allocator.dupe(u8, value.asSlice());
 }
 
 /// Getter for permissionsPolicy

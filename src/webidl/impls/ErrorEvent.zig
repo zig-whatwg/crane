@@ -259,5 +259,6 @@ pub fn createErrorEvent(
 /// Called when creating events via the "fire an event" algorithm
 pub fn setIsTrusted(instance: *runtime.Instance, value: bool) void {
     const state = instance.getState(State);
-    state.own.isTrusted = value;
+    // isTrusted is in the base Event state, not ErrorEvent's own state
+    state.base.own.isTrusted = value;
 }

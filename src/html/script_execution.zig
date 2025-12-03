@@ -739,8 +739,26 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         std.debug.print("Script compilation error: {}\n", .{err});
         return;
     } orelse {
-        std.debug.print("Failed to compile script (syntax error)\n", .{});
-        // TODO: Fire error event with parse error details
+        // Compilation failed - fire error event at script element
+        // Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
+        // When compilation fails, fire error event with syntax error details
+        const node_document = getNodeDocument(script_element);
+        if (node_document) |doc| {
+            if (Document.getInternal(doc)) |internal| {
+                _ = event_utils.fireErrorEvent(
+                    internal.allocator,
+                    null,
+                    script_element,
+                    .{
+                        .message = "Script compilation failed: syntax error",
+                        .filename = source_url orelse "",
+                        .lineno = 1, // Line number from engine if available
+                        .colno = 0,
+                        .@"error" = null,
+                    },
+                ) catch false;
+            }
+        }
         return;
     };
 
@@ -761,8 +779,47 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         std.debug.print("Script execution error: {}\n", .{err});
         return;
     } orelse {
-        std.debug.print("Script execution threw an exception\n", .{});
-        // TODO: Handle script exceptions properly
+        // Script threw an uncaught exception
+        // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
+        //
+        // Per spec, we should:
+        // 1. Get the global object (Window)
+        // 2. Fire an error event at the global
+        // 3. Log to console if error wasn't handled
+        //
+        // For cross-origin scripts without CORS, error details should be muted per spec
+        // ("Script error." message, no line/col info)
+        const is_external = HTMLScriptElement.isFromExternalFile(script_element);
+        const has_crossorigin = hasAttribute(script_element, "crossorigin");
+        const is_muted = is_external and !has_crossorigin;
+
+        if (is_muted) {
+            // Cross-origin script without CORS - sanitize error per spec
+            std.debug.print("Script error.\n", .{});
+        } else {
+            // Same-origin or CORS-enabled script - show full error
+            std.debug.print("Uncaught error in script: {s}\n", .{source_url orelse "(inline)"});
+        }
+
+        // Fire error event at the script element itself (for load-time errors)
+        // Runtime errors would go to window.onerror, but that requires Window integration
+        const node_document = getNodeDocument(script_element);
+        if (node_document) |doc| {
+            if (Document.getInternal(doc)) |internal| {
+                _ = event_utils.fireErrorEvent(
+                    internal.allocator,
+                    null,
+                    script_element,
+                    .{
+                        .message = if (is_muted) "Script error." else "Uncaught exception",
+                        .filename = if (is_muted) "" else source_url orelse "",
+                        .lineno = 0, // Would be from engine exception info
+                        .colno = 0,
+                        .@"error" = null,
+                    },
+                ) catch false;
+            }
+        }
         return;
     };
 }
