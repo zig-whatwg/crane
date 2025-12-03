@@ -20,6 +20,7 @@ pub const location = @import("location.zig");
 pub const events = @import("events.zig");
 pub const navigable = @import("navigable.zig");
 pub const algorithms = @import("algorithms.zig");
+pub const fetch_integration = @import("fetch_integration.zig");
 
 // Re-export commonly used types
 
@@ -85,6 +86,16 @@ pub const NavigationParams = algorithms.NavigationParams;
 pub const NavigateOptions = algorithms.NavigateOptions;
 pub const SourceSnapshotParams = algorithms.SourceSnapshotParams;
 pub const TargetSnapshotParams = algorithms.TargetSnapshotParams;
+
+// Fetch Integration
+pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;
+pub const NavigationFetchResult = fetch_integration.NavigationFetchResult;
+pub const NavigationFetchOptions = fetch_integration.NavigationFetchOptions;
+pub const NavigationFetchError = fetch_integration.NavigationFetchError;
+pub const isHtmlResponse = fetch_integration.isHtmlResponse;
+pub const isXmlResponse = fetch_integration.isXmlResponse;
+pub const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
+pub const isCrossOrigin = fetch_integration.isCrossOrigin;
 
 // Tests
 test {

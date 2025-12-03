@@ -43,6 +43,13 @@ const HistoryHandlingBehavior = hist.HistoryHandlingBehavior;
 const NavigationHistoryBehavior = hist.NavigationHistoryBehavior;
 const canRewriteUrl = hist.canRewriteUrl;
 
+const fetch_integration = @import("fetch_integration.zig");
+const NavigationFetchResult = fetch_integration.NavigationFetchResult;
+const NavigationFetchOptions = fetch_integration.NavigationFetchOptions;
+const fetchNavigationResource = fetch_integration.fetchNavigationResource;
+const isHtmlResponse = fetch_integration.isHtmlResponse;
+const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
+
 // ============================================================================
 // Navigation Errors
 // ============================================================================
@@ -301,22 +308,75 @@ pub fn navigate(
     }
 
     // 7-onwards: Full navigation (fetch, create document, etc.)
-    // In a real implementation, this would:
-    // - Create a navigation request using source_snapshot
-    // - Check target_snapshot for sandboxing flags
-    // - Fetch the resource
-    // - Process the response
-    // - Create a new document
-    // - Update session history
     //
-    // Store snapshots in params for later use by the fetch/document creation
-    // (In a complete implementation, these would be fields on NavigationParams)
+    // HTML Standard §7.4.3 step 13+:
+    // "Let request be a new request whose URL is url, client is sourceDocument's
+    // relevant settings object, destination is 'document', credentials mode is 'include',
+    // use-URL-credentials flag is set, redirect mode is 'manual'..."
+
+    // Store snapshots in params for later use
     params.user_involvement = if (source_snapshot.has_transient_activation) .activation else params.user_involvement;
 
     // Check sandboxing from target snapshot
     if (target_snapshot.is_sandboxed and !target_snapshot.allows_scripts) {
         // Would apply sandboxing restrictions to the created document
     }
+
+    // Step 13: Fetch the navigation resource
+    const fetch_options = NavigationFetchOptions{
+        .method = if (options.document_resource != null) "POST" else "GET",
+        .origin = initiator_origin,
+        .destination = .document,
+        .mode = .navigate,
+        .include_credentials = true,
+        .redirect = .follow,
+    };
+
+    var fetch_result = fetchNavigationResource(allocator, url, fetch_options) catch |err| {
+        switch (err) {
+            fetch_integration.NavigationFetchError.NetworkError => return NavigationError.NetworkError,
+            fetch_integration.NavigationFetchError.SecurityError => return NavigationError.SecurityError,
+            fetch_integration.NavigationFetchError.InvalidUrl => return NavigationError.InvalidUrl,
+            fetch_integration.NavigationFetchError.AbortError => return NavigationError.Aborted,
+            fetch_integration.NavigationFetchError.OutOfMemory => return NavigationError.OutOfMemory,
+            fetch_integration.NavigationFetchError.FetchNotAvailable => {
+                // Fetch module not available - continue with params for offline mode
+                return params;
+            },
+        }
+    };
+    defer fetch_result.deinit();
+
+    // Check for network error
+    if (fetch_result.is_network_error) {
+        return NavigationError.NetworkError;
+    }
+
+    // Step 14: Check if navigation should proceed
+    if (!shouldNavigationProceed(fetch_result.status)) {
+        // Status indicates navigation should not create a new document
+        // (204 No Content, 205 Reset Content, or error status)
+        if (fetch_result.status >= 400) {
+            // Store error response for error page display
+            params.response = null; // Placeholder - would store actual response
+        }
+        return params;
+    }
+
+    // Step 15: Store final URL after redirects
+    if (!std.mem.eql(u8, fetch_result.final_url, url)) {
+        params.final_url = try allocator.dupe(u8, fetch_result.final_url);
+    }
+
+    // Step 16: Check Content-Type for HTML
+    // If not HTML, the document creation step will handle appropriately
+    // (image, PDF, etc. may be handled by plugins or displayed as download)
+
+    // The response and body are stored in params for document creation
+    // Document creation (task 6.2) will:
+    // 1. Parse the HTML body
+    // 2. Create a new Document
+    // 3. Replace the active document
 
     return params;
 }
