@@ -67,6 +67,11 @@ pub const FragmentParseOptions = struct {
     /// Whether scripting is enabled.
     /// Default: false (scripts don't execute in fragment parsing)
     scripting_enabled: bool = false,
+
+    /// The quirks mode to use for parsing.
+    /// Spec: "Let the Document's mode be the mode of context_element's node document."
+    /// Default: no_quirks (standards mode)
+    quirks_mode: QuirksMode = .no_quirks,
 };
 
 /// Parse an HTML fragment.
@@ -108,10 +113,10 @@ pub fn parseFragment(
     // The document will be created by the TreeBuilder
 
     // Step 2-3: Set quirks mode based on context's document
-    // For now, we default to no-quirks mode
-    // TODO: Get quirks mode from context_element's owner document
-    const quirks_mode = QuirksMode.no_quirks;
-    _ = quirks_mode;
+    // Spec: "Let the Document's mode be the mode of context_element's node document."
+    // The quirks mode is passed via options from the caller who has access to the
+    // context element's owner document. This allows proper quirks mode handling
+    // for innerHTML, outerHTML, insertAdjacentHTML, etc.
 
     // Step 4: Set allow declarative shadow roots
     _ = options.allow_declarative_shadow_roots;
@@ -160,6 +165,10 @@ pub fn parseFragment(
 
     // Set scripting flag
     tree_builder.scripting_enabled = options.scripting_enabled;
+
+    // Step 2-3: Set quirks mode on the document
+    // Spec: "Let the Document's mode be the mode of context_element's node document."
+    tree_builder.quirks_mode = options.quirks_mode;
 
     // Step 7: Create root <html> element
     const root = try TreeNode.initElement(allocator, "html", .html);
@@ -468,6 +477,62 @@ test "fragment parser - nested elements" {
     // Outer div should have one child (p)
     try std.testing.expect(outer_div.first_child != null);
     try std.testing.expectEqualStrings("p", outer_div.first_child.?.local_name.?);
+}
+
+test "fragment parser - quirks mode propagation" {
+    const allocator = std.testing.allocator;
+
+    // Create context element (div)
+    const context = try TreeNode.initElement(allocator, "div", .html);
+    defer context.deinit();
+
+    // Test no-quirks mode (default)
+    {
+        var result = try parseFragment(allocator, context, "<p>Test</p>", .{});
+        defer result.deinit();
+
+        try std.testing.expectEqual(QuirksMode.no_quirks, result.tree_builder.quirks_mode);
+    }
+
+    // Test quirks mode
+    {
+        var result = try parseFragment(allocator, context, "<p>Test</p>", .{
+            .quirks_mode = .quirks,
+        });
+        defer result.deinit();
+
+        try std.testing.expectEqual(QuirksMode.quirks, result.tree_builder.quirks_mode);
+    }
+
+    // Test limited-quirks mode
+    {
+        var result = try parseFragment(allocator, context, "<p>Test</p>", .{
+            .quirks_mode = .limited_quirks,
+        });
+        defer result.deinit();
+
+        try std.testing.expectEqual(QuirksMode.limited_quirks, result.tree_builder.quirks_mode);
+    }
+}
+
+test "fragment parser - quirks mode from table context" {
+    const allocator = std.testing.allocator;
+
+    // Create context element (table) - table parsing can be affected by quirks mode
+    const context = try TreeNode.initElement(allocator, "table", .html);
+    defer context.deinit();
+
+    // Parse in quirks mode
+    var result = try parseFragment(allocator, context, "<tr><td>Cell</td></tr>", .{
+        .quirks_mode = .quirks,
+    });
+    defer result.deinit();
+
+    // Verify quirks mode was set
+    try std.testing.expectEqual(QuirksMode.quirks, result.tree_builder.quirks_mode);
+
+    // Should have parsed table content
+    try std.testing.expect(result.children.len > 0);
 }
 
 test "resetInsertionModeForContext - various elements" {
