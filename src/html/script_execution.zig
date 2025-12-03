@@ -2068,6 +2068,258 @@ test "isJavaScriptMimeType" {
     try std.testing.expect(!isJavaScriptMimeType(""));
 }
 
+// =============================================================================
+// Import Map Tests
+// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-maps
+// =============================================================================
+
+test "parseImportMap - basic bare specifier mapping" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "imports": {
+        \\    "lodash": "https://cdn.example.com/lodash/v4.17.21/lodash.min.js",
+        \\    "react": "https://cdn.example.com/react/v18.2.0/react.min.js"
+        \\  }
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 2), result.imports.count());
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/lodash/v4.17.21/lodash.min.js",
+        result.imports.get("lodash").?,
+    );
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/react/v18.2.0/react.min.js",
+        result.imports.get("react").?,
+    );
+}
+
+test "parseImportMap - relative URL resolution" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "imports": {
+        \\    "utils": "lib/utils.js",
+        \\    "helpers": "/scripts/helpers.js"
+        \\  }
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/app/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 2), result.imports.count());
+
+    // Relative URL should be resolved against base URL
+    try std.testing.expectEqualStrings(
+        "https://example.com/app/lib/utils.js",
+        result.imports.get("utils").?,
+    );
+
+    // Root-relative URL
+    try std.testing.expectEqualStrings(
+        "https://example.com/scripts/helpers.js",
+        result.imports.get("helpers").?,
+    );
+}
+
+test "parseImportMap - scoped imports" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "imports": {
+        \\    "lodash": "https://cdn.example.com/lodash/v4.js"
+        \\  },
+        \\  "scopes": {
+        \\    "/app/": {
+        \\      "lodash": "https://cdn.example.com/lodash/v5.js"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 1), result.imports.count());
+    try std.testing.expectEqual(@as(usize, 1), result.scopes.count());
+
+    // Top-level import
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/lodash/v4.js",
+        result.imports.get("lodash").?,
+    );
+
+    // Scoped import - different version for /app/ paths
+    const app_scope = result.scopes.get("https://example.com/app/");
+    try std.testing.expect(app_scope != null);
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/lodash/v5.js",
+        app_scope.?.get("lodash").?,
+    );
+}
+
+test "parseImportMap - empty imports object" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "imports": {}
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 0), result.imports.count());
+}
+
+test "parseImportMap - invalid JSON" {
+    const allocator = std.testing.allocator;
+
+    const json = "{ invalid json }";
+
+    const result = parseImportMap(allocator, json, "https://example.com/");
+    defer {
+        if (result.allocator) |alloc| {
+            if (result.error_message) |msg| {
+                alloc.free(msg);
+            }
+        }
+    }
+
+    try std.testing.expect(result.error_message != null);
+    try std.testing.expectEqualStrings("Invalid JSON in import map", result.error_message.?);
+}
+
+test "parseImportMap - non-object root" {
+    const allocator = std.testing.allocator;
+
+    const json = "[\"array\", \"not\", \"object\"]";
+
+    const result = parseImportMap(allocator, json, "https://example.com/");
+    defer {
+        if (result.allocator) |alloc| {
+            if (result.error_message) |msg| {
+                alloc.free(msg);
+            }
+        }
+    }
+
+    try std.testing.expect(result.error_message != null);
+    try std.testing.expectEqualStrings("Import map must be a JSON object", result.error_message.?);
+}
+
+test "parseImportMap - package subpath imports" {
+    const allocator = std.testing.allocator;
+
+    // Common pattern: package name with trailing slash for subpath imports
+    const json =
+        \\{
+        \\  "imports": {
+        \\    "lodash/": "https://cdn.example.com/lodash/",
+        \\    "lodash": "https://cdn.example.com/lodash/index.js"
+        \\  }
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 2), result.imports.count());
+
+    // Base import
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/lodash/index.js",
+        result.imports.get("lodash").?,
+    );
+
+    // Subpath prefix (trailing slash allows lodash/debounce -> cdn.example.com/lodash/debounce)
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/lodash/",
+        result.imports.get("lodash/").?,
+    );
+}
+
+test "parseImportMap - multiple scopes" {
+    const allocator = std.testing.allocator;
+
+    const json =
+        \\{
+        \\  "imports": {
+        \\    "react": "https://cdn.example.com/react/v17.js"
+        \\  },
+        \\  "scopes": {
+        \\    "/new-app/": {
+        \\      "react": "https://cdn.example.com/react/v18.js"
+        \\    },
+        \\    "/legacy/": {
+        \\      "react": "https://cdn.example.com/react/v16.js"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    var result = parseImportMap(allocator, json, "https://example.com/");
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result.error_message == null);
+    try std.testing.expectEqual(@as(usize, 2), result.scopes.count());
+
+    // New app gets React 18
+    const new_app_scope = result.scopes.get("https://example.com/new-app/");
+    try std.testing.expect(new_app_scope != null);
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/react/v18.js",
+        new_app_scope.?.get("react").?,
+    );
+
+    // Legacy app gets React 16
+    const legacy_scope = result.scopes.get("https://example.com/legacy/");
+    try std.testing.expect(legacy_scope != null);
+    try std.testing.expectEqualStrings(
+        "https://cdn.example.com/react/v16.js",
+        legacy_scope.?.get("react").?,
+    );
+}
+
+test "isUrlLikeSpecifier - URL-like specifiers" {
+    // Absolute URLs with schemes
+    try std.testing.expect(isUrlLikeSpecifier("https://example.com/module.js"));
+    try std.testing.expect(isUrlLikeSpecifier("http://example.com/module.js"));
+
+    // Root-relative
+    try std.testing.expect(isUrlLikeSpecifier("/scripts/module.js"));
+
+    // Relative
+    try std.testing.expect(isUrlLikeSpecifier("./module.js"));
+    try std.testing.expect(isUrlLikeSpecifier("../module.js"));
+    try std.testing.expect(isUrlLikeSpecifier("./path/to/module.js"));
+
+    // Bare specifiers (should NOT be URL-like)
+    try std.testing.expect(!isUrlLikeSpecifier("lodash"));
+    try std.testing.expect(!isUrlLikeSpecifier("react"));
+    try std.testing.expect(!isUrlLikeSpecifier("@scoped/package"));
+    try std.testing.expect(!isUrlLikeSpecifier("module-name"));
+}
+
+// =============================================================================
+// Speculation Rules Tests
+// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html
+// =============================================================================
+
 test "parseSpeculationRules - basic prefetch rule" {
     const allocator = std.testing.allocator;
 
