@@ -1597,8 +1597,10 @@ pub fn build(b: *std.Build) void {
         // Add dedicated test files from tests/html/
         const html_imports = [_]std.Build.Module.Import{
             .{ .name = "html", .module = html_mod },
+            .{ .name = "html_core", .module = html_core_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "platform", .module = platform_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});

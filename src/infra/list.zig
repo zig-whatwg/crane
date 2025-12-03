@@ -204,6 +204,25 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             return null;
         }
 
+        /// Get a pointer to an item at the specified index.
+        /// Returns null if index is out of bounds.
+        /// Useful when you need to modify an item in place.
+        pub fn getPtr(self: *Self, index: usize) ?*T {
+            if (index >= self.len) {
+                return null;
+            }
+
+            if (self.heap_storage) |*heap| {
+                return &heap.items[index];
+            }
+
+            if (comptime inline_capacity > 0) {
+                return &self.inline_storage[index];
+            }
+
+            return null;
+        }
+
         /// Compare two items for equality.
         /// For slices (like []const u8), compares contents instead of pointers.
         /// For other types, uses std.meta.eql.

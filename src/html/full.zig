@@ -116,6 +116,22 @@ pub const StubFrameTimingBackend = core.StubFrameTimingBackend;
 pub const MockFrameTimingBackend = core.MockFrameTimingBackend;
 pub const DOMHighResTimeStamp = core.DOMHighResTimeStamp;
 
+// Web Workers (§10)
+pub const workers = core.workers;
+
+// Re-export commonly used worker types
+pub const WorkerType = core.WorkerType;
+pub const WorkerOptions = core.WorkerOptions;
+pub const WorkerState = core.WorkerState;
+pub const WorkerError = core.WorkerError;
+pub const WorkerAgent = core.WorkerAgent;
+pub const DedicatedWorker = core.DedicatedWorker;
+pub const SharedWorker = core.SharedWorker;
+pub const SharedWorkerConnection = core.SharedWorkerConnection;
+pub const SharedWorkerManager = core.SharedWorkerManager;
+pub const WorkerLocation = core.WorkerLocation;
+pub const WorkerNavigator = core.WorkerNavigator;
+
 // ============================================================================
 // Interface Access (NOT available in html_core)
 // ============================================================================

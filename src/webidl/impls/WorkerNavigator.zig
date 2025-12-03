@@ -1,4 +1,10 @@
 //! Implementation for WorkerNavigator interface
+//!
+//! Spec: HTML Standard § 10.1.3 The WorkerNavigator interface
+//! https://html.spec.whatwg.org/#workernavigator
+//!
+//! The WorkerNavigator interface provides navigator-like information
+//! within worker contexts, with a subset of the Window's Navigator API.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -10,17 +16,31 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WorkerNavigator = interfaces.WorkerNavigator;
 
+// Import workers infrastructure
+const html_core = @import("html_core");
+const workers = html_core.workers;
+const InternalWorkerNavigator = workers.WorkerNavigator;
+
 pub const State = WorkerNavigator.State;
 
 pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for WorkerNavigator implementation
+///
+/// Contains a reference to the backing WorkerNavigator from src/html/workers/.
+pub const InternalState = struct {
+    /// Backing implementation from workers module
+    internal_navigator: *InternalWorkerNavigator,
+
+    /// Allocator used for this state
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *InternalState) void {
+        self.internal_navigator.deinit();
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +50,45 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    return instance;
+}
+
+/// Initialize with internal navigator
+pub fn initWithInternal(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+
+    // Create internal WorkerNavigator
+    const internal_navigator = try InternalWorkerNavigator.init(allocator);
+    errdefer internal_navigator.deinit();
+
+    // Create internal state
+    const internal_state = try allocator.create(InternalState);
+    internal_state.* = .{
+        .internal_navigator = internal_navigator,
+        .allocator = allocator,
+    };
+
+    // Store internal state
+    var state = instance.getState(State);
+    state.own._internal = internal_state;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+        internal.allocator.destroy(internal);
+    }
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 /// Getter for mediaCapabilities
@@ -131,87 +182,155 @@ pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instanc
 }
 
 /// Getter for appCodeName
+///
+/// Spec: HTML Standard § 8.8.1.1 NavigatorID
+/// "Must return the string 'Mozilla'."
 pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getAppCodeName());
+    }
+    return runtime.DOMString.initInterned("Mozilla");
 }
 
 /// Getter for appName
+///
+/// Spec: HTML Standard § 8.8.1.1 NavigatorID
+/// "Must return the string 'Netscape'."
 pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getAppName());
+    }
+    return runtime.DOMString.initInterned("Netscape");
 }
 
 /// Getter for appVersion
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getAppVersion());
+    }
+    return runtime.DOMString.initInterned("5.0");
 }
 
 /// Getter for platform
+///
+/// Spec: HTML Standard § 8.8.1.1 NavigatorID
+/// "Must return a string representing the platform on which the browser is executing."
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getPlatform());
+    }
     return error.NotImplemented;
 }
 
 /// Getter for product
+///
+/// Spec: HTML Standard § 8.8.1.1 NavigatorID
+/// "Must return the string 'Gecko'."
 pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getProduct());
+    }
+    return runtime.DOMString.initInterned("Gecko");
 }
 
 /// Getter for productSub
 pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getProductSub());
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for userAgent
+///
+/// Spec: HTML Standard § 8.8.1.1 NavigatorID
+/// "Must return the default User-Agent value."
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getUserAgent());
+    }
     return error.NotImplemented;
 }
 
 /// Getter for vendor
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getVendor());
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for vendorSub
 pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getVendorSub());
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for oscpu
 pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    // Not commonly exposed
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for language
+///
+/// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
+/// "Must return a valid BCP 47 language tag representing the user's preferred language."
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return runtime.DOMString.initInterned(internal.internal_navigator.getLanguage());
+    }
+    return runtime.DOMString.initInterned("en-US");
 }
 
 /// Getter for languages
+///
+/// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
+/// "Must return a frozen array of valid BCP 47 language tags."
 pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // Return as opaque pointer to slice
+        return @ptrCast(internal.internal_navigator.getLanguages().ptr);
+    }
     return error.NotImplemented;
 }
 
 /// Getter for onLine
+///
+/// Spec: HTML Standard § 8.8.1.3 NavigatorOnLine
+/// "Must return false if the user agent is definitely offline, true otherwise."
 pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return internal.internal_navigator.isOnLine();
+    }
+    return true;
 }
 
 /// Getter for hardwareConcurrency
+///
+/// Spec: HTML Standard § 8.8.1.4 NavigatorConcurrentHardware
+/// "Must return a number representing the approximate number of logical processors."
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return @intCast(internal.internal_navigator.getHardwareConcurrency());
+    }
+    return 1;
 }
 
 /// Getter for userAgentData
@@ -238,4 +357,3 @@ pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque
     _ = instance;
     return error.NotImplemented;
 }
-

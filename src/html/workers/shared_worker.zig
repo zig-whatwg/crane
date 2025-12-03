@@ -153,13 +153,13 @@ pub const SharedWorker = struct {
 
         // Get the connection we just added
         const index = self.connections.len - 1;
-        return &self.connections.items[index];
+        return self.connections.getPtr(index).?;
     }
 
     /// Disconnect a client.
     pub fn disconnect(self: *SharedWorker, index: usize) void {
-        if (index < self.connections.len) {
-            self.connections.items[index].active = false;
+        if (self.connections.getPtr(index)) |conn| {
+            conn.active = false;
             self.agent.removeOwner();
         }
     }
