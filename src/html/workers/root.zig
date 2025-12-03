@@ -119,6 +119,15 @@ pub const WorkerLocation = worker_location.WorkerLocation;
 pub const worker_navigator = @import("worker_navigator.zig");
 pub const WorkerNavigator = worker_navigator.WorkerNavigator;
 
+// Script Fetching
+pub const script_fetch = @import("script_fetch.zig");
+pub const fetchWorkerScript = script_fetch.fetchWorkerScript;
+pub const fetchImportScripts = script_fetch.fetchImportScripts;
+pub const FetchedScript = script_fetch.FetchedScript;
+pub const WorkerScriptError = script_fetch.WorkerScriptError;
+pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
+pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
+
 test {
     std.testing.refAllDecls(@This());
 }
