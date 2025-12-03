@@ -109,10 +109,9 @@ pub const documentWriteln = parser.documentWriteln;
 pub const documentClose = parser.documentClose;
 
 // Custom Elements
-pub const custom_elements = @import("custom_elements.zig");
-
-// Custom Element Upgrade Algorithm
-pub const upgrade = @import("upgrade.zig");
+// Note: custom_elements.zig and upgrade.zig require webidl access for
+// CustomElementDefinition fields. They are available via the html module
+// (full.zig) instead of html_core.
 
 // Script Execution (§4.12.1), Script Runner (§4.12.1.1), and Event Utilities
 // MOVED to src/webidl/impls/ to break circular dependency:

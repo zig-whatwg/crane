@@ -24,15 +24,24 @@
 //! - tryToUpgrade(): Looks up definition and enqueues upgrade reaction
 //! - upgradeElement(): Performs the actual upgrade (this module)
 //! - upgradeSubtree(): Upgrades all matching elements in a subtree
+//!
+//! ## Architecture Note
+//!
+//! This module is ONLY available from the full html module (full.zig), NOT from html_core.
+//! This is because it requires access to webidl types (CustomElementRegistry, CustomElementDefinition).
+//! The html_core module (root.zig) exports custom_elements.zig which provides the reaction
+//! queue infrastructure using opaque pointers.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const custom_elements = @import("custom_elements.zig");
-const CustomElementDefinition = custom_elements.CustomElementDefinition;
 
 // Import WebIDL types for custom element registry
-const webidl_impls = @import("webidl").impls;
-const CustomElementRegistryImpl = webidl_impls.CustomElementRegistry;
+// This is safe because upgrade.zig is only imported from full.zig (html module),
+// NOT from root.zig (html_core module).
+const impls = @import("impls");
+const CustomElementRegistryImpl = impls.CustomElementRegistry;
+const CustomElementDefinition = CustomElementRegistryImpl.CustomElementDefinition;
 
 /// Custom element state enumeration
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-state
@@ -78,7 +87,7 @@ pub fn tryToUpgrade(
 ) !void {
     // Step 1: Look up a custom element definition
     const definition = CustomElementRegistryImpl.lookUpCustomElementDefinition(
-        @ptrCast(registry),
+        @ptrCast(@alignCast(registry)),
         namespace,
         local_name,
         is_value,
@@ -203,7 +212,7 @@ pub fn shouldCreateAsCustomElement(
 ) bool {
     // Look up definition
     const definition = CustomElementRegistryImpl.lookUpCustomElementDefinition(
-        @ptrCast(registry),
+        @ptrCast(@alignCast(registry)),
         namespace,
         local_name,
         is_value,

@@ -27,10 +27,12 @@ const Allocator = std.mem.Allocator;
 const dom = @import("dom");
 const Node = dom.node.Node;
 
-// Import the WebIDL-based CustomElementRegistry implementation
-const webidl_impls = @import("webidl").impls;
-const CustomElementRegistryImpl = webidl_impls.CustomElementRegistry;
-const CustomElementDefinition = CustomElementRegistryImpl.CustomElementDefinition;
+// Import WebIDL types for custom element registry
+// This module is only available from the full html module (full.zig), NOT from html_core.
+// This is because it requires access to CustomElementDefinition fields.
+const impls = @import("impls");
+const CustomElementRegistryImpl = impls.CustomElementRegistry;
+pub const CustomElementDefinition = CustomElementRegistryImpl.CustomElementDefinition;
 
 /// Reaction type enumeration
 pub const ReactionType = enum {
@@ -85,22 +87,22 @@ pub const Reaction = struct {
 /// Element reaction queue
 /// Each custom element has its own queue of pending reactions
 pub const ReactionQueue = struct {
-    reactions: std.ArrayList(Reaction),
+    reactions: std.ArrayListUnmanaged(Reaction),
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) ReactionQueue {
         return .{
-            .reactions = std.ArrayList(Reaction).init(allocator),
+            .reactions = std.ArrayListUnmanaged(Reaction){},
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *ReactionQueue) void {
-        self.reactions.deinit();
+        self.reactions.deinit(self.allocator);
     }
 
     pub fn enqueue(self: *ReactionQueue, reaction: Reaction) !void {
-        try self.reactions.append(reaction);
+        try self.reactions.append(self.allocator, reaction);
     }
 
     pub fn dequeue(self: *ReactionQueue) ?Reaction {
@@ -119,39 +121,43 @@ pub const ReactionQueue = struct {
 };
 
 /// Element queue for the custom element reactions stack
-pub const ElementQueue = std.ArrayList(*anyopaque); // *Element opaque pointers
+/// Uses ArrayListUnmanaged since these queues are stored inside another collection
+pub const ElementQueue = std.ArrayListUnmanaged(*anyopaque); // *Element opaque pointers
+
+/// Stack of element queues - also uses ArrayListUnmanaged
+pub const ElementQueueStack = std.ArrayListUnmanaged(ElementQueue);
 
 /// Custom element reactions stack
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#custom-element-reactions-stack
 pub const ReactionsStack = struct {
-    stack: std.ArrayList(ElementQueue),
+    stack: ElementQueueStack,
     backup_queue: ElementQueue,
     processing_backup: bool = false,
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) ReactionsStack {
         return .{
-            .stack = std.ArrayList(ElementQueue).init(allocator),
-            .backup_queue = ElementQueue.init(allocator),
+            .stack = ElementQueueStack{},
+            .backup_queue = ElementQueue{},
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *ReactionsStack) void {
         for (self.stack.items) |*queue| {
-            queue.deinit();
+            queue.deinit(self.allocator);
         }
-        self.stack.deinit();
-        self.backup_queue.deinit();
+        self.stack.deinit(self.allocator);
+        self.backup_queue.deinit(self.allocator);
     }
 
     pub fn push(self: *ReactionsStack) !void {
-        const queue = ElementQueue.init(self.allocator);
-        try self.stack.append(queue);
+        const queue = ElementQueue{};
+        try self.stack.append(self.allocator, queue);
     }
 
     pub fn pop(self: *ReactionsStack) ?ElementQueue {
-        return self.stack.popOrNull();
+        return self.stack.pop();
     }
 
     pub fn currentElementQueue(self: *ReactionsStack) ?*ElementQueue {
@@ -208,6 +214,27 @@ pub fn removeReactionQueue(allocator: Allocator, element: *anyopaque) void {
     }
 }
 
+/// Clean up all thread-local custom element state
+/// This is primarily for testing - in production the thread-local state
+/// lives for the duration of the agent.
+pub fn deinitThreadLocalState() void {
+    // Clean up element reaction queues
+    if (element_reaction_queues) |*queues| {
+        var iter = queues.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit();
+        }
+        queues.deinit();
+        element_reaction_queues = null;
+    }
+
+    // Clean up reactions stack
+    if (reactions_stack) |*stack| {
+        stack.deinit();
+        reactions_stack = null;
+    }
+}
+
 /// Enqueue an element on the appropriate element queue
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#enqueue-an-element-on-the-appropriate-element-queue
 pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *anyopaque) !void {
@@ -215,7 +242,7 @@ pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *anyopaqu
 
     // Step 2: If stack is empty, use backup queue
     if (stack.isEmpty()) {
-        try stack.backup_queue.append(element);
+        try stack.backup_queue.append(allocator, element);
 
         // Step 2.2: If already processing backup, return
         if (stack.processing_backup) return;
@@ -231,7 +258,7 @@ pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *anyopaqu
     } else {
         // Step 3: Add to current element queue
         if (stack.currentElementQueue()) |queue| {
-            try queue.append(element);
+            try queue.append(allocator, element);
         }
     }
 }
@@ -596,6 +623,7 @@ test "ReactionsStack basic operations" {
 
 test "element reaction queue management" {
     const allocator = std.testing.allocator;
+    defer deinitThreadLocalState(); // Clean up thread-local state
 
     // Create a mock element pointer
     var mock_element: u8 = 0;
@@ -616,8 +644,7 @@ test "element reaction queue management" {
     const new_queue = try getOrCreateReactionQueue(allocator, element_ptr);
     try std.testing.expect(new_queue.isEmpty());
 
-    // Final cleanup
-    removeReactionQueue(allocator, element_ptr);
+    // The test cleanup happens via deinitThreadLocalState() in defer above
 }
 
 test "callback reaction with arguments" {

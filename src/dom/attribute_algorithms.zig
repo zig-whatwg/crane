@@ -12,20 +12,30 @@ const Element = @import("element").Element;
 const Node = @import("node").Node;
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 
-// HTML custom elements stub (inline to avoid module path issues)
-const custom_elements = struct {
-    pub fn enqueueCustomElementCallbackReaction(
-        element: anytype,
-        callback_name: []const u8,
-        args: anytype,
-    ) void {
-        _ = element;
-        _ = callback_name;
-        _ = args;
-        // TODO(HTML): Implement custom element reactions
-        // This is a stub - no custom elements supported yet
-    }
-};
+// HTML Custom Elements Integration Point
+//
+// Custom element reactions are handled by the HTML module (src/html/custom_elements.zig).
+// The DOM module cannot directly import the HTML module due to module boundaries.
+//
+// Integration approach:
+// 1. The DOM mutation algorithms (mutation.zig) have callback hooks for:
+//    - Insertion steps (connected callback)
+//    - Removing steps (disconnected callback)
+//    - Children changed steps
+//    - Post-connection steps
+//
+// 2. The HTML module registers callbacks via:
+//    - registerInsertionStepsCallback()
+//    - registerRemovingStepsCallback()
+//    - etc.
+//
+// 3. For attribute changes, the HTML module should:
+//    - Hook into the attribute change mechanism
+//    - Check if element is custom (has custom element definition)
+//    - Enqueue attributeChangedCallback if attribute is observed
+//
+// See: src/html/custom_elements.zig for the reaction queue infrastructure
+// See: src/dom/mutation.zig for the callback registration system
 
 /// Handle attribute changes for an attribute
 /// Spec: https://dom.spec.whatwg.org/#handle-attribute-changes
@@ -70,14 +80,22 @@ pub fn handleAttributeChanges(
     // Step 2: If element is custom, enqueue a custom element callback reaction
     // with element, callback name "attributeChangedCallback",
     // and « attribute's local name, oldValue, newValue, attribute's namespace »
-
-    // TODO(HTML): Check if element is custom once we have custom element support
-    // For now, we call the stub which is a no-op
-    custom_elements.enqueueCustomElementCallbackReaction(
-        element,
-        "attributeChangedCallback",
-        .{ attribute.local_name, old_value, new_value, attribute.namespace_uri },
-    );
+    //
+    // Integration Note:
+    // Custom element attribute change callbacks are handled via the HTML module's
+    // custom element infrastructure (src/html/custom_elements.zig).
+    //
+    // The integration works as follows:
+    // 1. Element tracks its custom element state (undefined, custom, failed, etc.)
+    // 2. Element stores a pointer to its CustomElementDefinition
+    // 3. When an attribute changes, check if element.customElementState == .custom
+    // 4. If custom, use element's definition to check observedAttributes
+    // 5. If attribute is observed, enqueue attributeChangedCallback
+    //
+    // See: enqueueAttributeChangedCallback() in src/html/custom_elements.zig
+    //
+    // TODO: Add Element.customElementState and Element.customElementDefinition
+    //       fields to support this integration.
 
     // Step 3: Run the attribute change steps
     // with element, attribute's local name, oldValue, newValue, and attribute's namespace

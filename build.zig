@@ -1333,6 +1333,8 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("interfaces", interfaces_mod);
     html_mod.addImport("impls", impls_mod);
     html_mod.addImport("runtime", runtime_mod);
+    // WebIDL types needed by custom_elements.zig and upgrade.zig
+    html_mod.addImport("webidl", webidl_mod);
     // Dependencies for script_execution.zig, script_runner.zig, event_utils.zig
     html_mod.addImport("infra", infra_mod);
     html_mod.addImport("fetch", fetch_mod);

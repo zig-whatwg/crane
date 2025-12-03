@@ -78,8 +78,11 @@ pub const documentWrite = core.documentWrite;
 pub const documentWriteln = core.documentWriteln;
 pub const documentClose = core.documentClose;
 
-// Custom Elements
-pub const custom_elements = core.custom_elements;
+// Custom Elements (requires webidl access for CustomElementDefinition)
+// Note: These modules are NOT available from html_core because they access
+// CustomElementDefinition fields which require typed webidl imports.
+pub const custom_elements = @import("custom_elements.zig");
+pub const upgrade = @import("upgrade.zig");
 
 // Structured Clone (§2.7)
 pub const structured_clone = core.structured_clone;
