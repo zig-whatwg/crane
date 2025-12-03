@@ -128,6 +128,16 @@ pub const WorkerScriptError = script_fetch.WorkerScriptError;
 pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
 
+// Message Channel (postMessage/MessageEvent)
+pub const message_channel = @import("message_channel.zig");
+pub const WorkerPortPair = message_channel.WorkerPortPair;
+pub const WorkerPort = message_channel.WorkerPort;
+pub const QueuedMessage = message_channel.QueuedMessage;
+pub const WorkerMessageError = message_channel.WorkerMessageError;
+pub const createWorkerPorts = message_channel.createWorkerPorts;
+pub const serializeForPostMessage = message_channel.serializeForPostMessage;
+pub const deserializeFromPostMessage = message_channel.deserializeFromPostMessage;
+
 test {
     std.testing.refAllDecls(@This());
 }
