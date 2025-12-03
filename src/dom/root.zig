@@ -33,6 +33,7 @@ pub const DOMTokenList = interfaces.DOMTokenList;
 pub const Attr = interfaces.Attr;
 pub const DOMImplementation = interfaces.DOMImplementation;
 pub const Document = interfaces.Document;
+pub const HTMLCollection = interfaces.HTMLCollection;
 pub const AbstractRange = interfaces.AbstractRange;
 pub const StaticRange = interfaces.StaticRange;
 pub const Range = interfaces.Range;
