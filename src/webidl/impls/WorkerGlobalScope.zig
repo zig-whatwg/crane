@@ -738,7 +738,37 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 }
 
 /// Operation: fetch
+///
+/// Spec: Fetch Standard § 5.4 Fetch method
+/// https://fetch.spec.whatwg.org/#fetch-method
+///
+/// "The fetch(input, init) method, when invoked, must run these steps:
+/// 1. Let p be a new promise.
+/// 2. Let requestObject be the result of invoking the initial value of
+///    Request as constructor with input and init as arguments.
+/// 3. Let request be requestObject's request.
+/// 4. Fetch request with processResponseConsumeBody set to...
+/// 5. Return p."
+///
+/// TODO: Full implementation requires:
+/// 1. Create JavaScript Promise via V8
+/// 2. Convert RequestInfo to InternalRequest
+/// 3. Call fetch.algorithms.fetch() asynchronously
+/// 4. Resolve/reject Promise with Response
+/// 5. Handle AbortSignal if provided in init
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!*const anyopaque {
+    // TODO: Implement fetch with Promise support
+    // The fetch module (src/fetch/) provides:
+    // - fetch.algorithms.fetch() - synchronous fetch
+    // - fetch.algorithms.fetchSimple() - simplified fetch
+    // - fetch.internal.InternalRequest - request type
+    // - fetch.internal.InternalResponse - response type
+    //
+    // Integration requires:
+    // 1. V8 Promise creation and resolution
+    // 2. Async task scheduling via event loop
+    // 3. RequestInfo -> InternalRequest conversion
+    // 4. InternalResponse -> Response WebIDL wrapper
     _ = instance;
     _ = input;
     _ = init_data;
