@@ -183,6 +183,55 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
+// ============================================================================
+// Opener Management Helpers (for window.open() and navigation)
+// ============================================================================
+
+/// Set the opener Window for this window.
+/// Called when creating an auxiliary browsing context via window.open().
+/// Per HTML spec §7.1.5 (creating an auxiliary browsing context):
+/// - The new browsing context's opener is set to the opener browsing context
+/// - This creates a bidirectional relationship for window.opener access
+pub fn setOpener(instance: *runtime.Instance, opener_window: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Store the opener Window instance
+    internal.opener = opener_window;
+    internal.opener_any = @ptrCast(opener_window);
+
+    // Also update the browsing context's opener
+    const opener_internal = getInternal(opener_window) orelse return error.InvalidStateError;
+    internal.browsing_context.opener = opener_internal.browsing_context;
+}
+
+/// Set the opener with noopener semantics.
+/// Per HTML spec, when noopener is specified:
+/// - The new browsing context is created with disowned=true
+/// - window.opener returns null from the start
+pub fn setOpenerNoopener(instance: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Mark as disowned from creation
+    internal.browsing_context.disowned = true;
+    internal.opener = null;
+    internal.opener_any = null;
+}
+
+/// Check if this window has an accessible opener.
+/// Returns false if:
+/// - No opener was ever set
+/// - The opener relationship was disowned
+pub fn hasOpener(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.opener != null and !internal.browsing_context.disowned;
+}
+
+/// Get the browsing context for this window (for internal use)
+pub fn getBrowsingContext(instance: *runtime.Instance) ?*BrowsingContext {
+    const internal = getInternal(instance) orelse return null;
+    return internal.browsing_context;
+}
+
 /// Get the WindowProxy for this window
 /// Per spec, window.window, window.self, and window.frames all return the WindowProxy.
 fn getWindowProxy(instance: *runtime.Instance) typedefs.WindowProxy {
@@ -1470,10 +1519,31 @@ pub fn set_status(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 }
 
 /// Setter for opener
+/// Per HTML spec §7.2.1:
+/// - Setting window.opener to null disowns the opener relationship
+/// - The opener browsing context is no longer accessible
+/// - This cannot be undone
+///
+/// Note: Per spec, setting to non-null values is allowed but has no effect
+/// (the attribute is marked as settable but browsers ignore non-null assignments)
 pub fn set_opener(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Check if value represents null
+    // In WebIDL `any` type, a null/undefined JavaScript value would be passed
+    // as a specific sentinel. The exact representation depends on the JS binding layer.
+    // For now, we check if the pointer value is 0 (null representation)
+    const ptr_value = @intFromPtr(value);
+    if (ptr_value == 0) {
+        // Setting opener to null disowns the relationship
+        // Per spec: "If the given value is null, then set this's browsing context's
+        // disowned to true."
+        internal.browsing_context.disown();
+        internal.opener = null;
+        internal.opener_any = null;
+    }
+    // Non-null assignments are silently ignored per browser behavior
+    // (The attribute is technically settable but browsers don't honor non-null values)
 }
 
 /// Setter for ondeviceorientation

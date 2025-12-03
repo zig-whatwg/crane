@@ -697,6 +697,45 @@ test "BrowsingContext - close" {
     try std.testing.expect(ctx.disowned);
 }
 
+test "BrowsingContext - disown severs opener relationship" {
+    const allocator = std.testing.allocator;
+
+    // Create opener and popup
+    const opener = try BrowsingContext.initTopLevel(allocator);
+    defer opener.deinit();
+
+    const popup = try BrowsingContext.initAuxiliary(allocator, opener, true);
+    defer popup.deinit();
+
+    // Verify opener is set
+    try std.testing.expect(popup.opener == opener);
+    try std.testing.expect(!popup.disowned);
+
+    // Disown - this simulates window.opener = null
+    popup.disown();
+
+    // Verify relationship is severed
+    try std.testing.expect(popup.opener == null);
+    try std.testing.expect(popup.disowned);
+}
+
+test "BrowsingContext - auxiliary with noopener starts disowned" {
+    const allocator = std.testing.allocator;
+
+    // Create opener
+    const opener = try BrowsingContext.initTopLevel(allocator);
+    defer opener.deinit();
+
+    // Simulate noopener: create auxiliary but immediately disown
+    const popup = try BrowsingContext.initAuxiliary(allocator, opener, true);
+    defer popup.deinit();
+    popup.disown(); // noopener semantics
+
+    // The popup should have no accessible opener
+    try std.testing.expect(popup.opener == null);
+    try std.testing.expect(popup.disowned);
+}
+
 test "BrowsingContextGroup - basic operations" {
     const allocator = std.testing.allocator;
 
