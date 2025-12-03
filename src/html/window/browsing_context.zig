@@ -27,6 +27,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 
+// Import security policy types for COOP/COEP
+const security_policies = @import("../navigation/security_policies.zig");
+const CoopValue = security_policies.CoopValue;
+const CoepValue = security_policies.CoepValue;
+
 /// Unique ID generator for browsing contexts
 var next_context_id: u64 = 1;
 var next_group_id: u64 = 1;
@@ -304,6 +309,16 @@ pub const BrowsingContext = struct {
     /// Whether this context is sandboxed (has sandbox attribute)
     is_sandboxed: bool,
 
+    // === Cross-Origin Isolation (HTML Standard §7.2.5) ===
+
+    /// Cross-Origin-Opener-Policy value
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#cross-origin-opener-policy-value
+    coop_value: CoopValue = .unsafe_none,
+
+    /// Cross-Origin-Embedder-Policy value
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#coep
+    coep_value: CoepValue = .unsafe_none,
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -321,6 +336,8 @@ pub const BrowsingContext = struct {
             .initial_url = null,
             .sandbox_flags = null,
             .is_sandboxed = false,
+            .coop_value = .unsafe_none,
+            .coep_value = .unsafe_none,
         };
         return ctx;
     }
@@ -517,6 +534,43 @@ pub const BrowsingContext = struct {
             return flags.allow_top_navigation;
         }
         return true;
+    }
+
+    // === Cross-Origin Isolation (HTML Standard §7.2.5) ===
+
+    /// Check if this browsing context is cross-origin isolated
+    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#cross-origin-isolated
+    ///
+    /// A browsing context is cross-origin isolated if:
+    /// 1. COOP is same-origin
+    /// 2. COEP is require-corp or credentialless
+    ///
+    /// This enables access to APIs like SharedArrayBuffer that are only
+    /// available in cross-origin isolated contexts.
+    pub fn isCrossOriginIsolated(self: *const BrowsingContext) bool {
+        return security_policies.isCrossOriginIsolated(self.coop_value, self.coep_value);
+    }
+
+    /// Set COOP value for this browsing context
+    /// Called after navigation when processing response headers.
+    pub fn setCoop(self: *BrowsingContext, value: CoopValue) void {
+        self.coop_value = value;
+    }
+
+    /// Set COEP value for this browsing context
+    /// Called after navigation when processing response headers.
+    pub fn setCoep(self: *BrowsingContext, value: CoepValue) void {
+        self.coep_value = value;
+    }
+
+    /// Get COOP value
+    pub fn getCoop(self: *const BrowsingContext) CoopValue {
+        return self.coop_value;
+    }
+
+    /// Get COEP value
+    pub fn getCoep(self: *const BrowsingContext) CoepValue {
+        return self.coep_value;
     }
 
     /// Check if this context allows modals (alert/confirm/prompt)

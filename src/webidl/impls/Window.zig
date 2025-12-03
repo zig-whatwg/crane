@@ -1465,9 +1465,17 @@ pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for crossOriginIsolated
+/// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-crossoriginisolated
+///
+/// Returns true if this window's browsing context is cross-origin isolated.
+/// A browsing context is cross-origin isolated when:
+/// 1. COOP (Cross-Origin-Opener-Policy) is "same-origin"
+/// 2. COEP (Cross-Origin-Embedder-Policy) is "require-corp" or "credentialless"
+///
+/// This enables access to powerful APIs like SharedArrayBuffer.
 pub fn get_crossOriginIsolated(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return false;
+    return internal.browsing_context.isCrossOriginIsolated();
 }
 
 /// Getter for indexedDB
