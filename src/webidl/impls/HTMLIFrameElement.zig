@@ -9,6 +9,7 @@
 //! - contentDocument: Returns the nested document (same-origin only)
 //! - src/srcdoc: URL or inline HTML content
 //! - name: Browsing context name for targeting
+//! - sandbox: DOMTokenList controlling iframe restrictions
 //!
 //! ## Architecture
 //!
@@ -23,11 +24,14 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLIFrameElement = interfaces.HTMLIFrameElement;
+const DOMTokenList = interfaces.DOMTokenList;
+const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
+const SandboxFlags = html_core.SandboxFlags;
 
 pub const State = HTMLIFrameElement.State;
 
@@ -45,6 +49,9 @@ pub const InternalState = struct {
 
     /// Allocator for this instance
     allocator: std.mem.Allocator,
+
+    /// DOMTokenList for the sandbox attribute (lazily created)
+    sandbox_token_list: ?*runtime.Instance = null,
 
     /// Cached attribute values for reflection
     src_attr: ?[]const u8 = null,
@@ -271,10 +278,49 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
 /// Getter for sandbox
 /// Returns a DOMTokenList for the sandbox attribute.
+/// Per spec, this is a [SameObject] attribute - returns the same DOMTokenList each time.
 pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // TODO: Implement DOMTokenList for sandbox
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidState;
+
+    // Return cached token list if already created
+    if (internal.sandbox_token_list) |token_list| {
+        return token_list;
+    }
+
+    // Create a new DOMTokenList for the sandbox attribute
+    const token_list = DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    errdefer DOMTokenList.deinit(token_list);
+
+    // Set supported tokens for supports() method
+    DOMTokenListImpl.setSupportedTokens(token_list, &SandboxFlags.SUPPORTED_TOKENS);
+
+    // Associate with this element and attribute name
+    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("sandbox"));
+
+    // Cache for future calls (SameObject semantic)
+    internal.sandbox_token_list = token_list;
+
+    return token_list;
+}
+
+/// Internal: Update sandbox flags when DOMTokenList changes
+/// Called when the sandbox attribute value changes.
+pub fn updateSandboxFlags(instance: *runtime.Instance) anyerror!void {
+    const internal = getInternal(instance) orelse return;
+
+    if (internal.sandbox_token_list) |token_list| {
+        // Get the serialized value from DOMTokenList
+        const value = try DOMTokenListImpl.get_value(token_list);
+        const value_slice = value.asSlice();
+
+        if (value_slice.len > 0) {
+            // Apply sandbox with the token values
+            try internal.integration.setSandbox(value_slice);
+        } else {
+            // Empty sandbox attribute = all restrictions
+            try internal.integration.setSandbox("");
+        }
+    }
 }
 
 // ============================================================================

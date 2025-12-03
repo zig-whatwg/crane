@@ -31,6 +31,229 @@ const infra = @import("infra");
 var next_context_id: u64 = 1;
 var next_group_id: u64 = 1;
 
+// ============================================================================
+// Sandbox Flags - HTML Standard §4.8.5
+// ============================================================================
+
+/// Sandbox flags for iframe browsing contexts.
+/// Per HTML Standard §4.8.5.4 (https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox)
+///
+/// When an iframe has the sandbox attribute:
+/// - If empty, all restrictions apply
+/// - If contains allow-* tokens, those specific restrictions are lifted
+///
+/// This is a packed struct for efficient storage and operations.
+pub const SandboxFlags = packed struct {
+    /// allow-scripts: Allow script execution
+    allow_scripts: bool = false,
+
+    /// allow-same-origin: Keep the sandboxed document's origin
+    /// (otherwise it gets a unique opaque origin)
+    allow_same_origin: bool = false,
+
+    /// allow-forms: Allow form submission
+    allow_forms: bool = false,
+
+    /// allow-popups: Allow window.open() and similar
+    allow_popups: bool = false,
+
+    /// allow-top-navigation: Allow navigating the top-level browsing context
+    allow_top_navigation: bool = false,
+
+    /// allow-top-navigation-by-user-activation: Allow top navigation with user gesture
+    allow_top_navigation_by_user_activation: bool = false,
+
+    /// allow-pointer-lock: Allow Pointer Lock API
+    allow_pointer_lock: bool = false,
+
+    /// allow-modals: Allow alert(), confirm(), prompt()
+    allow_modals: bool = false,
+
+    /// allow-orientation-lock: Allow screen orientation lock
+    allow_orientation_lock: bool = false,
+
+    /// allow-presentation: Allow Presentation API
+    allow_presentation: bool = false,
+
+    /// allow-downloads: Allow downloads (non-standard but widely supported)
+    allow_downloads: bool = false,
+
+    /// allow-storage-access-by-user-activation: Allow storage access with user gesture
+    allow_storage_access_by_user_activation: bool = false,
+
+    /// allow-popups-to-escape-sandbox: Popups don't inherit sandbox
+    allow_popups_to_escape_sandbox: bool = false,
+
+    /// allow-top-navigation-to-custom-protocols: Allow navigation to custom protocols
+    allow_top_navigation_to_custom_protocols: bool = false,
+
+    // Padding to align to byte boundary (14 flags, need 2 more for 16 bits)
+    _padding: u2 = 0,
+
+    /// Default flags (all restrictions enabled = all false)
+    pub const RESTRICTIVE = SandboxFlags{};
+
+    /// No restrictions (all permissions allowed)
+    pub const PERMISSIVE = SandboxFlags{
+        .allow_scripts = true,
+        .allow_same_origin = true,
+        .allow_forms = true,
+        .allow_popups = true,
+        .allow_top_navigation = true,
+        .allow_top_navigation_by_user_activation = true,
+        .allow_pointer_lock = true,
+        .allow_modals = true,
+        .allow_orientation_lock = true,
+        .allow_presentation = true,
+        .allow_downloads = true,
+        .allow_storage_access_by_user_activation = true,
+        .allow_popups_to_escape_sandbox = true,
+        .allow_top_navigation_to_custom_protocols = true,
+    };
+
+    /// Parse a space-separated sandbox attribute value into SandboxFlags.
+    /// Per spec, empty sandbox attribute means all restrictions apply.
+    /// Each "allow-*" token lifts that specific restriction.
+    pub fn parse(value: []const u8) SandboxFlags {
+        var flags = SandboxFlags.RESTRICTIVE;
+
+        // Tokenize by whitespace
+        var iter = std.mem.tokenizeAny(u8, value, " \t\n\r\x0c");
+        while (iter.next()) |token| {
+            const lower = std.ascii.lowerString(undefined, token);
+            if (std.mem.eql(u8, lower, "allow-scripts")) {
+                flags.allow_scripts = true;
+            } else if (std.mem.eql(u8, lower, "allow-same-origin")) {
+                flags.allow_same_origin = true;
+            } else if (std.mem.eql(u8, lower, "allow-forms")) {
+                flags.allow_forms = true;
+            } else if (std.mem.eql(u8, lower, "allow-popups")) {
+                flags.allow_popups = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation")) {
+                flags.allow_top_navigation = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation-by-user-activation")) {
+                flags.allow_top_navigation_by_user_activation = true;
+            } else if (std.mem.eql(u8, lower, "allow-pointer-lock")) {
+                flags.allow_pointer_lock = true;
+            } else if (std.mem.eql(u8, lower, "allow-modals")) {
+                flags.allow_modals = true;
+            } else if (std.mem.eql(u8, lower, "allow-orientation-lock")) {
+                flags.allow_orientation_lock = true;
+            } else if (std.mem.eql(u8, lower, "allow-presentation")) {
+                flags.allow_presentation = true;
+            } else if (std.mem.eql(u8, lower, "allow-downloads")) {
+                flags.allow_downloads = true;
+            } else if (std.mem.eql(u8, lower, "allow-storage-access-by-user-activation")) {
+                flags.allow_storage_access_by_user_activation = true;
+            } else if (std.mem.eql(u8, lower, "allow-popups-to-escape-sandbox")) {
+                flags.allow_popups_to_escape_sandbox = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation-to-custom-protocols")) {
+                flags.allow_top_navigation_to_custom_protocols = true;
+            }
+            // Unknown tokens are ignored per spec
+        }
+
+        return flags;
+    }
+
+    /// Parse with allocator for proper case-insensitive comparison
+    pub fn parseAlloc(allocator: Allocator, value: []const u8) !SandboxFlags {
+        var flags = SandboxFlags.RESTRICTIVE;
+
+        // Tokenize by whitespace
+        var iter = std.mem.tokenizeAny(u8, value, " \t\n\r\x0c");
+        while (iter.next()) |token| {
+            // Allocate lowercase buffer
+            const lower = try allocator.alloc(u8, token.len);
+            defer allocator.free(lower);
+            for (token, 0..) |c, i| {
+                lower[i] = std.ascii.toLower(c);
+            }
+
+            if (std.mem.eql(u8, lower, "allow-scripts")) {
+                flags.allow_scripts = true;
+            } else if (std.mem.eql(u8, lower, "allow-same-origin")) {
+                flags.allow_same_origin = true;
+            } else if (std.mem.eql(u8, lower, "allow-forms")) {
+                flags.allow_forms = true;
+            } else if (std.mem.eql(u8, lower, "allow-popups")) {
+                flags.allow_popups = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation")) {
+                flags.allow_top_navigation = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation-by-user-activation")) {
+                flags.allow_top_navigation_by_user_activation = true;
+            } else if (std.mem.eql(u8, lower, "allow-pointer-lock")) {
+                flags.allow_pointer_lock = true;
+            } else if (std.mem.eql(u8, lower, "allow-modals")) {
+                flags.allow_modals = true;
+            } else if (std.mem.eql(u8, lower, "allow-orientation-lock")) {
+                flags.allow_orientation_lock = true;
+            } else if (std.mem.eql(u8, lower, "allow-presentation")) {
+                flags.allow_presentation = true;
+            } else if (std.mem.eql(u8, lower, "allow-downloads")) {
+                flags.allow_downloads = true;
+            } else if (std.mem.eql(u8, lower, "allow-storage-access-by-user-activation")) {
+                flags.allow_storage_access_by_user_activation = true;
+            } else if (std.mem.eql(u8, lower, "allow-popups-to-escape-sandbox")) {
+                flags.allow_popups_to_escape_sandbox = true;
+            } else if (std.mem.eql(u8, lower, "allow-top-navigation-to-custom-protocols")) {
+                flags.allow_top_navigation_to_custom_protocols = true;
+            }
+            // Unknown tokens are ignored per spec
+        }
+
+        return flags;
+    }
+
+    /// Check if scripts are blocked (sandbox without allow-scripts)
+    pub fn blocksScripts(self: SandboxFlags) bool {
+        return !self.allow_scripts;
+    }
+
+    /// Check if same-origin is sandboxed (gets opaque origin)
+    pub fn sandboxesSameOrigin(self: SandboxFlags) bool {
+        return !self.allow_same_origin;
+    }
+
+    /// Check if forms are blocked
+    pub fn blocksForms(self: SandboxFlags) bool {
+        return !self.allow_forms;
+    }
+
+    /// Check if popups are blocked
+    pub fn blocksPopups(self: SandboxFlags) bool {
+        return !self.allow_popups;
+    }
+
+    /// Check if top navigation is blocked
+    pub fn blocksTopNavigation(self: SandboxFlags) bool {
+        return !self.allow_top_navigation and !self.allow_top_navigation_by_user_activation;
+    }
+
+    /// Check if modals (alert/confirm/prompt) are blocked
+    pub fn blocksModals(self: SandboxFlags) bool {
+        return !self.allow_modals;
+    }
+
+    /// Supported tokens for DOMTokenList.supports()
+    pub const SUPPORTED_TOKENS = [_][]const u8{
+        "allow-downloads",
+        "allow-forms",
+        "allow-modals",
+        "allow-orientation-lock",
+        "allow-pointer-lock",
+        "allow-popups",
+        "allow-popups-to-escape-sandbox",
+        "allow-presentation",
+        "allow-same-origin",
+        "allow-scripts",
+        "allow-storage-access-by-user-activation",
+        "allow-top-navigation",
+        "allow-top-navigation-by-user-activation",
+        "allow-top-navigation-to-custom-protocols",
+    };
+};
+
 /// A browsing context is an environment in which Document objects are presented.
 /// Per HTML Standard §7.1.
 pub const BrowsingContext = struct {
@@ -73,6 +296,14 @@ pub const BrowsingContext = struct {
     /// Initial URL for this browsing context
     initial_url: ?[]const u8,
 
+    /// Sandbox flags for this browsing context (§4.8.5.4)
+    /// Null means no sandbox restrictions apply.
+    /// When set, these flags determine what the sandboxed context can do.
+    sandbox_flags: ?SandboxFlags,
+
+    /// Whether this context is sandboxed (has sandbox attribute)
+    is_sandboxed: bool,
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -88,6 +319,8 @@ pub const BrowsingContext = struct {
             .parent = null,
             .children = .{},
             .initial_url = null,
+            .sandbox_flags = null,
+            .is_sandboxed = false,
         };
         return ctx;
     }
@@ -239,6 +472,67 @@ pub const BrowsingContext = struct {
             self.allocator.free(self.target_name);
         }
         self.target_name = try self.allocator.dupe(u8, name);
+    }
+
+    /// Set sandbox flags on this browsing context
+    /// Per HTML Standard §4.8.5.4
+    pub fn setSandboxFlags(self: *BrowsingContext, flags: SandboxFlags) void {
+        self.sandbox_flags = flags;
+        self.is_sandboxed = true;
+    }
+
+    /// Clear sandbox flags (remove sandboxing)
+    pub fn clearSandboxFlags(self: *BrowsingContext) void {
+        self.sandbox_flags = null;
+        self.is_sandboxed = false;
+    }
+
+    /// Check if this context allows script execution
+    pub fn allowsScripts(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_scripts;
+        }
+        return true; // Not sandboxed, allow scripts
+    }
+
+    /// Check if this context allows form submission
+    pub fn allowsForms(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_forms;
+        }
+        return true;
+    }
+
+    /// Check if this context allows popups
+    pub fn allowsPopups(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_popups;
+        }
+        return true;
+    }
+
+    /// Check if this context allows top navigation
+    pub fn allowsTopNavigation(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_top_navigation;
+        }
+        return true;
+    }
+
+    /// Check if this context allows modals (alert/confirm/prompt)
+    pub fn allowsModals(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_modals;
+        }
+        return true;
+    }
+
+    /// Check if this context preserves same-origin (vs opaque origin)
+    pub fn preservesSameOrigin(self: *const BrowsingContext) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_same_origin;
+        }
+        return true;
     }
 
     /// Get the number of child browsing contexts
@@ -420,4 +714,128 @@ test "BrowsingContextGroup - basic operations" {
 
     try std.testing.expectEqual(@as(usize, 2), group.getSize());
     try std.testing.expect(ctx1.isInSameGroup(ctx2));
+}
+
+// ============================================================================
+// SandboxFlags Tests
+// ============================================================================
+
+test "SandboxFlags - parseAlloc empty string is fully restrictive" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "");
+
+    try std.testing.expect(!flags.allow_scripts);
+    try std.testing.expect(!flags.allow_same_origin);
+    try std.testing.expect(!flags.allow_forms);
+    try std.testing.expect(!flags.allow_popups);
+    try std.testing.expect(!flags.allow_top_navigation);
+}
+
+test "SandboxFlags - parseAlloc single flag" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "allow-scripts");
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(!flags.allow_same_origin);
+    try std.testing.expect(!flags.allow_forms);
+}
+
+test "SandboxFlags - parseAlloc multiple flags" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "allow-scripts allow-forms allow-same-origin");
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(flags.allow_same_origin);
+    try std.testing.expect(flags.allow_forms);
+    try std.testing.expect(!flags.allow_popups);
+}
+
+test "SandboxFlags - parseAlloc case insensitive" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "ALLOW-SCRIPTS Allow-Forms");
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(flags.allow_forms);
+}
+
+test "SandboxFlags - parseAlloc ignores unknown tokens" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "allow-scripts unknown-token allow-forms");
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(flags.allow_forms);
+}
+
+test "SandboxFlags - parseAlloc with whitespace" {
+    const allocator = std.testing.allocator;
+
+    const flags = try SandboxFlags.parseAlloc(allocator, "  allow-scripts   allow-forms  \t\n allow-popups  ");
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(flags.allow_forms);
+    try std.testing.expect(flags.allow_popups);
+}
+
+test "SandboxFlags - RESTRICTIVE constant" {
+    const flags = SandboxFlags.RESTRICTIVE;
+
+    try std.testing.expect(!flags.allow_scripts);
+    try std.testing.expect(!flags.allow_same_origin);
+    try std.testing.expect(!flags.allow_forms);
+    try std.testing.expect(!flags.allow_popups);
+}
+
+test "SandboxFlags - PERMISSIVE constant" {
+    const flags = SandboxFlags.PERMISSIVE;
+
+    try std.testing.expect(flags.allow_scripts);
+    try std.testing.expect(flags.allow_same_origin);
+    try std.testing.expect(flags.allow_forms);
+    try std.testing.expect(flags.allow_popups);
+    try std.testing.expect(flags.allow_top_navigation);
+}
+
+test "SandboxFlags - helper methods" {
+    const allocator = std.testing.allocator;
+
+    // Test blocksScripts
+    const restrictive = try SandboxFlags.parseAlloc(allocator, "");
+    try std.testing.expect(restrictive.blocksScripts());
+
+    const with_scripts = try SandboxFlags.parseAlloc(allocator, "allow-scripts");
+    try std.testing.expect(!with_scripts.blocksScripts());
+
+    // Test sandboxesSameOrigin
+    try std.testing.expect(restrictive.sandboxesSameOrigin());
+
+    const with_same_origin = try SandboxFlags.parseAlloc(allocator, "allow-same-origin");
+    try std.testing.expect(!with_same_origin.sandboxesSameOrigin());
+}
+
+test "BrowsingContext - sandbox flags" {
+    const allocator = std.testing.allocator;
+
+    const ctx = try BrowsingContext.init(allocator);
+    defer ctx.deinit();
+
+    // Not sandboxed by default
+    try std.testing.expect(!ctx.is_sandboxed);
+    try std.testing.expect(ctx.allowsScripts());
+    try std.testing.expect(ctx.allowsForms());
+
+    // Set restrictive sandbox
+    ctx.setSandboxFlags(SandboxFlags.RESTRICTIVE);
+    try std.testing.expect(ctx.is_sandboxed);
+    try std.testing.expect(!ctx.allowsScripts());
+    try std.testing.expect(!ctx.allowsForms());
+
+    // Clear sandbox
+    ctx.clearSandboxFlags();
+    try std.testing.expect(!ctx.is_sandboxed);
+    try std.testing.expect(ctx.allowsScripts());
 }

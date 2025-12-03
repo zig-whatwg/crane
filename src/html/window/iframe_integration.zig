@@ -21,7 +21,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const BrowsingContext = @import("browsing_context.zig").BrowsingContext;
+const browsing_context = @import("browsing_context.zig");
+const BrowsingContext = browsing_context.BrowsingContext;
+const SandboxFlags = browsing_context.SandboxFlags;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
 
@@ -85,6 +87,12 @@ pub const IFrameIntegration = struct {
     /// Origin of the container document (for same-origin checks)
     container_origin: Origin,
 
+    /// Sandbox flags for this iframe (null if no sandbox attribute)
+    sandbox_flags: ?SandboxFlags,
+
+    /// Whether this iframe is sandboxed
+    is_sandboxed: bool,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -97,6 +105,8 @@ pub const IFrameIntegration = struct {
             .srcdoc_content = null,
             .name = "",
             .container_origin = Origin.createOpaque(),
+            .sandbox_flags = null,
+            .is_sandboxed = false,
         };
     }
 
@@ -379,6 +389,80 @@ pub const IFrameIntegration = struct {
         }
         return self.state == .discarded;
     }
+
+    // ========================================================================
+    // Sandbox Attribute (§4.8.5.4)
+    // ========================================================================
+
+    /// Set sandbox flags from the sandbox attribute value
+    /// Per HTML Standard §4.8.5.4
+    /// Empty value means all restrictions apply.
+    /// "allow-*" tokens lift specific restrictions.
+    pub fn setSandbox(self: *IFrameIntegration, value: []const u8) IFrameError!void {
+        const flags = SandboxFlags.parseAlloc(self.allocator, value) catch {
+            return IFrameError.OutOfMemory;
+        };
+        self.sandbox_flags = flags;
+        self.is_sandboxed = true;
+
+        // Apply to browsing context if it exists
+        if (self.browsing_context) |ctx| {
+            ctx.setSandboxFlags(flags);
+        }
+    }
+
+    /// Remove sandbox (clear the sandbox attribute)
+    pub fn clearSandbox(self: *IFrameIntegration) void {
+        self.sandbox_flags = null;
+        self.is_sandboxed = false;
+
+        // Clear from browsing context if it exists
+        if (self.browsing_context) |ctx| {
+            ctx.clearSandboxFlags();
+        }
+    }
+
+    /// Get the current sandbox flags (null if not sandboxed)
+    pub fn getSandboxFlags(self: *const IFrameIntegration) ?SandboxFlags {
+        return self.sandbox_flags;
+    }
+
+    /// Check if this iframe is sandboxed
+    pub fn isSandboxed(self: *const IFrameIntegration) bool {
+        return self.is_sandboxed;
+    }
+
+    /// Check if scripts are allowed in this iframe
+    pub fn allowsScripts(self: *const IFrameIntegration) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_scripts;
+        }
+        return true; // Not sandboxed
+    }
+
+    /// Check if forms are allowed in this iframe
+    pub fn allowsForms(self: *const IFrameIntegration) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_forms;
+        }
+        return true;
+    }
+
+    /// Check if popups are allowed in this iframe
+    pub fn allowsPopups(self: *const IFrameIntegration) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_popups;
+        }
+        return true;
+    }
+
+    /// Check if top navigation is allowed in this iframe
+    pub fn allowsTopNavigation(self: *const IFrameIntegration) bool {
+        if (self.sandbox_flags) |flags| {
+            return flags.allow_top_navigation;
+        }
+        return true;
+    }
 };
 
 // ============================================================================
@@ -573,5 +657,94 @@ test "IFrameIntegration - about:blank inherits origin" {
     // about:blank should inherit container origin
     if (integration.window_proxy) |proxy| {
         try std.testing.expect(proxy.isSameOriginAccess(container_origin));
+    }
+}
+
+// ============================================================================
+// Sandbox Tests
+// ============================================================================
+
+test "IFrameIntegration - setSandbox with empty value blocks all" {
+    const allocator = std.testing.allocator;
+
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+
+    // Empty sandbox = all restrictions
+    try integration.setSandbox("");
+
+    try std.testing.expect(integration.isSandboxed());
+    try std.testing.expect(!integration.allowsScripts());
+    try std.testing.expect(!integration.allowsForms());
+    try std.testing.expect(!integration.allowsPopups());
+    try std.testing.expect(!integration.allowsTopNavigation());
+}
+
+test "IFrameIntegration - setSandbox with allow-scripts" {
+    const allocator = std.testing.allocator;
+
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+
+    try integration.setSandbox("allow-scripts");
+
+    try std.testing.expect(integration.isSandboxed());
+    try std.testing.expect(integration.allowsScripts());
+    try std.testing.expect(!integration.allowsForms());
+}
+
+test "IFrameIntegration - setSandbox with multiple flags" {
+    const allocator = std.testing.allocator;
+
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+
+    try integration.setSandbox("allow-scripts allow-forms allow-same-origin");
+
+    try std.testing.expect(integration.isSandboxed());
+    try std.testing.expect(integration.allowsScripts());
+    try std.testing.expect(integration.allowsForms());
+
+    const flags = integration.getSandboxFlags().?;
+    try std.testing.expect(flags.allow_same_origin);
+}
+
+test "IFrameIntegration - clearSandbox removes restrictions" {
+    const allocator = std.testing.allocator;
+
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+
+    try integration.setSandbox("allow-scripts");
+    try std.testing.expect(integration.isSandboxed());
+
+    integration.clearSandbox();
+    try std.testing.expect(!integration.isSandboxed());
+    try std.testing.expect(integration.allowsScripts()); // No sandbox = allow all
+    try std.testing.expect(integration.allowsForms());
+}
+
+test "IFrameIntegration - sandbox applied to browsing context" {
+    const allocator = std.testing.allocator;
+
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    defer parent_ctx.deinit();
+
+    var integration = IFrameIntegration.init(allocator);
+    defer integration.deinit();
+
+    // Set sandbox before insertion
+    try integration.setSandbox("allow-scripts");
+
+    // Insert into document
+    try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+
+    // Apply sandbox to browsing context
+    if (integration.browsing_context) |ctx| {
+        // The sandbox flags should be applied
+        ctx.setSandboxFlags(integration.sandbox_flags.?);
+        try std.testing.expect(ctx.is_sandboxed);
+        try std.testing.expect(ctx.allowsScripts());
+        try std.testing.expect(!ctx.allowsForms());
     }
 }

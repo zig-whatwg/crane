@@ -48,6 +48,7 @@ const std = @import("std");
 pub const browsing_context = @import("browsing_context.zig");
 pub const BrowsingContext = browsing_context.BrowsingContext;
 pub const BrowsingContextGroup = browsing_context.BrowsingContextGroup;
+pub const SandboxFlags = browsing_context.SandboxFlags;
 
 // WindowProxy (§7.4)
 pub const window_proxy = @import("window_proxy.zig");
