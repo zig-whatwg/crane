@@ -201,3 +201,88 @@ pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, 
         }
     }
 }
+
+// ============================================================================
+// MessageEvent Dispatch
+// ============================================================================
+
+/// Dispatch a MessageEvent to this DedicatedWorkerGlobalScope
+///
+/// This is called by the dedicated worker's inside port handler when a message
+/// arrives from the main thread.
+///
+/// Spec: HTML Standard § 10.2.3
+/// "Queue a global task on the messaging task source... fire an event named
+/// message at the DedicatedWorkerGlobalScope object."
+pub fn dispatchMessageEvent(instance: *runtime.Instance, serialized_data: *structured_clone.SerializedValue, origin: ?[]const u8) anyerror!void {
+    const state = instance.getState(State);
+    const MessageEvent = interfaces.MessageEvent;
+
+    // Deserialize the message data
+    const deserialized = structured_clone.structuredDeserialize(
+        state.own._internal.?.allocator,
+        serialized_data,
+    ) catch {
+        // If deserialization fails, we should fire 'messageerror' instead
+        // For now, just return error
+        return error.DeserializationFailed;
+    };
+
+    // Create MessageEventInit dictionary
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{
+            .bubbles = false,
+            .cancelable = false,
+            .composed = false,
+        },
+        .data = @ptrCast(deserialized),
+        .origin = origin orelse "",
+        .lastEventId = null,
+        .source = null,
+        .ports = null,
+    };
+
+    // Create MessageEvent
+    var event = try MessageEvent.call_constructor(
+        state.own._internal.?.allocator,
+        instance.ctx,
+        runtime.DOMString.initInterned("message"),
+        .{ .was_passed = true, .value = init_dict },
+    );
+    defer runtime.Instance.deinit(event);
+
+    // Get the onmessage handler and invoke it
+    // TODO: Invoke the EventHandler callback with the event
+    // This requires the runtime to support callback invocation
+    // For now, the event is created but not dispatched to JavaScript
+    //
+    // In a full implementation:
+    // 1. Get the EventHandler from state.own.onmessage
+    // 2. Create a V8 callback invocation
+    // 3. Call the handler with the MessageEvent
+    //
+    // Mark event as used to avoid compiler warning
+    event.ctx = event.ctx;
+}
+
+/// Wire up the message handler on the dedicated worker's inside port
+///
+/// This should be called after the DedicatedWorkerGlobalScope is created
+/// and linked to its DedicatedWorker.
+pub fn setupMessageHandler(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.dedicated_worker) |worker| {
+            // Store the instance pointer for use in the callback
+            // The callback will dispatch MessageEvent to this scope
+            worker.setInsideMessageHandler(struct {
+                fn handleMessage(w: *DedicatedWorker, msg: *workers.message_channel.QueuedMessage) void {
+                    _ = w;
+                    // TODO: Get the instance from w and call dispatchMessageEvent
+                    // This requires storing the instance reference in the worker
+                    _ = msg;
+                }
+            }.handleMessage);
+        }
+    }
+}
