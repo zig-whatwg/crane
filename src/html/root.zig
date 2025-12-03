@@ -236,6 +236,16 @@ pub const HID = navigator.hid.HID;
 pub const BatteryManager = navigator.battery.BatteryManager;
 pub const StorageManager = navigator.storage_manager.StorageManager;
 
+// Stylesheet Blocking (§14.3.3)
+pub const stylesheet_blocking = @import("stylesheet_blocking.zig");
+
+// Re-export commonly used stylesheet blocking types
+pub const StylesheetBlockingTracker = stylesheet_blocking.StylesheetBlockingTracker;
+pub const PendingStylesheet = stylesheet_blocking.PendingStylesheet;
+pub const isBlockingStylesheet = stylesheet_blocking.isBlockingStylesheet;
+pub const isStylesheetRel = stylesheet_blocking.isStylesheetRel;
+pub const shouldBlockScriptExecution = stylesheet_blocking.shouldBlockScriptExecution;
+
 test {
     std.testing.refAllDecls(@This());
 }
