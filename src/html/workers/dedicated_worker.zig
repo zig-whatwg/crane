@@ -119,6 +119,48 @@ pub const DedicatedWorker = struct {
         self.agent.addOwner();
     }
 
+    /// Start the worker with V8 context isolation.
+    ///
+    /// Creates an isolated V8 context for the worker. This is the preferred
+    /// way to start workers when V8 is available.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 12
+    /// "Let realm be a new Realm Record."
+    pub fn startWithContext(self: *DedicatedWorker) !void {
+        try self.agent.startWithContext(
+            self.script_url,
+            self.agent.data.worker_type,
+            self.name,
+        );
+
+        // Add initial owner
+        self.agent.addOwner();
+    }
+
+    /// Execute a script in the worker's isolated context.
+    ///
+    /// The script runs in the worker's V8 context, isolated from main thread.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 24
+    /// "Run the classic script scriptOrModule."
+    pub fn executeScript(self: *DedicatedWorker, source: []const u8) !void {
+        try self.agent.executeScript(source);
+    }
+
+    /// Execute a module in the worker's isolated context.
+    ///
+    /// Compiles, instantiates, and evaluates an ES module.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
+    pub fn executeModule(self: *DedicatedWorker, source: []const u8) !void {
+        try self.agent.executeModule(source);
+    }
+
+    /// Check if worker has V8 context isolation.
+    pub fn hasContext(self: *const DedicatedWorker) bool {
+        return self.agent.hasContext();
+    }
+
     /// Terminate the worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 terminate()

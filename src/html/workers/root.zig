@@ -138,6 +138,11 @@ pub const createWorkerPorts = message_channel.createWorkerPorts;
 pub const serializeForPostMessage = message_channel.serializeForPostMessage;
 pub const deserializeFromPostMessage = message_channel.deserializeFromPostMessage;
 
+// Worker Context (V8 isolation)
+pub const worker_context = @import("worker_context.zig");
+pub const WorkerContext = worker_context.WorkerContext;
+pub const WorkerContextError = worker_context.WorkerContextError;
+
 test {
     std.testing.refAllDecls(@This());
 }

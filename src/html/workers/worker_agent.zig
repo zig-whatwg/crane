@@ -5,6 +5,15 @@
 //!
 //! Each worker runs in its own agent (conceptually its own thread/isolate).
 //! This module provides the agent abstraction for workers.
+//!
+//! ## V8 Context Isolation
+//!
+//! Workers run in isolated V8 contexts (Phase A: same-thread isolation).
+//! Each WorkerAgent owns a WorkerContext that provides:
+//! - Separate V8 Context for JavaScript execution
+//! - Separate global scope (WorkerGlobalScope)
+//! - Variables don't leak between workers and main thread
+//! - Workers can't access main thread DOM
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -13,6 +22,10 @@ const types = @import("types.zig");
 const WorkerData = types.WorkerData;
 const WorkerState = types.WorkerState;
 const WorkerType = types.WorkerType;
+
+// Import worker context for V8 isolation
+const worker_context_mod = @import("worker_context.zig");
+const WorkerContext = worker_context_mod.WorkerContext;
 
 // Import event loop
 const event_loop_mod = @import("../event_loop/event_loop.zig");
@@ -28,12 +41,19 @@ const TimerBackend = timer_backend.TimerBackend;
 /// Spec: HTML Standard § 10.1.4
 /// "A similar-origin window agent, dedicated worker agent, shared worker agent,
 /// or service worker agent is an agent"
+///
+/// The WorkerAgent now owns a WorkerContext that provides V8 context isolation.
+/// Scripts execute in the worker's isolated V8 context, separate from main thread.
 pub const WorkerAgent = struct {
     /// Worker data
     data: WorkerData,
 
     /// The worker's event loop
     event_loop: EventLoop,
+
+    /// V8 context isolation (owned, null until startWithContext is called)
+    /// Provides isolated JavaScript execution environment for the worker.
+    worker_context: ?*WorkerContext,
 
     /// Whether this is a shared worker
     is_shared: bool,
@@ -52,6 +72,7 @@ pub const WorkerAgent = struct {
         agent.* = .{
             .data = WorkerData.init(allocator),
             .event_loop = try EventLoop.init(allocator, .worker, platform),
+            .worker_context = null,
             .is_shared = is_shared,
             .allocator = allocator,
             .platform = platform,
@@ -62,6 +83,10 @@ pub const WorkerAgent = struct {
 
     /// Free all resources.
     pub fn deinit(self: *WorkerAgent) void {
+        // Clean up worker context if present
+        if (self.worker_context) |ctx| {
+            ctx.deinit();
+        }
         self.data.deinit();
         self.event_loop.deinit();
         self.allocator.destroy(self);
@@ -92,12 +117,68 @@ pub const WorkerAgent = struct {
         self.data.closing = false;
     }
 
+    /// Start the worker with V8 context isolation.
+    ///
+    /// Creates an isolated V8 context for the worker. This is the preferred
+    /// way to start workers when V8 is available.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 12
+    /// "Let realm be a new Realm Record."
+    pub fn startWithContext(self: *WorkerAgent, script_url: []const u8, worker_type: WorkerType, name: []const u8) !void {
+        // Create isolated worker context if not already present
+        if (self.worker_context == null) {
+            self.worker_context = try WorkerContext.init(
+                self.allocator,
+                self.platform,
+                script_url,
+                worker_type,
+                name,
+            );
+        }
+
+        self.data.state = .running;
+        self.data.closing = false;
+    }
+
+    /// Execute a script in the worker's isolated context.
+    ///
+    /// The script runs in the worker's V8 context, isolated from main thread.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 24
+    /// "Run the classic script scriptOrModule."
+    pub fn executeScript(self: *WorkerAgent, source: []const u8) !void {
+        if (self.worker_context) |ctx| {
+            _ = try ctx.executeScript(source);
+        } else {
+            return error.NoWorkerContext;
+        }
+    }
+
+    /// Execute a module in the worker's isolated context.
+    ///
+    /// Compiles, instantiates, and evaluates an ES module.
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
+    pub fn executeModule(self: *WorkerAgent, source: []const u8) !void {
+        if (self.worker_context) |ctx| {
+            try ctx.executeModule(source);
+        } else {
+            return error.NoWorkerContext;
+        }
+    }
+
     /// Run a single iteration of the worker event loop.
     pub fn spin(self: *WorkerAgent) !void {
         if (self.data.closing) {
             return;
         }
-        try self.event_loop.spin();
+
+        // If we have an isolated context, use its spin which handles V8 microtasks
+        if (self.worker_context) |ctx| {
+            try ctx.spin();
+        } else {
+            try self.event_loop.spin();
+        }
     }
 
     /// Run the worker event loop until stopped.
@@ -105,7 +186,23 @@ pub const WorkerAgent = struct {
         if (self.data.state != .running) {
             return error.WorkerNotRunning;
         }
-        try self.event_loop.run();
+
+        // If we have an isolated context, use its run loop
+        if (self.worker_context) |ctx| {
+            try ctx.run();
+        } else {
+            try self.event_loop.run();
+        }
+    }
+
+    /// Check if worker has V8 context isolation.
+    pub fn hasContext(self: *const WorkerAgent) bool {
+        return self.worker_context != null;
+    }
+
+    /// Get the worker's V8 context (if available).
+    pub fn getContext(self: *WorkerAgent) ?*WorkerContext {
+        return self.worker_context;
     }
 
     /// Close the worker.
@@ -121,6 +218,11 @@ pub const WorkerAgent = struct {
         self.data.closing = true;
         self.data.state = .closing;
 
+        // Close worker context if present
+        if (self.worker_context) |ctx| {
+            ctx.close();
+        }
+
         // Stop the event loop
         self.event_loop.stop();
     }
@@ -135,6 +237,12 @@ pub const WorkerAgent = struct {
         // Step 2: If there are any tasks queued in the WorkerGlobalScope object's
         // relevant agent's event loop's task queues, discard them without processing them.
         // (Handled by event loop when running is false)
+
+        // Close worker context if present
+        if (self.worker_context) |ctx| {
+            ctx.close();
+        }
+
         self.event_loop.stop();
 
         // Step 3: Abort the script currently running in the worker.
