@@ -121,7 +121,15 @@ pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolic
 pub const createTrustedTypesSinkViolation = violations.createTrustedTypesSinkViolation;
 pub const createViolationReport = violations.createViolationReport;
 pub const reportViolation = violations.reportViolation;
+pub const reportViolationSimple = violations.reportViolationSimple;
 pub const ViolationOptions = violations.ViolationOptions;
+
+// Reporting infrastructure
+pub const ReportSender = violations.ReportSender;
+pub const EventDispatcher = violations.EventDispatcher;
+pub const ReportingConfig = violations.ReportingConfig;
+pub const RateLimiter = violations.RateLimiter;
+pub const deinitThreadLocalRateLimiter = violations.deinitThreadLocalRateLimiter;
 
 // Trusted Types directives
 pub const directives = @import("directives/root.zig");

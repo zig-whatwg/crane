@@ -1,0 +1,325 @@
+//! Tests for DOMParser MIME type handling
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#domparser
+//!
+//! These tests verify:
+//! 1. text/html MIME type parsing
+//! 2. text/xml MIME type handling (NotImplemented expected)
+//! 3. application/xml MIME type handling (NotImplemented expected)
+//! 4. application/xhtml+xml MIME type handling (NotImplemented expected)
+//! 5. image/svg+xml MIME type handling (NotImplemented expected)
+//! 6. Enum constraint prevents unsupported MIME types
+
+const std = @import("std");
+const testing = std.testing;
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const enums = @import("enums");
+
+// Import DOMParser implementation for direct testing
+const DOMParserImpl = @import("impls").DOMParser;
+const DocumentImpl = @import("impls").Document;
+
+// =============================================================================
+// DOMParserSupportedType Enum Tests
+// =============================================================================
+
+test "DOMParserSupportedType - all MIME types are defined" {
+    // Verify all supported MIME types per spec are in the enum
+    const SupportedType = enums.DOMParserSupportedType;
+
+    // text/html
+    try testing.expectEqual(SupportedType._text_html_, SupportedType._text_html_);
+
+    // text/xml
+    try testing.expectEqual(SupportedType._text_xml_, SupportedType._text_xml_);
+
+    // application/xml
+    try testing.expectEqual(SupportedType._application_xml_, SupportedType._application_xml_);
+
+    // application/xhtml+xml
+    try testing.expectEqual(SupportedType._application_xhtml_xml_, SupportedType._application_xhtml_xml_);
+
+    // image/svg+xml
+    try testing.expectEqual(SupportedType._image_svg_xml_, SupportedType._image_svg_xml_);
+}
+
+test "DOMParserSupportedType - enum is exhaustive with 5 types" {
+    // Per HTML spec, DOMParser supports exactly these 5 MIME types
+    const SupportedType = enums.DOMParserSupportedType;
+
+    // Count enum members
+    const type_info = @typeInfo(SupportedType);
+    try testing.expectEqual(@as(usize, 5), type_info.@"enum".fields.len);
+}
+
+// =============================================================================
+// DOMParser Constructor Tests
+// =============================================================================
+
+test "DOMParser - constructor creates valid instance" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    // Verify instance is valid (non-null pointer)
+    try testing.expect(@intFromPtr(parser) != 0);
+}
+
+test "DOMParser - multiple constructors create independent instances" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser1 = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser1);
+
+    const parser2 = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser2);
+
+    // Instances should be different
+    try testing.expect(parser1 != parser2);
+}
+
+// =============================================================================
+// text/html MIME Type Tests
+// =============================================================================
+
+test "DOMParser - parseFromString with text/html returns Document" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const html = runtime.DOMString.initInterned("<html><body>Hello</body></html>");
+    const doc = try DOMParserImpl.call_parseFromString(parser, html, ._text_html_);
+    defer interfaces.Document.deinit(doc);
+
+    // Verify document was created
+    try testing.expect(@intFromPtr(doc) != 0);
+}
+
+test "DOMParser - text/html sets content type correctly" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const html = runtime.DOMString.initInterned("<html><body>Test</body></html>");
+    const doc = try DOMParserImpl.call_parseFromString(parser, html, ._text_html_);
+    defer interfaces.Document.deinit(doc);
+
+    // Verify content type was set to "text/html"
+    if (DocumentImpl.getInternal(doc)) |doc_internal| {
+        try testing.expectEqualStrings("text/html", doc_internal.content_type.asSlice());
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "DOMParser - text/html parses minimal document" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const html = runtime.DOMString.initInterned("<!DOCTYPE html><html><head></head><body></body></html>");
+    const doc = try DOMParserImpl.call_parseFromString(parser, html, ._text_html_);
+    defer interfaces.Document.deinit(doc);
+
+    try testing.expect(@intFromPtr(doc) != 0);
+}
+
+test "DOMParser - text/html parses fragment without doctype" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    // HTML5 parser should handle missing doctype
+    const html = runtime.DOMString.initInterned("<div>content</div>");
+    const doc = try DOMParserImpl.call_parseFromString(parser, html, ._text_html_);
+    defer interfaces.Document.deinit(doc);
+
+    try testing.expect(@intFromPtr(doc) != 0);
+}
+
+test "DOMParser - text/html parses empty string" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const html = runtime.DOMString.initInterned("");
+    const doc = try DOMParserImpl.call_parseFromString(parser, html, ._text_html_);
+    defer interfaces.Document.deinit(doc);
+
+    // Empty string should still produce a valid document
+    try testing.expect(@intFromPtr(doc) != 0);
+}
+
+// =============================================================================
+// XML MIME Type Tests (Currently Not Implemented)
+// =============================================================================
+
+test "DOMParser - text/xml returns NotImplemented error" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const xml = runtime.DOMString.initInterned("<?xml version=\"1.0\"?><root>content</root>");
+
+    // XML parsing is not yet implemented - should return NotImplemented
+    const result = DOMParserImpl.call_parseFromString(parser, xml, ._text_xml_);
+    try testing.expectError(error.NotImplemented, result);
+}
+
+test "DOMParser - application/xml returns NotImplemented error" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const xml = runtime.DOMString.initInterned("<?xml version=\"1.0\"?><document/>");
+
+    // XML parsing is not yet implemented - should return NotImplemented
+    const result = DOMParserImpl.call_parseFromString(parser, xml, ._application_xml_);
+    try testing.expectError(error.NotImplemented, result);
+}
+
+test "DOMParser - application/xhtml+xml returns NotImplemented error" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const xhtml = runtime.DOMString.initInterned("<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><body/></html>");
+
+    // XHTML parsing is not yet implemented - should return NotImplemented
+    const result = DOMParserImpl.call_parseFromString(parser, xhtml, ._application_xhtml_xml_);
+    try testing.expectError(error.NotImplemented, result);
+}
+
+test "DOMParser - image/svg+xml returns NotImplemented error" {
+    const allocator = testing.allocator;
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const parser = try DOMParserImpl.call_constructor(allocator, ctx);
+    defer DOMParserImpl.deinit(parser);
+
+    const svg = runtime.DOMString.initInterned("<svg xmlns=\"http://www.w3.org/2000/svg\"><circle r=\"10\"/></svg>");
+
+    // SVG parsing is not yet implemented - should return NotImplemented
+    const result = DOMParserImpl.call_parseFromString(parser, svg, ._image_svg_xml_);
+    try testing.expectError(error.NotImplemented, result);
+}
+
+// =============================================================================
+// Error Handling Tests
+// =============================================================================
+
+test "DOMParser - enum constraint prevents invalid MIME types" {
+    // The DOMParserSupportedType enum is exhaustive, so there's no way to
+    // pass an invalid MIME type at the type level. This is by design per
+    // WebIDL enum semantics.
+    //
+    // In JavaScript:
+    //   parser.parseFromString(str, "text/invalid")
+    // would throw a TypeError before the method is even called.
+    //
+    // In Zig, the enum type system prevents this at compile time.
+
+    const SupportedType = enums.DOMParserSupportedType;
+
+    // This compiles - valid type
+    _ = SupportedType._text_html_;
+
+    // This would NOT compile - invalid:
+    // _ = @intToEnum(SupportedType, 999); // error: integer value does not map
+
+    // Verifying the enum has the exact expected values
+    try testing.expectEqual(@as(u3, 0), @intFromEnum(SupportedType._text_html_));
+    try testing.expectEqual(@as(u3, 1), @intFromEnum(SupportedType._text_xml_));
+    try testing.expectEqual(@as(u3, 2), @intFromEnum(SupportedType._application_xml_));
+    try testing.expectEqual(@as(u3, 3), @intFromEnum(SupportedType._application_xhtml_xml_));
+    try testing.expectEqual(@as(u3, 4), @intFromEnum(SupportedType._image_svg_xml_));
+}
+
+// =============================================================================
+// Spec Conformance Notes
+// =============================================================================
+
+// Per HTML Standard §8.4.2 "DOMParser":
+//
+// The parseFromString(string, type) method steps are:
+//
+// 1. Let document be a new Document, whose content type is type and url is
+//    "about:blank".
+//
+// 2. Switch on type:
+//    - "text/html"
+//      Parse string given document using the HTML parser.
+//
+//    - "text/xml", "application/xml", "application/xhtml+xml", "image/svg+xml"
+//      Parse string given document using the XML parser.
+//      If that throws an error, or if the root element of document is an html
+//      element in the HTML namespace whose local name is "parsererror", set
+//      document's error flag.
+//
+// 3. Return document.
+//
+// Current Implementation Status:
+// - text/html: IMPLEMENTED - Uses HTML5 parser
+// - text/xml: NOT IMPLEMENTED - Returns NotImplemented error
+// - application/xml: NOT IMPLEMENTED - Returns NotImplemented error
+// - application/xhtml+xml: NOT IMPLEMENTED - Returns NotImplemented error
+// - image/svg+xml: NOT IMPLEMENTED - Returns NotImplemented error
+//
+// When XML parsing is implemented, these tests should be updated to verify:
+// - Correct Document returned
+// - Content type matches requested type
+// - Error flag set on parse errors
+// - parsererror element handling

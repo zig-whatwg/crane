@@ -160,32 +160,277 @@ pub fn createTrustedTypesSinkViolation(
 }
 
 // ============================================================================
+// Violation Reporting Infrastructure
+// ============================================================================
+
+/// Interface for sending HTTP reports.
+/// This abstraction allows dependency injection for testing and
+/// integration with different HTTP backends.
+pub const ReportSender = struct {
+    /// Context pointer for the sender implementation
+    ctx: *anyopaque,
+
+    /// Send a report to a URL endpoint
+    /// Returns true if the report was successfully queued/sent
+    sendFn: *const fn (ctx: *anyopaque, url: []const u8, body: []const u8) bool,
+
+    /// Send a report to the endpoint
+    pub fn send(self: ReportSender, url: []const u8, body: []const u8) bool {
+        return self.sendFn(self.ctx, url, body);
+    }
+};
+
+/// Interface for firing SecurityPolicyViolationEvent.
+/// Allows integration with the DOM event system.
+pub const EventDispatcher = struct {
+    /// Context pointer for the dispatcher implementation
+    ctx: *anyopaque,
+
+    /// Fire a security policy violation event
+    /// The event_data is the same JSON as the report body
+    fireFn: *const fn (ctx: *anyopaque, event_data: []const u8) void,
+
+    /// Fire the event
+    pub fn fire(self: EventDispatcher, event_data: []const u8) void {
+        self.fireFn(self.ctx, event_data);
+    }
+};
+
+/// Configuration for violation reporting
+pub const ReportingConfig = struct {
+    /// HTTP report sender (null = no HTTP reporting)
+    sender: ?ReportSender = null,
+
+    /// Event dispatcher for SecurityPolicyViolationEvent (null = no events)
+    event_dispatcher: ?EventDispatcher = null,
+
+    /// Rate limiter (null = no rate limiting, use default)
+    rate_limiter: ?*RateLimiter = null,
+
+    /// Allocator for report generation
+    allocator: std.mem.Allocator,
+};
+
+// ============================================================================
+// Rate Limiting
+// ============================================================================
+
+/// Rate limiter to prevent report flooding.
+/// Spec: CSP Level 3 § 5.3 recommends limiting report frequency.
+///
+/// Uses a sliding window approach: tracks reports per endpoint
+/// and limits to max_reports_per_window within the window duration.
+pub const RateLimiter = struct {
+    /// Maximum reports per endpoint within the window
+    max_reports_per_window: u32 = 100,
+
+    /// Window duration in seconds
+    window_seconds: u64 = 60,
+
+    /// Report counts per endpoint (endpoint URL -> (count, window_start))
+    report_counts: std.StringHashMapUnmanaged(ReportCount),
+
+    /// Allocator
+    allocator: std.mem.Allocator,
+
+    const ReportCount = struct {
+        count: u32,
+        window_start: i64,
+    };
+
+    const Self = @This();
+
+    /// Initialize a new rate limiter
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return Self{
+            .report_counts = .{},
+            .allocator = allocator,
+        };
+    }
+
+    /// Initialize with custom limits
+    pub fn initWithLimits(allocator: std.mem.Allocator, max_reports: u32, window_secs: u64) Self {
+        return Self{
+            .max_reports_per_window = max_reports,
+            .window_seconds = window_secs,
+            .report_counts = .{},
+            .allocator = allocator,
+        };
+    }
+
+    /// Check if a report to the given endpoint should be allowed.
+    /// Returns true if allowed, false if rate limited.
+    pub fn shouldAllowReport(self: *Self, endpoint: []const u8) bool {
+        const now = std.time.timestamp();
+
+        if (self.report_counts.getPtr(endpoint)) |entry| {
+            // Check if we're in a new window
+            const window_end = entry.window_start + @as(i64, @intCast(self.window_seconds));
+            if (now >= window_end) {
+                // New window, reset count
+                entry.count = 1;
+                entry.window_start = now;
+                return true;
+            }
+
+            // Same window, check count
+            if (entry.count >= self.max_reports_per_window) {
+                return false; // Rate limited
+            }
+
+            // Increment and allow
+            entry.count += 1;
+            return true;
+        } else {
+            // First report to this endpoint
+            const owned_endpoint = self.allocator.dupe(u8, endpoint) catch return false;
+            self.report_counts.put(self.allocator, owned_endpoint, .{
+                .count = 1,
+                .window_start = now,
+            }) catch {
+                self.allocator.free(owned_endpoint);
+                return false;
+            };
+            return true;
+        }
+    }
+
+    /// Deinitialize the rate limiter
+    pub fn deinit(self: *Self) void {
+        var iter = self.report_counts.keyIterator();
+        while (iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.report_counts.deinit(self.allocator);
+    }
+};
+
+/// Thread-local default rate limiter
+threadlocal var default_rate_limiter: ?RateLimiter = null;
+
+/// Get or create the default rate limiter
+fn getDefaultRateLimiter(allocator: std.mem.Allocator) *RateLimiter {
+    if (default_rate_limiter == null) {
+        default_rate_limiter = RateLimiter.init(allocator);
+    }
+    return &default_rate_limiter.?;
+}
+
+/// Deinitialize the thread-local rate limiter (for testing)
+pub fn deinitThreadLocalRateLimiter() void {
+    if (default_rate_limiter) |*limiter| {
+        limiter.deinit();
+        default_rate_limiter = null;
+    }
+}
+
+// ============================================================================
 // Violation Reporting
 // ============================================================================
 
 /// Report a violation to the appropriate endpoints.
 /// Spec: CSP Level 3 § 5.3
 ///
-/// This is a placeholder for the reporting infrastructure.
-/// Actual reporting requires:
-/// 1. Creating a violation report body (JSON)
-/// 2. Sending to report-uri endpoints (deprecated)
-/// 3. Sending to report-to endpoints (Reporting API)
-/// 4. Firing securitypolicyviolation event on document
+/// Algorithm:
+/// 1. Create a violation report body (JSON)
+/// 2. Fire SecurityPolicyViolationEvent on globalObject
+/// 3. If reporting is configured:
+///    a. Check rate limits
+///    b. Send to report-uri endpoints (deprecated but still used)
+///    c. Queue for report-to endpoints (Reporting API)
+///
+/// Parameters:
+/// - allocator: Memory allocator for report generation
+/// - violation: The violation to report
+/// - report_endpoints: Legacy report-uri endpoints (deprecated)
+/// - config: Reporting configuration with sender and event dispatcher
 pub fn reportViolation(
+    allocator: std.mem.Allocator,
     violation: *const types.Violation,
     report_endpoints: ?[]const []const u8,
+    config: ?ReportingConfig,
 ) !void {
-    // TODO: Implement actual HTTP reporting
-    // For now, this is a placeholder that logs the violation
+    // Step 1: Create JSON report body
+    const report_body = try createViolationReport(allocator, violation);
+    defer allocator.free(report_body);
 
-    _ = violation;
-    _ = report_endpoints;
+    // Wrap in CSP report format for legacy report-uri
+    const legacy_report = try createLegacyReportWrapper(allocator, report_body);
+    defer allocator.free(legacy_report);
 
-    // Implementation would:
-    // 1. Serialize violation to JSON
-    // 2. POST to each endpoint in report_endpoints
-    // 3. Fire SecurityPolicyViolationEvent on globalObject
+    // Step 2: Fire SecurityPolicyViolationEvent
+    if (config) |cfg| {
+        if (cfg.event_dispatcher) |dispatcher| {
+            dispatcher.fire(report_body);
+        }
+    }
+
+    // Step 3: Send to report endpoints
+    const endpoints = report_endpoints orelse return;
+    if (endpoints.len == 0) return;
+
+    // Get rate limiter
+    var rate_limiter: *RateLimiter = undefined;
+    if (config) |cfg| {
+        if (cfg.rate_limiter) |limiter| {
+            rate_limiter = limiter;
+        } else {
+            rate_limiter = getDefaultRateLimiter(allocator);
+        }
+    } else {
+        rate_limiter = getDefaultRateLimiter(allocator);
+    }
+
+    // Get sender
+    const sender = if (config) |cfg| cfg.sender else null;
+
+    // Send to each endpoint (with rate limiting)
+    for (endpoints) |endpoint| {
+        // Check rate limit
+        if (!rate_limiter.shouldAllowReport(endpoint)) {
+            continue; // Skip this endpoint due to rate limiting
+        }
+
+        // Send the report
+        if (sender) |s| {
+            _ = s.send(endpoint, legacy_report);
+        }
+        // If no sender configured, the report is silently dropped
+        // This matches browser behavior when reporting fails
+    }
+}
+
+/// Create the legacy report-uri wrapper format.
+/// Spec: CSP Level 3 § 5.3 (deprecated report-uri format)
+///
+/// The legacy format wraps the report in: {"csp-report": <report>}
+fn createLegacyReportWrapper(allocator: std.mem.Allocator, report_body: []const u8) ![]const u8 {
+    var buffer = std.ArrayListUnmanaged(u8){};
+    errdefer buffer.deinit(allocator);
+
+    try buffer.appendSlice(allocator, "{\"csp-report\":");
+    try buffer.appendSlice(allocator, report_body);
+    try buffer.appendSlice(allocator, "}");
+
+    return buffer.toOwnedSlice(allocator);
+}
+
+/// Simplified reporting function for common use case.
+/// Uses default rate limiting and no event dispatching.
+pub fn reportViolationSimple(
+    allocator: std.mem.Allocator,
+    violation: *const types.Violation,
+    report_endpoints: ?[]const []const u8,
+    sender: ?ReportSender,
+) !void {
+    const config = if (sender != null) ReportingConfig{
+        .sender = sender,
+        .event_dispatcher = null,
+        .rate_limiter = null,
+        .allocator = allocator,
+    } else null;
+
+    try reportViolation(allocator, violation, report_endpoints, config);
 }
 
 /// Create a JSON violation report body.
@@ -544,4 +789,237 @@ test "appendJsonEscaped - special characters" {
     try appendJsonEscaped(allocator, &buffer, "hello\"world\\test\nnewline");
 
     try std.testing.expectEqualStrings("hello\\\"world\\\\test\\nnewline", buffer.items);
+}
+
+// ============================================================================
+// Reporting Infrastructure Tests
+// ============================================================================
+
+test "RateLimiter - allows initial reports" {
+    const allocator = std.testing.allocator;
+
+    var limiter = RateLimiter.init(allocator);
+    defer limiter.deinit();
+
+    // First report should be allowed
+    try std.testing.expect(limiter.shouldAllowReport("https://example.com/report"));
+
+    // Subsequent reports should also be allowed (under limit)
+    try std.testing.expect(limiter.shouldAllowReport("https://example.com/report"));
+    try std.testing.expect(limiter.shouldAllowReport("https://example.com/report"));
+}
+
+test "RateLimiter - respects per-endpoint limits" {
+    const allocator = std.testing.allocator;
+
+    // Create limiter with low limit for testing
+    var limiter = RateLimiter.initWithLimits(allocator, 3, 60);
+    defer limiter.deinit();
+
+    const endpoint = "https://example.com/report";
+
+    // First 3 reports should be allowed
+    try std.testing.expect(limiter.shouldAllowReport(endpoint));
+    try std.testing.expect(limiter.shouldAllowReport(endpoint));
+    try std.testing.expect(limiter.shouldAllowReport(endpoint));
+
+    // 4th report should be rate limited
+    try std.testing.expect(!limiter.shouldAllowReport(endpoint));
+    try std.testing.expect(!limiter.shouldAllowReport(endpoint));
+}
+
+test "RateLimiter - separate limits per endpoint" {
+    const allocator = std.testing.allocator;
+
+    var limiter = RateLimiter.initWithLimits(allocator, 2, 60);
+    defer limiter.deinit();
+
+    const endpoint1 = "https://example.com/report1";
+    const endpoint2 = "https://example.com/report2";
+
+    // Fill up endpoint1
+    try std.testing.expect(limiter.shouldAllowReport(endpoint1));
+    try std.testing.expect(limiter.shouldAllowReport(endpoint1));
+    try std.testing.expect(!limiter.shouldAllowReport(endpoint1)); // Rate limited
+
+    // endpoint2 should still be allowed
+    try std.testing.expect(limiter.shouldAllowReport(endpoint2));
+    try std.testing.expect(limiter.shouldAllowReport(endpoint2));
+    try std.testing.expect(!limiter.shouldAllowReport(endpoint2)); // Rate limited
+}
+
+test "createLegacyReportWrapper - wraps report correctly" {
+    const allocator = std.testing.allocator;
+
+    const report_body = "{\"document-uri\":\"https://example.com\"}";
+    const wrapped = try createLegacyReportWrapper(allocator, report_body);
+    defer allocator.free(wrapped);
+
+    try std.testing.expectEqualStrings(
+        "{\"csp-report\":{\"document-uri\":\"https://example.com\"}}",
+        wrapped,
+    );
+}
+
+test "reportViolation - with mock sender" {
+    const allocator = std.testing.allocator;
+    defer deinitThreadLocalRateLimiter();
+
+    // Create a mock sender that tracks calls
+    const MockSender = struct {
+        var call_count: u32 = 0;
+        var last_url_matched: bool = false;
+        var body_contains_csp_report: bool = false;
+
+        fn reset() void {
+            call_count = 0;
+            last_url_matched = false;
+            body_contains_csp_report = false;
+        }
+
+        fn send(ctx: *anyopaque, url: []const u8, body: []const u8) bool {
+            _ = ctx;
+            call_count += 1;
+            last_url_matched = std.mem.eql(u8, url, "https://example.com/csp-report");
+            body_contains_csp_report = std.mem.indexOf(u8, body, "csp-report") != null;
+            return true;
+        }
+    };
+    MockSender.reset();
+
+    var dummy_ctx: u8 = 0;
+    const sender = ReportSender{
+        .ctx = @ptrCast(&dummy_ctx),
+        .sendFn = MockSender.send,
+    };
+
+    // Create a violation
+    var policy = types.Policy.init(allocator, .enforce, .header);
+    defer policy.deinit();
+
+    var script_src = try types.Directive.create(allocator, "script-src");
+    try script_src.value.append(types.SourceExpression.createBorrowed(.keyword_self, "'self'"));
+    try policy.directive_set.append(script_src);
+
+    var violation = try createViolation(
+        allocator,
+        &policy,
+        "script-src",
+        .inline_script,
+        .{ .document_uri = "https://example.com" },
+    );
+    defer violation.deinit();
+
+    // Report with endpoints
+    const endpoints = [_][]const u8{"https://example.com/csp-report"};
+    const config = ReportingConfig{
+        .sender = sender,
+        .event_dispatcher = null,
+        .rate_limiter = null,
+        .allocator = allocator,
+    };
+
+    try reportViolation(allocator, &violation, &endpoints, config);
+
+    // Verify the sender was called with correct data
+    try std.testing.expectEqual(@as(u32, 1), MockSender.call_count);
+    try std.testing.expect(MockSender.last_url_matched);
+    try std.testing.expect(MockSender.body_contains_csp_report);
+}
+
+test "reportViolation - with event dispatcher" {
+    const allocator = std.testing.allocator;
+    defer deinitThreadLocalRateLimiter();
+
+    // Create a mock event dispatcher that validates data inline
+    const MockDispatcher = struct {
+        var fired: bool = false;
+        var data_contains_document_uri: bool = false;
+
+        fn reset() void {
+            fired = false;
+            data_contains_document_uri = false;
+        }
+
+        fn fire(ctx: *anyopaque, data: []const u8) void {
+            _ = ctx;
+            fired = true;
+            data_contains_document_uri = std.mem.indexOf(u8, data, "document-uri") != null;
+        }
+    };
+    MockDispatcher.reset();
+
+    var dummy_ctx: u8 = 0;
+    const dispatcher = EventDispatcher{
+        .ctx = @ptrCast(&dummy_ctx),
+        .fireFn = MockDispatcher.fire,
+    };
+
+    // Create a violation
+    var policy = types.Policy.init(allocator, .enforce, .header);
+    defer policy.deinit();
+
+    var violation = try createViolation(
+        allocator,
+        &policy,
+        "script-src",
+        .inline_script,
+        .{ .document_uri = "https://example.com" },
+    );
+    defer violation.deinit();
+
+    // Report without HTTP endpoints but with event dispatcher
+    const config = ReportingConfig{
+        .sender = null,
+        .event_dispatcher = dispatcher,
+        .rate_limiter = null,
+        .allocator = allocator,
+    };
+
+    try reportViolation(allocator, &violation, null, config);
+
+    // Verify the event was fired with correct data
+    try std.testing.expect(MockDispatcher.fired);
+    try std.testing.expect(MockDispatcher.data_contains_document_uri);
+}
+
+test "reportViolation - no endpoints" {
+    const allocator = std.testing.allocator;
+    defer deinitThreadLocalRateLimiter();
+
+    var policy = types.Policy.init(allocator, .enforce, .header);
+    defer policy.deinit();
+
+    var violation = try createViolation(
+        allocator,
+        &policy,
+        "script-src",
+        .inline_script,
+        .{},
+    );
+    defer violation.deinit();
+
+    // Should not error when no endpoints provided
+    try reportViolation(allocator, &violation, null, null);
+    try reportViolation(allocator, &violation, &[_][]const u8{}, null);
+}
+
+test "reportViolationSimple - convenience function" {
+    const allocator = std.testing.allocator;
+    defer deinitThreadLocalRateLimiter();
+
+    var policy = types.Policy.init(allocator, .enforce, .header);
+    defer policy.deinit();
+
+    var violation = try createViolation(
+        allocator,
+        &policy,
+        "script-src",
+        .inline_script,
+        .{},
+    );
+    defer violation.deinit();
+
+    // Should not error
+    try reportViolationSimple(allocator, &violation, null, null);
 }

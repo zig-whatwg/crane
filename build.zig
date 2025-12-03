@@ -1440,6 +1440,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "selector", .module = selector_mod },
             .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "impls", .module = impls_mod },
+            .{ .name = "enums", .module = enums_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
