@@ -111,6 +111,9 @@ pub const documentClose = parser.documentClose;
 // Custom Elements
 pub const custom_elements = @import("custom_elements.zig");
 
+// Custom Element Upgrade Algorithm
+pub const upgrade = @import("upgrade.zig");
+
 // Script Execution (§4.12.1), Script Runner (§4.12.1.1), and Event Utilities
 // MOVED to src/webidl/impls/ to break circular dependency:
 //   html_mod → interfaces_mod → impls_mod → html_mod (CYCLE!)
