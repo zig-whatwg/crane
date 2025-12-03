@@ -24,7 +24,10 @@ const Selection = interfaces.Selection;
 
 // Import related implementations
 const NodeImpl = @import("Node.zig");
-const RangeImpl = @import("Range.zig");
+
+// Import interfaces for calling spec methods (per Golden Rule #13: impls call interfaces, not other impls)
+const Range = interfaces.Range;
+const AbstractRange = interfaces.AbstractRange;
 
 pub const State = Selection.State;
 
@@ -275,11 +278,11 @@ pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtim
 pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Get the range's boundary points
-    const start_container = RangeImpl.getStartContainer(range) orelse return error.InvalidStateError;
-    const start_offset = RangeImpl.getStartOffset(range);
-    const end_container = RangeImpl.getEndContainer(range) orelse return error.InvalidStateError;
-    const end_offset = RangeImpl.getEndOffset(range);
+    // Get the range's boundary points via AbstractRange interface (per Golden Rule #13)
+    const start_container = try AbstractRange.get_startContainer(range);
+    const start_offset = try AbstractRange.get_startOffset(range);
+    const end_container = try AbstractRange.get_endContainer(range);
+    const end_offset = try AbstractRange.get_endOffset(range);
 
     // Set selection to the range's boundaries
     internal.anchor_node = start_container;
@@ -547,12 +550,15 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 
     const allow_partial = if (allowPartialContainment.was_passed) allowPartialContainment.value else false;
     if (allow_partial) {
-        // Check if node intersects with the selection range
-        return RangeImpl.intersectsNode(range, node) catch false;
+        // Check if node intersects with the selection range (via Range interface per Golden Rule #13)
+        return Range.call_intersectsNode(range, node) catch false;
     } else {
         // Check if node is fully contained within the selection range
         // Node must be an inclusive descendant of commonAncestorContainer
         // and its boundaries must be within the range
+        // NOTE: containsNode is an internal helper, not a spec method.
+        // TODO: Consider adding containsNode to Range interface or inlining logic here
+        const RangeImpl = @import("Range.zig");
         return RangeImpl.containsNode(range, node) catch false;
     }
 }
