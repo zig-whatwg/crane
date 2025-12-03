@@ -15,6 +15,7 @@
 //! src/html/window/
 //! ├── browsing_context.zig   # BrowsingContext, BrowsingContextGroup
 //! ├── window_proxy.zig       # WindowProxy with cross-origin restrictions
+//! ├── iframe_integration.zig # IFrame ↔ BrowsingContext lifecycle
 //! ├── ui_backend.zig         # Pluggable UI (alert, confirm, prompt, print)
 //! ├── animation_frame.zig    # requestAnimationFrame scheduling
 //! └── root.zig               # Module exports (this file)
@@ -54,6 +55,12 @@ pub const WindowProxy = window_proxy.WindowProxy;
 pub const Origin = window_proxy.Origin;
 pub const CrossOriginProperty = window_proxy.CrossOriginProperty;
 pub const WindowProxyError = window_proxy.WindowProxyError;
+
+// IFrame Integration (§7.5)
+pub const iframe_integration = @import("iframe_integration.zig");
+pub const IFrameIntegration = iframe_integration.IFrameIntegration;
+pub const IFrameState = iframe_integration.IFrameState;
+pub const IFrameError = iframe_integration.IFrameError;
 
 // UI Backend (§8.8 - Simple dialogs)
 pub const ui_backend = @import("ui_backend.zig");
