@@ -39,8 +39,8 @@ const interfaces = @import("interfaces");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 const Document = interfaces.Document;
 const script_execution = @import("script_execution.zig");
-const html = @import("html");
-const EventLoop = html.EventLoop;
+const html_core = @import("html_core");
+const EventLoop = html_core.EventLoop;
 
 /// Script Runner manages script execution scheduling
 ///

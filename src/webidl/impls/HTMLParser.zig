@@ -30,14 +30,14 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
-// Import the full HTML module
-const html_mod = @import("html");
-const Tokenizer = html_mod.parser.Tokenizer;
-const TreeBuilder = html_mod.parser.TreeBuilder;
-const TreeNode = html_mod.parser.TreeNode;
-const InsertionMode = html_mod.parser.InsertionMode;
-const QuirksMode = html_mod.parser.QuirksMode;
-const ParserNamespace = html_mod.parser.Namespace;
+// Import the interface-free HTML core module
+const html_core = @import("html_core");
+const Tokenizer = html_core.parser.Tokenizer;
+const TreeBuilder = html_core.parser.TreeBuilder;
+const TreeNode = html_core.parser.TreeNode;
+const InsertionMode = html_core.parser.InsertionMode;
+const QuirksMode = html_core.parser.QuirksMode;
+const ParserNamespace = html_core.parser.Namespace;
 
 // Import DOM implementation modules for internal algorithm methods
 const DocumentImpl = @import("Document.zig");

@@ -1296,19 +1296,27 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // HTML module (WHATWG HTML Standard)
-    // Unified module covering parser (§13), window (§7), event loop (§8.1.7), etc.
-    const html_mod = b.addModule("html", .{
+    // HTML Core module (WHATWG HTML Standard) - Interface-free subset
+    // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)
+    // This module can be safely imported by impls without creating a cycle.
+    // NO imports of: interfaces, impls, runtime
+    const html_core_mod = b.addModule("html_core", .{
         .root_source_file = b.path("src/html/root.zig"),
         .target = target,
     });
-    html_mod.addImport("infra", infra_mod);
-    html_mod.addImport("dom", dom_mod);
-    html_mod.addImport("platform", platform_mod);
-    html_mod.addImport("runtime", runtime_mod);
+    html_core_mod.addImport("infra", infra_mod);
+    html_core_mod.addImport("dom", dom_mod);
+    html_core_mod.addImport("platform", platform_mod);
 
-    // Add html to impls for DOMParser, innerHTML, document.write, Window implementations
-    impls_mod.addImport("html", html_mod);
+    // HTML module alias - currently same as html_core since all html code is interface-free.
+    // When script execution files are moved back from impls to html (they need interface access),
+    // this will become a separate module with additional dependencies (interfaces, runtime).
+    // For now, it's an alias to html_core to maintain API compatibility.
+    const html_mod = html_core_mod;
+
+    // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
+    // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
+    impls_mod.addImport("html_core", html_core_mod);
 
     // Permissions module (W3C Permissions API)
     const permissions_mod = b.addModule("permissions", .{
