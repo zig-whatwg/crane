@@ -153,6 +153,18 @@ pub const resolveWorkerModuleSpecifier = module_worker.resolveWorkerModuleSpecif
 pub const isBareSpecifier = module_worker.isBareSpecifier;
 pub const getImportScriptsTypeErrorMessage = module_worker.getImportScriptsTypeErrorMessage;
 
+// Worker Error Handling
+pub const worker_error = @import("worker_error.zig");
+pub const WorkerErrorEvent = worker_error.WorkerErrorEvent;
+pub const WorkerPromiseRejection = worker_error.WorkerPromiseRejection;
+pub const WorkerErrorHandler = worker_error.WorkerErrorHandler;
+pub const TerminationCleanup = worker_error.TerminationCleanup;
+pub const TerminationState = worker_error.TerminationState;
+pub const reportErrorToConsole = worker_error.reportErrorToConsole;
+pub const createErrorEventFromException = worker_error.createErrorEventFromException;
+pub const canAcceptTasks = worker_error.canAcceptTasks;
+pub const canContinueExecution = worker_error.canContinueExecution;
+
 test {
     std.testing.refAllDecls(@This());
 }

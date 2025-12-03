@@ -19,6 +19,11 @@ const RequestCredentials = types.RequestCredentials;
 const worker_agent = @import("worker_agent.zig");
 const WorkerAgent = worker_agent.WorkerAgent;
 
+const worker_error = @import("worker_error.zig");
+const WorkerErrorHandler = worker_error.WorkerErrorHandler;
+const WorkerErrorEvent = worker_error.WorkerErrorEvent;
+const TerminationState = worker_error.TerminationState;
+
 const platform_mod = @import("platform");
 const timer_backend = platform_mod.timer_backend;
 const TimerBackend = timer_backend.TimerBackend;
@@ -161,13 +166,39 @@ pub const DedicatedWorker = struct {
         return self.agent.hasContext();
     }
 
-    /// Terminate the worker.
+    /// Terminate the worker (forced shutdown).
     ///
     /// Spec: HTML Standard § 10.2.3.1 terminate()
     /// "The terminate() method, when invoked, must cause the terminate a worker
     /// algorithm to be run on the worker with which the object is associated."
+    ///
+    /// This immediately aborts execution and cleans up resources.
     pub fn terminate(self: *DedicatedWorker) void {
         self.agent.terminate();
+    }
+
+    /// Get the termination state
+    pub fn getTerminationState(self: *const DedicatedWorker) TerminationState {
+        return self.agent.termination_state;
+    }
+
+    /// Register a resource for cleanup on termination
+    pub fn registerForCleanup(
+        self: *DedicatedWorker,
+        resource: *anyopaque,
+        cleanup_fn: worker_error.CleanupFn,
+    ) !void {
+        try self.agent.registerForCleanup(resource, cleanup_fn);
+    }
+
+    /// Set the error handler for propagating errors to main thread
+    pub fn setErrorHandler(self: *DedicatedWorker, handler: WorkerErrorHandler) void {
+        self.agent.setErrorHandler(handler);
+    }
+
+    /// Handle an error from the worker script
+    pub fn handleError(self: *DedicatedWorker, event: *WorkerErrorEvent) void {
+        self.agent.handleError(event);
     }
 
     /// Post a message to the worker.
