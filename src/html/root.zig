@@ -185,6 +185,15 @@ pub const BeforeUnloadEvent = navigation.BeforeUnloadEvent;
 pub const NavigationType = navigation.NavigationType;
 pub const ScrollRestorationMode = navigation.ScrollRestorationMode;
 
+// Module Graph and Async Fetching (§8.1.6)
+pub const module_graph = @import("module_graph.zig");
+
+// Re-export commonly used module graph types
+pub const ModuleGraph = module_graph.ModuleGraph;
+pub const ModuleNode = module_graph.ModuleNode;
+pub const ModuleStatus = module_graph.ModuleStatus;
+pub const ModuleGraphFetcher = module_graph.ModuleGraphFetcher;
+
 // Web Workers (§10)
 pub const workers = @import("workers/root.zig");
 
