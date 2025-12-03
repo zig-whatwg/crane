@@ -230,6 +230,15 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
+    // Register dynamic import handler for this isolate
+    // This enables import() expressions in JavaScript per HTML spec HostImportModuleDynamically
+    if (isolate) |iso| {
+        v8_engine.setDynamicImportHandler(iso, .{
+            .callback = handleDynamicImport,
+            .context = @ptrCast(v8_ctx),
+        });
+    }
+
     // Store in map
     try state.contexts.put(key, ContextEntry{
         .v8_ctx = v8_ctx,
@@ -330,6 +339,193 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
 pub fn setDefaultAllocator(allocator: std.mem.Allocator) !void {
     const state = &(manager_state orelse return error.NotInitialized);
     state.default_allocator = allocator;
+}
+
+// ============================================================================
+// Dynamic Import Handler
+// ============================================================================
+
+/// Handle dynamic import() expressions from JavaScript
+///
+/// This callback is invoked by V8 when JavaScript uses import().
+/// It implements the HostImportModuleDynamically abstract operation from HTML spec.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostimportmoduledynamically
+///
+/// Note: Module fetching is handled via std.net for now. A full implementation
+/// would integrate with the Fetch API but that requires circular dependency resolution.
+fn handleDynamicImport(
+    ctx: ?*anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    resolver: v8_engine.DynamicImportResolver,
+) void {
+    const v8_ctx: *v8.Context = @ptrCast(@alignCast(ctx orelse {
+        resolver.reject("No context available for dynamic import");
+        return;
+    }));
+
+    // Get isolate from context
+    const isolate = v8.v8_Isolate_GetCurrent() orelse {
+        resolver.reject("No V8 isolate available");
+        return;
+    };
+
+    // Try to get runtime context for allocator
+    const state = manager_state orelse {
+        resolver.reject("Context manager not initialized");
+        return;
+    };
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse {
+        resolver.reject("Invalid V8 context");
+        return;
+    };
+    const key = @intFromPtr(raw_addr);
+
+    const entry = state.contexts.getPtr(key) orelse {
+        resolver.reject("No runtime context for this V8 context");
+        return;
+    };
+
+    const allocator = entry.runtime_ctx.allocator;
+
+    // Resolve the specifier to a URL
+    // For now, we only handle URL-like specifiers (absolute or relative)
+    const resolved_url = resolveModuleSpecifier(allocator, specifier, referrer) catch {
+        resolver.reject("Failed to resolve module specifier");
+        return;
+    };
+    defer if (resolved_url.ptr != specifier.ptr) allocator.free(resolved_url);
+
+    // Check for supported URL schemes
+    // For now, we only support file:// URLs or relative paths
+    if (!std.mem.startsWith(u8, resolved_url, "file://") and
+        std.mem.indexOf(u8, resolved_url, "://") != null)
+    {
+        // HTTP/HTTPS URLs require fetch integration which isn't available here
+        // The script_execution.zig handler has access to fetch and should be used
+        // for full HTTP module loading
+        resolver.reject("Dynamic import of HTTP URLs not supported in this context. Use script_execution for HTTP module loading.");
+        return;
+    }
+
+    // For file:// URLs, read the file directly
+    var file_path: []const u8 = resolved_url;
+    if (std.mem.startsWith(u8, resolved_url, "file://")) {
+        file_path = resolved_url[7..]; // Strip "file://"
+    }
+
+    // Read the file
+    const file = std.fs.cwd().openFile(file_path, .{}) catch {
+        resolver.reject("Failed to open module file");
+        return;
+    };
+    defer file.close();
+
+    const source = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch { // 10MB max
+        resolver.reject("Failed to read module file");
+        return;
+    };
+    defer allocator.free(source);
+
+    // Compile the module
+    const source_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        source.ptr,
+        @intCast(source.len),
+    ) orelse {
+        resolver.reject("Failed to create source string");
+        return;
+    };
+
+    const url_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        resolved_url.ptr,
+        @intCast(resolved_url.len),
+    ) orelse {
+        resolver.reject("Failed to create URL string");
+        return;
+    };
+
+    const module = v8.v8_Module_Compile(v8_ctx, source_str, url_str) orelse {
+        resolver.reject("Failed to compile module");
+        return;
+    };
+
+    // Instantiate the module
+    if (!v8.v8_Module_Instantiate(v8_ctx, module)) {
+        v8.v8_Module_Dispose(module);
+        resolver.reject("Failed to instantiate module");
+        return;
+    }
+
+    // Evaluate the module
+    const eval_result = v8.v8_Module_Evaluate(v8_ctx, module);
+    if (eval_result == null) {
+        v8.v8_Module_Dispose(module);
+        resolver.reject("Failed to evaluate module");
+        return;
+    }
+
+    // Get module namespace and resolve the promise
+    const namespace = v8.v8_Module_GetModuleNamespace(module) orelse {
+        v8.v8_Module_Dispose(module);
+        resolver.reject("Failed to get module namespace");
+        return;
+    };
+
+    resolver.resolve(namespace);
+}
+
+/// Resolve a module specifier to a URL
+fn resolveModuleSpecifier(
+    allocator: std.mem.Allocator,
+    specifier: []const u8,
+    referrer: []const u8,
+) ![]const u8 {
+    // Absolute URL
+    if (std.mem.indexOf(u8, specifier, "://") != null) {
+        return specifier;
+    }
+
+    // Root-relative URL
+    if (specifier.len > 0 and specifier[0] == '/') {
+        // Extract origin from referrer
+        if (std.mem.indexOf(u8, referrer, "://")) |scheme_end| {
+            const after_scheme = scheme_end + 3;
+            const origin_end = if (std.mem.indexOfPos(u8, referrer, after_scheme, "/")) |slash|
+                slash
+            else
+                referrer.len;
+
+            const result = try allocator.alloc(u8, origin_end + specifier.len);
+            @memcpy(result[0..origin_end], referrer[0..origin_end]);
+            @memcpy(result[origin_end..], specifier);
+            return result;
+        }
+        return specifier;
+    }
+
+    // Relative URL (./xxx or ../xxx)
+    if (specifier.len >= 2 and specifier[0] == '.') {
+        // Find the base path (everything up to and including the last /)
+        var base_path_end: usize = 0;
+        if (std.mem.lastIndexOf(u8, referrer, "/")) |last_slash| {
+            base_path_end = last_slash + 1;
+        }
+
+        if (base_path_end > 0) {
+            const result = try allocator.alloc(u8, base_path_end + specifier.len);
+            @memcpy(result[0..base_path_end], referrer[0..base_path_end]);
+            @memcpy(result[base_path_end..], specifier);
+            return result;
+        }
+    }
+
+    // Bare specifier - would need import map resolution
+    // For now, return as-is (will likely fail)
+    return specifier;
 }
 
 // ============================================================================

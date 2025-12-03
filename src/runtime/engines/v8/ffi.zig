@@ -584,7 +584,7 @@ pub const DynamicImportCallback = *const fn (
     specifier: [*]const u8,
     specifier_len: c_int,
     promise_resolver: *anyopaque,
-) void;
+) callconv(.c) void;
 
 /// Set the dynamic import callback for an isolate
 ///

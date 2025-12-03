@@ -1023,7 +1023,7 @@ fn dynamicImportCallbackWrapper(
     specifier: [*]const u8,
     specifier_len: c_int,
     promise_resolver: *anyopaque,
-) callconv(.C) void {
+) callconv(.c) void {
     _ = user_data;
 
     const handler = g_dynamic_import_handler orelse {
