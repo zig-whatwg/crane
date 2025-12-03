@@ -234,7 +234,20 @@ pub const USB = navigator.usb.USB;
 pub const Serial = navigator.serial.Serial;
 pub const HID = navigator.hid.HID;
 pub const BatteryManager = navigator.battery.BatteryManager;
-pub const StorageManager = navigator.storage_manager.StorageManager;
+pub const NavigatorStorageManager = navigator.storage_manager.StorageManager;
+
+// Web Storage (§12)
+pub const web_storage = @import("web_storage/root.zig");
+
+// Re-export commonly used storage types
+pub const Storage = web_storage.Storage;
+pub const StorageEvent = web_storage.StorageEvent;
+pub const StorageEventData = web_storage.StorageEventData;
+pub const StorageEventBroadcaster = web_storage.StorageEventBroadcaster;
+pub const WebStorageType = web_storage.StorageType;
+pub const WebStorageError = web_storage.StorageError;
+pub const getLocalStorage = web_storage.getLocalStorage;
+pub const getSessionStorage = web_storage.getSessionStorage;
 
 // Stylesheet Blocking (§14.3.3)
 pub const stylesheet_blocking = @import("stylesheet_blocking.zig");
