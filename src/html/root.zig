@@ -267,6 +267,18 @@ pub const PermissionsPolicy = permissions_policy.PermissionsPolicy;
 pub const PermissionsPolicyFeature = permissions_policy.Feature;
 pub const PermissionsPolicyAllowlist = permissions_policy.Allowlist;
 
+// Editing APIs (§6.5)
+pub const editing = @import("editing/root.zig");
+
+// Re-export commonly used editing types
+pub const EditingCommand = editing.Command;
+pub const EditorState = editing.EditorState;
+pub const execCommand = editing.execCommand;
+pub const queryCommandEnabled = editing.queryCommandEnabled;
+pub const queryCommandState = editing.queryCommandState;
+pub const queryCommandSupported = editing.queryCommandSupported;
+pub const queryCommandValue = editing.queryCommandValue;
+
 test {
     std.testing.refAllDecls(@This());
 }
