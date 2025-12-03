@@ -259,6 +259,14 @@ pub const isBlockingStylesheet = stylesheet_blocking.isBlockingStylesheet;
 pub const isStylesheetRel = stylesheet_blocking.isStylesheetRel;
 pub const shouldBlockScriptExecution = stylesheet_blocking.shouldBlockScriptExecution;
 
+// Permissions Policy (W3C Permissions Policy spec)
+pub const permissions_policy = @import("permissions_policy.zig");
+
+// Re-export commonly used permissions policy types
+pub const PermissionsPolicy = permissions_policy.PermissionsPolicy;
+pub const PermissionsPolicyFeature = permissions_policy.Feature;
+pub const PermissionsPolicyAllowlist = permissions_policy.Allowlist;
+
 test {
     std.testing.refAllDecls(@This());
 }
