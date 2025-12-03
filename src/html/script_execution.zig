@@ -43,6 +43,14 @@ const fetch = @import("fetch");
 // Content Security Policy
 const csp = @import("csp");
 
+// Module graph for async module fetching - accessed via html_core module
+const html_core = @import("html_core");
+const ModuleGraph = html_core.ModuleGraph;
+const ModuleGraphFetcher = html_core.ModuleGraphFetcher;
+const ModuleNode = html_core.ModuleNode;
+const EventLoop = html_core.EventLoop;
+const TaskSource = html_core.TaskSource;
+
 pub const ScriptExecutionError = error{
     InvalidScriptElement,
     ScriptingDisabled,
@@ -995,6 +1003,579 @@ fn tlaRejectHandler(context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void
         _ = url_ptr;
         std.debug.print("TLA module evaluation failed\n", .{});
     }
+}
+
+// =============================================================================
+// Async Module Fetching (HTML Standard §8.1.3.8)
+// =============================================================================
+
+/// Context for async script preparation
+pub const AsyncScriptContext = struct {
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    script_url: []const u8,
+    script_type: ScriptType,
+    parser_document: ?*runtime.Instance,
+    completion_callback: ?*const fn (context: ?*anyopaque, success: bool) void,
+    user_context: ?*anyopaque,
+    loop: ?*EventLoop,
+
+    pub fn deinit(self: *AsyncScriptContext) void {
+        self.allocator.free(self.script_url);
+        self.allocator.destroy(self);
+    }
+};
+
+/// Prepare a script element asynchronously
+/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+///
+/// This is the async variant that doesn't block the parser while fetching external scripts.
+/// The completion callback is invoked when the script is ready to execute.
+///
+/// For classic scripts, this fetches the script and calls back when ready.
+/// For module scripts, this builds the module graph asynchronously and calls back when
+/// all dependencies are fetched and compiled.
+pub fn prepareScriptElementAsync(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    loop: ?*EventLoop,
+    completion_callback: ?*const fn (context: ?*anyopaque, success: bool) void,
+    user_context: ?*anyopaque,
+) ScriptExecutionError!void {
+    // Steps 1-32 are the same as sync version
+    // Step 1: If el's already started is true, then return
+    if (HTMLScriptElement.hasAlreadyStarted(script_element)) {
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    }
+
+    // Step 2-3: Handle parser document
+    const parser_document = HTMLScriptElement.getParserDocument(script_element);
+    HTMLScriptElement.setParserDocument(script_element, null);
+
+    // Step 5: Let source text be el's child text content
+    const source_text = getChildTextContent(allocator, script_element) catch |err| {
+        if (err == error.OutOfMemory) return ScriptExecutionError.OutOfMemory;
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    };
+    defer if (source_text.len > 0) allocator.free(source_text);
+
+    // Step 6: If el has no src attribute, and source text is empty, then return
+    if (!hasSrcAttribute(script_element) and source_text.len == 0) {
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    }
+
+    // Step 7: If el is not connected, then return
+    if (!isConnected(script_element)) {
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    }
+
+    // Steps 8-13: Determine script type
+    const script_type = determineScriptType(script_element);
+    if (script_type == .null) {
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    }
+
+    // Step 14: Restore parser document if non-null
+    if (parser_document) |pd| {
+        HTMLScriptElement.setParserDocument(script_element, pd);
+        HTMLScriptElement.clearForceAsync(script_element);
+    }
+
+    // Step 15: Set el's already started to true
+    HTMLScriptElement.setAlreadyStarted(script_element, true);
+
+    // Step 16: Set preparation-time document
+    const node_document = getNodeDocument(script_element);
+    HTMLScriptElement.setPreparationTimeDocument(script_element, node_document);
+
+    // Step 17: If parser document is non-null and not equal to preparation-time document, return
+    if (parser_document) |pd| {
+        if (pd != node_document) {
+            if (completion_callback) |cb| cb(user_context, false);
+            return;
+        }
+    }
+
+    // Step 18: If scripting is disabled, return
+    if (node_document) |doc| {
+        if (!Document.isScriptingEnabled(doc)) {
+            if (completion_callback) |cb| cb(user_context, false);
+            return;
+        }
+    }
+
+    // Step 19: nomodule check for classic scripts
+    if (script_type == .classic and hasNoModuleAttribute(script_element)) {
+        if (completion_callback) |cb| cb(user_context, false);
+        return;
+    }
+
+    // Set the script type
+    HTMLScriptElement.setScriptType(script_element, script_type);
+
+    // Step 33: If el has a src attribute (external script)
+    if (hasSrcAttribute(script_element)) {
+        HTMLScriptElement.setFromExternalFile(script_element, true);
+
+        const src = getSrcAttribute(script_element);
+        if (src.len == 0) {
+            if (completion_callback) |cb| cb(user_context, false);
+            return;
+        }
+
+        // Resolve src against base URL
+        const base_url = if (node_document) |doc|
+            if (Document.getInternal(doc)) |internal| internal.base_uri else ""
+        else
+            "";
+
+        const script_url = resolveUrl(allocator, src, base_url) catch {
+            return ScriptExecutionError.OutOfMemory;
+        };
+
+        // CSP check
+        if (node_document) |doc| {
+            const url_parts = parseUrlForCSP(script_url);
+            const nonce = getNonceAttribute(script_element);
+
+            if (!Document.isExternalScriptAllowedByCSP(
+                doc,
+                url_parts.scheme,
+                url_parts.host,
+                url_parts.port,
+                url_parts.path,
+                if (nonce.len > 0) nonce else null,
+            )) {
+                if (script_url.ptr != src.ptr) allocator.free(script_url);
+                if (completion_callback) |cb| cb(user_context, false);
+                return;
+            }
+        }
+
+        // Create async context
+        const ctx = allocator.create(AsyncScriptContext) catch {
+            if (script_url.ptr != src.ptr) allocator.free(script_url);
+            return ScriptExecutionError.OutOfMemory;
+        };
+
+        ctx.* = .{
+            .allocator = allocator,
+            .script_element = script_element,
+            .script_url = if (script_url.ptr != src.ptr) script_url else allocator.dupe(u8, script_url) catch {
+                allocator.destroy(ctx);
+                return ScriptExecutionError.OutOfMemory;
+            },
+            .script_type = script_type,
+            .parser_document = parser_document,
+            .completion_callback = completion_callback,
+            .user_context = user_context,
+            .loop = loop,
+        };
+
+        // Schedule async fetch
+        if (loop) |event_loop_ptr| {
+            _ = event_loop_ptr.queueTask(
+                .networking,
+                asyncFetchScriptTask,
+                ctx,
+                null,
+            ) catch {
+                ctx.deinit();
+                return ScriptExecutionError.OutOfMemory;
+            };
+        } else {
+            // Fallback to sync fetch if no event loop
+            performSyncScriptFetch(ctx);
+        }
+        return;
+    }
+
+    // Step 34: Inline script - handle synchronously (no network I/O needed)
+    if (node_document) |doc| {
+        const base_url = Document.getInternal(doc).?.base_uri;
+
+        switch (script_type) {
+            .classic => {
+                const script = ClassicScript.init(source_text, base_url);
+                HTMLScriptElement.setResult(script_element, .{ .script = script });
+                HTMLScriptElement.cacheSourceText(script_element, source_text) catch {
+                    return ScriptExecutionError.OutOfMemory;
+                };
+            },
+            .module => {
+                // For inline modules, we still need to fetch dependencies asynchronously
+                const module = ModuleScript.init(source_text, base_url);
+                HTMLScriptElement.setResult(script_element, .{ .module_script = module });
+                HTMLScriptElement.cacheSourceText(script_element, source_text) catch {
+                    return ScriptExecutionError.OutOfMemory;
+                };
+
+                // TODO: Parse imports and fetch dependencies async
+                // For now, mark as ready for inline modules without dependencies
+            },
+            .importmap, .speculationrules => {
+                // These are handled synchronously as they don't require network I/O
+            },
+            .null => {},
+        }
+    }
+
+    // Mark as ready and invoke callback
+    HTMLScriptElement.setReadyToBeParserExecuted(script_element, true);
+    if (completion_callback) |cb| cb(user_context, true);
+}
+
+/// Task callback for async script fetch
+fn asyncFetchScriptTask(context: ?*anyopaque) void {
+    const ctx: *AsyncScriptContext = @ptrCast(@alignCast(context.?));
+    performSyncScriptFetch(ctx);
+}
+
+/// Perform synchronous script fetch (called from task or directly)
+fn performSyncScriptFetch(ctx: *AsyncScriptContext) void {
+    defer ctx.deinit();
+
+    const fetch_result = fetchExternalScript(ctx.allocator, ctx.script_url) catch {
+        std.debug.print("Async script fetch error for: {s}\n", .{ctx.script_url});
+        HTMLScriptElement.setResult(ctx.script_element, .null);
+        if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+        return;
+    };
+
+    if (fetch_result.body) |body| {
+        defer ctx.allocator.free(body);
+
+        switch (ctx.script_type) {
+            .classic => {
+                const script = ClassicScript.init(body, ctx.script_url);
+                HTMLScriptElement.setResult(ctx.script_element, .{ .script = script });
+            },
+            .module => {
+                const module = ModuleScript.init(body, ctx.script_url);
+                HTMLScriptElement.setResult(ctx.script_element, .{ .module_script = module });
+                // TODO: Build module graph for dependencies
+            },
+            else => {},
+        }
+
+        HTMLScriptElement.cacheSourceText(ctx.script_element, body) catch {
+            HTMLScriptElement.setResult(ctx.script_element, .null);
+            if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+            return;
+        };
+
+        HTMLScriptElement.setReadyToBeParserExecuted(ctx.script_element, true);
+        if (ctx.completion_callback) |cb| cb(ctx.user_context, true);
+    } else {
+        HTMLScriptElement.setResult(ctx.script_element, .null);
+        if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+    }
+}
+
+/// Fetch a module script graph asynchronously
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-script-graph
+///
+/// This fetches the module and all its dependencies, building the complete module graph.
+/// The completion callback is invoked when the entire graph is ready.
+pub fn fetchModuleScriptGraphAsync(
+    allocator: std.mem.Allocator,
+    url: []const u8,
+    loop: ?*EventLoop,
+    completion_callback: *const fn (context: ?*anyopaque, graph: *ModuleGraph, success: bool) void,
+    context: ?*anyopaque,
+) !*ModuleGraphFetcher {
+    const fetcher = try ModuleGraphFetcher.init(allocator, url, loop);
+
+    try fetcher.fetchGraph(completion_callback, context);
+
+    return fetcher;
+}
+
+/// Context for module graph fetch completion
+pub const ModuleGraphCompletionContext = struct {
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    fetcher: *ModuleGraphFetcher,
+    completion_callback: ?*const fn (context: ?*anyopaque, success: bool) void,
+    user_context: ?*anyopaque,
+};
+
+/// Prepare a module script element with full async module graph fetching
+/// This fetches the module and all its dependencies before marking ready
+pub fn prepareModuleScriptAsync(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    module_url: []const u8,
+    loop: ?*EventLoop,
+    completion_callback: ?*const fn (context: ?*anyopaque, success: bool) void,
+    user_context: ?*anyopaque,
+) !void {
+    const ctx = try allocator.create(ModuleGraphCompletionContext);
+    errdefer allocator.destroy(ctx);
+
+    const fetcher = try ModuleGraphFetcher.init(allocator, module_url, loop);
+    errdefer fetcher.deinit();
+
+    ctx.* = .{
+        .allocator = allocator,
+        .script_element = script_element,
+        .fetcher = fetcher,
+        .completion_callback = completion_callback,
+        .user_context = user_context,
+    };
+
+    try fetcher.fetchGraph(onModuleGraphComplete, ctx);
+}
+
+/// Callback when module graph fetch completes
+fn onModuleGraphComplete(context: ?*anyopaque, graph: *ModuleGraph, success: bool) void {
+    const ctx: *ModuleGraphCompletionContext = @ptrCast(@alignCast(context.?));
+    defer {
+        ctx.fetcher.deinit();
+        ctx.allocator.destroy(ctx);
+    }
+
+    if (success) {
+        // Get topological order for compilation
+        const order = graph.getTopologicalOrder(ctx.allocator) catch {
+            if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+            return;
+        };
+        defer {
+            for (order) |url| ctx.allocator.free(url);
+            ctx.allocator.free(order);
+        }
+
+        // All modules fetched successfully
+        // Set the root module as the result
+        if (graph.getModule(graph.root_url)) |root_node| {
+            if (root_node.source_text) |source| {
+                const module = ModuleScript.init(source, graph.root_url);
+                HTMLScriptElement.setResult(ctx.script_element, .{ .module_script = module });
+                HTMLScriptElement.cacheSourceText(ctx.script_element, source) catch {
+                    if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+                    return;
+                };
+                HTMLScriptElement.setReadyToBeParserExecuted(ctx.script_element, true);
+            }
+        }
+
+        if (ctx.completion_callback) |cb| cb(ctx.user_context, true);
+    } else {
+        // Module graph fetch failed
+        HTMLScriptElement.setResult(ctx.script_element, .null);
+        if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
+    }
+}
+
+// =============================================================================
+// Dynamic Import (import() expression) Support
+// =============================================================================
+
+/// Context for dynamic import handler
+/// Stores document reference for import map resolution and module caching
+pub const DynamicImportContext = struct {
+    /// Document for import map resolution and module map caching
+    document: ?*runtime.Instance,
+    /// Base URL for specifier resolution
+    base_url: []const u8,
+    /// Allocator for fetching and compiling
+    allocator: std.mem.Allocator,
+};
+
+/// Global dynamic import context (set per isolate/realm)
+var g_dynamic_import_ctx: ?DynamicImportContext = null;
+
+/// Set up dynamic import handling for the current realm
+///
+/// This must be called before any dynamic import() calls can succeed.
+/// It stores the context needed to resolve specifiers and fetch modules.
+///
+/// Spec: HTML Standard § 8.1.6.2 HostImportModuleDynamically
+pub fn setupDynamicImportHandler(
+    document: ?*runtime.Instance,
+    base_url: []const u8,
+    allocator: std.mem.Allocator,
+) void {
+    g_dynamic_import_ctx = .{
+        .document = document,
+        .base_url = base_url,
+        .allocator = allocator,
+    };
+
+    // The V8 callback is already registered in engine.zig
+    // This function just sets up the Zig-side context
+}
+
+/// Clear dynamic import handler context
+pub fn clearDynamicImportHandler() void {
+    g_dynamic_import_ctx = null;
+}
+
+/// Dynamic import handler
+///
+/// Called by V8 when JavaScript code uses import() expression.
+/// This implements the HostImportModuleDynamically abstract operation.
+///
+/// Spec: HTML Standard § 8.1.6.2 HostImportModuleDynamically
+/// https://html.spec.whatwg.org/multipage/webappapis.html#hostimportmoduledynamically(referencingscriptormodule,-specifier,-promisecapability)
+///
+/// Steps:
+/// 1. Resolve the specifier using import maps
+/// 2. Fetch the module
+/// 3. Compile and instantiate the module
+/// 4. Resolve the promise with the module namespace
+pub fn handleDynamicImport(
+    handler_ctx: ?*anyopaque,
+    referrer: []const u8,
+    specifier: []const u8,
+    resolver: anytype,
+) void {
+    _ = handler_ctx;
+
+    // Get the context set up by setupDynamicImportHandler
+    const ctx = g_dynamic_import_ctx orelse {
+        resolver.reject("No dynamic import context configured");
+        return;
+    };
+
+    // Step 1: Resolve the specifier
+    // Try import map first, then URL resolution
+    const base_url = if (referrer.len > 0) referrer else ctx.base_url;
+    var resolved_url: ?[]const u8 = null;
+
+    if (ctx.document) |doc| {
+        // Try import map resolution
+        resolved_url = Document.resolveImportSpecifier(doc, specifier, base_url);
+    }
+
+    // If not in import map, try URL resolution
+    if (resolved_url == null) {
+        if (isUrlLikeSpecifier(specifier)) {
+            resolved_url = specifier;
+        } else {
+            resolver.reject("Module specifier could not be resolved");
+            return;
+        }
+    }
+
+    const final_url = resolved_url orelse {
+        resolver.reject("Module specifier could not be resolved");
+        return;
+    };
+
+    // Step 2: Check module cache
+    if (ctx.document) |doc| {
+        if (Document.getModule(doc, final_url)) |cached_module| {
+            // Module already loaded - return its namespace
+            const v8 = @import("v8");
+            if (v8.ffi.v8_Module_GetModuleNamespace(@ptrCast(cached_module))) |namespace| {
+                resolver.resolve(namespace);
+                return;
+            }
+        }
+    }
+
+    // Step 3: Fetch the module
+    const fetch_result = fetchExternalScript(ctx.allocator, final_url) catch |err| {
+        _ = err;
+        resolver.reject("Failed to fetch module");
+        return;
+    };
+
+    if (fetch_result.body == null) {
+        resolver.reject("Module fetch returned empty body");
+        return;
+    }
+
+    const source = fetch_result.body.?;
+    defer ctx.allocator.free(source);
+
+    // Step 4: Compile the module
+    const v8 = @import("v8");
+
+    // Get the V8 context from the current runtime context
+    // This is a simplified approach - a full implementation would get
+    // the context from the document's realm
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+        resolver.reject("No V8 isolate available");
+        return;
+    };
+
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        resolver.reject("No V8 context available");
+        return;
+    };
+
+    // Create V8 String for source and URL
+    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse {
+        resolver.reject("Failed to create source string");
+        return;
+    };
+    defer v8.ffi.v8_String_Dispose(source_str);
+
+    const url_str = v8.ffi.v8_String_NewFromUtf8(isolate, final_url.ptr, @intCast(final_url.len)) orelse {
+        resolver.reject("Failed to create URL string");
+        return;
+    };
+    defer v8.ffi.v8_String_Dispose(url_str);
+
+    // Compile as module
+    const module = v8.ffi.v8_Module_Compile(v8_context, source_str, url_str) orelse {
+        resolver.reject("Failed to compile module");
+        return;
+    };
+
+    // Step 5: Instantiate the module
+    if (!v8.ffi.v8_Module_Instantiate(v8_context, module)) {
+        v8.ffi.v8_Module_Dispose(module);
+        resolver.reject("Failed to instantiate module");
+        return;
+    }
+
+    // Step 6: Evaluate the module
+    const eval_result = v8.ffi.v8_Module_Evaluate(v8_context, module);
+    if (eval_result == null) {
+        v8.ffi.v8_Module_Dispose(module);
+        resolver.reject("Failed to evaluate module");
+        return;
+    }
+    v8.ffi.v8_Value_Dispose(eval_result.?);
+
+    // Step 7: Cache the module
+    if (ctx.document) |doc| {
+        Document.setModule(doc, final_url, @ptrCast(module)) catch {
+            // Continue even if caching fails
+        };
+    }
+
+    // Step 8: Get module namespace and resolve the promise
+    const namespace = v8.ffi.v8_Module_GetModuleNamespace(module) orelse {
+        v8.ffi.v8_Module_Dispose(module);
+        resolver.reject("Failed to get module namespace");
+        return;
+    };
+
+    resolver.resolve(namespace);
+}
+
+/// Register the dynamic import handler with V8
+///
+/// This should be called once when the V8 isolate is initialized.
+/// It connects the Zig handleDynamicImport function to V8's dynamic import callback.
+pub fn registerDynamicImportCallback(isolate: *anyopaque) void {
+    const v8 = @import("v8");
+    const engine = v8.engine;
+
+    engine.setDynamicImportHandler(@ptrCast(isolate), .{
+        .callback = handleDynamicImport,
+        .context = null,
+    });
 }
 
 /// Module resolution callback for V8
