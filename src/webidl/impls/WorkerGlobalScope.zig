@@ -197,7 +197,7 @@ pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // Create WorkerLocation interface instance
         if (internal.internal_location) |loc| {
             // Create a new runtime.Instance wrapping the internal location
-            const loc_instance = WorkerLocation.init(internal.allocator, null) catch {
+            const loc_instance = WorkerLocation.init(internal.allocator, instance.ctx) catch {
                 return error.OutOfMemory;
             };
 
@@ -240,7 +240,7 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // Create WorkerNavigator interface instance
         if (internal.internal_navigator) |nav| {
             // Create a new runtime.Instance wrapping the internal navigator
-            const nav_instance = WorkerNavigator.init(internal.allocator, null) catch {
+            const nav_instance = WorkerNavigator.init(internal.allocator, instance.ctx) catch {
                 return error.OutOfMemory;
             };
 

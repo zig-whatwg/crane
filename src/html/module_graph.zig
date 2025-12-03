@@ -13,6 +13,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// Infra primitives (for spec-compliant lists)
+const infra = @import("infra");
+
 // Event loop for async task scheduling
 const event_loop = @import("event_loop/root.zig");
 const EventLoop = event_loop.EventLoop;
@@ -71,7 +74,7 @@ pub const ModuleNode = struct {
     module_handle: ?*anyopaque,
 
     /// Dependencies (URLs of modules this module imports)
-    dependencies: std.ArrayList([]const u8),
+    dependencies: infra.List([]const u8),
 
     /// Error if status is failed
     @"error": ?ModuleError,
@@ -92,7 +95,7 @@ pub const ModuleNode = struct {
             .status = .fetching,
             .source_text = null,
             .module_handle = null,
-            .dependencies = std.ArrayList([]const u8).init(allocator),
+            .dependencies = infra.List([]const u8).init(allocator),
             .@"error" = null,
             .referrer_url = if (referrer) |r| try allocator.dupe(u8, r) else null,
             .allocator = allocator,
@@ -109,7 +112,7 @@ pub const ModuleNode = struct {
             self.allocator.free(src);
         }
 
-        for (self.dependencies.items) |dep| {
+        for (self.dependencies.toSlice()) |dep| {
             self.allocator.free(dep);
         }
         self.dependencies.deinit();
@@ -152,10 +155,10 @@ pub const ModuleGraph = struct {
     root_url: []const u8,
 
     /// Modules currently being fetched (for cycle detection)
-    fetching_stack: std.ArrayList([]const u8),
+    fetching_stack: infra.List([]const u8),
 
     /// Callbacks waiting for graph completion
-    completion_callbacks: std.ArrayList(CompletionCallback),
+    completion_callbacks: infra.List(CompletionCallback),
 
     /// Whether the graph has failed
     has_error: bool,
@@ -183,8 +186,8 @@ pub const ModuleGraph = struct {
         graph.* = ModuleGraph{
             .modules = std.StringHashMap(*ModuleNode).init(allocator),
             .root_url = try allocator.dupe(u8, root_url),
-            .fetching_stack = std.ArrayList([]const u8).init(allocator),
-            .completion_callbacks = std.ArrayList(CompletionCallback).init(allocator),
+            .fetching_stack = infra.List([]const u8).init(allocator),
+            .completion_callbacks = infra.List(CompletionCallback).init(allocator),
             .has_error = false,
             .first_error = null,
             .pending_fetches = 0,
@@ -204,7 +207,7 @@ pub const ModuleGraph = struct {
         self.modules.deinit();
 
         // Free fetching stack
-        for (self.fetching_stack.items) |url| {
+        for (self.fetching_stack.toSlice()) |url| {
             self.allocator.free(url);
         }
         self.fetching_stack.deinit();
@@ -227,7 +230,7 @@ pub const ModuleGraph = struct {
 
     /// Check if a URL is in the fetching stack (circular dependency)
     pub fn isInFetchingStack(self: *const ModuleGraph, url: []const u8) bool {
-        for (self.fetching_stack.items) |stack_url| {
+        for (self.fetching_stack.toSlice()) |stack_url| {
             if (std.mem.eql(u8, stack_url, url)) {
                 return true;
             }
@@ -243,7 +246,9 @@ pub const ModuleGraph = struct {
 
     /// Remove URL from fetching stack
     pub fn popFetchingStack(self: *ModuleGraph) void {
-        if (self.fetching_stack.pop()) |url| {
+        const len = self.fetching_stack.size();
+        if (len > 0) {
+            const url = self.fetching_stack.remove(len - 1) catch return;
             self.allocator.free(url);
         }
     }
@@ -268,7 +273,7 @@ pub const ModuleGraph = struct {
     /// Notify completion callbacks
     fn notifyCompletion(self: *ModuleGraph) void {
         const success = !self.has_error;
-        for (self.completion_callbacks.items) |cb| {
+        for (self.completion_callbacks.toSlice()) |cb| {
             cb.callback(cb.context, self, success);
         }
     }
@@ -303,9 +308,9 @@ pub const ModuleGraph = struct {
 
     /// Get all module URLs in topological order (dependencies first)
     pub fn getTopologicalOrder(self: *const ModuleGraph, allocator: Allocator) ![][]const u8 {
-        var result = std.ArrayList([]const u8).init(allocator);
+        var result = infra.List([]const u8).init(allocator);
         errdefer {
-            for (result.items) |url| allocator.free(url);
+            for (result.toSlice()) |url| allocator.free(url);
             result.deinit();
         }
 
@@ -321,7 +326,7 @@ pub const ModuleGraph = struct {
     fn visitForTopologicalSort(
         self: *const ModuleGraph,
         url: []const u8,
-        result: *std.ArrayList([]const u8),
+        result: *infra.List([]const u8),
         visited: *std.StringHashMap(void),
         allocator: Allocator,
     ) !void {
@@ -330,7 +335,7 @@ pub const ModuleGraph = struct {
 
         // Visit dependencies first
         if (self.modules.get(url)) |node| {
-            for (node.dependencies.items) |dep_url| {
+            for (node.dependencies.toSlice()) |dep_url| {
                 try self.visitForTopologicalSort(dep_url, result, visited, allocator);
             }
         }
@@ -537,11 +542,11 @@ pub const ModuleGraphFetcher = struct {
 
     /// Parse import statements from module source
     /// Returns a list of import specifiers (not resolved URLs)
-    fn parseImportStatements(self: *ModuleGraphFetcher, source: []const u8, url: []const u8) ![][]const u8 {
+    pub fn parseImportStatements(self: *ModuleGraphFetcher, source: []const u8, url: []const u8) ![][]const u8 {
         _ = url;
-        var imports = std.ArrayList([]const u8).init(self.allocator);
+        var imports = infra.List([]const u8).init(self.allocator);
         errdefer {
-            for (imports.items) |imp| self.allocator.free(imp);
+            for (imports.toSlice()) |imp| self.allocator.free(imp);
             imports.deinit();
         }
 
