@@ -77,6 +77,11 @@ pub const DedicatedWorker = struct {
     /// Called when the worker sends a message back to the main thread
     on_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
 
+    /// Message handler callback for incoming messages on the inside port
+    /// Called when the main thread sends a message to the worker
+    /// This is set by the WebIDL layer to dispatch MessageEvents
+    on_inside_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
@@ -141,6 +146,36 @@ pub const DedicatedWorker = struct {
         if (self.on_message) |handler| {
             handler(self, msg);
         }
+    }
+
+    /// Internal handler for messages arriving on the inside port (from main thread)
+    ///
+    /// Spec: HTML Standard § 10.2.3
+    /// "When a message is received on the inside port, the user agent must
+    /// queue a global task on the messaging task source to:
+    /// 1. Let messageEvent be a new MessageEvent.
+    /// 2. Set messageEvent's data attribute to the message's data.
+    /// 3. Set messageEvent's origin attribute to the serialized origin.
+    /// 4. Fire messageEvent at the DedicatedWorkerGlobalScope."
+    ///
+    /// Note: The actual MessageEvent creation and dispatch is done by the
+    /// on_inside_message callback, which is set by the WebIDL layer.
+    fn handleInsidePortMessage(port: *WorkerPort, msg: *QueuedMessage, context: ?*anyopaque) void {
+        _ = port;
+        const self: *DedicatedWorker = @ptrCast(@alignCast(context));
+        if (self.on_inside_message) |handler| {
+            handler(self, msg);
+        }
+    }
+
+    /// Set up the inside port message handler
+    ///
+    /// This enables message reception from the main thread. The WebIDL layer
+    /// should call this with a handler that creates and dispatches MessageEvents.
+    pub fn setInsideMessageHandler(self: *DedicatedWorker, handler: *const fn (*DedicatedWorker, *QueuedMessage) void) void {
+        self.on_inside_message = handler;
+        // Now set up the inside port callback
+        self.port_pair.inside_port.setOnMessage(handleInsidePortMessage, self);
     }
 
     /// Clean up resources.
