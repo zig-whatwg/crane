@@ -762,25 +762,19 @@ test "fragment parser - table context" {
     try testing.expectEqualStrings("tr", result.children[0].local_name.?);
 }
 
-// TODO: This test is temporarily skipped due to a pre-existing memory leak in
-// fragment_parser.parse() which doesn't clean up tokens after processing.
-// The leak occurs because TreeBuilder.parse() processes tokens without
-// calling token.deinit(). This needs to be fixed in the fragment parser.
-// See issue for tracking.
-//
-// test "fragment parser - select context" {
-//     const allocator = testing.allocator;
-//     const TreeNode = parser.TreeNode;
-//     const fragment_parser = parser.fragment_parser;
-//
-//     // Create context element (select)
-//     const context = try TreeNode.initElement(allocator, "select", .html);
-//     defer context.deinit();
-//
-//     // Parse options in select context
-//     var result = try fragment_parser.parseFragment(allocator, context, "<option>One</option><option>Two</option>", .{});
-//     defer result.deinit();
-//
-//     // Should have parsed the options
-//     try testing.expectEqual(@as(usize, 2), result.children.len);
-// }
+test "fragment parser - select context" {
+    const allocator = testing.allocator;
+    const TreeNode = parser.TreeNode;
+    const fragment_parser = parser.fragment_parser;
+
+    // Create context element (select)
+    const context = try TreeNode.initElement(allocator, "select", .html);
+    defer context.deinit();
+
+    // Parse options in select context (includes attributes to verify token cleanup)
+    var result = try fragment_parser.parseFragment(allocator, context, "<option value='1'>One</option><option value='2'>Two</option>", .{});
+    defer result.deinit();
+
+    // Should have parsed the options
+    try testing.expectEqual(@as(usize, 2), result.children.len);
+}

@@ -575,10 +575,13 @@ pub const TreeBuilder = struct {
             const token = try self.tokenizer.nextToken();
             if (token == null) break;
 
-            try self.processToken(token.?);
+            var tok = token.?;
+            defer tok.deinit();
+
+            try self.processToken(tok);
 
             // Check for EOF
-            if (token.? == .eof) break;
+            if (tok == .eof) break;
         }
     }
 
