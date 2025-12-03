@@ -58,6 +58,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .compileModule = v8CompileModule,
     .runModule = v8RunModule,
     .disposeScript = v8DisposeScript,
+    .disposeModule = v8DisposeModule,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -870,6 +871,19 @@ fn v8DisposeScript(
 ) void {
     const v8_script: *ffi.Script = @ptrCast(@alignCast(script));
     ffi.v8_Script_Dispose(v8_script);
+}
+
+/// Dispose of a compiled V8 module
+///
+/// Releases resources associated with a compiled module.
+///
+/// Arguments:
+///   - module: V8 Module* from v8CompileModule
+fn v8DisposeModule(
+    module: *anyopaque,
+) void {
+    const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
+    ffi.v8_Module_Dispose(v8_module);
 }
 
 // ============================================================================

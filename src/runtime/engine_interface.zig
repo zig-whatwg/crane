@@ -561,6 +561,17 @@ pub const EngineInterface = struct {
         script: *anyopaque,
     ) void,
 
+    /// Dispose of a compiled module
+    ///
+    /// Releases resources associated with a compiled module.
+    /// Must be called when the module is no longer needed (e.g., document destruction).
+    ///
+    /// Arguments:
+    ///   - module: Compiled module from compileModule()
+    disposeModule: ?*const fn (
+        module: *anyopaque,
+    ) void,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -600,6 +611,7 @@ pub const stub_engine: EngineInterface = .{
     .compileModule = stubCompileModule,
     .runModule = stubRunModule,
     .disposeScript = stubDisposeScript,
+    .disposeModule = stubDisposeModule,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -707,6 +719,12 @@ fn stubRunModule(
 }
 
 fn stubDisposeScript(
+    _: *anyopaque,
+) void {
+    // Stub: Nothing to dispose
+}
+
+fn stubDisposeModule(
     _: *anyopaque,
 ) void {
     // Stub: Nothing to dispose

@@ -233,6 +233,10 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html
     prefetch_hints: std.StringHashMap(SpeculationEagerness),
 
+    /// Optional module dispose function - set when engine is configured
+    /// Used to dispose V8/JSC module handles without compile-time dependency
+    dispose_module_fn: ?*const fn (*anyopaque) void,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -289,6 +293,8 @@ pub const InternalState = struct {
             .import_map_imports = std.StringHashMap([]const u8).init(allocator),
             .import_map_scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(allocator),
             .import_map_acquired = false,
+            // Module disposal (set when engine is configured)
+            .dispose_module_fn = null,
             // CSP
             .csp_list = null,
             .csp_self_origin = null,
@@ -343,14 +349,15 @@ pub const InternalState = struct {
         self.scripts_to_execute_in_order_asap.deinit(self.allocator);
         self.scripts_to_execute_when_parsing_finished.deinit(self.allocator);
 
-        // Module map - dispose V8 module handles and free keys
+        // Module map - dispose module handles and free keys
         {
-            const v8 = @import("v8");
             var mod_it = self.module_map.iterator();
             while (mod_it.next()) |entry| {
-                // Dispose V8 module handle
-                const module: *v8.ffi.Module = @ptrCast(@alignCast(entry.value_ptr.*));
-                v8.ffi.v8_Module_Dispose(module);
+                // Dispose module handle using stored function pointer
+                // (null if no JS engine configured, e.g., in stub test mode)
+                if (self.dispose_module_fn) |dispose_fn| {
+                    dispose_fn(entry.value_ptr.*);
+                }
                 // Free the key (URL string)
                 self.allocator.free(entry.key_ptr.*);
             }
@@ -4271,9 +4278,11 @@ pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaqu
 
     // If a module already exists for this URL, dispose the old one first
     if (internal.module_map.get(url)) |old_module| {
-        const v8 = @import("v8");
-        const mod: *v8.ffi.Module = @ptrCast(@alignCast(old_module));
-        v8.ffi.v8_Module_Dispose(mod);
+        // Dispose the old module handle using stored function pointer
+        // (null if no JS engine configured, e.g., in stub test mode)
+        if (internal.dispose_module_fn) |dispose_fn| {
+            dispose_fn(old_module);
+        }
         // Remove old entry (key is already allocated)
         _ = internal.module_map.remove(url);
     }
@@ -4289,6 +4298,15 @@ pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaqu
 pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.module_map.contains(url);
+}
+
+/// Set the module disposal function for this document
+/// Called when a JS engine is configured to enable proper module cleanup.
+/// Without this, modules won't be disposed (acceptable in stub test mode).
+pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?*const fn (*anyopaque) void) void {
+    if (getInternal(instance)) |internal| {
+        internal.dispose_module_fn = dispose_fn;
+    }
 }
 
 // =============================================================================
