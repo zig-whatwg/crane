@@ -56,6 +56,14 @@ Crane is a comprehensive, spec-compliant implementation of the [WHATWG](https://
 | **Instance System** | ✅ Complete | Zig-JS object identity, GC integration |
 | **ArrayBufferView** | ✅ Complete | TypedArray introspection (all 13 types) |
 
+### Platform Bindings 📱
+
+| Platform | Status | Key Features |
+|----------|--------|--------------|
+| **Swift (iOS/macOS)** | ✅ Complete | SwiftUI integration, async/await, capability protocols |
+| **Kotlin (Android)** | ✅ Complete | Jetpack Compose, coroutines, JNI bridge |
+| **C ABI** | ✅ Complete | Platform-agnostic C exports for any language |
+
 ### Planned 🚧
 
 - **Web Sockets** - WebSocket protocol implementation  
@@ -226,6 +234,121 @@ pub fn main() !void {
 }
 ```
 
+## 🏛️ Architecture
+
+### Unified Platform Backend
+
+Crane uses a **Unified Platform Backend** architecture that provides a single entry point for embedders:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Your Application                          │
+├─────────────────────────────────────────────────────────────┤
+│  Swift (iOS/macOS)  │  Kotlin (Android)  │   Zig / C / ...  │
+├─────────────────────────────────────────────────────────────┤
+│                   PlatformBackend (C ABI)                    │
+├─────────────────────────────────────────────────────────────┤
+│ ClipboardVTable │ NetworkVTable │ StorageVTable │ ...       │
+├─────────────────────────────────────────────────────────────┤
+│             WHATWG Specifications (Zig Core)                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+- **PlatformBackend** - Single extern struct with all capability VTables
+- **Capability VTables** - Pluggable implementations for clipboard, network, storage, etc.
+- **C ABI** - Platform-agnostic exports (`whatwg_init`, `whatwg_deinit`, etc.)
+
+### Mobile Integration
+
+#### Swift (iOS/macOS)
+
+```swift
+import WhatWG
+
+// Initialize platform with default iOS providers
+let platform = WhatWGPlatform()
+platform.clipboardProvider = iOSClipboardProvider()
+platform.storageProvider = iOSStorageProvider()
+
+// Create a browser view
+struct ContentView: View {
+    @StateObject var browser = WhatWGBrowser()
+    
+    var body: some View {
+        VStack {
+            WhatWGWebView(browser: browser)
+            HStack {
+                Button("Back") { browser.goBack() }
+                    .disabled(!browser.canGoBack)
+                Button("Forward") { browser.goForward() }
+                    .disabled(!browser.canGoForward)
+            }
+            TextField("URL", text: $browser.urlString)
+                .onSubmit { browser.loadURL() }
+        }
+    }
+}
+```
+
+#### Kotlin (Android)
+
+```kotlin
+import com.whatwg.*
+import com.whatwg.compose.*
+
+// Initialize platform with Android providers
+val platform = WhatWGPlatform().apply {
+    clipboardProvider = AndroidClipboardProvider(context)
+    storageProvider = AndroidStorageProvider(context)
+}
+
+// Create a browser composable
+@Composable
+fun BrowserScreen() {
+    val browser = rememberWhatWGBrowser()
+    
+    Column {
+        WhatWGWebView(browser = browser)
+        
+        Row {
+            Button(
+                onClick = { browser.goBack() },
+                enabled = browser.canGoBack
+            ) { Text("Back") }
+            
+            Button(
+                onClick = { browser.goForward() },
+                enabled = browser.canGoForward
+            ) { Text("Forward") }
+        }
+        
+        TextField(
+            value = browser.urlString,
+            onValueChange = { browser.urlString = it }
+        )
+    }
+}
+```
+
+### Capability Providers
+
+Implement platform-specific capabilities by providing your own implementations:
+
+| Capability | iOS Implementation | Android Implementation |
+|------------|-------------------|----------------------|
+| **Clipboard** | UIPasteboard | ClipboardManager |
+| **Network** | URLSession | HttpURLConnection |
+| **Storage** | UserDefaults + FileManager | SharedPreferences + File |
+| **Geolocation** | CoreLocation | LocationManager |
+| **Notifications** | UserNotifications | NotificationManager |
+| **Timer** | DispatchSourceTimer | Handler/Looper |
+| **UI** | UIAlertController | AlertDialog |
+| **FileSystem** | UIDocumentPicker | Storage Access Framework |
+
+See [docs/capability-implementation.md](docs/capability-implementation.md) for detailed implementation guide.
+
 ## 🏗️ Building from Source
 
 ### Prerequisites
@@ -346,17 +469,37 @@ crane/
 │   ├── quirks/              # Quirks Mode Standard
 │   ├── css/                 # CSS Syntax + Value Parsing
 │   ├── selector/            # CSS Selector Parsing + Matching
+│   ├── platform/            # Platform backend VTables
 │   ├── runtime/             # V8 integration, instance management
 │   └── root.zig             # Main entry point
-├── webidl/                  # WebIDL definitions and generated code
-│   ├── src/                 # WebIDL source with annotations
-│   ├── generated/           # Generated enhanced code (gitignored)
-│   └── idls/                # Parsed WebIDL JSON files
+├── bindings/                 # Platform-specific bindings
+│   ├── swift/               # Swift package for iOS/macOS
+│   │   ├── Sources/WhatWG/  # Swift library source
+│   │   │   ├── UI/          # SwiftUI components (WhatWGBrowser, WhatWGWebView)
+│   │   │   ├── Providers/   # Capability protocols
+│   │   │   └── iOS/         # iOS default implementations
+│   │   └── Tests/           # Swift tests
+│   └── kotlin/              # Kotlin library for Android
+│       └── whatwg/
+│           └── src/main/
+│               ├── kotlin/  # Kotlin source
+│               │   ├── compose/  # Jetpack Compose UI
+│               │   ├── providers/# Capability interfaces
+│               │   └── android/  # Android implementations
+│               └── cpp/     # JNI bridge code
+├── include/                  # C ABI headers
+│   ├── whatwg.h             # Main header
+│   ├── whatwg_types.h       # Type definitions
+│   └── whatwg_backend.h     # Backend VTables
 ├── specs/                   # Complete WHATWG specification markdown files
 │   ├── whatwg/              # WHATWG spec sections (HTML, DOM, etc.)
 │   ├── idl/                 # Official WebIDL definitions (symlink)
 │   └── algorithms/          # Algorithm definitions (JSON)
 ├── tests/                   # Test suites
+├── docs/                    # Documentation
+│   ├── swift-integration.md # Swift/iOS integration guide
+│   ├── kotlin-integration.md# Kotlin/Android integration guide
+│   └── capability-implementation.md # How to implement capabilities
 ├── skills/                  # AI agent skill definitions
 ├── build.zig                # Build configuration
 └── build.zig.zon            # Package manifest
@@ -462,6 +605,10 @@ bd close bd-123 --reason "Implemented"
 ## 📚 Documentation
 
 - **[WHATWG Standards](https://spec.whatwg.org/)** - Official specifications
+- **[Swift Integration Guide](docs/swift-integration.md)** - iOS/macOS integration
+- **[Kotlin Integration Guide](docs/kotlin-integration.md)** - Android integration
+- **[Capability Implementation Guide](docs/capability-implementation.md)** - Custom providers
+- **[Engine Selection Guide](docs/engine-selection.md)** - V8, JSC, QuickJS comparison
 - **[API Documentation](docs/)** - Crane API reference (coming soon)
 - **[Examples](examples/)** - Usage examples (coming soon)
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
