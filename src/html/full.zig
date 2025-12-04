@@ -170,6 +170,10 @@ pub const selection_commands = @import("selection_commands.zig");
 /// (Used by execCommand for font/color/alignment commands)
 pub const formatting_commands = @import("formatting_commands.zig");
 
+/// Structure command implementations with DOM integration
+/// (Used by execCommand for list, paragraph, link, and media commands)
+pub const structure_commands = @import("structure_commands.zig");
+
 // ============================================================================
 // Re-exports for Testing Convenience
 // ============================================================================
