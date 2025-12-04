@@ -412,11 +412,13 @@ public final class WhatWGPlatform {
     // MARK: - Version Information
     
     /// Returns the library version string.
+    ///
+    /// - Note: Currently returns a hardcoded version as the C library
+    ///   does not yet implement `whatwg_version_string()`.
     public static var version: String {
-        guard let cString = whatwg_version_string() else {
-            return "unknown"
-        }
-        return String(cString: cString)
+        // whatwg_version_string() is not yet implemented in the C library.
+        // Return a placeholder version for now.
+        return "0.1.0-dev"
     }
     
     /// Returns the expected ABI version.

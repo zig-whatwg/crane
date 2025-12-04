@@ -49,8 +49,8 @@ public struct NotificationOptions: Sendable {
     /// The notification tag.
     public var tag: String?
     
-    /// Data associated with the notification.
-    public var data: Any?
+    /// Data associated with the notification (must be Sendable).
+    public var data: (any Sendable)?
     
     /// Whether to require interaction.
     public var requireInteraction: Bool
@@ -71,7 +71,7 @@ public struct NotificationOptions: Sendable {
         badge: String? = nil,
         image: String? = nil,
         tag: String? = nil,
-        data: Any? = nil,
+        data: (any Sendable)? = nil,
         requireInteraction: Bool = false,
         silent: Bool = false,
         vibrate: [UInt32]? = nil,

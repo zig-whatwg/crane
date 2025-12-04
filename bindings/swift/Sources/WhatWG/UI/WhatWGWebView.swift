@@ -137,12 +137,13 @@ public struct WhatWGWebView: View {
             height: 120
         )
         
-        let text = Text(placeholderText)
-            .font(.system(size: 14))
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-        
-        transformedContext.draw(text, in: textRect)
+        // Use Text directly for GraphicsContext.draw
+        transformedContext.draw(
+            Text(placeholderText)
+                .font(.system(size: 14))
+                .foregroundColor(.secondary),
+            in: textRect
+        )
     }
     
     // MARK: - Gesture Handling
@@ -249,7 +250,7 @@ public struct WhatWGWebView: View {
 extension WhatWGWebView {
     
     /// Configuration options for the web view.
-    public struct Configuration {
+    public struct Configuration: Sendable {
         
         /// Whether JavaScript is enabled.
         public var javaScriptEnabled: Bool
@@ -328,7 +329,7 @@ extension WhatWGWebView {
     }
     
     /// Policy for automatic media playback.
-    public enum MediaAutoplayPolicy {
+    public enum MediaAutoplayPolicy: Sendable {
         /// Always allow autoplay.
         case always
         

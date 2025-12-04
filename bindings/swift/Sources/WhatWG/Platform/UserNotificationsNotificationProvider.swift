@@ -29,9 +29,10 @@ public final class UserNotificationsNotificationProvider: NotificationProvider, 
         self.notificationCenter = UNUserNotificationCenter.current()
         
         // Check current authorization status
-        notificationCenter.getNotificationSettings { settings in
+        notificationCenter.getNotificationSettings { [weak self] settings in
+            let status = settings.authorizationStatus
             DispatchQueue.main.async {
-                self.updatePermission(from: settings.authorizationStatus)
+                self?.updatePermission(from: status)
             }
         }
     }
@@ -69,9 +70,14 @@ public final class UserNotificationsNotificationProvider: NotificationProvider, 
             content.badge = NSNumber(value: badgeNumber)
         }
         
-        // Add custom data
-        if let data = options.data as? [String: Any] {
-            content.userInfo = data
+        // Add custom data - safely cast Sendable to [String: Any]
+        if let data = options.data as? [String: any Sendable] {
+            // Convert to [String: Any] for userInfo
+            var userInfo: [String: Any] = [:]
+            for (key, value) in data {
+                userInfo[key] = value
+            }
+            content.userInfo = userInfo
         }
         
         // Add actions if provided
@@ -115,9 +121,10 @@ public final class UserNotificationsNotificationProvider: NotificationProvider, 
             notificationCenter: notificationCenter
         )
         
-        lock.lock()
-        activeNotifications[identifier] = handle
-        lock.unlock()
+        // Use withLock to avoid calling lock/unlock in async context
+        lock.withLock {
+            activeNotifications[identifier] = handle
+        }
         
         return handle
     }

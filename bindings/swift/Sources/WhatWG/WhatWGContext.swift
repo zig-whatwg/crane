@@ -20,6 +20,9 @@ import CWhatWG
 /// context.destroy()
 /// ```
 ///
+/// - Note: Context execution is currently not implemented. The C library
+///   needs to be rebuilt with context support.
+///
 public final class WhatWGContext {
     
     // MARK: - Properties
@@ -42,15 +45,15 @@ public final class WhatWGContext {
     internal init(platform: WhatWGPlatform) throws {
         self.platform = platform
         
-        guard let platformHandle = platform.handle else {
+        guard platform.handle != nil else {
             throw WhatWGError.notInitialized
         }
         
-        guard let contextHandle = whatwg_context_create(platformHandle) else {
-            throw WhatWGError.contextCreationFailed
-        }
-        
-        self.handle = contextHandle
+        // Context creation is not yet implemented in the C library.
+        // For now, we create a context without a C handle.
+        // This allows the Swift API to be tested while the C implementation
+        // is being developed.
+        self.handle = nil
     }
     
     deinit {
@@ -63,9 +66,9 @@ public final class WhatWGContext {
     ///
     /// After calling this method, the context can no longer be used.
     public func destroy() {
-        guard !isDestroyed, let handle = handle else { return }
+        guard !isDestroyed else { return }
         
-        whatwg_context_destroy(handle)
+        // Context destruction will be implemented when C library support is added.
         self.handle = nil
         isDestroyed = true
     }
@@ -77,34 +80,15 @@ public final class WhatWGContext {
     /// - Parameter script: The JavaScript code to execute.
     /// - Returns: The result of the evaluation as a string representation.
     /// - Throws: `WhatWGError` if evaluation fails.
+    ///
+    /// - Note: JavaScript evaluation is not yet implemented in the C library.
     public func evaluate(_ script: String) throws -> String? {
-        guard !isDestroyed, let handle = handle else {
+        guard !isDestroyed else {
             throw WhatWGError.notInitialized
         }
         
-        return try script.withCString { cScript in
-            var resultPtr: UnsafeMutablePointer<CChar>?
-            var resultLen: Int = 0
-            
-            let status = whatwg_context_evaluate(
-                handle,
-                cScript,
-                script.utf8.count,
-                &resultPtr,
-                &resultLen
-            )
-            
-            guard status == 0 else {
-                throw WhatWGError.operationFailed("Script evaluation failed with code \(status)")
-            }
-            
-            guard let ptr = resultPtr, resultLen > 0 else {
-                return nil
-            }
-            
-            defer { whatwg_free(ptr) }
-            return String(cString: ptr)
-        }
+        // JavaScript evaluation is not yet implemented in the C library.
+        throw WhatWGError.operationFailed("JavaScript evaluation not yet implemented")
     }
     
     // MARK: - Event Loop
@@ -112,23 +96,29 @@ public final class WhatWGContext {
     /// Runs the event loop until there are no more pending tasks.
     ///
     /// This is typically used for testing or command-line tools.
+    ///
+    /// - Note: Event loop is not yet implemented in the C library.
     public func runEventLoop() throws {
-        guard !isDestroyed, let handle = handle else {
+        guard !isDestroyed else {
             throw WhatWGError.notInitialized
         }
         
-        whatwg_context_run_event_loop(handle)
+        // Event loop is not yet implemented in the C library.
+        // This is a no-op for now.
     }
     
     /// Performs a single iteration of the event loop.
     ///
     /// - Returns: `true` if there are more tasks pending.
+    ///
+    /// - Note: Event loop is not yet implemented in the C library.
     public func stepEventLoop() throws -> Bool {
-        guard !isDestroyed, let handle = handle else {
+        guard !isDestroyed else {
             throw WhatWGError.notInitialized
         }
         
-        return whatwg_context_step_event_loop(handle)
+        // Event loop is not yet implemented in the C library.
+        return false
     }
 }
 

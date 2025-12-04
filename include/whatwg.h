@@ -189,6 +189,78 @@ void whatwg_platform_set_webauthn(whatwg_platform_t* backend, const whatwg_webau
 void whatwg_platform_set_permissions(whatwg_platform_t* backend, const whatwg_permissions_vtable_t* vtable);
 void whatwg_platform_set_payment(whatwg_platform_t* backend, const whatwg_payment_vtable_t* vtable);
 
+/* ============================================================================
+ * Context/Realm Lifecycle
+ * ============================================================================ */
+
+/**
+ * @brief Opaque context/realm handle.
+ */
+typedef struct whatwg_context whatwg_context_t;
+
+/**
+ * @brief Create a new execution context within a platform.
+ * 
+ * A context represents an isolated JavaScript environment (realm/window).
+ * 
+ * @param platform The platform backend to create the context in
+ * @return Pointer to context, or NULL on failure
+ */
+whatwg_context_t* whatwg_context_create(whatwg_platform_t* platform);
+
+/**
+ * @brief Destroy a context and free its resources.
+ * 
+ * @param context The context to destroy
+ */
+void whatwg_context_destroy(whatwg_context_t* context);
+
+/**
+ * @brief Evaluate JavaScript code in a context.
+ * 
+ * @param context The execution context
+ * @param script JavaScript source code
+ * @param script_len Length of script in bytes
+ * @param result_ptr Pointer to receive result string (caller must free with whatwg_free)
+ * @param result_len Pointer to receive result length
+ * @return 0 on success, non-zero error code on failure
+ */
+int32_t whatwg_context_evaluate(
+    whatwg_context_t* context,
+    const char* script,
+    size_t script_len,
+    char** result_ptr,
+    size_t* result_len
+);
+
+/**
+ * @brief Run the event loop until all tasks complete.
+ * 
+ * @param context The execution context
+ */
+void whatwg_context_run_event_loop(whatwg_context_t* context);
+
+/**
+ * @brief Perform a single iteration of the event loop.
+ * 
+ * @param context The execution context
+ * @return true if there are more pending tasks, false otherwise
+ */
+bool whatwg_context_step_event_loop(whatwg_context_t* context);
+
+/* ============================================================================
+ * Memory Management
+ * ============================================================================ */
+
+/**
+ * @brief Free memory allocated by the WHATWG library.
+ * 
+ * Use this to free strings returned by whatwg_context_evaluate and similar functions.
+ * 
+ * @param ptr Pointer to memory to free (safe to call with NULL)
+ */
+void whatwg_free(void* ptr);
+
 #ifdef __cplusplus
 }
 #endif

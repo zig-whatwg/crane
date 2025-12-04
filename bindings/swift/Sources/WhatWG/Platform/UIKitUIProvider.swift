@@ -194,7 +194,6 @@ import AppKit
 /// ```
 ///
 @available(macOS 14.0, *)
-@MainActor
 public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
     
     /// Creates a new macOS UI provider.
@@ -202,6 +201,7 @@ public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
     
     // MARK: - UIProvider
     
+    @MainActor
     public func alert(message: String) async {
         let alert = NSAlert()
         alert.messageText = message
@@ -210,6 +210,7 @@ public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
         alert.runModal()
     }
     
+    @MainActor
     public func confirm(message: String) async -> Bool {
         let alert = NSAlert()
         alert.messageText = message
@@ -219,6 +220,7 @@ public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
         return alert.runModal() == .alertFirstButtonReturn
     }
     
+    @MainActor
     public func prompt(message: String, defaultValue: String?) async -> String? {
         let alert = NSAlert()
         alert.messageText = message
@@ -237,21 +239,23 @@ public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
         return nil
     }
     
+    @MainActor
     public func open(url: URL?, target: String?, features: String?) async -> WindowHandle? {
         guard let url = url else { return nil }
         NSWorkspace.shared.open(url)
         return AppKitWindowHandle(identifier: url.absoluteString)
     }
     
+    @MainActor
     public func print() async {
         // macOS printing would need document context
     }
     
-    public func scrollTo(x: Double, y: Double) {
+    public nonisolated func scrollTo(x: Double, y: Double) {
         // Needs scroll view reference
     }
     
-    public func scrollBy(x: Double, y: Double) {
+    public nonisolated func scrollBy(x: Double, y: Double) {
         // Needs scroll view reference
     }
 }

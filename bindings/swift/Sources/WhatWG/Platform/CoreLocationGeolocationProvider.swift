@@ -21,8 +21,9 @@ public final class CoreLocationGeolocationProvider: NSObject, GeolocationProvide
     
     private let locationManager: CLLocationManager
     private var watchCallbacks: [Int: @Sendable (Result<GeolocationPosition, GeolocationError>) -> Void] = [:]
-    private var oneTimeCallbacks: [(options: PositionOptions, continuation: CheckedContinuation<GeolocationPosition, Error>)] = []
+    private var oneTimeCallbacks: [Int: (options: PositionOptions, continuation: CheckedContinuation<GeolocationPosition, Error>)] = [:]
     private var nextWatchId: Int = 1
+    private var nextCallbackId: Int = 1
     private let lock = NSLock()
     
     /// Creates a new iOS geolocation provider.
@@ -66,9 +67,17 @@ public final class CoreLocationGeolocationProvider: NSObject, GeolocationProvide
         }
         
         // Request location update
+        let callbackId: Int = {
+            lock.lock()
+            defer { lock.unlock() }
+            let id = nextCallbackId
+            nextCallbackId += 1
+            return id
+        }()
+        
         return try await withCheckedThrowingContinuation { continuation in
             lock.lock()
-            oneTimeCallbacks.append((options: options, continuation: continuation))
+            oneTimeCallbacks[callbackId] = (options: options, continuation: continuation)
             lock.unlock()
             
             DispatchQueue.main.async {
@@ -78,7 +87,7 @@ public final class CoreLocationGeolocationProvider: NSObject, GeolocationProvide
             // Set up timeout if specified
             if options.timeout != .max {
                 DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(options.timeout))) { [weak self] in
-                    self?.handleTimeout(for: continuation)
+                    self?.handleTimeout(for: callbackId)
                 }
             }
         }
@@ -120,15 +129,14 @@ public final class CoreLocationGeolocationProvider: NSObject, GeolocationProvide
     
     // MARK: - Private
     
-    private func handleTimeout(for continuation: CheckedContinuation<GeolocationPosition, Error>) {
+    private func handleTimeout(for callbackId: Int) {
         lock.lock()
-        if let index = oneTimeCallbacks.firstIndex(where: { $0.continuation == continuation as AnyObject }) {
-            let callback = oneTimeCallbacks.remove(at: index)
+        guard let callback = oneTimeCallbacks.removeValue(forKey: callbackId) else {
             lock.unlock()
-            callback.continuation.resume(throwing: GeolocationError.timeout)
-        } else {
-            lock.unlock()
+            return
         }
+        lock.unlock()
+        callback.continuation.resume(throwing: GeolocationError.timeout)
     }
 }
 
@@ -144,7 +152,7 @@ extension CoreLocationGeolocationProvider: CLLocationManagerDelegate {
         
         // Handle one-time callbacks
         lock.lock()
-        let callbacks = oneTimeCallbacks
+        let callbacks = oneTimeCallbacks.values
         oneTimeCallbacks.removeAll()
         lock.unlock()
         
@@ -179,7 +187,7 @@ extension CoreLocationGeolocationProvider: CLLocationManagerDelegate {
         
         // Handle one-time callbacks
         lock.lock()
-        let callbacks = oneTimeCallbacks
+        let callbacks = oneTimeCallbacks.values
         oneTimeCallbacks.removeAll()
         lock.unlock()
         
@@ -202,7 +210,7 @@ extension CoreLocationGeolocationProvider: CLLocationManagerDelegate {
         if status == .denied || status == .restricted {
             // Cancel pending requests
             lock.lock()
-            let callbacks = oneTimeCallbacks
+            let callbacks = oneTimeCallbacks.values
             oneTimeCallbacks.removeAll()
             lock.unlock()
             
