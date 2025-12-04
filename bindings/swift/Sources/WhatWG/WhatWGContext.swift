@@ -31,7 +31,7 @@ public final class WhatWGContext {
     public private(set) weak var platform: WhatWGPlatform?
     
     /// The underlying C context handle.
-    internal var handle: OpaquePointer?
+    public var handle: OpaquePointer?
     
     /// Whether the context has been destroyed.
     public private(set) var isDestroyed: Bool = false
