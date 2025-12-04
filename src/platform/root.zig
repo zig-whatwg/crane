@@ -95,6 +95,11 @@ pub const createStubVTableAdapter = clipboard_adapter.createStubVTableAdapter;
 pub const NotificationBackend = notification_backend.NotificationBackend;
 pub const StubNotificationBackend = notification_backend.StubNotificationBackend;
 pub const DeniedNotificationBackend = notification_backend.DeniedNotificationBackend;
+
+// Notification Adapter (bridges old and new interfaces)
+pub const notification_adapter = @import("notification_adapter.zig");
+pub const NotificationVTableAdapter = notification_adapter.NotificationVTableAdapter;
+pub const NotificationBackendAdapter = notification_adapter.NotificationBackendAdapter;
 pub const Notification = notification_backend.Notification;
 pub const NotificationOptions = notification_backend.NotificationOptions;
 pub const NotificationAction = notification_backend.NotificationAction;
