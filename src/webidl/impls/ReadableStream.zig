@@ -2309,18 +2309,25 @@ fn setUpReadableByteStreamController(
     // Import ReadableByteStreamController implementation
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
 
-    // Convert callbacks to streams_common algorithm types
-    const pull_algo: streams_common.PullAlgorithm = if (pullAlgorithm) |cb| blk: {
-        // Create pull algorithm that invokes JS callback
-        const algo = try createByteStreamPullAlgorithm(allocator, cb);
-        break :blk algo;
-    } else defaultByteStreamPullAlgorithm();
+    // Create algorithms using proper Algorithm type for JS callback invocation
+    // This allows proper V8 callback invocation via the engine interface
+    const pull_algo: ?*algorithm_mod.Algorithm = if (pullAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (pull_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
 
-    const cancel_algo: streams_common.CancelAlgorithm = if (cancelAlgorithm) |cb| blk: {
-        // Create cancel algorithm that invokes JS callback
-        const algo = try createByteStreamCancelAlgorithm(allocator, cb);
-        break :blk algo;
-    } else defaultByteStreamCancelAlgorithm();
+    const cancel_algo: ?*algorithm_mod.Algorithm = if (cancelAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (cancel_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
 
     // Create start algorithm using the same Algorithm type as default controller
     // This allows proper V8 callback invocation via invokePendingByteStartCallback

@@ -81,7 +81,8 @@ pub const InternalState = struct {
     byob_request: ?*runtime.Instance,
 
     /// [[cancelAlgorithm]]: Algorithm for cancelation
-    cancel_algorithm: CancelAlgorithm,
+    /// Uses Algorithm type for proper JS callback invocation via V8
+    cancel_algorithm: ?*Algorithm,
 
     /// [[closeRequested]]: boolean - stream closed by source but has queued chunks
     close_requested: bool,
@@ -90,7 +91,8 @@ pub const InternalState = struct {
     pull_again: bool,
 
     /// [[pullAlgorithm]]: Algorithm for pulling data
-    pull_algorithm: PullAlgorithm,
+    /// Uses Algorithm type for proper JS callback invocation via V8
+    pull_algorithm: ?*Algorithm,
 
     /// [[pulling]]: boolean - pull algorithm currently executing
     pulling: bool,
@@ -145,8 +147,14 @@ pub const InternalState = struct {
         self.pending_pull_intos.deinit();
 
         // Clean up algorithms
-        self.cancel_algorithm.deinit();
-        self.pull_algorithm.deinit();
+        if (self.cancel_algorithm) |algo| {
+            algo.deinit();
+            self.allocator.destroy(algo);
+        }
+        if (self.pull_algorithm) |algo| {
+            algo.deinit();
+            self.allocator.destroy(algo);
+        }
         if (self.start_algorithm) |algo| {
             algo.deinit();
             self.allocator.destroy(algo);
@@ -176,8 +184,8 @@ pub fn initInternalState(
     stream: *runtime.Instance,
     highWaterMark: f64,
     autoAllocateChunkSize: ?u64,
-    pull_algorithm: PullAlgorithm,
-    cancel_algorithm: CancelAlgorithm,
+    pull_algorithm: ?*Algorithm,
+    cancel_algorithm: ?*Algorithm,
     start_algorithm: ?*Algorithm,
 ) !void {
     initInternalStateWithV8(internal, allocator, stream, highWaterMark, autoAllocateChunkSize, pull_algorithm, cancel_algorithm, start_algorithm, null, null);
@@ -191,8 +199,8 @@ pub fn initInternalStateWithV8(
     stream: *runtime.Instance,
     highWaterMark: f64,
     autoAllocateChunkSize: ?u64,
-    pull_algorithm: PullAlgorithm,
-    cancel_algorithm: CancelAlgorithm,
+    pull_algorithm: ?*Algorithm,
+    cancel_algorithm: ?*Algorithm,
     start_algorithm: ?*Algorithm,
     isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
@@ -472,12 +480,19 @@ pub fn errorInternal(internal: *InternalState, e: JSValue) void {
 ///
 /// Spec: § 4.7.4 "Clear algorithms to allow GC"
 fn clearAlgorithms(internal: *InternalState) void {
-    internal.pull_algorithm.deinit();
-    internal.cancel_algorithm.deinit();
+    // Clean up existing algorithms
+    if (internal.pull_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
+    if (internal.cancel_algorithm) |algo| {
+        algo.deinit();
+        internal.allocator.destroy(algo);
+    }
 
-    // Replace with no-op algorithms
-    internal.pull_algorithm = defaultPullAlgorithm();
-    internal.cancel_algorithm = defaultCancelAlgorithm();
+    // Set to null (no-op)
+    internal.pull_algorithm = null;
+    internal.cancel_algorithm = null;
 }
 
 /// ReadableByteStreamControllerClearPendingPullIntos(controller)
@@ -535,16 +550,65 @@ pub fn callPullIfNeeded(instance: *runtime.Instance) void {
     internal.pulling = true;
 
     // Step 6: Let pullPromise be the result of performing controller.[[pullAlgorithm]]
-    const pull_promise = internal.pull_algorithm.call();
+    if (internal.pull_algorithm) |algo| {
+        // Invoke the pull algorithm with the controller instance
+        const pull_promise = algo.invoke(instance) catch |err| {
+            // On error, error the controller
+            const err_value: *const anyopaque = @ptrCast(&err);
+            errorInternal(internal, JSValue{ .v8_value = @constCast(err_value) });
+            return;
+        };
 
-    // Handle promise settlement (sync or async)
-    // For synchronous promises (testing), handle immediately
-    // For async promises, use event loop callbacks
-    handlePullPromise(internal, instance, pull_promise);
+        // Handle promise settlement (sync or async)
+        handlePullPromiseAsync(internal, instance, pull_promise);
+    } else {
+        // No pull algorithm - fulfill immediately
+        onPullFulfilled(internal, instance);
+    }
 }
 
-/// Handle pull promise settlement
+/// Handle pull promise settlement (AsyncPromise version for proper JS callback invocation)
 /// Supports both synchronous (for testing) and asynchronous (with event loop) promises
+/// Spec: § 4.7.4 Steps 7-8
+fn handlePullPromiseAsync(internal: *InternalState, instance: *runtime.Instance, pull_promise: *AsyncPromise(void)) void {
+    // Step 7: Upon fulfillment of pullPromise
+    if (pull_promise.isFulfilled()) {
+        onPullFulfilled(internal, instance);
+        return;
+    }
+
+    // Step 8: Upon rejection of pullPromise with reason r
+    if (pull_promise.isRejected()) {
+        onPullRejected(internal, pull_promise.state.rejected);
+        return;
+    }
+
+    // Promise is still pending - attach handlers using onSettleCtx
+    pull_promise.onSettleCtx(
+        pullAsyncPromiseFulfilledCallback,
+        pullAsyncPromiseRejectedCallback,
+        @ptrCast(internal),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
+        onPullFulfilled(internal, instance);
+    };
+}
+
+/// Callback for AsyncPromise fulfillment
+fn pullAsyncPromiseFulfilledCallback(ctx_ptr: ?*anyopaque, _: void) anyerror!void {
+    const internal: *InternalState = @ptrCast(@alignCast(ctx_ptr orelse return error.InvalidState));
+    const controller_instance = internal.controller_instance orelse return error.InvalidState;
+    onPullFulfilled(internal, controller_instance);
+}
+
+/// Callback for AsyncPromise rejection
+fn pullAsyncPromiseRejectedCallback(ctx_ptr: ?*anyopaque, err: webidl.errors.Exception) anyerror!void {
+    const internal: *InternalState = @ptrCast(@alignCast(ctx_ptr orelse return error.InvalidState));
+    onPullRejected(internal, err);
+}
+
+/// Handle pull promise settlement (legacy Promise(void) version)
+/// Kept for backwards compatibility with non-JS testing mode
 fn handlePullPromise(internal: *InternalState, instance: *runtime.Instance, pull_promise: Promise(void)) void {
     // Step 7: Upon fulfillment of pullPromise
     if (pull_promise.isFulfilled()) {
