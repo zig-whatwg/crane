@@ -1795,6 +1795,41 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // ========================================================================
+    // C LIBRARY TARGET (for Swift/Kotlin/C integration)
+    // ========================================================================
+
+    // Static library (libwhatwg.a)
+    const static_lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "whatwg",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/platform/exports.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(static_lib);
+
+    // Shared library (libwhatwg.so / libwhatwg.dylib)
+    const shared_lib = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "whatwg",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/platform/exports.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(shared_lib);
+
+    // Build step for just the C library
+    const lib_step = b.step("lib", "Build the C-compatible static and shared libraries");
+    const install_static = b.addInstallArtifact(static_lib, .{});
+    const install_shared = b.addInstallArtifact(shared_lib, .{});
+    lib_step.dependOn(&install_static.step);
+    lib_step.dependOn(&install_shared.step);
+
+    // ========================================================================
     // IDL PARSER TOOL
     // ========================================================================
 
