@@ -8,7 +8,49 @@
 //! - Push messaging (Push API)
 //!
 //! These backends are designed to be replaceable by embedders.
+//!
+//! ## Unified Platform Backend
+//!
+//! For new integrations, use the unified PlatformBackend which consolidates
+//! all capabilities into a single entry point:
+//!
+//! ```zig
+//! const platform = PlatformBackend{
+//!     .clipboard = &my_clipboard_vtable,
+//!     .network = &my_network_vtable,
+//!     // ... other capabilities
+//! };
+//! ```
 
+// === Unified Platform Backend (Recommended) ===
+pub const platform_backend = @import("platform_backend.zig");
+pub const vtables = @import("vtables.zig");
+pub const exports = @import("exports.zig");
+
+// Unified backend types
+pub const PlatformBackend = platform_backend.PlatformBackend;
+pub const Capability = platform_backend.Capability;
+pub const PLATFORM_BACKEND_VERSION = platform_backend.PLATFORM_BACKEND_VERSION;
+
+// C ABI exports (re-export for convenience)
+pub const whatwg_platform_create = exports.whatwg_platform_create;
+pub const whatwg_platform_destroy = exports.whatwg_platform_destroy;
+pub const whatwg_platform_get_version = exports.whatwg_platform_get_version;
+
+// VTable types (C-compatible)
+pub const ClipboardVTable = vtables.ClipboardVTable;
+pub const TimerVTable = vtables.TimerVTable;
+pub const LayoutVTable = vtables.LayoutVTable;
+pub const NotificationVTable = vtables.NotificationVTable;
+pub const PushVTable = vtables.PushVTable;
+pub const NetworkVTable = vtables.NetworkVTable;
+pub const StorageVTable = vtables.StorageVTable;
+pub const FileSystemVTable = vtables.FileSystemVTable;
+pub const UIVTable = vtables.UIVTable;
+pub const GeolocationVTable = vtables.GeolocationVTable;
+pub const PermissionsVTable = vtables.PermissionsVTable;
+
+// === Legacy Backends (For Backward Compatibility) ===
 pub const timer_backend = @import("timer_backend.zig");
 pub const layout_backend = @import("layout_backend.zig");
 pub const clipboard_backend = @import("clipboard_backend.zig");
