@@ -10,14 +10,14 @@ import UIKit
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.uiProvider = iOSUIProvider()
+/// platform.uiProvider = UIKitUIProvider()
 /// ```
 ///
 @available(iOS 17.0, *)
 @MainActor
-public final class iOSUIProvider: UIProvider, @unchecked Sendable {
+public final class UIKitUIProvider: UIProvider, @unchecked Sendable {
     
-    private var windows: [String: iOSWindowHandle] = [:]
+    private var windows: [String: UIKitWindowHandle] = [:]
     
     /// Creates a new iOS UI provider.
     public init() {}
@@ -96,7 +96,7 @@ public final class iOSUIProvider: UIProvider, @unchecked Sendable {
         await UIApplication.shared.open(url)
         
         // Return a handle that doesn't do much on iOS
-        let handle = iOSWindowHandle(identifier: url.absoluteString)
+        let handle = UIKitWindowHandle(identifier: url.absoluteString)
         let identifier = target ?? url.absoluteString
         windows[identifier] = handle
         
@@ -143,10 +143,10 @@ public final class iOSUIProvider: UIProvider, @unchecked Sendable {
     }
 }
 
-// MARK: - iOSWindowHandle
+// MARK: - UIKitWindowHandle
 
 @available(iOS 17.0, *)
-final class iOSWindowHandle: WindowHandle, @unchecked Sendable {
+final class UIKitWindowHandle: WindowHandle, @unchecked Sendable {
     
     private let identifier: String
     
@@ -172,6 +172,14 @@ final class iOSWindowHandle: WindowHandle, @unchecked Sendable {
 }
 #endif
 
+// MARK: - Backwards Compatibility (iOS)
+
+/// Deprecated: Use `UIKitUIProvider` instead.
+@available(iOS 17.0, *)
+@available(*, deprecated, renamed: "UIKitUIProvider")
+public typealias iOSUIProvider = UIKitUIProvider
+#endif
+
 #if os(macOS)
 import AppKit
 
@@ -179,9 +187,16 @@ import AppKit
 ///
 /// This provider uses NSAlert for dialogs and NSWorkspace for window operations.
 ///
+/// ## Example Usage
+///
+/// ```swift
+/// let platform = WhatWGPlatform()
+/// platform.uiProvider = AppKitUIProvider()
+/// ```
+///
 @available(macOS 14.0, *)
 @MainActor
-public final class macOSUIProvider: UIProvider, @unchecked Sendable {
+public final class AppKitUIProvider: UIProvider, @unchecked Sendable {
     
     /// Creates a new macOS UI provider.
     public init() {}
@@ -226,7 +241,7 @@ public final class macOSUIProvider: UIProvider, @unchecked Sendable {
     public func open(url: URL?, target: String?, features: String?) async -> WindowHandle? {
         guard let url = url else { return nil }
         NSWorkspace.shared.open(url)
-        return macOSWindowHandle(identifier: url.absoluteString)
+        return AppKitWindowHandle(identifier: url.absoluteString)
     }
     
     public func print() async {
@@ -243,7 +258,7 @@ public final class macOSUIProvider: UIProvider, @unchecked Sendable {
 }
 
 @available(macOS 14.0, *)
-final class macOSWindowHandle: WindowHandle, @unchecked Sendable {
+final class AppKitWindowHandle: WindowHandle, @unchecked Sendable {
     
     private let identifier: String
     
@@ -256,4 +271,11 @@ final class macOSWindowHandle: WindowHandle, @unchecked Sendable {
     public func blur() {}
     public func postMessage(_ message: Any, targetOrigin: String) {}
 }
+
+// MARK: - Backwards Compatibility (macOS)
+
+/// Deprecated: Use `AppKitUIProvider` instead.
+@available(macOS 14.0, *)
+@available(*, deprecated, renamed: "AppKitUIProvider")
+public typealias macOSUIProvider = AppKitUIProvider
 #endif

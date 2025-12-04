@@ -8,7 +8,7 @@ import AppKit
 import UniformTypeIdentifiers
 #endif
 
-/// iOS/macOS implementation of FileSystemProvider using system file pickers.
+/// File system provider implementation using system file pickers.
 ///
 /// This provider uses UIDocumentPickerViewController on iOS and NSOpenPanel on macOS.
 /// It also provides access to the Origin Private File System (OPFS) using the app's
@@ -18,11 +18,11 @@ import UniformTypeIdentifiers
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.fileSystemProvider = iOSFileSystemProvider()
+/// platform.fileSystemProvider = UIDocumentPickerFileSystemProvider()
 /// ```
 ///
 @available(iOS 17.0, macOS 14.0, *)
-public final class iOSFileSystemProvider: FileSystemProvider, @unchecked Sendable {
+public final class UIDocumentPickerFileSystemProvider: FileSystemProvider, @unchecked Sendable {
     
     private let fileManager = FileManager.default
     private let opfsDirectory: URL
@@ -396,4 +396,11 @@ final class iOSFileWritableStream: FileWritableStream, @unchecked Sendable {
         fileHandle = nil
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `UIDocumentPickerFileSystemProvider` instead.
+@available(iOS 17.0, macOS 14.0, *)
+@available(*, deprecated, renamed: "UIDocumentPickerFileSystemProvider")
+public typealias iOSFileSystemProvider = UIDocumentPickerFileSystemProvider
 #endif

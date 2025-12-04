@@ -1,7 +1,7 @@
 #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 import Foundation
 
-/// iOS/macOS implementation of StorageProvider using UserDefaults.
+/// Storage provider implementation using UserDefaults.
 ///
 /// This provider uses UserDefaults for persistent key-value storage.
 /// For more advanced storage needs, consider implementing a custom provider
@@ -11,10 +11,10 @@ import Foundation
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.storageProvider = iOSStorageProvider()
+/// platform.storageProvider = UserDefaultsStorageProvider()
 /// ```
 ///
-public final class iOSStorageProvider: StorageProvider, @unchecked Sendable {
+public final class UserDefaultsStorageProvider: StorageProvider, @unchecked Sendable {
     
     private let defaults: UserDefaults
     private let keyPrefix: String
@@ -77,12 +77,12 @@ public final class iOSStorageProvider: StorageProvider, @unchecked Sendable {
     }
 }
 
-/// iOS/macOS implementation of StorageProvider using file system.
+/// Storage provider implementation using the file system.
 ///
 /// This provider uses a directory in the app's documents for persistent storage.
 /// It stores each key-value pair as a separate file.
 ///
-public final class iOSFileStorageProvider: StorageProvider, @unchecked Sendable {
+public final class FileSystemStorageProvider: StorageProvider, @unchecked Sendable {
     
     private let directory: URL
     private let fileManager = FileManager.default
@@ -148,4 +148,14 @@ public final class iOSFileStorageProvider: StorageProvider, @unchecked Sendable 
         return filename.removingPercentEncoding ?? filename
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `UserDefaultsStorageProvider` instead.
+@available(*, deprecated, renamed: "UserDefaultsStorageProvider")
+public typealias iOSStorageProvider = UserDefaultsStorageProvider
+
+/// Deprecated: Use `FileSystemStorageProvider` instead.
+@available(*, deprecated, renamed: "FileSystemStorageProvider")
+public typealias iOSFileStorageProvider = FileSystemStorageProvider
 #endif

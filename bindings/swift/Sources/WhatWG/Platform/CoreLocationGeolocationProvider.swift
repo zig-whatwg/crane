@@ -2,7 +2,7 @@
 import Foundation
 import CoreLocation
 
-/// iOS/macOS implementation of GeolocationProvider using CoreLocation.
+/// Geolocation provider implementation using CoreLocation.
 ///
 /// This provider uses CLLocationManager for location services.
 /// Make sure to add the appropriate usage description keys to your Info.plist:
@@ -13,11 +13,11 @@ import CoreLocation
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.geolocationProvider = iOSGeolocationProvider()
+/// platform.geolocationProvider = CoreLocationGeolocationProvider()
 /// ```
 ///
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
-public final class iOSGeolocationProvider: NSObject, GeolocationProvider, @unchecked Sendable {
+public final class CoreLocationGeolocationProvider: NSObject, GeolocationProvider, @unchecked Sendable {
     
     private let locationManager: CLLocationManager
     private var watchCallbacks: [Int: @Sendable (Result<GeolocationPosition, GeolocationError>) -> Void] = [:]
@@ -135,7 +135,7 @@ public final class iOSGeolocationProvider: NSObject, GeolocationProvider, @unche
 // MARK: - CLLocationManagerDelegate
 
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
-extension iOSGeolocationProvider: CLLocationManagerDelegate {
+extension CoreLocationGeolocationProvider: CLLocationManagerDelegate {
     
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
@@ -229,4 +229,11 @@ extension CLLocation {
         return GeolocationPosition(coords: coords, timestamp: timestamp)
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `CoreLocationGeolocationProvider` instead.
+@available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
+@available(*, deprecated, renamed: "CoreLocationGeolocationProvider")
+public typealias iOSGeolocationProvider = CoreLocationGeolocationProvider
 #endif

@@ -11,11 +11,11 @@ import UniformTypeIdentifiers
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.clipboardProvider = iOSClipboardProvider()
+/// platform.clipboardProvider = UIPasteboardClipboardProvider()
 /// ```
 ///
 @available(iOS 17.0, *)
-public final class iOSClipboardProvider: ClipboardProvider, @unchecked Sendable {
+public final class UIPasteboardClipboardProvider: ClipboardProvider, @unchecked Sendable {
     
     private let pasteboard: UIPasteboard
     
@@ -106,4 +106,11 @@ public final class iOSClipboardProvider: ClipboardProvider, @unchecked Sendable 
         return true
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `UIPasteboardClipboardProvider` instead.
+@available(iOS 17.0, *)
+@available(*, deprecated, renamed: "UIPasteboardClipboardProvider")
+public typealias iOSClipboardProvider = UIPasteboardClipboardProvider
 #endif

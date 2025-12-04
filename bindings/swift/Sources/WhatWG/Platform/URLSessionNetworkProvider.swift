@@ -2,7 +2,7 @@
 import Foundation
 import Network
 
-/// iOS/macOS implementation of NetworkProvider using URLSession.
+/// Network provider implementation using URLSession.
 ///
 /// This provider uses URLSession for HTTP requests and NWPathMonitor
 /// for network connectivity monitoring.
@@ -11,11 +11,11 @@ import Network
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.networkProvider = iOSNetworkProvider()
+/// platform.networkProvider = URLSessionNetworkProvider()
 /// ```
 ///
 @available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *)
-public final class iOSNetworkProvider: NetworkProvider, @unchecked Sendable {
+public final class URLSessionNetworkProvider: NetworkProvider, @unchecked Sendable {
     
     private let session: URLSession
     private let monitor: NWPathMonitor
@@ -80,4 +80,11 @@ public final class iOSNetworkProvider: NetworkProvider, @unchecked Sendable {
         return currentPath?.status == .satisfied
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `URLSessionNetworkProvider` instead.
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *)
+@available(*, deprecated, renamed: "URLSessionNetworkProvider")
+public typealias iOSNetworkProvider = URLSessionNetworkProvider
 #endif

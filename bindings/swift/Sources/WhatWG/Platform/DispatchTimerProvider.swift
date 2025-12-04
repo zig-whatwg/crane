@@ -1,7 +1,7 @@
 #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 import Foundation
 
-/// iOS/macOS implementation of TimerProvider using GCD (Grand Central Dispatch).
+/// Timer provider implementation using GCD (Grand Central Dispatch).
 ///
 /// This provider uses DispatchSourceTimer for precise timing.
 /// Timers are executed on a background queue by default.
@@ -10,10 +10,10 @@ import Foundation
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.timerProvider = iOSTimerProvider()
+/// platform.timerProvider = DispatchTimerProvider()
 /// ```
 ///
-public final class iOSTimerProvider: TimerProvider, @unchecked Sendable {
+public final class DispatchTimerProvider: TimerProvider, @unchecked Sendable {
     
     private let queue: DispatchQueue
     private var timers: [UInt64: DispatchSourceTimer] = [:]
@@ -95,4 +95,10 @@ public final class iOSTimerProvider: TimerProvider, @unchecked Sendable {
         lock.unlock()
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `DispatchTimerProvider` instead.
+@available(*, deprecated, renamed: "DispatchTimerProvider")
+public typealias iOSTimerProvider = DispatchTimerProvider
 #endif

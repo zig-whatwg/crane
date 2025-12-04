@@ -2,7 +2,7 @@
 import Foundation
 import UserNotifications
 
-/// iOS/macOS implementation of NotificationProvider using UserNotifications framework.
+/// Notification provider implementation using UserNotifications framework.
 ///
 /// This provider uses UNUserNotificationCenter for local notifications.
 /// Make sure to request notification permissions before showing notifications.
@@ -11,14 +11,14 @@ import UserNotifications
 ///
 /// ```swift
 /// let platform = WhatWGPlatform()
-/// platform.notificationProvider = iOSNotificationProvider()
+/// platform.notificationProvider = UserNotificationsNotificationProvider()
 /// ```
 ///
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
-public final class iOSNotificationProvider: NotificationProvider, @unchecked Sendable {
+public final class UserNotificationsNotificationProvider: NotificationProvider, @unchecked Sendable {
     
     private let notificationCenter: UNUserNotificationCenter
-    private var activeNotifications: [String: iOSNotificationHandle] = [:]
+    private var activeNotifications: [String: UNNotificationHandle] = [:]
     private let lock = NSLock()
     
     /// The current permission status.
@@ -109,7 +109,7 @@ public final class iOSNotificationProvider: NotificationProvider, @unchecked Sen
         
         try await notificationCenter.add(request)
         
-        let handle = iOSNotificationHandle(
+        let handle = UNNotificationHandle(
             identifier: identifier,
             tag: options.tag,
             notificationCenter: notificationCenter
@@ -138,10 +138,10 @@ public final class iOSNotificationProvider: NotificationProvider, @unchecked Sen
     }
 }
 
-// MARK: - iOSNotificationHandle
+// MARK: - UNNotificationHandle
 
 @available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
-final class iOSNotificationHandle: NotificationHandle, @unchecked Sendable {
+final class UNNotificationHandle: NotificationHandle, @unchecked Sendable {
     
     private let identifier: String
     public let tag: String?
@@ -158,4 +158,11 @@ final class iOSNotificationHandle: NotificationHandle, @unchecked Sendable {
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 }
+
+// MARK: - Backwards Compatibility
+
+/// Deprecated: Use `UserNotificationsNotificationProvider` instead.
+@available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
+@available(*, deprecated, renamed: "UserNotificationsNotificationProvider")
+public typealias iOSNotificationProvider = UserNotificationsNotificationProvider
 #endif
