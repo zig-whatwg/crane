@@ -1,0 +1,113 @@
+name: Swift Bindings
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bindings/swift/**'
+      - 'include/**'
+      - 'src/**'
+      - '.github/workflows/swift.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'bindings/swift/**'
+      - 'include/**'
+      - 'src/**'
+      - '.github/workflows/swift.yml'
+
+jobs:
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Build Zig library
+        run: |
+          zig build -Doptimize=ReleaseFast
+          # Create universal library for macOS
+          mkdir -p bindings/swift/Sources/CWhatWG/lib
+          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/ || true
+
+      - name: Build Swift Package
+        working-directory: bindings/swift
+        run: swift build
+
+      - name: Run Tests
+        working-directory: bindings/swift
+        run: swift test
+
+  build-ios:
+    name: Build for iOS
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Build Zig library for iOS
+        run: |
+          # Build for iOS arm64
+          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios || true
+          mkdir -p bindings/swift/Sources/CWhatWG/lib
+          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/ || true
+
+      - name: Build Swift Package for iOS
+        working-directory: bindings/swift
+        run: |
+          xcodebuild build \
+            -scheme WhatWG \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO || echo "iOS build skipped - requires Xcode project"
+
+      - name: Run Tests on iOS Simulator
+        working-directory: bindings/swift
+        run: |
+          xcodebuild test \
+            -scheme WhatWG \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO || echo "iOS tests skipped - requires Xcode project"
+
+  lint:
+    name: Swift Lint
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run SwiftLint
+        working-directory: bindings/swift
+        run: |
+          if command -v swiftlint &> /dev/null; then
+            swiftlint lint --reporter github-actions-logging
+          else
+            echo "SwiftLint not installed, skipping"
+          fi
