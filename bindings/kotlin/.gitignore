@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio
+*.iml
+.idea/
+local.properties
+
+# Generated files
+*.apk
+*.aab
+*.dex
+*.class
+
+# Native libraries (built separately)
+whatwg/src/main/jniLibs/
+
+# Logs
+*.log
