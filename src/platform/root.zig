@@ -50,6 +50,7 @@ pub const FileSystemVTable = vtables.FileSystemVTable;
 pub const UIVTable = vtables.UIVTable;
 pub const GeolocationVTable = vtables.GeolocationVTable;
 pub const PermissionsVTable = vtables.PermissionsVTable;
+pub const MediaVTable = vtables.MediaVTable;
 
 // === Legacy Backends (For Backward Compatibility) ===
 pub const timer_backend = @import("timer_backend.zig");
@@ -162,3 +163,4 @@ pub const stub_vibration_vtable = stub_platform_backend.stub_vibration_vtable;
 pub const stub_battery_vtable = stub_platform_backend.stub_battery_vtable;
 pub const stub_share_vtable = stub_platform_backend.stub_share_vtable;
 pub const stub_permissions_vtable = stub_platform_backend.stub_permissions_vtable;
+pub const stub_media_vtable = stub_platform_backend.stub_media_vtable;

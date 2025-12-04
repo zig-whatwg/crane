@@ -62,6 +62,14 @@ const VibrationVTable = vtables.VibrationVTable;
 const BatteryVTable = vtables.BatteryVTable;
 const ShareVTable = vtables.ShareVTable;
 const PermissionsVTable = vtables.PermissionsVTable;
+const MediaVTable = vtables.MediaVTable;
+const MediaSourceHandle = vtables.MediaSourceHandle;
+const SourceBufferHandle = vtables.SourceBufferHandle;
+const MediaKeysHandle = vtables.MediaKeysHandle;
+const MediaKeySessionHandle = vtables.MediaKeySessionHandle;
+const MediaStreamHandle = vtables.MediaStreamHandle;
+const MediaSourceReadyState = vtables.MediaSourceReadyState;
+const MediaResult = vtables.MediaResult;
 const OpaquePtr = vtables.OpaquePtr;
 
 // =============================================================================
@@ -961,6 +969,172 @@ pub const stub_permissions_vtable = PermissionsVTable{
 };
 
 // =============================================================================
+// Media Stub
+// Covers MediaDevices, Media Source Extensions (MSE), and Encrypted Media (EME)
+// =============================================================================
+
+// Internal state for media stubs
+var stub_media_source_counter: MediaSourceHandle = 0;
+var stub_source_buffer_counter: SourceBufferHandle = 0;
+var stub_media_keys_counter: MediaKeysHandle = 0;
+var stub_media_key_session_counter: MediaKeySessionHandle = 0;
+var stub_media_stream_counter: MediaStreamHandle = 0;
+
+// === MediaDevices API ===
+
+fn stubMediaGetUserMedia(_: OpaquePtr, _: bool, _: bool) callconv(.c) MediaStreamHandle {
+    stub_media_stream_counter += 1;
+    return stub_media_stream_counter;
+}
+
+fn stubMediaStopStream(_: OpaquePtr, _: MediaStreamHandle) callconv(.c) void {
+    // Stub: no-op
+}
+
+// === Media Source Extensions (MSE) ===
+
+fn stubMediaCreateMediaSource(_: OpaquePtr) callconv(.c) MediaSourceHandle {
+    stub_media_source_counter += 1;
+    return stub_media_source_counter;
+}
+
+fn stubMediaDestroyMediaSource(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) void {
+    // Stub: no-op
+}
+
+fn stubMediaGetReadyState(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) MediaSourceReadyState {
+    return .open; // Default to open state
+}
+
+fn stubMediaSetDuration(_: OpaquePtr, _: MediaSourceHandle, _: f64) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaGetDuration(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) f64 {
+    return std.math.inf(f64); // Unbounded duration
+}
+
+fn stubMediaAddSourceBuffer(
+    _: OpaquePtr,
+    _: MediaSourceHandle,
+    _: [*]const u8,
+    _: usize,
+) callconv(.c) SourceBufferHandle {
+    stub_source_buffer_counter += 1;
+    return stub_source_buffer_counter;
+}
+
+fn stubMediaRemoveSourceBuffer(
+    _: OpaquePtr,
+    _: MediaSourceHandle,
+    _: SourceBufferHandle,
+) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaEndOfStream(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaAppendBuffer(
+    _: OpaquePtr,
+    _: SourceBufferHandle,
+    _: [*]const u8,
+    _: usize,
+) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaRemoveBufferedData(
+    _: OpaquePtr,
+    _: SourceBufferHandle,
+    _: f64,
+    _: f64,
+) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaAbortSourceBuffer(_: OpaquePtr, _: SourceBufferHandle) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaIsUpdating(_: OpaquePtr, _: SourceBufferHandle) callconv(.c) bool {
+    return false; // Not updating
+}
+
+// === Encrypted Media Extensions (EME) ===
+
+fn stubMediaIsKeySystemSupported(_: OpaquePtr, _: [*]const u8, _: usize) callconv(.c) bool {
+    return true; // Stub: all key systems supported
+}
+
+fn stubMediaCreateMediaKeys(_: OpaquePtr, _: [*]const u8, _: usize) callconv(.c) MediaKeysHandle {
+    stub_media_keys_counter += 1;
+    return stub_media_keys_counter;
+}
+
+fn stubMediaDestroyMediaKeys(_: OpaquePtr, _: MediaKeysHandle) callconv(.c) void {
+    // Stub: no-op
+}
+
+fn stubMediaCreateSession(_: OpaquePtr, _: MediaKeysHandle, _: u8) callconv(.c) MediaKeySessionHandle {
+    stub_media_key_session_counter += 1;
+    return stub_media_key_session_counter;
+}
+
+fn stubMediaCloseSession(_: OpaquePtr, _: MediaKeySessionHandle) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaGenerateRequest(
+    _: OpaquePtr,
+    _: MediaKeySessionHandle,
+    _: [*]const u8,
+    _: usize,
+    _: [*]const u8,
+    _: usize,
+) callconv(.c) MediaResult {
+    return .success;
+}
+
+fn stubMediaUpdateSession(
+    _: OpaquePtr,
+    _: MediaKeySessionHandle,
+    _: [*]const u8,
+    _: usize,
+) callconv(.c) MediaResult {
+    return .success;
+}
+
+pub const stub_media_vtable = MediaVTable{
+    // MediaDevices
+    .call_getUserMedia = stubMediaGetUserMedia,
+    .stopStream = stubMediaStopStream,
+    // MSE - MediaSource
+    .createMediaSource = stubMediaCreateMediaSource,
+    .destroyMediaSource = stubMediaDestroyMediaSource,
+    .getReadyState = stubMediaGetReadyState,
+    .setDuration = stubMediaSetDuration,
+    .getDuration = stubMediaGetDuration,
+    .addSourceBuffer = stubMediaAddSourceBuffer,
+    .removeSourceBuffer = stubMediaRemoveSourceBuffer,
+    .endOfStream = stubMediaEndOfStream,
+    // MSE - SourceBuffer
+    .appendBuffer = stubMediaAppendBuffer,
+    .removeBufferedData = stubMediaRemoveBufferedData,
+    .abortSourceBuffer = stubMediaAbortSourceBuffer,
+    .isUpdating = stubMediaIsUpdating,
+    // EME - MediaKeys
+    .isKeySystemSupported = stubMediaIsKeySystemSupported,
+    .createMediaKeys = stubMediaCreateMediaKeys,
+    .destroyMediaKeys = stubMediaDestroyMediaKeys,
+    .createSession = stubMediaCreateSession,
+    .closeSession = stubMediaCloseSession,
+    .generateRequest = stubMediaGenerateRequest,
+    .updateSession = stubMediaUpdateSession,
+};
+
+// =============================================================================
 // Create Stub Backend
 // =============================================================================
 
@@ -999,9 +1173,12 @@ pub fn createStubBackend(context: *StubContext) PlatformBackend {
         // Security
         .permissions = &stub_permissions_vtable,
 
+        // Media (MediaDevices + MSE + EME)
+        .media = &stub_media_vtable,
+
         // Remaining capabilities are null (not implemented in stub)
         // bluetooth, usb, serial, hid, nfc, device_orientation, wake_lock
-        // webrtc, media, audio, speech, gamepad, sensor
+        // webrtc, audio, speech, gamepad, sensor
         // credentials, webauthn, payment
     };
 }
@@ -1128,4 +1305,105 @@ test "stub layout vtable - get dimensions" {
     stub_layout_vtable.call_getBoundingClientRect(&ctx, null, &rect);
     try std.testing.expectEqual(@as(f64, 800), rect.width);
     try std.testing.expectEqual(@as(f64, 600), rect.height);
+}
+
+test "stub media vtable - MSE operations" {
+    var ctx = StubContext.init(std.testing.allocator);
+    defer ctx.deinit();
+
+    // Create MediaSource
+    const media_source = stub_media_vtable.createMediaSource(&ctx);
+    try std.testing.expect(media_source > 0);
+
+    // Check ready state
+    const ready_state = stub_media_vtable.getReadyState(&ctx, media_source);
+    try std.testing.expectEqual(MediaSourceReadyState.open, ready_state);
+
+    // Add SourceBuffer
+    const mime = "video/mp4; codecs=\"avc1.42E01E\"";
+    const source_buffer = stub_media_vtable.addSourceBuffer(&ctx, media_source, mime.ptr, mime.len);
+    try std.testing.expect(source_buffer > 0);
+
+    // Append buffer
+    const data = "fake media data";
+    const append_result = stub_media_vtable.appendBuffer(&ctx, source_buffer, data.ptr, data.len);
+    try std.testing.expectEqual(MediaResult.success, append_result);
+
+    // Not updating
+    try std.testing.expect(!stub_media_vtable.isUpdating(&ctx, source_buffer));
+
+    // Remove buffered data
+    const remove_result = stub_media_vtable.removeBufferedData(&ctx, source_buffer, 0.0, 10.0);
+    try std.testing.expectEqual(MediaResult.success, remove_result);
+
+    // End of stream
+    const eos_result = stub_media_vtable.endOfStream(&ctx, media_source);
+    try std.testing.expectEqual(MediaResult.success, eos_result);
+
+    // Cleanup
+    stub_media_vtable.destroyMediaSource(&ctx, media_source);
+}
+
+test "stub media vtable - EME operations" {
+    var ctx = StubContext.init(std.testing.allocator);
+    defer ctx.deinit();
+
+    // Check key system support
+    const key_system = "com.widevine.alpha";
+    try std.testing.expect(stub_media_vtable.isKeySystemSupported(&ctx, key_system.ptr, key_system.len));
+
+    // Create MediaKeys
+    const media_keys = stub_media_vtable.createMediaKeys(&ctx, key_system.ptr, key_system.len);
+    try std.testing.expect(media_keys > 0);
+
+    // Create session (0 = temporary)
+    const session = stub_media_vtable.createSession(&ctx, media_keys, 0);
+    try std.testing.expect(session > 0);
+
+    // Generate request
+    const init_data_type = "cenc";
+    const init_data = "fake init data";
+    const gen_result = stub_media_vtable.generateRequest(
+        &ctx,
+        session,
+        init_data_type.ptr,
+        init_data_type.len,
+        init_data.ptr,
+        init_data.len,
+    );
+    try std.testing.expectEqual(MediaResult.success, gen_result);
+
+    // Update session with license
+    const license = "fake license response";
+    const update_result = stub_media_vtable.updateSession(&ctx, session, license.ptr, license.len);
+    try std.testing.expectEqual(MediaResult.success, update_result);
+
+    // Close session
+    const close_result = stub_media_vtable.closeSession(&ctx, session);
+    try std.testing.expectEqual(MediaResult.success, close_result);
+
+    // Cleanup
+    stub_media_vtable.destroyMediaKeys(&ctx, media_keys);
+}
+
+test "stub media vtable - MediaDevices getUserMedia" {
+    var ctx = StubContext.init(std.testing.allocator);
+    defer ctx.deinit();
+
+    // Get user media with audio and video
+    const stream = stub_media_vtable.call_getUserMedia(&ctx, true, true);
+    try std.testing.expect(stream > 0);
+
+    // Stop stream
+    stub_media_vtable.stopStream(&ctx, stream);
+}
+
+test "createStubBackend - has media capability" {
+    var ctx = StubContext.init(std.testing.allocator);
+    defer ctx.deinit();
+
+    const backend = createStubBackend(&ctx);
+
+    try std.testing.expect(backend.hasCapability(.media));
+    try std.testing.expect(backend.media != null);
 }

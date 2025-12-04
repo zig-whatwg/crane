@@ -709,10 +709,168 @@ pub const WebRTCVTable = extern struct {
     call_close: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
 };
 
-/// Media VTable (stub) - navigator.mediaDevices
+// =============================================================================
+// Media VTable
+// Specs: Media Source Extensions (MSE) + Encrypted Media Extensions (EME) +
+//        MediaDevices API
+// =============================================================================
+
+/// MediaSource ready state
+pub const MediaSourceReadyState = enum(u8) {
+    closed = 0,
+    open = 1,
+    ended = 2,
+};
+
+/// Media operation result
+pub const MediaResult = enum(i32) {
+    success = 0,
+    invalid_state = -1,
+    not_supported = -2,
+    quota_exceeded = -3,
+    invalid_access = -4,
+    type_error = -5,
+    error_unknown = -99,
+};
+
+/// MediaSource handle (opaque)
+pub const MediaSourceHandle = u64;
+
+/// SourceBuffer handle (opaque)
+pub const SourceBufferHandle = u64;
+
+/// MediaKeys handle (opaque) - for EME
+pub const MediaKeysHandle = u64;
+
+/// MediaKeySession handle (opaque) - for EME
+pub const MediaKeySessionHandle = u64;
+
+/// MediaStream handle (opaque) - for getUserMedia
+pub const MediaStreamHandle = u64;
+
+/// Media VTable - MediaDevices + MediaSource + MediaKeys
+/// Specs:
+/// - https://w3c.github.io/mediacapture-main/ (MediaDevices)
+/// - https://w3c.github.io/media-source/ (MSE)
+/// - https://w3c.github.io/encrypted-media/ (EME)
 pub const MediaVTable = extern struct {
-    call_getUserMedia: *const fn (user_context: OpaquePtr, audio: bool, video: bool) callconv(.c) u64,
-    stopStream: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    // === MediaDevices API ===
+
+    /// Get user media stream (navigator.mediaDevices.getUserMedia())
+    /// Returns stream handle on success, 0 on failure.
+    call_getUserMedia: *const fn (user_context: OpaquePtr, audio: bool, video: bool) callconv(.c) MediaStreamHandle,
+
+    /// Stop a media stream
+    stopStream: *const fn (user_context: OpaquePtr, handle: MediaStreamHandle) callconv(.c) void,
+
+    // === Media Source Extensions (MSE) ===
+
+    /// Create a MediaSource (new MediaSource())
+    /// Returns handle on success, 0 on failure.
+    createMediaSource: *const fn (user_context: OpaquePtr) callconv(.c) MediaSourceHandle,
+
+    /// Destroy a MediaSource
+    destroyMediaSource: *const fn (user_context: OpaquePtr, handle: MediaSourceHandle) callconv(.c) void,
+
+    /// Get MediaSource ready state (mediaSource.readyState)
+    getReadyState: *const fn (user_context: OpaquePtr, handle: MediaSourceHandle) callconv(.c) MediaSourceReadyState,
+
+    /// Set MediaSource duration (mediaSource.duration)
+    setDuration: *const fn (user_context: OpaquePtr, handle: MediaSourceHandle, duration: f64) callconv(.c) MediaResult,
+
+    /// Get MediaSource duration (mediaSource.duration)
+    getDuration: *const fn (user_context: OpaquePtr, handle: MediaSourceHandle) callconv(.c) f64,
+
+    /// Add SourceBuffer (mediaSource.addSourceBuffer())
+    /// Returns buffer handle on success, 0 on failure.
+    addSourceBuffer: *const fn (
+        user_context: OpaquePtr,
+        media_source: MediaSourceHandle,
+        mime_type: [*]const u8,
+        mime_type_len: usize,
+    ) callconv(.c) SourceBufferHandle,
+
+    /// Remove SourceBuffer (mediaSource.removeSourceBuffer())
+    removeSourceBuffer: *const fn (
+        user_context: OpaquePtr,
+        media_source: MediaSourceHandle,
+        source_buffer: SourceBufferHandle,
+    ) callconv(.c) MediaResult,
+
+    /// End of stream (mediaSource.endOfStream())
+    endOfStream: *const fn (user_context: OpaquePtr, handle: MediaSourceHandle) callconv(.c) MediaResult,
+
+    /// Append buffer data (sourceBuffer.appendBuffer())
+    appendBuffer: *const fn (
+        user_context: OpaquePtr,
+        source_buffer: SourceBufferHandle,
+        data: [*]const u8,
+        data_len: usize,
+    ) callconv(.c) MediaResult,
+
+    /// Remove buffered data (sourceBuffer.remove())
+    removeBufferedData: *const fn (
+        user_context: OpaquePtr,
+        source_buffer: SourceBufferHandle,
+        start: f64,
+        end: f64,
+    ) callconv(.c) MediaResult,
+
+    /// Abort current operation (sourceBuffer.abort())
+    abortSourceBuffer: *const fn (user_context: OpaquePtr, source_buffer: SourceBufferHandle) callconv(.c) MediaResult,
+
+    /// Check if SourceBuffer is updating (sourceBuffer.updating)
+    isUpdating: *const fn (user_context: OpaquePtr, source_buffer: SourceBufferHandle) callconv(.c) bool,
+
+    // === Encrypted Media Extensions (EME) ===
+
+    /// Request MediaKeySystemAccess (navigator.requestMediaKeySystemAccess())
+    /// Returns true if the key system is supported.
+    isKeySystemSupported: *const fn (
+        user_context: OpaquePtr,
+        key_system: [*]const u8,
+        key_system_len: usize,
+    ) callconv(.c) bool,
+
+    /// Create MediaKeys (mediaKeySystemAccess.createMediaKeys())
+    /// Returns handle on success, 0 on failure.
+    createMediaKeys: *const fn (
+        user_context: OpaquePtr,
+        key_system: [*]const u8,
+        key_system_len: usize,
+    ) callconv(.c) MediaKeysHandle,
+
+    /// Destroy MediaKeys
+    destroyMediaKeys: *const fn (user_context: OpaquePtr, handle: MediaKeysHandle) callconv(.c) void,
+
+    /// Create MediaKeySession (mediaKeys.createSession())
+    /// Returns session handle on success, 0 on failure.
+    createSession: *const fn (
+        user_context: OpaquePtr,
+        media_keys: MediaKeysHandle,
+        session_type: u8, // 0 = temporary, 1 = persistent-license
+    ) callconv(.c) MediaKeySessionHandle,
+
+    /// Close MediaKeySession (session.close())
+    closeSession: *const fn (user_context: OpaquePtr, session: MediaKeySessionHandle) callconv(.c) MediaResult,
+
+    /// Generate license request (session.generateRequest())
+    generateRequest: *const fn (
+        user_context: OpaquePtr,
+        session: MediaKeySessionHandle,
+        init_data_type: [*]const u8,
+        init_data_type_len: usize,
+        init_data: [*]const u8,
+        init_data_len: usize,
+    ) callconv(.c) MediaResult,
+
+    /// Update session with license (session.update())
+    updateSession: *const fn (
+        user_context: OpaquePtr,
+        session: MediaKeySessionHandle,
+        response: [*]const u8,
+        response_len: usize,
+    ) callconv(.c) MediaResult,
 };
 
 /// Audio VTable (stub) - AudioContext
