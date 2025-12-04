@@ -63,6 +63,12 @@ pub const TimerBackend = timer_backend.TimerBackend;
 pub const RealTimerBackend = timer_backend.RealTimerBackend;
 pub const MockTimerBackend = timer_backend.MockTimerBackend;
 
+// Timer Adapter (bridges old and new interfaces)
+pub const timer_adapter = @import("timer_adapter.zig");
+pub const TimerVTableAdapter = timer_adapter.TimerVTableAdapter;
+pub const TimerBackendAdapter = timer_adapter.TimerBackendAdapter;
+pub const createMockVTableAdapter = timer_adapter.createMockVTableAdapter;
+
 pub const LayoutBackend = layout_backend.LayoutBackend;
 pub const StubLayoutBackend = layout_backend.StubLayoutBackend;
 
