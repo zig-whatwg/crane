@@ -166,6 +166,10 @@ pub const event_utils = @import("event_utils.zig");
 /// (Used by execCommand for selectAll, delete, forwardDelete)
 pub const selection_commands = @import("selection_commands.zig");
 
+/// Formatting command implementations with DOM integration
+/// (Used by execCommand for font/color/alignment commands)
+pub const formatting_commands = @import("formatting_commands.zig");
+
 // ============================================================================
 // Re-exports for Testing Convenience
 // ============================================================================
