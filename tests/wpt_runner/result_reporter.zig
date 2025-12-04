@@ -41,6 +41,26 @@ const builtin = @import("builtin");
 const test_harness = @import("test_harness.zig");
 const config = @import("config.zig");
 
+/// Escape a string for JSON output
+fn writeJsonString(writer: anytype, str: []const u8) !void {
+    try writer.writeByte('"');
+    for (str) |c| {
+        switch (c) {
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            // Other control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F)
+            0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F => {
+                try writer.print("\\u{x:0>4}", .{c});
+            },
+            else => try writer.writeByte(c),
+        }
+    }
+    try writer.writeByte('"');
+}
+
 /// Run information for the test report
 pub const RunInfo = struct {
     /// Product name (e.g., "whatwg-zig")
@@ -76,6 +96,32 @@ pub const RunInfo = struct {
             .os = os_name,
             .processor = processor,
         };
+    }
+
+    /// Create RunInfo with git revision detected from repository
+    pub fn getWithRevision(allocator: std.mem.Allocator) RunInfo {
+        var info = getDefault();
+
+        // Try to get git revision
+        const git_result = std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{ "git", "rev-parse", "--short", "HEAD" },
+            .cwd = null,
+            .expand_arg0 = .no_expand,
+        }) catch {
+            return info;
+        };
+        defer allocator.free(git_result.stdout);
+        defer allocator.free(git_result.stderr);
+
+        if (git_result.term.Exited == 0 and git_result.stdout.len > 0) {
+            const revision = std.mem.trim(u8, git_result.stdout, &std.ascii.whitespace);
+            if (revision.len > 0) {
+                info.revision = revision;
+            }
+        }
+
+        return info;
     }
 };
 
@@ -167,12 +213,24 @@ pub const WptReport = struct {
 
         // run_info
         try writer.writeAll("  \"run_info\": {\n");
-        try writer.print("    \"product\": \"{s}\",\n", .{self.run_info.product});
-        try writer.print("    \"browser_version\": \"{s}\",\n", .{self.run_info.browser_version});
-        try writer.print("    \"os\": \"{s}\",\n", .{self.run_info.os});
-        try writer.print("    \"os_version\": \"{s}\",\n", .{self.run_info.os_version});
-        try writer.print("    \"processor\": \"{s}\",\n", .{self.run_info.processor});
-        try writer.print("    \"revision\": \"{s}\"\n", .{self.run_info.revision});
+        try writer.writeAll("    \"product\": ");
+        try writeJsonString(writer, self.run_info.product);
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"browser_version\": ");
+        try writeJsonString(writer, self.run_info.browser_version);
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"os\": ");
+        try writeJsonString(writer, self.run_info.os);
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"os_version\": ");
+        try writeJsonString(writer, self.run_info.os_version);
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"processor\": ");
+        try writeJsonString(writer, self.run_info.processor);
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"revision\": ");
+        try writeJsonString(writer, self.run_info.revision);
+        try writer.writeAll("\n");
         try writer.writeAll("  },\n");
 
         // timestamps
@@ -253,11 +311,17 @@ pub const TestResultJson = struct {
 
     pub fn writeJson(self: TestResultJson, writer: anytype, indent: []const u8) !void {
         try writer.print("{s}{{\n", .{indent});
-        try writer.print("{s}  \"test\": \"{s}\",\n", .{ indent, self.test_path });
-        try writer.print("{s}  \"status\": \"{s}\",\n", .{ indent, self.status });
+        try writer.print("{s}  \"test\": ", .{indent});
+        try writeJsonString(writer, self.test_path);
+        try writer.writeAll(",\n");
+        try writer.print("{s}  \"status\": ", .{indent});
+        try writeJsonString(writer, self.status);
+        try writer.writeAll(",\n");
 
         if (self.message) |msg| {
-            try writer.print("{s}  \"message\": \"{s}\",\n", .{ indent, msg });
+            try writer.print("{s}  \"message\": ", .{indent});
+            try writeJsonString(writer, msg);
+            try writer.writeAll(",\n");
         } else {
             try writer.print("{s}  \"message\": null,\n", .{indent});
         }
@@ -293,9 +357,13 @@ pub const SubtestResultJson = struct {
     }
 
     pub fn writeJson(self: SubtestResultJson, writer: anytype, indent: []const u8) !void {
-        try writer.print("{s}    {{\"name\": \"{s}\", \"status\": \"{s}\"", .{ indent, self.name, self.status });
+        try writer.print("{s}    {{\"name\": ", .{indent});
+        try writeJsonString(writer, self.name);
+        try writer.writeAll(", \"status\": ");
+        try writeJsonString(writer, self.status);
         if (self.message) |msg| {
-            try writer.print(", \"message\": \"{s}\"", .{msg});
+            try writer.writeAll(", \"message\": ");
+            try writeJsonString(writer, msg);
         } else {
             try writer.writeAll(", \"message\": null");
         }

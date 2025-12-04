@@ -93,6 +93,9 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "html/rendering/",
     "html/canvas/",
     "html/semantics/embedded-content/media-elements/",
+    "html/semantics/embedded-content/the-video-element/",
+    "html/semantics/embedded-content/the-audio-element/",
+    "html/webappapis/animation-frames/",
     // Visual/interactive tests
     "/visual/",
     "-manual.html",
@@ -100,6 +103,16 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // Support files (not tests themselves)
     "/support/",
     "/resources/",
+    // WPT infrastructure tests
+    "/infrastructure/",
+    "/.well-known/",
+    // Reference tests (visual comparison)
+    "-ref.html",
+    "-ref.htm",
+    // Print tests
+    "/print/",
+    // Tentative/experimental tests
+    "/tentative/",
 };
 
 /// Check if a path matches any exclusion pattern

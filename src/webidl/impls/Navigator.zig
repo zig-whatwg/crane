@@ -347,87 +347,128 @@ pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instanc
 }
 
 /// Getter for appCodeName
+/// Per HTML Standard: Returns "Mozilla" for compatibility.
 pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("Mozilla");
 }
 
 /// Getter for appName
+/// Per HTML Standard: Returns "Netscape" for compatibility.
 pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("Netscape");
 }
 
 /// Getter for appVersion
+/// Per HTML Standard: Returns version info.
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("5.0 (WhatWG-Zig/1.0)");
 }
 
 /// Getter for platform
+/// Per HTML Standard: Returns the platform identifier.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    // Return platform based on compile target
+    const builtin = @import("builtin");
+    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
+        .macos => "MacIntel",
+        .linux => "Linux x86_64",
+        .windows => "Win32",
+        else => "Unknown",
+    });
 }
 
 /// Getter for product
+/// Per HTML Standard: Returns "Gecko" for compatibility.
 pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("Gecko");
 }
 
 /// Getter for productSub
+/// Per HTML Standard: Returns "20030107" for compatibility (historical Gecko date).
 pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("20030107");
 }
 
 /// Getter for userAgent
+/// Per HTML Standard: Returns the user agent string identifying the browser.
+/// Format: Mozilla/5.0 (platform) WhatWG-Zig/1.0
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    const builtin = @import("builtin");
+    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
+        .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) WhatWG-Zig/1.0",
+        .linux => "Mozilla/5.0 (X11; Linux x86_64) WhatWG-Zig/1.0",
+        .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WhatWG-Zig/1.0",
+        else => "Mozilla/5.0 WhatWG-Zig/1.0",
+    });
 }
 
 /// Getter for vendor
+/// Per HTML Standard: Returns the vendor name.
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("WhatWG-Zig");
 }
 
 /// Getter for vendorSub
+/// Per HTML Standard: Returns empty string.
 pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for oscpu
+/// Per HTML Standard: Returns OS/CPU information.
 pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    const builtin = @import("builtin");
+    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
+        .macos => "Intel Mac OS X",
+        .linux => "Linux x86_64",
+        .windows => "Windows NT 10.0; Win64; x64",
+        else => "Unknown",
+    });
 }
 
 /// Getter for language
+/// Per HTML Standard: Returns the preferred language of the user.
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("en-US");
 }
 
 /// Getter for languages
+/// Per HTML Standard: Returns a frozen array of preferred languages.
+/// Note: For WPT tests, we return a pointer to a static array structure.
+/// The V8 binding layer should convert this to a JS array.
 pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
-    return error.NotImplemented;
+    // Return pointer to static "en-US" string as a minimal implementation
+    // The interface/binding layer needs to handle conversion to array
+    const static_lang: []const u8 = "en-US";
+    return @ptrCast(&static_lang);
 }
 
 /// Getter for onLine
+/// Per HTML Standard: Returns true if the user agent is online.
 pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    // Default to online for WPT tests
+    return true;
 }
 
 /// Getter for cookieEnabled
+/// Per HTML Standard: Returns true if cookies are enabled.
 pub fn get_cookieEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    // Default to enabled for WPT tests
+    return true;
 }
 
 /// Getter for plugins
@@ -449,9 +490,12 @@ pub fn get_pdfViewerEnabled(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for hardwareConcurrency
+/// Per HTML Standard: Returns the number of logical processors available.
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
-    return error.NotImplemented;
+    // Use std.Thread.getCpuCount() to get actual CPU count
+    const cpu_count = std.Thread.getCpuCount() catch 1;
+    return @intCast(cpu_count);
 }
 
 /// Getter for userAgentData

@@ -95,8 +95,11 @@ pub const SubtestResult = struct {
     /// Test status (PASS, FAIL, etc.)
     status: TestStatus,
     /// Failure message (null if passed)
+    /// For assertion failures, this contains the formatted message from testharness.js
+    /// which includes expected/actual values (e.g., "assert_equals: expected 1 but got 2")
     message: ?[]const u8 = null,
     /// Stack trace for failures (null if passed)
+    /// Contains V8 stack trace with file:line information
     stack: ?[]const u8 = null,
     /// Duration in milliseconds
     duration_ms: u64 = 0,
@@ -105,6 +108,44 @@ pub const SubtestResult = struct {
         allocator.free(self.name);
         if (self.message) |msg| allocator.free(msg);
         if (self.stack) |stk| allocator.free(stk);
+    }
+
+    /// Check if this result represents a failure
+    pub fn isFailed(self: SubtestResult) bool {
+        return self.status != .pass;
+    }
+
+    /// Get a summary string for this result
+    pub fn getSummary(self: SubtestResult, allocator: std.mem.Allocator) ![]u8 {
+        if (self.message) |msg| {
+            return std.fmt.allocPrint(allocator, "{s}: {s} - {s}", .{
+                self.status.toString(),
+                self.name,
+                msg,
+            });
+        } else {
+            return std.fmt.allocPrint(allocator, "{s}: {s}", .{
+                self.status.toString(),
+                self.name,
+            });
+        }
+    }
+
+    /// Extract the first line from a stack trace (typically the most relevant location)
+    pub fn getStackLocation(self: SubtestResult) ?[]const u8 {
+        if (self.stack) |stack| {
+            // Stack traces from V8 look like:
+            // "    at Test.<anonymous> (test.js:10:5)\n    at ..."
+            // Find the first line after "at "
+            if (std.mem.indexOf(u8, stack, "at ")) |at_pos| {
+                const after_at = stack[at_pos..];
+                if (std.mem.indexOf(u8, after_at, "\n")) |newline_pos| {
+                    return after_at[0..newline_pos];
+                }
+                return after_at;
+            }
+        }
+        return null;
     }
 };
 
@@ -170,6 +211,8 @@ pub const ResultCollector = struct {
     results: std.ArrayList(TestResult),
     current_test: ?*TestResult = null,
     completion_signaled: bool = false,
+    /// Whether the test has completed (alias for completion_signaled)
+    completed: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) ResultCollector {
         return ResultCollector{
@@ -209,7 +252,40 @@ pub const ResultCollector = struct {
                 current.message = try self.allocator.dupe(u8, msg);
             }
             self.completion_signaled = true;
+            self.completed = true;
         }
+    }
+
+    /// Finalize and return a test result for the given path
+    pub fn finalize(self: *ResultCollector, allocator: std.mem.Allocator, test_path: []const u8) !TestResult {
+        // If we have a current test, finalize it
+        if (self.current_test) |current| {
+            // Already has subtests collected
+            var result = TestResult{
+                .test_path = try allocator.dupe(u8, test_path),
+                .status = current.status,
+                .subtests = .{},
+                .allocator = allocator,
+                .message = if (current.message) |msg| try allocator.dupe(u8, msg) else null,
+                .duration_ms = current.duration_ms,
+            };
+
+            // Copy subtests
+            for (current.subtests.items) |sub| {
+                try result.subtests.append(allocator, SubtestResult{
+                    .name = try allocator.dupe(u8, sub.name),
+                    .status = sub.status,
+                    .message = if (sub.message) |msg| try allocator.dupe(u8, msg) else null,
+                    .stack = if (sub.stack) |stk| try allocator.dupe(u8, stk) else null,
+                    .duration_ms = sub.duration_ms,
+                });
+            }
+
+            return result;
+        }
+
+        // No results - return empty result
+        return TestResult.init(allocator, test_path);
     }
 
     /// Get total counts across all test files

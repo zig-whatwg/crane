@@ -19,18 +19,24 @@
 //! ## Usage
 //!
 //! ```zig
-//! var ctx = try BrowserContext.initWindow(allocator);
+//! var ctx = try BrowserContext.initWindow(allocator, "tests/wpt");
 //! defer ctx.deinit();
 //!
-//! try ctx.loadScript("/resources/testharness.js");
-//! try ctx.loadScript("/resources/testharnessreport.js");
-//! const result = try ctx.executeTest(test_content);
+//! try ctx.loadTestHarness();
+//! const result = try ctx.executeTest(test_content, .normal);
 //! ```
 
 const std = @import("std");
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
+
+// V8 and Runtime imports - these are configured via build.zig imports
+const v8 = @import("v8");
+const runtime = @import("runtime");
+const context_manager = v8.context_manager;
+const interfaces = @import("interfaces");
+const namespaces = @import("namespaces");
 
 /// Execution context type
 pub const ContextType = enum {
@@ -57,9 +63,17 @@ pub const BrowserContext = struct {
     /// Whether context is ready for execution
     initialized: bool = false,
 
-    // TODO: Add V8 isolate and context handles
-    // v8_isolate: ?*v8.Isolate = null,
-    // v8_context: ?*v8.Context = null,
+    // V8 handles
+    isolate: ?*v8.ffi.Isolate = null,
+    context: ?*v8.ffi.Context = null,
+
+    // Singleton instances that need cleanup
+    window_instance: ?*runtime.Instance = null,
+    document_instance: ?*runtime.Instance = null,
+    navigator_instance: ?*runtime.Instance = null,
+    location_instance: ?*runtime.Instance = null,
+    history_instance: ?*runtime.Instance = null,
+    performance_instance: ?*runtime.Instance = null,
 
     pub fn init(allocator: std.mem.Allocator, context_type: ContextType, wpt_root: []const u8) !BrowserContext {
         return BrowserContext{
@@ -67,7 +81,7 @@ pub const BrowserContext = struct {
             .context_type = context_type,
             .result_collector = test_harness.ResultCollector.init(allocator),
             .wpt_root = try allocator.dupe(u8, wpt_root),
-            .test_url = try allocator.dupe(u8, "about:blank"),
+            .test_url = try allocator.dupe(u8, "http://web-platform.test:8000/"),
         };
     }
 
@@ -76,27 +90,463 @@ pub const BrowserContext = struct {
         self.allocator.free(self.wpt_root);
         self.allocator.free(self.test_url);
 
-        // TODO: Clean up V8 context
-        // if (self.v8_context) |ctx| ctx.dispose();
-        // if (self.v8_isolate) |isolate| isolate.dispose();
+        // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
+        if (self.context != null) {
+            context_manager.deinit();
+        }
+
+        // Exit and dispose V8 context
+        if (self.context) |ctx| {
+            v8.ffi.v8_Context_Exit(ctx);
+            v8.ffi.v8_Context_Dispose(ctx);
+        }
+
+        // Force V8 garbage collection before isolate disposal
+        if (self.isolate) |isolate| {
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+            v8.ffi.v8_Isolate_Exit(isolate);
+            v8.ffi.v8_Isolate_Dispose(isolate);
+        }
+
+        // Cleanup WebIDL runtime
+        runtime.deinitializeRuntime();
     }
 
     /// Initialize the V8 context with browser globals
     pub fn initialize(self: *BrowserContext) !void {
-        // TODO: Implement V8 context setup
-        //
-        // 1. Create V8 isolate (or reuse)
-        // 2. Create V8 context with global object template
-        // 3. Set up global object based on context_type:
-        //    - Window: window, document, self, globalThis, navigator, location, history
-        //    - Worker: self, navigator, location, postMessage, close
-        // 4. Register native callbacks for __wpt_report_result and __wpt_report_completion
-        // 5. Set up console, setTimeout, setInterval
-        //
-        // Reference: src/runtime/engines/v8/ for V8 integration patterns
-        // Reference: tools/repl.zig for global registration
+        // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
+        runtime.initializeRuntime(self.allocator);
+
+        // Initialize V8 platform (once per process)
+        v8.ffi.v8_Platform_Initialize();
+
+        // Create V8 isolate
+        const isolate = v8.ffi.v8_Isolate_New() orelse return error.V8InitFailed;
+        self.isolate = isolate;
+
+        v8.ffi.v8_Isolate_Enter(isolate);
+
+        // Create V8 context
+        const context = v8.ffi.v8_Context_New(isolate) orelse return error.ContextCreateFailed;
+        self.context = context;
+
+        v8.ffi.v8_Context_Enter(context);
+
+        // Initialize context manager for V8 callbacks
+        context_manager.init(self.allocator) catch |err| {
+            std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+        };
+
+        // Register context with context manager for wrapper caching
+        _ = context_manager.getOrCreateWithIsolate(context, isolate, self.allocator) catch |err| {
+            std.debug.print("Warning: Context registration failed: {}\n", .{err});
+        };
+
+        // Register all WebIDL interfaces and namespaces
+        try self.registerInterfaces();
+
+        // Register browser globals (Window, document, navigator, etc.)
+        try self.registerBrowserGlobals();
+
+        // Register WPT result callbacks
+        try self.registerWptCallbacks();
 
         self.initialized = true;
+    }
+
+    /// Register all WebIDL interfaces as constructors on the global object
+    fn registerInterfaces(self: *BrowserContext) !void {
+        const isolate = self.isolate orelse return error.NotInitialized;
+        const context = self.context orelse return error.NotInitialized;
+
+        // Interfaces to skip due to codegen issues
+        const skip_list = .{
+            "CSSMarginRule",
+            "ViewCSS",
+            "AuthenticatorAssertionResponse",
+            "AuthenticatorAttestationResponse",
+            "AuthenticatorResponse",
+            "CSSMediaRule",
+            "CSSViewTransitionRule",
+            "ChapterInformation",
+            "CookieChangeEvent",
+            "DeviceChangeEvent",
+            "ExtendableCookieChangeEvent",
+            "ExtendableMessageEvent",
+            "FontFaceSetLoadEvent",
+            "GamepadHapticActuator",
+            "MediaMetadata",
+            "Notification",
+            "PerformanceLongAnimationFrameTiming",
+            "PerformanceObserver",
+            "PressureObserver",
+            "PublicKeyCredential",
+            "PushManager",
+            "PushSubscriptionOptions",
+            "RTCTrackEvent",
+            "SVGPathElement",
+            "WindowClient",
+            "XRCPUDepthInformation",
+            "XRInputSource",
+            "XRInputSourcesChangeEvent",
+            "XRRay",
+            "XRViewerPose",
+            "XRVisibilityMaskChangeEvent",
+        };
+
+        @setEvalBranchQuota(200_000);
+        const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+        inline for (iface_decls) |decl| {
+            // Skip problematic interfaces
+            const should_skip = comptime blk: {
+                for (skip_list) |skip| {
+                    if (std.mem.eql(u8, decl.name, skip)) break :blk true;
+                }
+                break :blk false;
+            };
+            if (should_skip) continue;
+
+            const InterfaceType = @field(interfaces, decl.name);
+            if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+                // Skip mixin interfaces
+                const is_mixin = comptime blk: {
+                    const Meta = InterfaceType.Meta;
+                    if (@hasDecl(Meta, "is_mixin")) {
+                        break :blk Meta.is_mixin;
+                    }
+                    break :blk false;
+                };
+                if (is_mixin) continue;
+
+                // Check if this interface has LegacyNamespace
+                const has_legacy_namespace = comptime blk: {
+                    const Meta = InterfaceType.Meta;
+                    if (@hasDecl(Meta, "extended_attributes")) {
+                        const ext_attrs = Meta.extended_attributes;
+                        for (ext_attrs) |attr| {
+                            if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                                break :blk true;
+                            }
+                        }
+                    }
+                    break :blk false;
+                };
+                if (has_legacy_namespace) continue;
+
+                std.debug.print("Creating binding for: {s}\n", .{decl.name});
+                const Binding = v8.V8Interface(InterfaceType);
+                std.debug.print("Calling registerGlobal for: {s}\n", .{decl.name});
+                Binding.registerGlobal(isolate, context, decl.name);
+                std.debug.print("Registered interface: {s}\n", .{decl.name});
+            }
+        }
+
+        // Register namespaces
+        const ns_decls = @typeInfo(namespaces).@"struct".decls;
+
+        inline for (ns_decls) |decl| {
+            const NamespaceType = @field(namespaces, decl.name);
+            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+                const NamespaceBinding = v8.V8Namespace(NamespaceType);
+                NamespaceBinding.registerGlobal(isolate, context, decl.name);
+            }
+        }
+
+        // Set up constructor inheritance chain
+        v8.interface_bindings.setupConstructorInheritance(isolate, context);
+    }
+
+    /// Register browser globals (Window, document, navigator, etc.)
+    fn registerBrowserGlobals(self: *BrowserContext) !void {
+        const isolate = self.isolate orelse return error.NotInitialized;
+        const context = self.context orelse return error.NotInitialized;
+        const global_obj = v8.ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+
+        // Get runtime context for wrapper caching
+        const runtime_ctx = context_manager.getOrCreate(context, self.allocator) catch |err| {
+            std.debug.print("Warning: Failed to get runtime context: {}\n", .{err});
+            return;
+        };
+
+        // Register based on context type
+        switch (self.context_type) {
+            .window => {
+                try self.registerWindowGlobals(isolate, context, global_obj, runtime_ctx);
+            },
+            .worker => {
+                try self.registerWorkerGlobals(isolate, context, global_obj, runtime_ctx);
+            },
+            else => {
+                // Shared worker and service worker - TODO
+            },
+        }
+
+        // Register common globals (setTimeout, setInterval, console, fetch, etc.)
+        try self.registerCommonGlobals(isolate, context, global_obj);
+    }
+
+    /// Register Window context globals
+    fn registerWindowGlobals(
+        self: *BrowserContext,
+        isolate: *v8.ffi.Isolate,
+        context: *v8.ffi.Context,
+        global_obj: *v8.ffi.Object,
+        runtime_ctx: runtime.Context,
+    ) !void {
+        // Register 'window' as reference to global object
+        // Per spec: window === globalThis === self
+        const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreateFailed;
+        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(window_key), @ptrCast(global_obj));
+
+        // Register 'self' as reference to global object
+        const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
+        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
+
+        // Register Document singleton
+        {
+            const Document = interfaces.Document;
+            const doc_instance = Document.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create document singleton: {}\n", .{err});
+                return;
+            };
+            self.document_instance = doc_instance;
+
+            const v8_document = v8.template_registry.wrapInstanceAsV8Object(
+                doc_instance,
+                "Document",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap document singleton: {}\n", .{err});
+                return;
+            };
+
+            const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(doc_key), @ptrCast(v8_document));
+        }
+
+        // Register Navigator singleton
+        {
+            const Navigator = interfaces.Navigator;
+            const nav_instance = Navigator.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create navigator singleton: {}\n", .{err});
+                return;
+            };
+            self.navigator_instance = nav_instance;
+
+            const v8_navigator = v8.template_registry.wrapInstanceAsV8Object(
+                nav_instance,
+                "Navigator",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap navigator singleton: {}\n", .{err});
+                return;
+            };
+
+            const nav_key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(nav_key), @ptrCast(v8_navigator));
+        }
+
+        // Register Location singleton
+        {
+            const Location = interfaces.Location;
+            const loc_instance = Location.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create location singleton: {}\n", .{err});
+                return;
+            };
+            self.location_instance = loc_instance;
+
+            const v8_location = v8.template_registry.wrapInstanceAsV8Object(
+                loc_instance,
+                "Location",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap location singleton: {}\n", .{err});
+                return;
+            };
+
+            const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(loc_key), @ptrCast(v8_location));
+        }
+
+        // Register History singleton
+        {
+            const History = interfaces.History;
+            const hist_instance = History.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create history singleton: {}\n", .{err});
+                return;
+            };
+            self.history_instance = hist_instance;
+
+            const v8_history = v8.template_registry.wrapInstanceAsV8Object(
+                hist_instance,
+                "History",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap history singleton: {}\n", .{err});
+                return;
+            };
+
+            const hist_key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(hist_key), @ptrCast(v8_history));
+        }
+
+        // Register Performance singleton
+        {
+            const Performance = interfaces.Performance;
+            const perf_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create performance singleton: {}\n", .{err});
+                return;
+            };
+            self.performance_instance = perf_instance;
+
+            const v8_performance = v8.template_registry.wrapInstanceAsV8Object(
+                perf_instance,
+                "Performance",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap performance singleton: {}\n", .{err});
+                return;
+            };
+
+            const perf_key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(perf_key), @ptrCast(v8_performance));
+        }
+    }
+
+    /// Register Worker context globals
+    fn registerWorkerGlobals(
+        self: *BrowserContext,
+        isolate: *v8.ffi.Isolate,
+        context: *v8.ffi.Context,
+        global_obj: *v8.ffi.Object,
+        runtime_ctx: runtime.Context,
+    ) !void {
+        // Register 'self' as reference to global object (WorkerGlobalScope)
+        const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
+        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
+
+        // Register WorkerNavigator singleton
+        {
+            const WorkerNavigator = interfaces.WorkerNavigator;
+            const nav_instance = WorkerNavigator.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create worker navigator singleton: {}\n", .{err});
+                return;
+            };
+
+            const v8_navigator = v8.template_registry.wrapInstanceAsV8Object(
+                nav_instance,
+                "WorkerNavigator",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap worker navigator singleton: {}\n", .{err});
+                return;
+            };
+
+            const nav_key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(nav_key), @ptrCast(v8_navigator));
+        }
+
+        // Register WorkerLocation singleton
+        {
+            const WorkerLocation = interfaces.WorkerLocation;
+            const loc_instance = WorkerLocation.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create worker location singleton: {}\n", .{err});
+                return;
+            };
+
+            const v8_location = v8.template_registry.wrapInstanceAsV8Object(
+                loc_instance,
+                "WorkerLocation",
+                isolate,
+                context,
+            ) catch |err| {
+                std.debug.print("Warning: Failed to wrap worker location singleton: {}\n", .{err});
+                return;
+            };
+
+            const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(loc_key), @ptrCast(v8_location));
+        }
+    }
+
+    /// Register common globals (setTimeout, fetch, console, etc.)
+    fn registerCommonGlobals(
+        self: *BrowserContext,
+        isolate: *v8.ffi.Isolate,
+        context: *v8.ffi.Context,
+        global_obj: *v8.ffi.Object,
+    ) !void {
+        _ = self;
+
+        // Register setTimeout (mock implementation for now)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearTimeout
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register setInterval (reuses setTimeout callback for mock)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearInterval
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+    }
+
+    /// Register WPT result callbacks (__wpt_report_result, __wpt_report_completion)
+    fn registerWptCallbacks(self: *BrowserContext) !void {
+        const isolate = self.isolate orelse return error.NotInitialized;
+        const context = self.context orelse return error.NotInitialized;
+        const global_obj = v8.ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+
+        // Register __wpt_report_result callback
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptReportResultCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_report_result", 19) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register __wpt_report_completion callback
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptReportCompletionCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_report_completion", 23) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     /// Set the test URL (updates location object)
@@ -107,16 +557,33 @@ pub const BrowserContext = struct {
         // TODO: Update location object in V8 context
     }
 
+    /// Start tracking results for a new test file
+    pub fn startTest(self: *BrowserContext, test_path: []const u8) !void {
+        try self.result_collector.startTest(test_path);
+        // Set result collector for V8 callbacks
+        setResultCollector(&self.result_collector);
+    }
+
+    /// Reset the result collector for the next test
+    pub fn resetForNextTest(self: *BrowserContext) void {
+        // Reset completion flag but keep collected results
+        self.result_collector.completion_signaled = false;
+        self.result_collector.completed = false;
+    }
+
     /// Load and execute a script file
     pub fn loadScript(self: *BrowserContext, script_path: []const u8) !void {
-        _ = self;
-        _ = script_path;
-        // TODO: Implement script loading
-        //
-        // 1. Resolve script path (absolute vs relative)
-        // 2. Read script content from file
-        // 3. Compile and execute in V8 context
-        // 4. Handle script errors
+        _ = self.isolate orelse return error.NotInitialized;
+        _ = self.context orelse return error.NotInitialized;
+
+        // Read script file
+        const file = try std.fs.cwd().openFile(script_path, .{});
+        defer file.close();
+
+        const content = try file.readToEndAlloc(self.allocator, 10 * 1024 * 1024); // 10MB max
+        defer self.allocator.free(content);
+
+        try self.executeScript(content);
     }
 
     /// Load testharness.js and testharnessreport.js
@@ -132,54 +599,383 @@ pub const BrowserContext = struct {
 
     /// Execute inline script content
     pub fn executeScript(self: *BrowserContext, content: []const u8) !void {
-        _ = self;
-        _ = content;
-        // TODO: Implement script execution
-        //
-        // 1. Compile script in V8 context
-        // 2. Execute script
-        // 3. Handle exceptions
-        // 4. Run microtasks
+        const isolate = self.isolate orelse return error.NotInitialized;
+        const context = self.context orelse return error.NotInitialized;
+
+        // Create V8 string from content
+        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return error.StringCreateFailed;
+
+        // Compile script
+        const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
+            // Get exception message
+            const exception = v8.ffi.v8_TryCatch_Exception(context);
+            if (exception) |exc| {
+                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
+                if (exc_str) |str| {
+                    const len = v8.ffi.v8_String_Utf8Length(str);
+                    const buffer = try self.allocator.alloc(u8, @intCast(len));
+                    defer self.allocator.free(buffer);
+                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+                    std.debug.print("Script compile error: {s}\n", .{buffer});
+                }
+            }
+            return error.CompileError;
+        };
+
+        // Run script
+        _ = v8.ffi.v8_Script_Run(context, script) orelse {
+            const exception = v8.ffi.v8_TryCatch_Exception(context);
+            if (exception) |exc| {
+                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
+                if (exc_str) |str| {
+                    const len = v8.ffi.v8_String_Utf8Length(str);
+                    const buffer = try self.allocator.alloc(u8, @intCast(len));
+                    defer self.allocator.free(buffer);
+                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+                    std.debug.print("Script runtime error: {s}\n", .{buffer});
+                }
+            }
+            return error.RuntimeError;
+        };
+
+        // Run microtasks
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     }
 
     /// Execute a test and wait for completion
     pub fn executeTest(self: *BrowserContext, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
-        _ = self;
-        _ = test_content;
-        _ = timeout;
-        // TODO: Implement test execution
-        //
-        // 1. Execute test script
-        // 2. Run event loop until completion callback fires
-        // 3. Handle timeout (watchdog timer)
-        // 4. Collect and return results
-        //
-        // Return placeholder for now
-        return error.NotImplemented;
+        // Set result collector for V8 callbacks
+        setResultCollector(&self.result_collector);
+        defer clearResultCollector();
+
+        // Execute test script
+        try self.executeScript(test_content);
+
+        // Run event loop until completion or timeout
+        const timeout_ms = timeout.toMillis();
+        try self.runEventLoop(timeout_ms);
+
+        // Collect and return results
+        return self.result_collector.finalize(self.allocator, "test");
     }
 
     /// Run event loop until completion or timeout
+    /// Returns true if completed normally, false if timed out
     pub fn runEventLoop(self: *BrowserContext, timeout_ms: u64) !void {
-        _ = self;
-        _ = timeout_ms;
-        // TODO: Implement event loop
-        //
-        // 1. Process pending tasks
-        // 2. Run V8 microtasks
-        // 3. Process timers (setTimeout, setInterval)
-        // 4. Check for completion callback
-        // 5. Check for timeout
+        const isolate = self.isolate orelse return error.NotInitialized;
+
+        const start_time = std.time.milliTimestamp();
+
+        while (true) {
+            // Run V8 microtasks (handles Promise resolution)
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+            // Check if completion callback has been called
+            if (self.result_collector.completed) {
+                return;
+            }
+
+            // Check timeout
+            const elapsed: u64 = @intCast(std.time.milliTimestamp() - start_time);
+            if (elapsed > timeout_ms) {
+                // Mark the test as timed out
+                try self.result_collector.finishTest(.timeout, "Test timed out", elapsed);
+                return;
+            }
+
+            // Small sleep to avoid busy-waiting
+            std.Thread.sleep(1 * std.time.ns_per_ms);
+        }
     }
 
-    /// Register native callback functions for test result reporting
-    fn registerNativeCallbacks(self: *BrowserContext) !void {
-        _ = self;
-        // TODO: Register __wpt_report_result and __wpt_report_completion
-        //
-        // These functions are called by testharnessreport.js to report results
-        // back to Zig. They should update self.result_collector.
+    /// Execute a test and wait for completion with async support
+    /// This handles promise_test, async_test, and explicit_done tests
+    pub fn executeTestAsync(self: *BrowserContext, test_path: []const u8, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
+        // Start tracking this test
+        try self.startTest(test_path);
+
+        // Execute test script
+        try self.executeScript(test_content);
+
+        // Run event loop until completion or timeout
+        // This handles:
+        // - promise_test: Promises resolve via microtask queue
+        // - async_test: t.done() triggers completion callback
+        // - explicit_done: done() triggers completion callback
+        const timeout_ms = timeout.toMillis();
+        try self.runEventLoop(timeout_ms);
+
+        // Return the collected results
+        return self.result_collector.finalize(self.allocator, test_path);
     }
 };
+
+// Thread-local storage for result collector (accessible from V8 callbacks)
+// V8 callbacks are C functions that can't easily capture context,
+// so we use thread-local storage to pass the result collector.
+threadlocal var current_result_collector: ?*test_harness.ResultCollector = null;
+
+/// Set the current result collector for V8 callbacks
+pub fn setResultCollector(collector: *test_harness.ResultCollector) void {
+    current_result_collector = collector;
+}
+
+/// Get the current result collector (for V8 callbacks)
+pub fn getResultCollector() ?*test_harness.ResultCollector {
+    return current_result_collector;
+}
+
+/// Clear the result collector reference
+pub fn clearResultCollector() void {
+    current_result_collector = null;
+}
+
+// V8 Callback Functions
+
+/// Mock setTimeout callback - executes callback immediately for testing
+fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+    const global = v8.ffi.v8_Context_Global(context) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Execute callback immediately (mock implementation)
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Return timer ID
+    const result = v8.ffi.v8_Integer_New(isolate, 1);
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Mock clearTimeout callback - no-op since setTimeout executes immediately
+fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
+/// WPT result reporting callback - called by testharnessreport.js for each test result
+/// Signature: __wpt_report_result(name, status, message, stack, duration)
+fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Get result collector from thread-local storage
+    const collector = getResultCollector() orelse {
+        std.debug.print("WPT: No result collector set\n", .{});
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Parse arguments: name, status, message, stack, duration
+    const arg_count = info.v8_FunctionCallbackInfo_Length();
+    if (arg_count < 2) {
+        std.debug.print("WPT: __wpt_report_result requires at least 2 arguments\n", .{});
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    // Use a simple allocator for this callback
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    // Arg 0: name (string)
+    const name_value = info.get(0);
+    const name_str = extractString(allocator, isolate, context, name_value) catch |err| {
+        std.debug.print("WPT: Failed to extract name: {}\n", .{err});
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+    defer allocator.free(name_str);
+
+    // Arg 1: status (number: 0=PASS, 1=FAIL, 2=TIMEOUT, 3=NOTRUN, 4=PRECONDITION_FAILED)
+    const status_value = info.get(1);
+    const status_num: u8 = if (v8.ffi.v8_Value_IsNumber(status_value))
+        @intFromFloat(v8.ffi.v8_Value_NumberValue(status_value, context))
+    else
+        1; // Default to FAIL
+    const status = test_harness.TestStatus.fromInt(status_num);
+
+    // Arg 2: message (string or null)
+    var message_str: ?[]const u8 = null;
+    var message_owned: ?[]u8 = null;
+    if (arg_count > 2) {
+        const msg_value = info.get(2);
+        if (!v8.ffi.v8_Value_IsNull(msg_value) and !v8.ffi.v8_Value_IsUndefined(msg_value)) {
+            message_owned = extractString(allocator, isolate, context, msg_value) catch null;
+            message_str = message_owned;
+        }
+    }
+    defer if (message_owned) |m| allocator.free(m);
+
+    // Arg 3: stack (string or null)
+    var stack_str: ?[]const u8 = null;
+    var stack_owned: ?[]u8 = null;
+    if (arg_count > 3) {
+        const stack_value = info.get(3);
+        if (!v8.ffi.v8_Value_IsNull(stack_value) and !v8.ffi.v8_Value_IsUndefined(stack_value)) {
+            stack_owned = extractString(allocator, isolate, context, stack_value) catch null;
+            stack_str = stack_owned;
+        }
+    }
+    defer if (stack_owned) |s| allocator.free(s);
+
+    // Arg 4: duration (number)
+    var duration_ms: u64 = 0;
+    if (arg_count > 4) {
+        const duration_value = info.get(4);
+        if (v8.ffi.v8_Value_IsNumber(duration_value)) {
+            const duration_float = v8.ffi.v8_Value_NumberValue(duration_value, context);
+            duration_ms = @intFromFloat(@max(0.0, duration_float));
+        }
+    }
+
+    // Create SubtestResult and add to collector using collector's allocator
+    const subtest = test_harness.SubtestResult{
+        .name = collector.allocator.dupe(u8, name_str) catch {
+            std.debug.print("WPT: Failed to allocate name\n", .{});
+            if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+                info.setReturnValue(undef_value);
+            }
+            return;
+        },
+        .status = status,
+        .message = if (message_str) |m| collector.allocator.dupe(u8, m) catch null else null,
+        .stack = if (stack_str) |s| collector.allocator.dupe(u8, s) catch null else null,
+        .duration_ms = duration_ms,
+    };
+
+    collector.addResult(subtest) catch |err| {
+        std.debug.print("WPT: Failed to add result: {}\n", .{err});
+    };
+
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
+/// WPT completion callback - called when all tests in a file complete
+/// Signature: __wpt_report_completion(status, message)
+fn wptReportCompletionCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Get result collector from thread-local storage
+    const collector = getResultCollector() orelse {
+        std.debug.print("WPT: No result collector set for completion\n", .{});
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const arg_count = info.v8_FunctionCallbackInfo_Length();
+
+    // Arg 0: status (number: 0=OK, 1=ERROR, 2=TIMEOUT)
+    var harness_status = test_harness.HarnessStatus.ok;
+    if (arg_count > 0) {
+        const status_value = info.get(0);
+        if (v8.ffi.v8_Value_IsNumber(status_value)) {
+            const status_num: u8 = @intFromFloat(v8.ffi.v8_Value_NumberValue(status_value, context));
+            harness_status = test_harness.HarnessStatus.fromInt(status_num);
+        }
+    }
+
+    // Arg 1: message (string or null)
+    if (arg_count > 1) {
+        const msg_value = info.get(1);
+        if (!v8.ffi.v8_Value_IsNull(msg_value) and !v8.ffi.v8_Value_IsUndefined(msg_value)) {
+            // Use a simple allocator for extraction
+            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+            const allocator = gpa.allocator();
+            defer _ = gpa.deinit();
+
+            if (extractString(allocator, isolate, context, msg_value)) |msg_str| {
+                defer allocator.free(msg_str);
+                // The finishTest will dupe the message
+                collector.finishTest(harness_status, msg_str, 0) catch |err| {
+                    std.debug.print("WPT: Failed to finish test: {}\n", .{err});
+                };
+                if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+                    info.setReturnValue(undef_value);
+                }
+                return;
+            } else |_| {
+                // Ignore extraction error, proceed without message
+            }
+        }
+    }
+
+    // Finish the test with no message
+    collector.finishTest(harness_status, null, 0) catch |err| {
+        std.debug.print("WPT: Failed to finish test: {}\n", .{err});
+    };
+
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
+/// Helper to extract a string from a V8 value
+fn extractString(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, value: *v8.ffi.Value) ![]u8 {
+    _ = isolate;
+    const str = v8.ffi.v8_Value_ToString(value, context) orelse return error.StringConversionFailed;
+    const len = v8.ffi.v8_String_Utf8Length(str);
+    if (len <= 0) return allocator.dupe(u8, "");
+
+    const buffer = try allocator.alloc(u8, @intCast(len));
+    errdefer allocator.free(buffer);
+
+    const written = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+    if (written <= 0) {
+        allocator.free(buffer);
+        return error.StringWriteFailed;
+    }
+
+    return buffer[0..@intCast(written)];
+}
 
 /// Create a window context for .window.js and .html tests
 pub fn createWindowContext(allocator: std.mem.Allocator, wpt_root: []const u8) !BrowserContext {
@@ -234,7 +1030,7 @@ test "createContextForTest" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    var ctx = try createContextForTest(allocator, "tests/wpt", .worker);
+    var ctx = try BrowserContext.init(allocator, .worker, "tests/wpt");
     defer ctx.deinit();
 
     try testing.expectEqual(ContextType.worker, ctx.context_type);
