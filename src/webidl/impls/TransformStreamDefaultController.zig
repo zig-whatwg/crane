@@ -61,6 +61,16 @@ pub const InternalState = struct {
     isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
 
+    /// Raw V8 function pointer for flush algorithm (for async V8 invocation)
+    /// When set, this takes precedence over flushAlgorithm for V8 runtime mode.
+    flush_algorithm_v8: ?*const anyopaque,
+
+    /// Raw V8 function pointer for transform algorithm (for async V8 invocation)
+    transform_algorithm_v8: ?*const anyopaque,
+
+    /// Raw V8 function pointer for cancel algorithm (for async V8 invocation)
+    cancel_algorithm_v8: ?*const anyopaque,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // Clean up algorithms
         self.transformAlgorithm.deinit();

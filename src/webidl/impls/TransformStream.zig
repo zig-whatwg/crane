@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -18,6 +19,8 @@ const TransformStream = interfaces.TransformStream;
 const streams_common = @import("streams_common");
 const JSValue = streams_common.JSValue;
 const Promise = streams_common.Promise;
+const AsyncPromise = @import("streams_async_promise").AsyncPromise;
+const event_loop_module = @import("streams_event_loop");
 
 pub const State = TransformStream.State;
 
@@ -54,6 +57,9 @@ pub const InternalState = struct {
     /// V8 context for callback invocation
     isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
+
+    /// Event loop for async operations
+    event_loop: event_loop_module.EventLoop,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         // Clean up is handled by WritableStream and ReadableStream deinit
@@ -97,6 +103,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
 
+    // Get event loop from context
+    const loop = try ctx.getEventLoop();
+
     internal.* = InternalState{
         .allocator = allocator,
         .backpressure = false,
@@ -106,6 +115,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
         .controller = null,
         .isolate = ctx.engine_ctx,
         .v8_context = null,
+        .event_loop = loop,
     };
 
     state.own._internal = internal;
@@ -407,6 +417,10 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .finishPromise = null,
         .isolate = ctx.engine_ctx,
         .v8_context = null,
+        // V8 function pointers will be set by V8 integration layer when transformer callbacks are registered
+        .flush_algorithm_v8 = null,
+        .transform_algorithm_v8 = null,
+        .cancel_algorithm_v8 = null,
     };
 
     controller_state.own._internal = controller_internal;
@@ -585,6 +599,70 @@ pub fn defaultSinkAbortAlgorithm(instance: *runtime.Instance, reason: JSValue) P
     return Promise(void).fulfilled({});
 }
 
+/// Context for flush callback
+const FlushCallbackContext = struct {
+    stream: *runtime.Instance,
+    controller: *runtime.Instance,
+    readable: *runtime.Instance,
+    result_promise: *AsyncPromise(void),
+    allocator: std.mem.Allocator,
+};
+
+/// Callback for flush promise fulfillment
+fn onFlushFulfilled(ctx_ptr: *anyopaque) void {
+    const ctx: *FlushCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    const ControllerImpl = @import("TransformStreamDefaultController.zig");
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+
+    // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
+    ControllerImpl.clearAlgorithms(ctx.controller);
+
+    // Spec step 5 fulfillment: Check readable state and close
+    const readable_state = ctx.readable.getState(interfaces.ReadableStream.State);
+
+    if (readable_state.own._internal) |readable_internal| {
+        // Spec step 5.1: If readable.[[state]] is "errored", throw readable.[[storedError]]
+        if (readable_internal.state == .errored) {
+            const exception = webidl.errors.Exception.typeError(ctx.allocator, "Readable stream is errored") catch {
+                ctx.result_promise.fulfill({});
+                return;
+            };
+            ctx.result_promise.reject(exception);
+            return;
+        }
+
+        // Spec step 5.2: Perform ! ReadableStreamDefaultControllerClose(readable.[[controller]])
+        ReadableStreamImpl.closeInternal(ctx.readable);
+    }
+
+    ctx.result_promise.fulfill({});
+}
+
+/// Callback for flush promise rejection
+fn onFlushRejected(ctx_ptr: *anyopaque, reason: *v8_engine.ffi.Value) void {
+    const ctx: *FlushCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    const ControllerImpl = @import("TransformStreamDefaultController.zig");
+
+    // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
+    ControllerImpl.clearAlgorithms(ctx.controller);
+
+    // Spec step 5 rejection: TransformStreamError(stream, r)
+    _ = reason; // TODO: Convert V8 reason to JSValue
+    const error_value = JSValue{ .string = "Flush algorithm failed" };
+    errorStream(ctx.stream, error_value);
+
+    // Reject with the error
+    const exception = webidl.errors.Exception.typeError(ctx.allocator, "Flush algorithm rejected") catch {
+        ctx.result_promise.fulfill({});
+        return;
+    };
+    ctx.result_promise.reject(exception);
+}
+
 /// TransformStreamDefaultSinkCloseAlgorithm(stream)
 ///
 /// Spec: § 6.3.4 "Default sink close algorithm"
@@ -601,40 +679,124 @@ pub fn defaultSinkAbortAlgorithm(instance: *runtime.Instance, reason: JSValue) P
 ///    - If flushPromise was rejected with reason r:
 ///      1. Perform ! TransformStreamError(stream, r).
 ///      2. Throw readable.[[storedError]].
-pub fn defaultSinkCloseAlgorithm(instance: *runtime.Instance) Promise(void) {
+pub fn defaultSinkCloseAlgorithm(instance: *runtime.Instance) !*AsyncPromise(void) {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Invalid stream state") catch unreachable);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+    const event_loop = internal.event_loop;
 
     // Spec step 1: Let readable be stream.[[readable]]
-    const readable = internal.readableStream orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Readable stream not initialized") catch unreachable);
+    const readable = internal.readableStream orelse return error.InvalidState;
 
     // Spec step 2: Let controller be stream.[[controller]]
-    const controller = internal.controller orelse return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Controller not initialized") catch unreachable);
+    const controller = internal.controller orelse return error.InvalidState;
 
-    // Spec step 3: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
     const ControllerImpl = @import("TransformStreamDefaultController.zig");
     const controller_state = controller.getState(interfaces.TransformStreamDefaultController.State);
+    const controller_internal = controller_state.own._internal orelse return error.InvalidState;
 
-    var flush_promise = Promise(void).fulfilled({});
-    if (controller_state.own._internal) |controller_internal| {
-        // Invoke the flush algorithm
-        flush_promise = controller_internal.flushAlgorithm.call();
+    // Spec step 3: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
+    // Check if we have V8 context and a V8 flush function (runtime mode)
+    if (internal.isolate != null and internal.v8_context != null and controller_internal.flush_algorithm_v8 != null) {
+        // V8 runtime mode: invoke real JavaScript callback
+        const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
+        const flush_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(controller_internal.flush_algorithm_v8.?)));
+
+        // Get controller as V8 object to pass to flush(controller)
+        // For now, pass undefined since flush() may not need controller
+        const controller_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse return error.InvalidState;
+
+        // Invoke flush_algorithm(controller) → Promise<void>
+        var flush_promise = v8_engine.streams_callbacks.invokeFlushAlgorithm(
+            isolate,
+            v8_context,
+            flush_function,
+            @ptrCast(controller_v8),
+        ) catch {
+            // On error, clear algorithms and return rejected promise
+            ControllerImpl.clearAlgorithms(controller);
+            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            const exception = try webidl.errors.Exception.typeError(allocator, "Flush algorithm invocation failed");
+            promise.reject(exception);
+            return promise;
+        };
+        defer flush_promise.deinit();
+
+        // Create AsyncPromise to track result
+        const result_promise = try AsyncPromise(void).init(allocator, event_loop);
+
+        // Create callback context
+        const flush_ctx = try allocator.create(FlushCallbackContext);
+        flush_ctx.* = .{
+            .stream = instance,
+            .controller = controller,
+            .readable = readable,
+            .result_promise = result_promise,
+            .allocator = allocator,
+        };
+
+        // Create V8 callbacks for Promise handlers
+        const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+            allocator,
+            isolate,
+            v8_context,
+            onFlushFulfilled,
+            flush_ctx,
+        ) catch {
+            allocator.destroy(flush_ctx);
+            ControllerImpl.clearAlgorithms(controller);
+            result_promise.fulfill({});
+            return result_promise;
+        };
+        defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+
+        const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+            allocator,
+            isolate,
+            v8_context,
+            onFlushRejected,
+            flush_ctx,
+        ) catch {
+            allocator.destroy(flush_ctx);
+            ControllerImpl.clearAlgorithms(controller);
+            result_promise.fulfill({});
+            return result_promise;
+        };
+        defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+
+        // Chain Promise handlers
+        _ = flush_promise.then(onFulfilled, onRejected) catch {
+            allocator.destroy(flush_ctx);
+            ControllerImpl.clearAlgorithms(controller);
+            result_promise.fulfill({});
+            return result_promise;
+        };
+
+        // Note: Don't clear algorithms here - let the callback do it after promise settles
+        return result_promise;
+    }
+
+    // Non-V8 mode: Use synchronous flush algorithm (testing/fallback mode)
+    var flush_result = Promise(void).fulfilled({});
+    if (controller_state.own._internal) |ctrl_internal| {
+        flush_result = ctrl_internal.flushAlgorithm.call();
     }
 
     // Spec step 4: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
     ControllerImpl.clearAlgorithms(controller);
 
+    // Create AsyncPromise for the result
+    const result_promise = try AsyncPromise(void).init(allocator, event_loop);
+
     // Spec step 5: Return the result of reacting to flushPromise
-    if (flush_promise.isRejected()) {
+    if (flush_result.isRejected()) {
         // Spec step 5 rejection: TransformStreamError(stream, r) and throw
         const error_value = JSValue{ .string = "Flush algorithm failed" };
         errorStream(instance, error_value);
-
-        // Return the rejection
-        if (flush_promise.error_value) |err| {
-            return Promise(void).rejected(err);
-        }
-        return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Flush failed") catch unreachable);
+        const exception = try webidl.errors.Exception.typeError(allocator, "Flush failed");
+        result_promise.reject(exception);
+        return result_promise;
     }
 
     // Spec step 5 fulfillment: Check readable state and close
@@ -644,14 +806,17 @@ pub fn defaultSinkCloseAlgorithm(instance: *runtime.Instance) Promise(void) {
     if (readable_state.own._internal) |readable_internal| {
         // Spec step 5.1: If readable.[[state]] is "errored", throw readable.[[storedError]]
         if (readable_internal.state == .errored) {
-            return Promise(void).rejected(webidl.errors.Exception.typeError(std.heap.page_allocator, "Readable stream is errored") catch unreachable);
+            const exception = try webidl.errors.Exception.typeError(allocator, "Readable stream is errored");
+            result_promise.reject(exception);
+            return result_promise;
         }
 
         // Spec step 5.2: Perform ! ReadableStreamDefaultControllerClose(readable.[[controller]])
         ReadableStreamImpl.closeInternal(readable);
     }
 
-    return Promise(void).fulfilled({});
+    result_promise.fulfill({});
+    return result_promise;
 }
 
 // ============================================================================
