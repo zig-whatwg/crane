@@ -1021,6 +1021,18 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    // V8 Promise chaining utility for bridging V8 Promises to AsyncPromise
+    const streams_v8_promise_chaining_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/v8_promise_chaining.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "v8", .module = v8_mod },
+            .{ .name = "async_promise", .module = streams_async_promise_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+        },
+    });
+
     const streams_v8_resources_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/v8_resources.zig"),
         .target = target,
@@ -1139,6 +1151,7 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
     streams_mod.addImport("algorithm", streams_algorithm_mod);
+    streams_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
     streams_mod.addImport("v8_resources", streams_v8_resources_mod);
     streams_mod.addImport("iterator_record", streams_iterator_record_mod);
     streams_mod.addImport("from_iterable_algorithm", streams_from_iterable_algorithm_mod);
@@ -1161,6 +1174,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("streams_read_into_request_promise", streams_read_into_request_promise_mod);
     impls_mod.addImport("streams_pull_into_descriptor", streams_pull_into_descriptor_mod);
     impls_mod.addImport("streams_algorithm", streams_algorithm_mod);
+    impls_mod.addImport("streams_v8_promise_chaining", streams_v8_promise_chaining_mod);
     impls_mod.addImport("streams_v8_resources", streams_v8_resources_mod);
     impls_mod.addImport("streams_iterator_record", streams_iterator_record_mod);
     impls_mod.addImport("streams_from_iterable_algorithm", streams_from_iterable_algorithm_mod);

@@ -72,6 +72,7 @@ pub const internal = struct {
 
     pub const structured_clone = @import("structured_clone");
     pub const view_construction = @import("view_construction");
+    pub const v8_promise_chaining = @import("v8_promise_chaining");
 
     pub const algorithms = struct {
         pub const queuing = @import("internal/algorithms/queuing_ops.zig");
