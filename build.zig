@@ -2000,6 +2000,87 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
+    // WPT (Web Platform Tests) RUNNER
+    // ========================================================================
+
+    // WPT Runner executable for running Web Platform Tests
+    const wpt_runner_exe = b.addExecutable(.{
+        .name = "wpt_runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
+                .{ .name = "fetch", .module = fetch_mod },
+            },
+        }),
+    });
+
+    // Add V8 C++ wrapper
+    wpt_runner_exe.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add V8 include paths (Homebrew on macOS)
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+    // Link V8 libraries
+    wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
+    wpt_runner_exe.linkSystemLibrary("v8");
+    wpt_runner_exe.linkSystemLibrary("v8_libplatform");
+    wpt_runner_exe.linkSystemLibrary("v8_libbase");
+
+    // Link libuv for timer support
+    wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    wpt_runner_exe.linkSystemLibrary("uv");
+
+    // Link C++ standard library
+    wpt_runner_exe.linkLibCpp();
+
+    b.installArtifact(wpt_runner_exe);
+
+    // WPT build options
+    const wpt_output = b.option(
+        []const u8,
+        "wpt-output",
+        "Output path for wptreport.json (default: wpt-results/)",
+    ) orelse "wpt-results";
+
+    const wpt_verbose = b.option(
+        bool,
+        "wpt-verbose",
+        "Show verbose output for each test",
+    ) orelse false;
+
+    // Add run step for WPT runner
+    const run_wpt = b.addRunArtifact(wpt_runner_exe);
+    run_wpt.step.dependOn(b.getInstallStep());
+
+    // Pass build options as command-line arguments
+    run_wpt.addArg(b.fmt("--output={s}", .{wpt_output}));
+    if (wpt_verbose) {
+        run_wpt.addArg("--verbose");
+    }
+
+    // Pass through any additional args (e.g., category filters)
+    if (b.args) |args| run_wpt.addArgs(args);
+
+    const wpt_step = b.step("wpt", "Run Web Platform Tests (use -- to pass args like url/)");
+    wpt_step.dependOn(&run_wpt.step);
+
+    // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)
     // ========================================================================
 
