@@ -1295,6 +1295,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/platform/root.zig"),
         .target = target,
     });
+    // Platform module needs fetch for NetworkBackend adapter (bridges old/new interfaces)
+    platform_mod.addImport("fetch", fetch_mod);
 
     // HTML Core module (WHATWG HTML Standard) - Interface-free subset
     // Contains parser (§13), window (§7), event loop (§8.1.7), structured clone (§2.7)

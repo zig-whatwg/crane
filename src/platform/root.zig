@@ -125,6 +125,22 @@ pub const PushPermissionState = push_backend.PushPermissionState;
 pub const PushEncryptionKeyName = push_backend.PushEncryptionKeyName;
 pub const PushResult = push_backend.PushResult;
 
+// Network Adapter (bridges old NetworkBackend to new NetworkVTable)
+pub const network_adapter = @import("network_adapter.zig");
+pub const NetworkVTableAdapter = network_adapter.NetworkVTableAdapter;
+pub const NetworkBackendAdapter = network_adapter.NetworkBackendAdapter;
+pub const createMockNetworkVTableAdapter = network_adapter.createMockVTableAdapter;
+
+// FileSystem Adapter (provides in-memory FileSystem implementation and adapter)
+pub const filesystem_adapter = @import("filesystem_adapter.zig");
+pub const FileSystemBackendAdapter = filesystem_adapter.FileSystemBackendAdapter;
+pub const InMemoryFileSystem = filesystem_adapter.InMemoryFileSystem;
+
+// UI Adapter (bridges old UIBackend to new UIVTable)
+pub const ui_adapter = @import("ui_adapter.zig");
+pub const UIBackendAdapter = ui_adapter.UIBackendAdapter;
+pub const StubUIContext = ui_adapter.StubUIContext;
+
 // === Stub Platform Backend (For Testing) ===
 pub const StubContext = stub_platform_backend.StubContext;
 pub const createStubBackend = stub_platform_backend.createStubBackend;
