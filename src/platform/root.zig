@@ -112,6 +112,11 @@ pub const NotificationEventCallback = notification_backend.NotificationEventCall
 pub const PushBackend = push_backend.PushBackend;
 pub const StubPushBackend = push_backend.StubPushBackend;
 pub const DeniedPushBackend = push_backend.DeniedPushBackend;
+
+// Push Adapter (bridges old and new interfaces)
+pub const push_adapter = @import("push_adapter.zig");
+pub const PushVTableAdapter = push_adapter.PushVTableAdapter;
+pub const PushBackendAdapter = push_adapter.PushBackendAdapter;
 pub const PushSubscription = push_backend.PushSubscription;
 pub const PushSubscriptionOptions = push_backend.PushSubscriptionOptions;
 pub const PushSubscriptionKeys = push_backend.PushSubscriptionKeys;
