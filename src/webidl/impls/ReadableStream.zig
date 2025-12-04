@@ -355,16 +355,78 @@ pub fn invokePendingStartCallback(
         return;
     }
 
-    // TODO: Check if result is a Promise and chain handlers
-    // For now, treat all results (including promises) as immediately fulfilled
-
-    // Mark as started and call pull if needed
-    onStartFulfilledImmediate(controller_internal);
-
     // Clear the start algorithm since it's been invoked
     start_algo.deinit();
     controller_internal.allocator.destroy(start_algo);
     controller_internal.start_algorithm = null;
+
+    // Per WHATWG Streams spec § 4.9.3 steps 10-12:
+    // 10. Let startPromise be a promise resolved with startResult
+    // 11. Upon fulfillment of startPromise: set started = true, call pull if needed
+    // 12. Upon rejection of startPromise: error the controller
+
+    // Unwrap the result (already checked for null above)
+    const result_value: *v8.Value = result.?;
+
+    // Check if result is a Promise
+    const is_promise = v8.v8_Value_IsPromise(result_value);
+    if (is_promise) {
+        // Result is a Promise - chain handlers to wait for it to settle
+        const promise: *v8.Promise = @ptrCast(result_value);
+
+        // Create context for the callbacks (store pointer to controller internal state)
+        // We need to allocate this because the callbacks are called asynchronously
+        const callback_ctx = controller_internal.allocator.create(StartCallbackContext) catch {
+            // Allocation failed - fall back to immediate fulfillment
+            onStartFulfilledImmediate(controller_internal);
+            return;
+        };
+        callback_ctx.* = .{
+            .controller_internal = controller_internal,
+            .allocator = controller_internal.allocator,
+        };
+
+        // Create fulfill handler
+        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
+            context,
+            onStartPromiseFulfilled,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - fall back to immediate fulfillment
+            controller_internal.allocator.destroy(callback_ctx);
+            onStartFulfilledImmediate(controller_internal);
+            return;
+        };
+
+        // Create reject handler
+        const reject_handler = v8.v8_CreateZigRejectHandler(
+            context,
+            onStartPromiseRejected,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onStartFulfilledImmediate(controller_internal);
+            return;
+        };
+
+        // Chain handlers onto the promise
+        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        if (chained == null) {
+            // Failed to chain - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onStartFulfilledImmediate(controller_internal);
+            return;
+        }
+        // Promise handlers are now chained - they will be called when the promise settles
+        // The callback context will be freed in the callback handlers
+    } else {
+        // Result is not a Promise - mark as started immediately
+        onStartFulfilledImmediate(controller_internal);
+    }
 }
 
 /// Getter for locked
@@ -1848,6 +1910,40 @@ fn handleStartPromise(
         // If we can't attach handlers, assume immediate fulfillment
         onStartFulfilledImmediate(controller_internal);
     };
+}
+
+/// Context for V8 promise callbacks from invokePendingStartCallback
+/// This is allocated and passed to the V8 promise handlers, then freed in the callbacks
+const StartCallbackContext = struct {
+    controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState,
+    allocator: std.mem.Allocator,
+};
+
+/// V8 Promise fulfillment callback for start() promise
+/// Called when an async start(controller) function's promise fulfills
+/// Spec: § 4.9.3 Step 11 - Upon fulfillment of startPromise
+fn onStartPromiseFulfilled(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *StartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    // Mark the controller as started and call pull if needed
+    onStartFulfilledImmediate(callback_ctx.controller_internal);
+}
+
+/// V8 Promise rejection callback for start() promise
+/// Called when an async start(controller) function's promise rejects
+/// Spec: § 4.9.3 Step 12 - Upon rejection of startPromise with reason r
+fn onStartPromiseRejected(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *StartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    // Error the controller with the rejection reason
+    const js_error = streams_common.JSValue{ .string = "Start callback promise rejected" };
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+    ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(
+        callback_ctx.controller_internal,
+        @ptrCast(&js_error),
+    );
 }
 
 /// Handle start algorithm rejection (immediate)

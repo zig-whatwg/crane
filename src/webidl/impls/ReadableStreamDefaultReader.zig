@@ -19,6 +19,10 @@ const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
 const streams_common = @import("streams_common");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 
+// V8 FFI for Promise bridging
+const v8 = @import("v8").ffi;
+const V8Promise = @import("v8").Promise;
+
 pub const State = ReadableStreamDefaultReader.State;
 
 pub const ImplError = error{
@@ -69,6 +73,74 @@ pub const InternalState = struct {
         self.allocator.destroy(self);
     }
 };
+
+/// Bridge for converting AsyncPromise(ReadResult) to V8 Promise
+///
+/// This is necessary because `call_read` returns a Promise to JavaScript,
+/// but internally uses Zig's AsyncPromise. The bridge registers callbacks
+/// on the AsyncPromise that resolve/reject the V8 Promise when it settles.
+const ReadResultPromiseBridge = struct {
+    v8_promise: V8Promise(ReadResult),
+    allocator: std.mem.Allocator,
+
+    fn init(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context) !*ReadResultPromiseBridge {
+        const bridge = try allocator.create(ReadResultPromiseBridge);
+        errdefer allocator.destroy(bridge);
+
+        bridge.* = .{
+            .v8_promise = try V8Promise(ReadResult).init(isolate, context),
+            .allocator = allocator,
+        };
+
+        return bridge;
+    }
+
+    fn deinit(self: *ReadResultPromiseBridge) void {
+        // NOTE: Do NOT call self.v8_promise.deinit() here!
+        // The V8 Promise was returned to JavaScript via getPromise().
+        // JavaScript owns it now and V8's GC will manage its lifetime.
+        // We only free the bridge wrapper struct.
+        self.allocator.destroy(self);
+    }
+
+    fn onFulfilled(ctx: *anyopaque, value: ReadResult) anyerror!void {
+        const self: *ReadResultPromiseBridge = @ptrCast(@alignCast(ctx));
+        self.v8_promise.resolve(value) catch {};
+        self.deinit();
+    }
+
+    fn onRejected(ctx: *anyopaque, err_value: webidl.errors.Exception) anyerror!void {
+        const self: *ReadResultPromiseBridge = @ptrCast(@alignCast(ctx));
+        self.v8_promise.reject(err_value) catch {};
+        self.deinit();
+    }
+};
+
+/// Convert AsyncPromise(ReadResult) to V8 Promise
+///
+/// Creates a V8 Promise and registers callbacks on the Zig promise.
+/// When the Zig promise settles, the V8 promise is resolved/rejected.
+fn convertReadResultPromiseToV8(
+    zig_promise: *AsyncPromise(ReadResult),
+) !*v8.Promise {
+    const allocator = std.heap.c_allocator; // TODO: Pass allocator properly
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Create bridge that will resolve V8 promise when Zig promise settles
+    const bridge = try ReadResultPromiseBridge.init(allocator, isolate, context);
+    errdefer bridge.deinit();
+
+    // Register callback on Zig promise
+    try zig_promise.onSettleCtx(
+        ReadResultPromiseBridge.onFulfilled,
+        ReadResultPromiseBridge.onRejected,
+        bridge,
+    );
+
+    // Return the V8 promise
+    return bridge.v8_promise.getPromise();
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -214,7 +286,7 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// 4. Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
 /// 5. Return promise
 ///
-/// Returns: Pointer to AsyncPromise(ReadResult) - caller owns and must deinit
+/// Returns: Pointer to V8 Promise - the promise is managed by V8's GC
 pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
@@ -228,7 +300,9 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
         );
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
         promise.*.reject(exception);
-        return @ptrCast(promise);
+        // Convert to V8 Promise before returning
+        const v8_promise = try convertReadResultPromiseToV8(promise);
+        return @ptrCast(v8_promise);
     }
 
     // Step 2: Create promise
@@ -275,22 +349,22 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
             promise.*.reject(exception);
         },
         .readable => {
-            // Add promise to read requests queue
-            // The controller will fulfill this when data becomes available
-            try internal.read_requests.append(internal.allocator, promise);
-
             // Call controller.[[PullSteps]](readRequest)
-            // Get controller
+            // The controller will either:
+            // - Fulfill the promise immediately if queue has data
+            // - Add to read_requests if queue is empty (and call pull)
             const controller_instance = stream_internal.controller;
             const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
 
-            // Call pullSteps with the promise
-            try ReadableStreamDefaultControllerImpl.pullSteps(controller_instance, promise);
+            // Call pullSteps with the promise and reader's read_requests list
+            try ReadableStreamDefaultControllerImpl.pullSteps(controller_instance, promise, &internal.read_requests);
         },
     }
 
-    // Step 5: Return promise
-    return @ptrCast(promise);
+    // Step 5: Convert AsyncPromise to V8 Promise and return
+    // This creates a bridge that will resolve the V8 Promise when the AsyncPromise settles
+    const v8_promise = try convertReadResultPromiseToV8(promise);
+    return @ptrCast(v8_promise);
 }
 
 /// Operation: releaseLock

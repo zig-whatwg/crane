@@ -744,6 +744,7 @@ fn onPullRejected(internal: *InternalState, error_value: webidl.errors.Exception
 pub fn pullSteps(
     instance: *runtime.Instance,
     read_promise: *AsyncPromise(@import("ReadableStreamDefaultReader.zig").ReadResult),
+    read_requests: *std.ArrayList(*AsyncPromise(@import("ReadableStreamDefaultReader.zig").ReadResult)),
 ) !void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
@@ -794,8 +795,8 @@ pub fn pullSteps(
         });
     } else {
         // Step 3: Queue is empty
-        // Note: The promise is already added to read_requests by the reader
-        // We just need to call pull if needed
+        // Step 3.1: Add read request to queue (ReadableStreamAddReadRequest)
+        try read_requests.append(internal.allocator, read_promise);
 
         // Step 3.2: Call pull if needed
         readableStreamDefaultControllerCallPullIfNeeded(internal);
