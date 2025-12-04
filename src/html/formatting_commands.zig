@@ -559,6 +559,212 @@ pub fn executeJustifyFull(allocator: std.mem.Allocator, document: DocumentHandle
 }
 
 // =============================================================================
+// Remove Format Command
+// =============================================================================
+
+/// Elements that should be removed by removeFormat
+/// These are inline formatting elements that apply visual styling
+const formatting_elements = [_][]const u8{
+    "B",
+    "STRONG",
+    "I",
+    "EM",
+    "U",
+    "S",
+    "STRIKE",
+    "SUB",
+    "SUP",
+    "FONT",
+    "TT",
+    "BIG",
+    "SMALL",
+    "MARK",
+};
+
+/// CSS properties that should be removed from spans
+const formatting_css_properties = [_][]const u8{
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "text-decoration",
+    "color",
+    "background-color",
+    "background",
+};
+
+/// Check if a tag is a formatting element that should be unwrapped
+fn isFormattingElement(tag_name: []const u8) bool {
+    for (formatting_elements) |tag| {
+        if (std.ascii.eqlIgnoreCase(tag_name, tag)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Execute removeFormat command with DOM integration
+///
+/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-removeformat-command
+///
+/// Removes formatting from the selection by:
+/// 1. Unwrapping inline formatting elements (b, i, u, font, etc.)
+/// 2. Removing formatting-related CSS properties from spans
+/// 3. Removing empty spans after style removal
+pub fn executeRemoveFormat(
+    allocator: std.mem.Allocator,
+    document: DocumentHandle,
+) !CommandResult {
+    _ = allocator;
+
+    const doc_instance = getDocumentInstance(document) orelse {
+        return .{ .success = false, .error_message = "Invalid document" };
+    };
+
+    // Get selection
+    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+        return .{ .success = false, .error_message = "Failed to get selection" };
+    };
+
+    const selection = selection_opt orelse {
+        return .{ .success = false, .error_message = "No selection available" };
+    };
+
+    // Check if collapsed - nothing to remove
+    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    if (is_collapsed) {
+        return .{ .success = true };
+    }
+
+    // Get range count
+    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    if (range_count == 0) {
+        return .{ .success = true };
+    }
+
+    // Get the first range
+    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+        return .{ .success = false, .error_message = "Failed to get range" };
+    };
+
+    if (range == null) {
+        return .{ .success = true };
+    }
+
+    // Get common ancestor container
+    const common_ancestor = impls.Range.get_commonAncestorContainer(range.?) catch null;
+    if (common_ancestor == null) {
+        return .{ .success = true };
+    }
+
+    // Walk through nodes in the range and collect formatting elements
+    // We need to collect first, then modify (to avoid iterator invalidation)
+    var nodes_to_unwrap = std.ArrayList(*runtime.Instance).init(std.heap.page_allocator);
+    defer nodes_to_unwrap.deinit();
+
+    var spans_to_clean = std.ArrayList(*runtime.Instance).init(std.heap.page_allocator);
+    defer spans_to_clean.deinit();
+
+    // Simple tree walk from common ancestor
+    try collectFormattingNodes(common_ancestor.?, &nodes_to_unwrap, &spans_to_clean);
+
+    // Unwrap formatting elements (move children out, remove element)
+    for (nodes_to_unwrap.items) |node| {
+        unwrapElement(node) catch continue;
+    }
+
+    // Clean spans (remove style attribute or remove span if empty)
+    for (spans_to_clean.items) |span| {
+        cleanSpanFormatting(span) catch continue;
+    }
+
+    return .{ .success = true };
+}
+
+/// Recursively collect formatting elements and styled spans
+fn collectFormattingNodes(
+    node: *runtime.Instance,
+    nodes_to_unwrap: *std.ArrayList(*runtime.Instance),
+    spans_to_clean: *std.ArrayList(*runtime.Instance),
+) !void {
+    const node_type = impls.Node.get_nodeType(node) catch 0;
+
+    if (node_type == 1) { // ELEMENT_NODE
+        const tag_name_opt = impls.Element.get_tagName(node) catch null;
+        if (tag_name_opt) |tag_name| {
+            const tag_str = tag_name.get() catch "";
+
+            if (isFormattingElement(tag_str)) {
+                try nodes_to_unwrap.append(node);
+            } else if (std.ascii.eqlIgnoreCase(tag_str, "SPAN")) {
+                // Check if span has formatting styles
+                const style_opt = impls.Element.call_getAttribute(
+                    node,
+                    runtime.DOMString.initInterned("style"),
+                ) catch null;
+
+                if (style_opt != null) {
+                    try spans_to_clean.append(node);
+                }
+            }
+        }
+    }
+
+    // Recurse to children
+    const first_child = impls.Node.get_firstChild(node) catch null;
+    var child = first_child;
+    while (child != null) {
+        const next = impls.Node.get_nextSibling(child.?) catch null;
+        try collectFormattingNodes(child.?, nodes_to_unwrap, spans_to_clean);
+        child = next;
+    }
+}
+
+/// Unwrap an element by moving its children to its parent and removing it
+fn unwrapElement(element: *runtime.Instance) !void {
+    const parent = impls.Node.get_parentNode(element) catch null;
+    if (parent == null) return;
+
+    // Move all children before this element
+    var child = impls.Node.get_firstChild(element) catch null;
+    while (child != null) {
+        const next = impls.Node.get_nextSibling(child.?) catch null;
+        _ = impls.Node.call_insertBefore(parent.?, child.?, element) catch null;
+        child = next;
+    }
+
+    // Remove the now-empty element
+    _ = impls.Node.call_removeChild(parent.?, element) catch null;
+}
+
+/// Remove formatting CSS properties from a span
+fn cleanSpanFormatting(span: *runtime.Instance) !void {
+    // For now, just remove the style attribute entirely
+    // A more sophisticated implementation would parse and filter CSS properties
+    impls.Element.call_removeAttribute(
+        span,
+        runtime.DOMString.initInterned("style"),
+    ) catch return;
+
+    // Check if span is now empty (no attributes, no class)
+    // If so, unwrap it too
+    const class_opt = impls.Element.call_getAttribute(
+        span,
+        runtime.DOMString.initInterned("class"),
+    ) catch null;
+
+    const id_opt = impls.Element.call_getAttribute(
+        span,
+        runtime.DOMString.initInterned("id"),
+    ) catch null;
+
+    if (class_opt == null and id_opt == null) {
+        // Span has no meaningful attributes, unwrap it
+        unwrapElement(span) catch return;
+    }
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -588,4 +794,19 @@ test "isBlockElement" {
     try std.testing.expect(isBlockElement("p")); // case insensitive
     try std.testing.expect(!isBlockElement("SPAN"));
     try std.testing.expect(!isBlockElement("A"));
+}
+
+test "isFormattingElement" {
+    try std.testing.expect(isFormattingElement("B"));
+    try std.testing.expect(isFormattingElement("STRONG"));
+    try std.testing.expect(isFormattingElement("I"));
+    try std.testing.expect(isFormattingElement("EM"));
+    try std.testing.expect(isFormattingElement("U"));
+    try std.testing.expect(isFormattingElement("FONT"));
+    try std.testing.expect(isFormattingElement("b")); // case insensitive
+    try std.testing.expect(isFormattingElement("strong"));
+    try std.testing.expect(!isFormattingElement("SPAN"));
+    try std.testing.expect(!isFormattingElement("DIV"));
+    try std.testing.expect(!isFormattingElement("A"));
+    try std.testing.expect(!isFormattingElement("P"));
 }
