@@ -26,6 +26,7 @@
 pub const platform_backend = @import("platform_backend.zig");
 pub const vtables = @import("vtables.zig");
 pub const exports = @import("exports.zig");
+pub const stub_platform_backend = @import("stub_platform_backend.zig");
 
 // Unified backend types
 pub const PlatformBackend = platform_backend.PlatformBackend;
@@ -94,3 +95,25 @@ pub const PushMessageData = push_backend.PushMessageData;
 pub const PushPermissionState = push_backend.PushPermissionState;
 pub const PushEncryptionKeyName = push_backend.PushEncryptionKeyName;
 pub const PushResult = push_backend.PushResult;
+
+// === Stub Platform Backend (For Testing) ===
+pub const StubContext = stub_platform_backend.StubContext;
+pub const createStubBackend = stub_platform_backend.createStubBackend;
+pub const createEmptyBackend = stub_platform_backend.createEmptyBackend;
+
+// Individual stub VTables for fine-grained testing
+pub const stub_clipboard_vtable = stub_platform_backend.stub_clipboard_vtable;
+pub const stub_timer_vtable = stub_platform_backend.stub_timer_vtable;
+pub const stub_layout_vtable = stub_platform_backend.stub_layout_vtable;
+pub const stub_notification_vtable = stub_platform_backend.stub_notification_vtable;
+pub const stub_push_vtable = stub_platform_backend.stub_push_vtable;
+pub const stub_network_vtable = stub_platform_backend.stub_network_vtable;
+pub const stub_storage_vtable = stub_platform_backend.stub_storage_vtable;
+pub const stub_filesystem_vtable = stub_platform_backend.stub_filesystem_vtable;
+pub const stub_ui_vtable = stub_platform_backend.stub_ui_vtable;
+pub const stub_geolocation_vtable = stub_platform_backend.stub_geolocation_vtable;
+pub const stub_screen_vtable = stub_platform_backend.stub_screen_vtable;
+pub const stub_vibration_vtable = stub_platform_backend.stub_vibration_vtable;
+pub const stub_battery_vtable = stub_platform_backend.stub_battery_vtable;
+pub const stub_share_vtable = stub_platform_backend.stub_share_vtable;
+pub const stub_permissions_vtable = stub_platform_backend.stub_permissions_vtable;
