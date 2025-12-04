@@ -1,6 +1,5 @@
 #if os(iOS) || os(macOS)
 import SwiftUI
-import Combine
 
 #if os(iOS)
 import UIKit
@@ -23,7 +22,7 @@ public typealias PlatformColor = NSColor
 ///
 /// ```swift
 /// struct BrowserView: View {
-///     @StateObject var browser = WhatWGBrowser()
+///     @State var browser = WhatWGBrowser()
 ///
 ///     var body: some View {
 ///         VStack {
@@ -36,11 +35,11 @@ public typealias PlatformColor = NSColor
 /// }
 /// ```
 ///
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 public struct WhatWGWebView: PlatformViewRepresentable {
     
     /// The browser instance controlling this view.
-    @ObservedObject var browser: WhatWGBrowser
+    var browser: WhatWGBrowser
     
     /// Configuration options for the web view.
     public var configuration: Configuration
@@ -86,7 +85,7 @@ public struct WhatWGWebView: PlatformViewRepresentable {
 
 // MARK: - Configuration
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 extension WhatWGWebView {
     
     /// Configuration options for the web view.
@@ -183,30 +182,22 @@ extension WhatWGWebView {
 
 // MARK: - Coordinator
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 extension WhatWGWebView {
     
     /// Coordinator that bridges between SwiftUI and the web view.
     public class Coordinator: NSObject, WhatWGWebViewContainerDelegate {
         
         private var browser: WhatWGBrowser
-        private var cancellables = Set<AnyCancellable>()
         
         init(browser: WhatWGBrowser) {
             self.browser = browser
             super.init()
-            setupBindings()
         }
         
         func updateBrowser(_ browser: WhatWGBrowser) {
             guard self.browser !== browser else { return }
             self.browser = browser
-            cancellables.removeAll()
-            setupBindings()
-        }
-        
-        private func setupBindings() {
-            // Observe browser state changes if needed
         }
         
         // MARK: - WhatWGWebViewContainerDelegate
@@ -248,7 +239,7 @@ extension WhatWGWebView {
 // MARK: - Web View Container
 
 /// Protocol for web view container delegate.
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 public protocol WhatWGWebViewContainerDelegate: AnyObject {
     func webViewContainer(_ container: WhatWGWebViewContainer, didStartLoading url: URL)
     func webViewContainer(_ container: WhatWGWebViewContainer, didFinishLoading url: URL)
@@ -263,7 +254,7 @@ public protocol WhatWGWebViewContainerDelegate: AnyObject {
 /// This view manages the actual rendering and interaction with web content.
 /// It interfaces with the underlying WHATWG browser engine.
 ///
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 public class WhatWGWebViewContainer: PlatformView {
     
     /// The delegate for receiving events.
@@ -379,7 +370,7 @@ public class WhatWGWebViewContainer: PlatformView {
 // MARK: - Content Render View
 
 /// Internal view for rendering web content.
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 class ContentRenderView: PlatformView {
     
     private var placeholderLabel: PlatformLabel?
@@ -470,7 +461,7 @@ typealias PlatformLabel = NSTextField
 
 // MARK: - View Modifiers
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 extension WhatWGWebView {
     
     /// Sets whether JavaScript is enabled.

@@ -14,7 +14,7 @@ import UserNotifications
 /// platform.notificationProvider = iOSNotificationProvider()
 /// ```
 ///
-@available(iOS 14.0, macOS 11.0, watchOS 7.0, *)
+@available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
 public final class iOSNotificationProvider: NotificationProvider, @unchecked Sendable {
     
     private let notificationCenter: UNUserNotificationCenter
@@ -140,7 +140,7 @@ public final class iOSNotificationProvider: NotificationProvider, @unchecked Sen
 
 // MARK: - iOSNotificationHandle
 
-@available(iOS 14.0, macOS 11.0, watchOS 7.0, *)
+@available(iOS 17.0, macOS 14.0, watchOS 10.0, *)
 final class iOSNotificationHandle: NotificationHandle, @unchecked Sendable {
     
     private let identifier: String

@@ -62,6 +62,7 @@ final class PlatformTests: XCTestCase {
     // MARK: - Provider Configuration
     
     #if os(iOS) || os(macOS)
+    @available(iOS 17.0, macOS 14.0, *)
     func testSetClipboardProvider() {
         let platform = WhatWGPlatform()
         let provider = iOSClipboardProvider()
@@ -76,6 +77,7 @@ final class PlatformTests: XCTestCase {
         XCTAssertNotNil(platform.timerProvider)
     }
     
+    @available(iOS 17.0, macOS 14.0, *)
     func testSetNetworkProvider() {
         let platform = WhatWGPlatform()
         let provider = iOSNetworkProvider()
@@ -90,6 +92,7 @@ final class PlatformTests: XCTestCase {
         XCTAssertNotNil(platform.storageProvider)
     }
     
+    @available(iOS 17.0, macOS 14.0, *)
     func testSetMultipleProviders() {
         let platform = WhatWGPlatform()
         platform.clipboardProvider = iOSClipboardProvider()

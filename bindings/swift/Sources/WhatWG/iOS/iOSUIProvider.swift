@@ -13,7 +13,7 @@ import UIKit
 /// platform.uiProvider = iOSUIProvider()
 /// ```
 ///
-@available(iOS 14.0, *)
+@available(iOS 17.0, *)
 @MainActor
 public final class iOSUIProvider: UIProvider, @unchecked Sendable {
     
@@ -145,7 +145,7 @@ public final class iOSUIProvider: UIProvider, @unchecked Sendable {
 
 // MARK: - iOSWindowHandle
 
-@available(iOS 14.0, *)
+@available(iOS 17.0, *)
 final class iOSWindowHandle: WindowHandle, @unchecked Sendable {
     
     private let identifier: String
@@ -179,7 +179,7 @@ import AppKit
 ///
 /// This provider uses NSAlert for dialogs and NSWorkspace for window operations.
 ///
-@available(macOS 11.0, *)
+@available(macOS 14.0, *)
 @MainActor
 public final class macOSUIProvider: UIProvider, @unchecked Sendable {
     
@@ -242,7 +242,7 @@ public final class macOSUIProvider: UIProvider, @unchecked Sendable {
     }
 }
 
-@available(macOS 11.0, *)
+@available(macOS 14.0, *)
 final class macOSWindowHandle: WindowHandle, @unchecked Sendable {
     
     private let identifier: String

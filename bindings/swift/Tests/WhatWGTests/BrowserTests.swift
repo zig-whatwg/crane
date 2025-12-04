@@ -3,7 +3,7 @@ import XCTest
 @testable import WhatWG
 
 /// Tests for WhatWGBrowser SwiftUI component.
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 @MainActor
 final class BrowserTests: XCTestCase {
     

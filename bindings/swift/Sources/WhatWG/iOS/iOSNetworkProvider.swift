@@ -14,7 +14,7 @@ import Network
 /// platform.networkProvider = iOSNetworkProvider()
 /// ```
 ///
-@available(iOS 14.0, macOS 11.0, tvOS 14.0, watchOS 7.0, *)
+@available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *)
 public final class iOSNetworkProvider: NetworkProvider, @unchecked Sendable {
     
     private let session: URLSession

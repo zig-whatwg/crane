@@ -1,17 +1,17 @@
 #if os(iOS) || os(macOS)
 import Foundation
-import Combine
+import Observation
 
 /// Main browser controller for SwiftUI integration.
 ///
-/// `WhatWGBrowser` is an ObservableObject that manages browser state and provides
+/// `WhatWGBrowser` uses the Observation framework to manage browser state and provides
 /// navigation, tab management, and JavaScript execution capabilities.
 ///
 /// ## Example Usage
 ///
 /// ```swift
 /// struct ContentView: View {
-///     @StateObject var browser = WhatWGBrowser()
+///     @State var browser = WhatWGBrowser()
 ///
 ///     var body: some View {
 ///         VStack {
@@ -30,48 +30,49 @@ import Combine
 /// }
 /// ```
 ///
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
+@Observable
 @MainActor
-public final class WhatWGBrowser: ObservableObject {
+public final class WhatWGBrowser {
     
-    // MARK: - Published Properties
+    // MARK: - Observable Properties
     
     /// The current URL as a string for binding.
-    @Published public var urlString: String = ""
+    public var urlString: String = ""
     
     /// The current page title.
-    @Published public private(set) var title: String = ""
+    public private(set) var title: String = ""
     
     /// Whether the page is currently loading.
-    @Published public private(set) var isLoading: Bool = false
+    public private(set) var isLoading: Bool = false
     
     /// The estimated loading progress (0.0 to 1.0).
-    @Published public private(set) var loadingProgress: Double = 0.0
+    public private(set) var loadingProgress: Double = 0.0
     
     /// Whether navigation can go back.
-    @Published public private(set) var canGoBack: Bool = false
+    public private(set) var canGoBack: Bool = false
     
     /// Whether navigation can go forward.
-    @Published public private(set) var canGoForward: Bool = false
+    public private(set) var canGoForward: Bool = false
     
     /// Whether the connection is secure (HTTPS).
-    @Published public private(set) var isSecure: Bool = false
+    public private(set) var isSecure: Bool = false
     
     /// The current navigation state.
-    @Published public private(set) var navigationState: NavigationState = .empty
+    public private(set) var navigationState: NavigationState = .empty
     
     /// All open tabs.
-    @Published public private(set) var tabs: [BrowserTab] = []
+    public private(set) var tabs: [BrowserTab] = []
     
     /// Index of the currently active tab.
-    @Published public var activeTabIndex: Int = 0 {
+    public var activeTabIndex: Int = 0 {
         didSet {
             updateActiveTab()
         }
     }
     
     /// The most recent error, if any.
-    @Published public private(set) var lastError: BrowserError?
+    public private(set) var lastError: BrowserError?
     
     // MARK: - Properties
     

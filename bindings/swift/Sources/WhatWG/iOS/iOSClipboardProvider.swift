@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 /// platform.clipboardProvider = iOSClipboardProvider()
 /// ```
 ///
-@available(iOS 14.0, *)
+@available(iOS 17.0, *)
 public final class iOSClipboardProvider: ClipboardProvider, @unchecked Sendable {
     
     private let pasteboard: UIPasteboard

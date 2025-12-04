@@ -21,7 +21,7 @@ import UniformTypeIdentifiers
 /// platform.fileSystemProvider = iOSFileSystemProvider()
 /// ```
 ///
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 public final class iOSFileSystemProvider: FileSystemProvider, @unchecked Sendable {
     
     private let fileManager = FileManager.default
@@ -220,7 +220,7 @@ public final class iOSFileSystemProvider: FileSystemProvider, @unchecked Sendabl
 // MARK: - Document Picker Delegate (iOS)
 
 #if os(iOS)
-@available(iOS 14.0, *)
+@available(iOS 17.0, *)
 private class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
     private let onPick: ([URL]) -> Void
     private let onCancel: () -> Void
@@ -242,7 +242,7 @@ private class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
 
 // MARK: - iOSFileHandle
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 final class iOSFileHandle: FileHandle, @unchecked Sendable {
     
     private let url: URL
@@ -273,7 +273,7 @@ final class iOSFileHandle: FileHandle, @unchecked Sendable {
 
 // MARK: - iOSDirectoryHandle
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 final class iOSDirectoryHandle: DirectoryHandle, @unchecked Sendable {
     
     private let url: URL
@@ -340,7 +340,7 @@ final class iOSDirectoryHandle: DirectoryHandle, @unchecked Sendable {
 
 // MARK: - iOSFileWritableStream
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 final class iOSFileWritableStream: FileWritableStream, @unchecked Sendable {
     
     private let url: URL
