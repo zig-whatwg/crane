@@ -71,6 +71,13 @@ pub const createMockVTableAdapter = timer_adapter.createMockVTableAdapter;
 
 pub const LayoutBackend = layout_backend.LayoutBackend;
 pub const StubLayoutBackend = layout_backend.StubLayoutBackend;
+pub const DOMRect = layout_backend.DOMRect;
+pub const DOMRectList = layout_backend.DOMRectList;
+
+// Layout Adapter (bridges old and new interfaces)
+pub const layout_adapter = @import("layout_adapter.zig");
+pub const LayoutVTableAdapter = layout_adapter.LayoutVTableAdapter;
+pub const LayoutBackendAdapter = layout_adapter.LayoutBackendAdapter;
 
 pub const ClipboardBackend = clipboard_backend.ClipboardBackend;
 pub const StubClipboardBackend = clipboard_backend.StubClipboardBackend;
