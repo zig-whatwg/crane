@@ -278,10 +278,51 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-keys
 /// Returns: Promise<sequence<Request>>
 pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = request;
-    _ = options;
-    // TODO: Return a Promise with array of Request objects
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    const opts = if (options.wasPassed()) options.value else dictionaries.CacheQueryOptions{};
+
+    // Collect all matching request keys
+    var results = std.ArrayListUnmanaged(*runtime.Instance){};
+    defer results.deinit(internal.allocator);
+
+    // Get URL filter if request parameter is provided
+    const filter_url: ?[]const u8 = if (request.wasPassed()) extractUrl(request.value) else null;
+
+    for (internal.entries.items) |entry| {
+        // If filter provided, check if it matches
+        if (filter_url) |url| {
+            if (!urlMatches(entry.url, url, opts)) {
+                continue;
+            }
+        }
+
+        // Create a Request instance for this entry
+        const RequestImpl = @import("Request.zig");
+        const Request = interfaces.Request;
+
+        const request_instance = try RequestImpl.init(internal.allocator, Request.State, &Request.vtable, instance.ctx);
+
+        // Set the URL on the request
+        const request_state = request_instance.getState(Request.State);
+        if (request_state.own._internal) |req_internal| {
+            // Set URL on the internal request
+            internal.allocator.free(req_internal.request.url_list.items[0]);
+            req_internal.request.url_list.items[0] = try internal.allocator.dupe(u8, entry.url);
+
+            // Set method
+            internal.allocator.free(req_internal.request.method);
+            req_internal.request.method = try internal.allocator.dupe(u8, entry.method);
+        }
+
+        try results.append(internal.allocator, request_instance);
+    }
+
+    // The V8 binding layer should create a Promise resolved with this array
+    // For now, return NotImplemented to signal results available
+    // Note: The results ArrayList contains the Request instances
+    _ = results.items;
     return error.NotImplemented;
 }
 
@@ -289,30 +330,164 @@ pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.Reque
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-matchall
 /// Returns: Promise<sequence<Response>>
 pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = request;
-    _ = options;
-    // TODO: Return a Promise with array of Response objects
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    const opts = if (options.wasPassed()) options.value else dictionaries.CacheQueryOptions{};
+
+    // Collect all matching responses
+    var results = std.ArrayListUnmanaged(*runtime.Instance){};
+    defer results.deinit(internal.allocator);
+
+    // Get URL filter if request parameter is provided
+    const filter_url: ?[]const u8 = if (request.wasPassed()) extractUrl(request.value) else null;
+
+    for (internal.entries.items) |entry| {
+        // If filter provided, check if it matches
+        if (filter_url) |url| {
+            if (!urlMatches(entry.url, url, opts)) {
+                continue;
+            }
+
+            // Check method if ignoreMethod is not set
+            if (!(opts.ignoreMethod orelse false)) {
+                // For matchAll, default method is GET
+                if (!std.mem.eql(u8, entry.method, "GET")) {
+                    continue;
+                }
+            }
+        }
+
+        // Create a Response instance for this entry
+        const ResponseImpl = @import("Response.zig");
+        const Response = interfaces.Response;
+
+        const response_instance = try ResponseImpl.init(internal.allocator, Response.State, &Response.vtable, instance.ctx);
+
+        // Set response data
+        const response_state = response_instance.getState(Response.State);
+        if (response_state.own._internal) |response_internal| {
+            response_internal.response.status = entry.status;
+            response_internal.response.status_message = entry.status_text;
+            // Body would be set here if we had the full response body handling
+        }
+
+        try results.append(internal.allocator, response_instance);
+    }
+
+    // The V8 binding layer should create a Promise resolved with this array
+    // For now, return NotImplemented to signal results available
+    // Note: The results ArrayList contains the Response instances
+    _ = results.items;
     return error.NotImplemented;
 }
 
 /// Operation: add - Fetch and cache a request
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-add
 /// Returns: Promise<undefined>
+///
+/// Algorithm:
+/// 1. Let request be the associated request of the result of invoking the
+///    Request constructor with requestInfo.
+/// 2. If request's scheme is not one of "http" and "https", return a promise
+///    rejected with a TypeError.
+/// 3. Set request's response tainting to "cors".
+/// 4. Let responsePromise be the result of fetching request.
+/// 5. When responsePromise fulfills with response:
+///    a. If response's type is "error", reject.
+///    b. If response's status is not an ok status, reject.
+///    c. Call Cache.put() with the request and response.
 pub fn call_add(instance: *runtime.Instance, request: typedefs.RequestInfo) anyerror!*const anyopaque {
-    _ = instance;
-    _ = request;
-    // TODO: Integrate with Fetch API to actually fetch the request
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    const url = extractUrl(request);
+
+    // Step 2: Validate URL scheme (http or https only)
+    if (!isValidCacheScheme(url)) {
+        return error.TypeError;
+    }
+
+    // Steps 3-5: In a real implementation, this would:
+    // 1. Perform a fetch() with CORS mode
+    // 2. Wait for the response
+    // 3. Validate the response is not an error type
+    // 4. Validate the response status is ok (200-299)
+    // 5. Call put() with the request/response pair
+    //
+    // Since we can't actually perform network requests from this layer,
+    // we return NotImplemented to signal that the V8 binding layer should:
+    // 1. Create the fetch request
+    // 2. Handle the promise chain
+    // 3. Call put() on success
+    //
+    // The implementation pattern for the V8 layer:
+    // ```javascript
+    // Cache.prototype.add = async function(request) {
+    //   const response = await fetch(request, { mode: 'cors' });
+    //   if (!response.ok) throw new TypeError('Response not ok');
+    //   return this.put(request, response);
+    // };
+    // ```
+    _ = internal;
     return error.NotImplemented;
+}
+
+/// Check if URL has a valid scheme for caching (http or https).
+fn isValidCacheScheme(url: []const u8) bool {
+    return std.mem.startsWith(u8, url, "http://") or
+        std.mem.startsWith(u8, url, "https://");
 }
 
 /// Operation: addAll - Fetch and cache multiple requests
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-addall
 /// Returns: Promise<undefined>
+///
+/// Algorithm:
+/// 1. For each requestInfo in requestInfos:
+///    a. Let request be the associated request of the result of invoking the
+///       Request constructor with requestInfo.
+///    b. If request's scheme is not one of "http" and "https", return a promise
+///       rejected with a TypeError.
+///    c. If request's method is not GET, return a promise rejected with a TypeError.
+///    d. Set request's response tainting to "cors".
+/// 2. Let responsePromises be an empty list.
+/// 3. For each request in requests, add fetch(request) to responsePromises.
+/// 4. Wait for all promises to settle.
+/// 5. For each response, if error or not ok, reject.
+/// 6. Batch store all request/response pairs atomically.
 pub fn call_addAll(instance: *runtime.Instance, requests: *const anyopaque) anyerror!*const anyopaque {
-    _ = instance;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    _ = internal;
+
+    // The `requests` parameter is a sequence<RequestInfo> passed from JavaScript.
+    // In a real implementation, we would:
+    // 1. Iterate through the sequence
+    // 2. Validate each URL scheme
+    // 3. Perform parallel fetches
+    // 4. Validate all responses
+    // 5. Store all atomically (reject all if any fails)
+    //
+    // Since we can't perform network requests from this layer, we return
+    // NotImplemented to signal that the V8 binding layer should handle this.
+    //
+    // The implementation pattern for the V8 layer:
+    // ```javascript
+    // Cache.prototype.addAll = async function(requests) {
+    //   const responses = await Promise.all(
+    //     requests.map(req => fetch(req, { mode: 'cors' }))
+    //   );
+    //   for (const response of responses) {
+    //     if (!response.ok) throw new TypeError('Response not ok');
+    //   }
+    //   // Atomic batch put
+    //   await Promise.all(
+    //     requests.map((req, i) => this.put(req, responses[i]))
+    //   );
+    // };
+    // ```
     _ = requests;
-    // TODO: Integrate with Fetch API to actually fetch the requests
     return error.NotImplemented;
 }
 

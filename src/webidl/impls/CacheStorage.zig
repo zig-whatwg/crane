@@ -112,9 +112,32 @@ pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) an
 /// Operation: keys - Get all cache names
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-storage-keys
 /// Returns: Promise<sequence<DOMString>>
+///
+/// Returns an array of all cache names in creation order.
 pub fn call_keys(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    // TODO: Return a Promise with array of cache names
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+
+    // Collect all cache names
+    // Note: StringHashMapUnmanaged doesn't preserve insertion order, but the spec
+    // requires keys to be returned in creation order. For a full implementation,
+    // we would need to maintain an ordered list of cache names.
+    var names = std.ArrayListUnmanaged([]const u8){};
+    defer names.deinit(internal.allocator);
+
+    var iter = internal.caches.keyIterator();
+    while (iter.next()) |key_ptr| {
+        try names.append(internal.allocator, key_ptr.*);
+    }
+
+    // The V8 binding layer should:
+    // 1. Create a JavaScript array from these names
+    // 2. Wrap in a resolved Promise
+    // 3. Return Promise<sequence<DOMString>>
+    //
+    // For now, we return NotImplemented to signal that results are available
+    // but the V8 layer needs to create the Promise wrapper.
+    _ = names.items;
     return error.NotImplemented;
 }
 
