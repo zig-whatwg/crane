@@ -25,9 +25,24 @@
 //! <script src="/resources/testharnessreport.js"></script>
 //! <script>/* test code */</script>
 //! ```
+//!
+//! ## Test File Types
+//!
+//! - `.any.js` - Runs in multiple contexts (window + worker by default)
+//! - `.window.js` - Runs only in window context
+//! - `.worker.js` - Runs only in dedicated worker context
+//! - `.html` - Full HTML documents with embedded scripts
 
 const std = @import("std");
 const config = @import("config.zig");
+
+/// Error types for test parsing
+pub const ParseError = error{
+    UnsupportedTestFormat,
+    InvalidMetadata,
+    MalformedHtml,
+    OutOfMemory,
+};
 
 /// Global context type for test execution
 pub const GlobalType = enum {
@@ -40,6 +55,7 @@ pub const GlobalType = enum {
     /// Service worker context
     serviceworker,
 
+    /// Parse a global type from a string
     pub fn fromString(str: []const u8) ?GlobalType {
         if (std.mem.eql(u8, str, "window")) return .window;
         if (std.mem.eql(u8, str, "worker")) return .worker;
@@ -48,17 +64,38 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "serviceworker")) return .serviceworker;
         return null;
     }
+
+    /// Convert to string representation
+    pub fn toString(self: GlobalType) []const u8 {
+        return switch (self) {
+            .window => "window",
+            .worker => "worker",
+            .sharedworker => "sharedworker",
+            .serviceworker => "serviceworker",
+        };
+    }
 };
 
 /// Script reference in a test file
 pub const ScriptRef = struct {
-    /// Script path (absolute or relative)
+    /// Script path (absolute or relative) or inline content
     path: []const u8,
-    /// Whether this is an inline script (content is the script itself)
+    /// Whether this is an inline script (path field contains the script content)
     inline_script: bool = false,
+    /// Script type attribute (e.g., "module", "text/javascript")
+    script_type: ?[]const u8 = null,
 
     pub fn deinit(self: *ScriptRef, allocator: std.mem.Allocator) void {
         allocator.free(self.path);
+        if (self.script_type) |t| allocator.free(t);
+    }
+
+    /// Check if this is a module script
+    pub fn isModule(self: ScriptRef) bool {
+        if (self.script_type) |t| {
+            return std.mem.eql(u8, t, "module");
+        }
+        return false;
     }
 };
 
@@ -75,16 +112,16 @@ pub const TestMetadata = struct {
     scripts: std.ArrayList(ScriptRef),
     /// Global contexts to run in (for .any.js)
     globals: std.ArrayList(GlobalType),
-    /// Spec reference links
+    /// Spec reference links (from link rel="help")
     spec_links: std.ArrayList([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) TestMetadata {
         return TestMetadata{
             .allocator = allocator,
-            .variants = .{},
-            .scripts = .{},
-            .globals = .{},
-            .spec_links = .{},
+            .variants = .empty,
+            .scripts = .empty,
+            .globals = .empty,
+            .spec_links = .empty,
         };
     }
 
@@ -106,11 +143,28 @@ pub const TestMetadata = struct {
         });
     }
 
+    /// Add a script dependency with type
+    pub fn addScriptWithType(self: *TestMetadata, path: []const u8, script_type: ?[]const u8) !void {
+        try self.scripts.append(self.allocator, ScriptRef{
+            .path = try self.allocator.dupe(u8, path),
+            .script_type = if (script_type) |t| try self.allocator.dupe(u8, t) else null,
+        });
+    }
+
     /// Add an inline script
     pub fn addInlineScript(self: *TestMetadata, content: []const u8) !void {
         try self.scripts.append(self.allocator, ScriptRef{
             .path = try self.allocator.dupe(u8, content),
             .inline_script = true,
+        });
+    }
+
+    /// Add an inline script with type
+    pub fn addInlineScriptWithType(self: *TestMetadata, content: []const u8, script_type: ?[]const u8) !void {
+        try self.scripts.append(self.allocator, ScriptRef{
+            .path = try self.allocator.dupe(u8, content),
+            .inline_script = true,
+            .script_type = if (script_type) |t| try self.allocator.dupe(u8, t) else null,
         });
     }
 
@@ -121,7 +175,27 @@ pub const TestMetadata = struct {
 
     /// Add a global context
     pub fn addGlobal(self: *TestMetadata, global: GlobalType) !void {
+        // Check if already exists to avoid duplicates
+        for (self.globals.items) |g| {
+            if (g == global) return;
+        }
         try self.globals.append(self.allocator, global);
+    }
+
+    /// Add a spec reference link
+    pub fn addSpecLink(self: *TestMetadata, link: []const u8) !void {
+        try self.spec_links.append(self.allocator, try self.allocator.dupe(u8, link));
+    }
+
+    /// Check if this test has any variants
+    pub fn hasVariants(self: TestMetadata) bool {
+        return self.variants.items.len > 0;
+    }
+
+    /// Get the effective test count (considering variants)
+    pub fn getEffectiveTestCount(self: TestMetadata) usize {
+        const variant_count = if (self.variants.items.len > 0) self.variants.items.len else 1;
+        return variant_count * @max(1, self.globals.items.len);
     }
 };
 
@@ -145,6 +219,7 @@ pub const ParsedTest = struct {
 };
 
 /// Parse META comments from a JavaScript test file
+/// Note: This does NOT add default globals - callers should set defaults based on file type
 pub fn parseMetaComments(allocator: std.mem.Allocator, content: []const u8) !TestMetadata {
     var metadata = TestMetadata.init(allocator);
     errdefer metadata.deinit();
@@ -169,6 +244,7 @@ pub fn parseMetaComments(allocator: std.mem.Allocator, content: []const u8) !Tes
             const value = std.mem.trim(u8, meta_content[eq_pos + 1 ..], &std.ascii.whitespace);
 
             if (std.mem.eql(u8, key, "title")) {
+                if (metadata.title) |t| allocator.free(t);
                 metadata.title = try allocator.dupe(u8, value);
             } else if (std.mem.eql(u8, key, "script")) {
                 try metadata.addScript(value);
@@ -179,7 +255,7 @@ pub fn parseMetaComments(allocator: std.mem.Allocator, content: []const u8) !Tes
             } else if (std.mem.eql(u8, key, "variant")) {
                 try metadata.addVariant(value);
             } else if (std.mem.eql(u8, key, "global")) {
-                // Parse comma-separated globals
+                // Parse comma-separated globals (e.g., "window,worker,sharedworker")
                 var globals = std.mem.splitScalar(u8, value, ',');
                 while (globals.next()) |g| {
                     const gtrim = std.mem.trim(u8, g, &std.ascii.whitespace);
@@ -188,22 +264,25 @@ pub fn parseMetaComments(allocator: std.mem.Allocator, content: []const u8) !Tes
                     }
                 }
             }
+            // Other META keys (like "quic") are ignored for now
         }
-    }
-
-    // Default globals for .any.js files
-    if (metadata.globals.items.len == 0) {
-        try metadata.addGlobal(.window);
-        try metadata.addGlobal(.worker);
     }
 
     return metadata;
 }
 
 /// Parse a .any.js test file
+/// .any.js files run in multiple contexts by default (window + worker)
+/// unless explicitly specified via // META: global=...
 pub fn parseAnyJs(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !ParsedTest {
     var metadata = try parseMetaComments(allocator, content);
     errdefer metadata.deinit();
+
+    // Default globals for .any.js: window + worker
+    if (metadata.globals.items.len == 0) {
+        try metadata.addGlobal(.window);
+        try metadata.addGlobal(.worker);
+    }
 
     return ParsedTest{
         .allocator = allocator,
@@ -251,7 +330,8 @@ pub fn parseWorkerJs(allocator: std.mem.Allocator, path: []const u8, content: []
 }
 
 /// Parse an HTML test file
-/// Note: This is a simplified parser that extracts scripts. For full HTML parsing,
+/// Extracts metadata from meta tags, title, script tags, and link tags.
+/// Note: This is a simplified regex-free parser. For full HTML parsing,
 /// use the HTML parser from src/html/.
 pub fn parseHtml(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !ParsedTest {
     var metadata = TestMetadata.init(allocator);
@@ -260,38 +340,19 @@ pub fn parseHtml(allocator: std.mem.Allocator, path: []const u8, content: []cons
     // Window context only for HTML files
     try metadata.addGlobal(.window);
 
-    // Simple extraction of meta tags and scripts
-    // TODO: Use proper HTML parser for robust extraction
-
-    // Look for timeout meta tag
-    if (std.mem.indexOf(u8, content, "name=\"timeout\"")) |_| {
-        if (std.mem.indexOf(u8, content, "content=\"long\"")) |_| {
-            metadata.timeout = .long;
-        }
+    // Extract <title> tag content
+    if (findTagContent(content, "title")) |title_content| {
+        metadata.title = try allocator.dupe(u8, title_content);
     }
 
-    // Extract script src attributes (very simplified)
-    var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, content, pos, "<script")) |script_start| {
-        const tag_end = std.mem.indexOfPos(u8, content, script_start, ">") orelse break;
+    // Extract meta tags
+    try parseHtmlMetaTags(allocator, content, &metadata);
 
-        const tag = content[script_start..tag_end];
-        if (std.mem.indexOf(u8, tag, "src=\"")) |src_start| {
-            const src_value_start = script_start + src_start + 5;
-            if (std.mem.indexOfPos(u8, content, src_value_start, "\"")) |src_end| {
-                const src = content[src_value_start..src_end];
-                try metadata.addScript(src);
-            }
-        } else if (std.mem.indexOf(u8, tag, "src='")) |src_start| {
-            const src_value_start = script_start + src_start + 5;
-            if (std.mem.indexOfPos(u8, content, src_value_start, "'")) |src_end| {
-                const src = content[src_value_start..src_end];
-                try metadata.addScript(src);
-            }
-        }
+    // Extract link tags (for spec references)
+    try parseHtmlLinkTags(allocator, content, &metadata);
 
-        pos = tag_end + 1;
-    }
+    // Extract script tags (both external and inline)
+    try parseHtmlScriptTags(allocator, content, &metadata);
 
     return ParsedTest{
         .allocator = allocator,
@@ -300,6 +361,132 @@ pub fn parseHtml(allocator: std.mem.Allocator, path: []const u8, content: []cons
         .metadata = metadata,
         .content = try allocator.dupe(u8, content),
     };
+}
+
+/// Find the content between opening and closing tags
+fn findTagContent(content: []const u8, tag_name: []const u8) ?[]const u8 {
+    // Build opening tag pattern
+    var open_tag_buf: [64]u8 = undefined;
+    const open_tag = std.fmt.bufPrint(&open_tag_buf, "<{s}", .{tag_name}) catch return null;
+
+    var close_tag_buf: [64]u8 = undefined;
+    const close_tag = std.fmt.bufPrint(&close_tag_buf, "</{s}>", .{tag_name}) catch return null;
+
+    const tag_start = std.mem.indexOf(u8, content, open_tag) orelse return null;
+    const content_start = std.mem.indexOfPos(u8, content, tag_start, ">") orelse return null;
+    const content_end = std.mem.indexOfPos(u8, content, content_start, close_tag) orelse return null;
+
+    return std.mem.trim(u8, content[content_start + 1 .. content_end], &std.ascii.whitespace);
+}
+
+/// Parse meta tags from HTML content
+fn parseHtmlMetaTags(allocator: std.mem.Allocator, content: []const u8, metadata: *TestMetadata) !void {
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, content, pos, "<meta")) |meta_start| {
+        const tag_end = std.mem.indexOfPos(u8, content, meta_start, ">") orelse break;
+        const tag = content[meta_start .. tag_end + 1];
+
+        // Extract name and content attributes
+        const name = extractAttribute(tag, "name");
+        const attr_content = extractAttribute(tag, "content");
+
+        if (name != null and attr_content != null) {
+            const name_val = name.?;
+            const content_val = attr_content.?;
+
+            if (std.mem.eql(u8, name_val, "timeout")) {
+                if (std.mem.eql(u8, content_val, "long")) {
+                    metadata.timeout = .long;
+                }
+            } else if (std.mem.eql(u8, name_val, "variant")) {
+                try metadata.addVariant(content_val);
+            } else if (std.mem.eql(u8, name_val, "title")) {
+                if (metadata.title == null) {
+                    metadata.title = try allocator.dupe(u8, content_val);
+                }
+            }
+        }
+
+        pos = tag_end + 1;
+    }
+}
+
+/// Parse link tags from HTML content (for spec references)
+fn parseHtmlLinkTags(_: std.mem.Allocator, content: []const u8, metadata: *TestMetadata) !void {
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, content, pos, "<link")) |link_start| {
+        const tag_end = std.mem.indexOfPos(u8, content, link_start, ">") orelse break;
+        const tag = content[link_start .. tag_end + 1];
+
+        const rel = extractAttribute(tag, "rel");
+        const href = extractAttribute(tag, "href");
+
+        if (rel != null and href != null) {
+            if (std.mem.eql(u8, rel.?, "help")) {
+                try metadata.addSpecLink(href.?);
+            }
+        }
+
+        pos = tag_end + 1;
+    }
+}
+
+/// Parse script tags from HTML content (both external and inline)
+fn parseHtmlScriptTags(_: std.mem.Allocator, content: []const u8, metadata: *TestMetadata) !void {
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, content, pos, "<script")) |script_start| {
+        const tag_end = std.mem.indexOfPos(u8, content, script_start, ">") orelse break;
+        const tag = content[script_start .. tag_end + 1];
+
+        // Get script type attribute
+        const script_type = extractAttribute(tag, "type");
+
+        // Check for external script (src attribute)
+        if (extractAttribute(tag, "src")) |src| {
+            try metadata.addScriptWithType(src, script_type);
+        } else {
+            // Look for inline script content
+            const close_tag = "</script>";
+            if (std.mem.indexOfPos(u8, content, tag_end + 1, close_tag)) |close_start| {
+                const script_content = content[tag_end + 1 .. close_start];
+                const trimmed = std.mem.trim(u8, script_content, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    try metadata.addInlineScriptWithType(trimmed, script_type);
+                }
+                pos = close_start + close_tag.len;
+                continue;
+            }
+        }
+
+        pos = tag_end + 1;
+    }
+}
+
+/// Extract an attribute value from an HTML tag
+/// Handles both single and double quotes
+fn extractAttribute(tag: []const u8, attr_name: []const u8) ?[]const u8 {
+    // Try with double quotes: attr="value"
+    var buf: [128]u8 = undefined;
+    const pattern_dq = std.fmt.bufPrint(&buf, "{s}=\"", .{attr_name}) catch return null;
+
+    if (std.mem.indexOf(u8, tag, pattern_dq)) |start| {
+        const value_start = start + pattern_dq.len;
+        if (std.mem.indexOfPos(u8, tag, value_start, "\"")) |value_end| {
+            return tag[value_start..value_end];
+        }
+    }
+
+    // Try with single quotes: attr='value'
+    const pattern_sq = std.fmt.bufPrint(&buf, "{s}='", .{attr_name}) catch return null;
+
+    if (std.mem.indexOf(u8, tag, pattern_sq)) |start| {
+        const value_start = start + pattern_sq.len;
+        if (std.mem.indexOfPos(u8, tag, value_start, "'")) |value_end| {
+            return tag[value_start..value_end];
+        }
+    }
+
+    return null;
 }
 
 /// Parse a test file based on its extension
@@ -338,6 +525,156 @@ pub fn resolveScriptPath(
         return std.fs.path.join(allocator, &.{ wpt_root, test_dir, script_path });
     }
 }
+
+/// Loaded script content
+pub const LoadedScript = struct {
+    /// Resolved path to the script
+    path: []const u8,
+    /// Script content (loaded from file or inline)
+    content: []const u8,
+    /// Whether this is an inline script
+    inline_script: bool,
+    /// Script type (e.g., "module")
+    script_type: ?[]const u8,
+
+    pub fn deinit(self: *LoadedScript, allocator: std.mem.Allocator) void {
+        allocator.free(self.path);
+        allocator.free(self.content);
+        if (self.script_type) |t| allocator.free(t);
+    }
+};
+
+/// Script loader for resolving and loading test script dependencies
+pub const ScriptLoader = struct {
+    allocator: std.mem.Allocator,
+    /// Path to WPT root directory
+    wpt_root: []const u8,
+    /// Cache of loaded scripts (path -> content)
+    cache: std.StringHashMap([]const u8),
+
+    pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) ScriptLoader {
+        return ScriptLoader{
+            .allocator = allocator,
+            .wpt_root = wpt_root,
+            .cache = std.StringHashMap([]const u8).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *ScriptLoader) void {
+        // Free cached content
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.cache.deinit();
+    }
+
+    /// Resolve a script path relative to a test file
+    pub fn resolve(self: *ScriptLoader, test_path: []const u8, script_ref: ScriptRef) ![]const u8 {
+        if (script_ref.inline_script) {
+            // Inline scripts don't need path resolution
+            return self.allocator.dupe(u8, script_ref.path);
+        }
+        return resolveScriptPath(self.allocator, self.wpt_root, test_path, script_ref.path);
+    }
+
+    /// Load a script from file (with caching)
+    pub fn load(self: *ScriptLoader, resolved_path: []const u8) ![]const u8 {
+        // Check cache first
+        if (self.cache.get(resolved_path)) |cached| {
+            return cached;
+        }
+
+        // Load from file
+        const file = std.fs.cwd().openFile(resolved_path, .{}) catch |err| {
+            return err;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| {
+            return err;
+        };
+
+        // Cache the content
+        const key = try self.allocator.dupe(u8, resolved_path);
+        try self.cache.put(key, content);
+
+        return content;
+    }
+
+    /// Load all scripts for a parsed test
+    pub fn loadAll(self: *ScriptLoader, parsed_test: *const ParsedTest) !std.ArrayList(LoadedScript) {
+        var scripts = std.ArrayList(LoadedScript).init(self.allocator);
+        errdefer {
+            for (scripts.items) |*s| s.deinit(self.allocator);
+            scripts.deinit();
+        }
+
+        for (parsed_test.metadata.scripts.items) |script_ref| {
+            if (script_ref.inline_script) {
+                // Inline script - content is already available
+                try scripts.append(LoadedScript{
+                    .path = try self.allocator.dupe(u8, "inline"),
+                    .content = try self.allocator.dupe(u8, script_ref.path),
+                    .inline_script = true,
+                    .script_type = if (script_ref.script_type) |t| try self.allocator.dupe(u8, t) else null,
+                });
+            } else {
+                // External script - resolve and load
+                const resolved = try self.resolve(parsed_test.path, script_ref);
+                defer self.allocator.free(resolved);
+
+                const content = try self.load(resolved);
+                try scripts.append(LoadedScript{
+                    .path = try self.allocator.dupe(u8, resolved),
+                    .content = try self.allocator.dupe(u8, content),
+                    .inline_script = false,
+                    .script_type = if (script_ref.script_type) |t| try self.allocator.dupe(u8, t) else null,
+                });
+            }
+        }
+
+        return scripts;
+    }
+
+    /// Clear the script cache
+    pub fn clearCache(self: *ScriptLoader) void {
+        var iter = self.cache.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.cache.clearRetainingCapacity();
+    }
+};
+
+/// Extract test metadata from content based on file type
+/// This is a convenience function that combines parsing and metadata extraction
+pub fn extractMetadata(allocator: std.mem.Allocator, file_type: config.FileType, content: []const u8) !TestMetadata {
+    return switch (file_type) {
+        .any_js, .window_js, .worker_js => try parseMetaComments(allocator, content),
+        .html => blk: {
+            var metadata = TestMetadata.init(allocator);
+            errdefer metadata.deinit();
+
+            // Extract title
+            if (findTagContent(content, "title")) |title_content| {
+                metadata.title = try allocator.dupe(u8, title_content);
+            }
+
+            // Extract meta tags
+            try parseHtmlMetaTags(allocator, content, &metadata);
+
+            break :blk metadata;
+        },
+        .unknown => ParseError.UnsupportedTestFormat,
+    };
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
 
 test "parseMetaComments basic" {
     const testing = std.testing;
@@ -395,4 +732,261 @@ test "resolveScriptPath" {
     const rel = try resolveScriptPath(allocator, "tests/wpt", "url/test.any.js", "./helper.js");
     defer allocator.free(rel);
     try testing.expectEqualStrings("tests/wpt/url/helper.js", rel);
+}
+
+test "parseAnyJs with default globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: title=Test
+        \\// META: script=/common/utils.js
+        \\test(() => {});
+    ;
+
+    var parsed = try parseAnyJs(allocator, "url/test.any.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqualStrings("Test", parsed.metadata.title.?);
+    try testing.expectEqual(config.FileType.any_js, parsed.file_type);
+    try testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
+}
+
+test "parseAnyJs with explicit globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=window,serviceworker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseAnyJs(allocator, "sw/test.any.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.serviceworker, parsed.metadata.globals.items[1]);
+}
+
+test "parseWindowJs forces window context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=worker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseWindowJs(allocator, "dom/test.window.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(config.FileType.window_js, parsed.file_type);
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+}
+
+test "parseWorkerJs forces worker context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: title=Worker test
+        \\// META: script=./helper.js
+        \\importScripts("/resources/testharness.js");
+    ;
+
+    var parsed = try parseWorkerJs(allocator, "workers/test.worker.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(config.FileType.worker_js, parsed.file_type);
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[0]);
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.scripts.items.len);
+}
+
+test "parseHtml extracts metadata" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\<!DOCTYPE html>
+        \\<html>
+        \\<head>
+        \\<title>URL Test</title>
+        \\<meta name="timeout" content="long">
+        \\<meta name="variant" content="?test=1">
+        \\<meta name="variant" content="?test=2">
+        \\<link rel="help" href="https://url.spec.whatwg.org/">
+        \\<script src="/resources/testharness.js"></script>
+        \\<script src="/resources/testharnessreport.js"></script>
+        \\</head>
+        \\<body>
+        \\<script>
+        \\test(() => { assert_true(true); });
+        \\</script>
+        \\</body>
+        \\</html>
+    ;
+
+    var parsed = try parseHtml(allocator, "url/test.html", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(config.FileType.html, parsed.file_type);
+    try testing.expectEqualStrings("URL Test", parsed.metadata.title.?);
+    try testing.expectEqual(config.Timeout.long, parsed.metadata.timeout);
+    try testing.expectEqual(@as(usize, 2), parsed.metadata.variants.items.len);
+    try testing.expectEqualStrings("?test=1", parsed.metadata.variants.items[0]);
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.spec_links.items.len);
+    // External scripts + inline script
+    try testing.expectEqual(@as(usize, 3), parsed.metadata.scripts.items.len);
+    try testing.expect(!parsed.metadata.scripts.items[0].inline_script);
+    try testing.expect(!parsed.metadata.scripts.items[1].inline_script);
+    try testing.expect(parsed.metadata.scripts.items[2].inline_script);
+}
+
+test "parseHtml with single quotes" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\<script src='/resources/testharness.js'></script>
+    ;
+
+    var parsed = try parseHtml(allocator, "test.html", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.scripts.items.len);
+    try testing.expectEqualStrings("/resources/testharness.js", parsed.metadata.scripts.items[0].path);
+}
+
+test "parseMetaComments with multiple scripts" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: script=/resources/testharness.js
+        \\// META: script=/resources/testharnessreport.js
+        \\// META: script=/common/subset-tests-by-key.js
+        \\// META: script=./resources/helper.js
+        \\test(() => {});
+    ;
+
+    var metadata = try parseMetaComments(allocator, content);
+    defer metadata.deinit();
+
+    try testing.expectEqual(@as(usize, 4), metadata.scripts.items.len);
+    try testing.expectEqualStrings("/resources/testharness.js", metadata.scripts.items[0].path);
+    try testing.expectEqualStrings("/resources/testharnessreport.js", metadata.scripts.items[1].path);
+    try testing.expectEqualStrings("/common/subset-tests-by-key.js", metadata.scripts.items[2].path);
+    try testing.expectEqualStrings("./resources/helper.js", metadata.scripts.items[3].path);
+}
+
+test "parseMetaComments with multiple variants" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: variant=?include=file
+        \\// META: variant=?include=javascript
+        \\// META: variant=?include=mailto
+        \\// META: variant=?exclude=(file|javascript|mailto)
+        \\test(() => {});
+    ;
+
+    var metadata = try parseMetaComments(allocator, content);
+    defer metadata.deinit();
+
+    try testing.expectEqual(@as(usize, 4), metadata.variants.items.len);
+    try testing.expectEqualStrings("?include=file", metadata.variants.items[0]);
+    try testing.expectEqualStrings("?include=javascript", metadata.variants.items[1]);
+    try testing.expectEqualStrings("?include=mailto", metadata.variants.items[2]);
+    try testing.expectEqualStrings("?exclude=(file|javascript|mailto)", metadata.variants.items[3]);
+}
+
+test "parseTestFile dispatches correctly" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const js_content = "test(() => {});";
+
+    // Test .any.js
+    {
+        var parsed = try parseTestFile(allocator, "test.any.js", js_content);
+        defer parsed.deinit();
+        try testing.expectEqual(config.FileType.any_js, parsed.file_type);
+    }
+
+    // Test .window.js
+    {
+        var parsed = try parseTestFile(allocator, "test.window.js", js_content);
+        defer parsed.deinit();
+        try testing.expectEqual(config.FileType.window_js, parsed.file_type);
+    }
+
+    // Test .worker.js
+    {
+        var parsed = try parseTestFile(allocator, "test.worker.js", js_content);
+        defer parsed.deinit();
+        try testing.expectEqual(config.FileType.worker_js, parsed.file_type);
+    }
+
+    // Test .html
+    {
+        const html_content = "<html></html>";
+        var parsed = try parseTestFile(allocator, "test.html", html_content);
+        defer parsed.deinit();
+        try testing.expectEqual(config.FileType.html, parsed.file_type);
+    }
+}
+
+test "GlobalType.fromString" {
+    try std.testing.expectEqual(GlobalType.window, GlobalType.fromString("window").?);
+    try std.testing.expectEqual(GlobalType.worker, GlobalType.fromString("worker").?);
+    try std.testing.expectEqual(GlobalType.worker, GlobalType.fromString("dedicatedworker").?);
+    try std.testing.expectEqual(GlobalType.sharedworker, GlobalType.fromString("sharedworker").?);
+    try std.testing.expectEqual(GlobalType.serviceworker, GlobalType.fromString("serviceworker").?);
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("invalid"));
+}
+
+test "GlobalType.toString" {
+    try std.testing.expectEqualStrings("window", GlobalType.window.toString());
+    try std.testing.expectEqualStrings("worker", GlobalType.worker.toString());
+    try std.testing.expectEqualStrings("sharedworker", GlobalType.sharedworker.toString());
+    try std.testing.expectEqualStrings("serviceworker", GlobalType.serviceworker.toString());
+}
+
+test "TestMetadata.getEffectiveTestCount" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var metadata = TestMetadata.init(allocator);
+    defer metadata.deinit();
+
+    // No variants, no globals = 1 test
+    try testing.expectEqual(@as(usize, 1), metadata.getEffectiveTestCount());
+
+    // Add variants
+    try metadata.addVariant("?a");
+    try metadata.addVariant("?b");
+    try testing.expectEqual(@as(usize, 2), metadata.getEffectiveTestCount());
+
+    // Add globals
+    try metadata.addGlobal(.window);
+    try metadata.addGlobal(.worker);
+    try testing.expectEqual(@as(usize, 4), metadata.getEffectiveTestCount()); // 2 variants * 2 globals
+}
+
+test "extractAttribute" {
+    // Double quotes
+    try std.testing.expectEqualStrings("value", extractAttribute("name=\"value\"", "name").?);
+    try std.testing.expectEqualStrings("/path/to/script.js", extractAttribute("<script src=\"/path/to/script.js\">", "src").?);
+
+    // Single quotes
+    try std.testing.expectEqualStrings("value", extractAttribute("name='value'", "name").?);
+
+    // Not found
+    try std.testing.expectEqual(@as(?[]const u8, null), extractAttribute("<script>", "src"));
 }
