@@ -419,40 +419,101 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
     }
 
     // 11. Let promise be ! stream.[[controller]].[[AbortSteps]](abortRequest's reason)
-    // For now, we'll handle this synchronously. Full async handling would require
-    // promise chaining infrastructure (see whatwg-co23 blocker).
-    var abort_succeeded = true;
-
     if (internal.controller) |controller| {
         const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
-        const controller_state = controller.getState(interfaces.WritableStreamDefaultController.State);
-        if (controller_state.own._internal) |controller_internal_ptr| {
-            const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
 
-            // Call abort algorithm if provided
-            if (controller_internal.abort_algorithm) |abort_fn| {
-                // Create abort reason - use provided reason or undefined
-                const abort_callback: callbacks.UnderlyingSinkAbortCallback = @ptrCast(@alignCast(abort_fn));
-                // Use reason if provided, wrapped in Opt
-                const reason_opt = if (abort_request.reason) |r| webidl.Opt(*const anyopaque).passed(r) else webidl.Opt(*const anyopaque).notPassed();
-                // Call the abort callback - it returns a promise result
-                // The callback should return a valid pointer (representing a promise)
-                _ = abort_callback(reason_opt);
-                // Callback invoked successfully
-                abort_succeeded = true;
-            }
+        // Get the abort reason (or use a default)
+        const reason: *const anyopaque = abort_request.reason orelse @ptrCast(&stored_exception);
+
+        // Call abortSteps which properly invokes the V8 abort callback
+        const abort_promise = WritableStreamDefaultControllerImpl.abortSteps(controller, reason) catch {
+            // On error, reject the abort request promise
+            abort_request.promise.*.reject(stored_exception);
+            writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+            internal.allocator.destroy(abort_request);
+            return;
+        };
+
+        // Check if the promise is already settled
+        if (abort_promise.isFulfilled()) {
+            // 12. Upon fulfillment of abort promise
+            // 12.1. Resolve abortRequest's promise with undefined
+            abort_request.promise.*.fulfill({});
+            writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+            internal.allocator.destroy(abort_request);
+            return;
         }
-    }
 
-    // 12. Upon fulfillment of abort promise
-    if (abort_succeeded) {
-        // 12.1. Resolve abortRequest's promise with undefined
-        abort_request.promise.*.fulfill({});
+        if (abort_promise.isRejected()) {
+            // 13. Upon rejection with reason r
+            // 13.1. Reject abortRequest's promise with r
+            const abort_exception = abort_promise.state.rejected;
+            abort_request.promise.*.reject(abort_exception);
+            writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+            internal.allocator.destroy(abort_request);
+            return;
+        }
+
+        // Promise is pending - allocate context first
+        const async_ctx = internal.allocator.create(FinishErroringAbortContext) catch {
+            // Fallback: fulfill immediately on allocation failure
+            abort_request.promise.*.fulfill({});
+            writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+            internal.allocator.destroy(abort_request);
+            return;
+        };
+        async_ctx.* = .{
+            .instance = instance,
+            .internal = internal,
+            .abort_request = abort_request,
+            .allocator = internal.allocator,
+        };
+
+        // Attach handlers for async settlement
+        abort_promise.onSettleCtx(
+            struct {
+                fn onFulfilled(ctx_ptr: ?*anyopaque, _: void) anyerror!void {
+                    const ctx: *FinishErroringAbortContext = @ptrCast(@alignCast(ctx_ptr orelse return error.InvalidState));
+                    defer ctx.allocator.destroy(ctx);
+
+                    // 12.1. Resolve abortRequest's promise with undefined
+                    ctx.abort_request.promise.*.fulfill({});
+
+                    // 12.2. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+                    writableStreamRejectCloseAndClosedPromiseIfNeeded(ctx.instance, ctx.internal);
+
+                    ctx.allocator.destroy(ctx.abort_request);
+                }
+            }.onFulfilled,
+            struct {
+                fn onRejected(ctx_ptr: ?*anyopaque, exception: webidl.errors.Exception) anyerror!void {
+                    const ctx: *FinishErroringAbortContext = @ptrCast(@alignCast(ctx_ptr orelse return error.InvalidState));
+                    defer ctx.allocator.destroy(ctx);
+
+                    // 13.1. Reject abortRequest's promise with r
+                    ctx.abort_request.promise.*.reject(exception);
+
+                    // 13.2. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+                    writableStreamRejectCloseAndClosedPromiseIfNeeded(ctx.instance, ctx.internal);
+
+                    ctx.allocator.destroy(ctx.abort_request);
+                }
+            }.onRejected,
+            @ptrCast(async_ctx),
+        ) catch {
+            // Fallback: fulfill immediately
+            internal.allocator.destroy(async_ctx);
+            abort_request.promise.*.fulfill({});
+            writableStreamRejectCloseAndClosedPromiseIfNeeded(instance, internal);
+            internal.allocator.destroy(abort_request);
+            return;
+        };
+
+        // Return here - handlers will complete the operation
+        return;
     } else {
-        // 13. Upon rejection with reason r
-        // 13.1. Reject abortRequest's promise with r
-        const abort_exception = webidl.errors.Exception.typeError(internal.allocator, "Abort algorithm failed") catch stored_exception;
-        abort_request.promise.*.reject(abort_exception);
+        // No controller - just fulfill
+        abort_request.promise.*.fulfill({});
     }
 
     // 12.2/13.2. Perform ! WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
@@ -989,6 +1050,15 @@ pub fn invokePendingStartCallback(
         onWritableStartFulfilledImmediate(controller_internal);
     }
 }
+
+/// Context for async abort handling in writableStreamFinishErroring
+/// Allocated when abort promise is pending, freed when promise settles
+const FinishErroringAbortContext = struct {
+    instance: *runtime.Instance,
+    internal: *InternalState,
+    abort_request: *AbortRequest,
+    allocator: std.mem.Allocator,
+};
 
 /// Context for V8 promise callbacks from invokePendingStartCallback
 /// This is allocated and passed to the V8 promise handlers, then freed in the callbacks

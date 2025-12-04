@@ -846,18 +846,135 @@ pub fn abortSteps(controller: *runtime.Instance, reason: *const anyopaque) !*Asy
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
 
-    // 1. Perform abort algorithm
-    // Future: Actually invoke the abort callback
-    _ = reason;
+    // Get event loop from stream
+    const stream = internal.stream orelse return error.InvalidState;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+    const event_loop = stream_internal.event_loop;
 
-    // 2. Clear algorithms
+    // 1. Perform abort algorithm with reason
+    if (internal.abort_algorithm) |abort_fn| {
+        // Check if we have V8 context (runtime mode)
+        if (internal.isolate != null and internal.v8_context != null) {
+            // V8 runtime mode: invoke real JavaScript callback
+            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
+            const abort_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(abort_fn)));
+
+            // Convert reason to V8 Value (treat reason as raw V8 value pointer)
+            const reason_v8: *v8_engine.ffi.Value = @ptrCast(@alignCast(@constCast(reason)));
+
+            // Invoke abort_algorithm(reason) → Promise<void>
+            var abort_promise = v8_engine.streams_callbacks.invokeAbortAlgorithm(
+                isolate,
+                v8_context,
+                abort_function,
+                reason_v8,
+            ) catch {
+                // On error, return rejected promise
+                const promise = try AsyncPromise(void).init(allocator, event_loop);
+                const exception = try webidl.errors.Exception.typeError(allocator, "Abort algorithm invocation failed");
+                promise.reject(exception);
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return promise;
+            };
+            defer abort_promise.deinit();
+
+            // Create AsyncPromise to track result
+            const result_promise = try AsyncPromise(void).init(allocator, event_loop);
+
+            // Create callback context
+            const abort_ctx = try allocator.create(AbortCallbackContext);
+            abort_ctx.* = .{
+                .controller = controller,
+                .result_promise = result_promise,
+                .allocator = allocator,
+            };
+
+            // Create V8 callbacks for Promise handlers
+            const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+                allocator,
+                isolate,
+                v8_context,
+                onAbortFulfilled,
+                abort_ctx,
+            ) catch {
+                allocator.destroy(abort_ctx);
+                result_promise.fulfill({});
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return result_promise;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+
+            const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+                allocator,
+                isolate,
+                v8_context,
+                onAbortRejected,
+                abort_ctx,
+            ) catch {
+                allocator.destroy(abort_ctx);
+                result_promise.fulfill({});
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return result_promise;
+            };
+            defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+
+            // Chain Promise handlers
+            _ = abort_promise.then(onFulfilled, onRejected) catch {
+                allocator.destroy(abort_ctx);
+                result_promise.fulfill({});
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return result_promise;
+            };
+
+            // Note: Don't clear algorithms here - let the callback do it after promise settles
+            return result_promise;
+        }
+    }
+
+    // 2. Clear algorithms (no abort callback or no V8 context)
     writableStreamDefaultControllerClearAlgorithms(controller);
 
-    // 3. Return fulfilled promise
-    // Future: Return actual promise from abort algorithm
-    const promise = try AsyncPromise(void).init(allocator);
-    promise.resolve({});
+    // 3. Return fulfilled promise (fallback/testing mode)
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    promise.fulfill({});
     return promise;
+}
+
+/// Context for abort callback
+const AbortCallbackContext = struct {
+    controller: *runtime.Instance,
+    result_promise: *AsyncPromise(void),
+    allocator: std.mem.Allocator,
+};
+
+/// Callback for abort promise fulfillment
+fn onAbortFulfilled(ctx_ptr: *anyopaque) void {
+    const ctx: *AbortCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    // Clear algorithms after abort completes
+    writableStreamDefaultControllerClearAlgorithms(ctx.controller);
+
+    // Fulfill the result promise
+    ctx.result_promise.fulfill({});
+}
+
+/// Callback for abort promise rejection
+fn onAbortRejected(ctx_ptr: *anyopaque, _: *v8_engine.ffi.Value) void {
+    const ctx: *AbortCallbackContext = @ptrCast(@alignCast(ctx_ptr));
+    defer ctx.allocator.destroy(ctx);
+
+    // Clear algorithms after abort completes
+    writableStreamDefaultControllerClearAlgorithms(ctx.controller);
+
+    // Reject the result promise
+    const exception = webidl.errors.Exception.typeError(ctx.allocator, "Abort algorithm rejected") catch {
+        ctx.result_promise.fulfill({});
+        return;
+    };
+    ctx.result_promise.reject(exception);
 }
 
 /// [[ErrorSteps]] - Handle error state
