@@ -1,0 +1,41 @@
+name: WPT Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+
+jobs:
+  wpt:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+        
+      - name: Install V8
+        run: |
+          brew install v8
+          brew install libuv
+          
+      - name: Build
+        run: zig build
+        
+      - name: Run WPT (URL tests only for CI)
+        run: zig build wpt -- url/ 2>&1 | head -100 || true
+        continue-on-error: true
+        
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wpt-results
+          path: wpt-results/
+          if-no-files-found: ignore
