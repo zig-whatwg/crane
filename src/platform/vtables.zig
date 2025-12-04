@@ -72,17 +72,17 @@ pub const ClipboardResult = enum(i32) {
 
 /// Clipboard VTable for copy/paste operations
 pub const ClipboardVTable = extern struct {
-    /// Read plain text from clipboard.
+    /// Read plain text from clipboard (clipboard.readText())
     /// Returns length of text, or negative ClipboardResult on error.
     /// If buffer is null, returns required buffer size.
-    read_text: *const fn (
+    call_readText: *const fn (
         user_context: OpaquePtr,
         buffer: ?[*]u8,
         buffer_size: usize,
     ) callconv(.c) i32,
 
-    /// Write plain text to clipboard.
-    write_text: *const fn (
+    /// Write plain text to clipboard (clipboard.writeText())
+    call_writeText: *const fn (
         user_context: OpaquePtr,
         text: [*]const u8,
         text_len: usize,
@@ -90,14 +90,14 @@ pub const ClipboardVTable = extern struct {
 
     /// Read HTML from clipboard.
     /// Returns length of HTML, or negative ClipboardResult on error.
-    read_html: *const fn (
+    readHtml: *const fn (
         user_context: OpaquePtr,
         buffer: ?[*]u8,
         buffer_size: usize,
     ) callconv(.c) i32,
 
     /// Write HTML to clipboard (with optional plain text fallback).
-    write_html: *const fn (
+    writeHtml: *const fn (
         user_context: OpaquePtr,
         html: [*]const u8,
         html_len: usize,
@@ -106,13 +106,13 @@ pub const ClipboardVTable = extern struct {
     ) callconv(.c) ClipboardResult,
 
     /// Check if clipboard read is permitted.
-    can_read: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    canRead: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 
     /// Check if clipboard write is permitted.
-    can_write: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    canWrite: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 
     /// Check if clipboard has content.
-    has_content: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    hasContent: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 
     /// Clear clipboard contents.
     clear: *const fn (user_context: OpaquePtr) callconv(.c) ClipboardResult,
@@ -124,21 +124,21 @@ pub const ClipboardVTable = extern struct {
 
 /// Timer VTable for timing operations
 pub const TimerVTable = extern struct {
-    /// Get current time in milliseconds since epoch.
-    get_current_time: *const fn (user_context: OpaquePtr) callconv(.c) i64,
+    /// Get current time in milliseconds since epoch (Date.now())
+    getCurrentTime: *const fn (user_context: OpaquePtr) callconv(.c) i64,
 
-    /// Get high-resolution time in nanoseconds.
-    get_high_res_time: *const fn (user_context: OpaquePtr) callconv(.c) i64,
+    /// Get high-resolution time in nanoseconds (performance.now())
+    getHighResTime: *const fn (user_context: OpaquePtr) callconv(.c) i64,
 
-    /// Schedule a wakeup at the specified time (milliseconds since epoch).
-    schedule_wakeup: *const fn (user_context: OpaquePtr, time_ms: i64) callconv(.c) void,
+    /// Schedule a wakeup at the specified time (milliseconds since epoch)
+    scheduleWakeup: *const fn (user_context: OpaquePtr, time_ms: i64) callconv(.c) void,
 
-    /// Cancel any pending wakeup.
-    cancel_wakeup: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    /// Cancel any pending wakeup
+    cancelWakeup: *const fn (user_context: OpaquePtr) callconv(.c) void,
 
     /// Sleep until the next scheduled wakeup or timeout.
     /// Returns actual time slept in milliseconds.
-    sleep_until_wakeup: *const fn (
+    sleepUntilWakeup: *const fn (
         user_context: OpaquePtr,
         timeout_ms: i64, // -1 = no timeout
     ) callconv(.c) i64,
@@ -160,65 +160,65 @@ pub const CDOMRect = extern struct {
 /// Layout VTable for CSSOM View operations
 pub const LayoutVTable = extern struct {
     /// Get element's offsetWidth
-    get_offset_width: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_offsetWidth: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's offsetHeight
-    get_offset_height: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_offsetHeight: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's offsetTop
-    get_offset_top: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_offsetTop: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's offsetLeft
-    get_offset_left: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_offsetLeft: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's offsetParent (returns null if none)
-    get_offset_parent: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) OpaquePtr,
+    get_offsetParent: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) OpaquePtr,
 
     /// Get element's clientWidth
-    get_client_width: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_clientWidth: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's clientHeight
-    get_client_height: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_clientHeight: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's clientTop
-    get_client_top: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_clientTop: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's clientLeft
-    get_client_left: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_clientLeft: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's scrollWidth
-    get_scroll_width: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_scrollWidth: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's scrollHeight
-    get_scroll_height: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_scrollHeight: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Get element's scrollTop
-    get_scroll_top: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_scrollTop: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Set element's scrollTop
-    set_scroll_top: *const fn (user_context: OpaquePtr, element: OpaquePtr, value: f64) callconv(.c) void,
+    set_scrollTop: *const fn (user_context: OpaquePtr, element: OpaquePtr, value: f64) callconv(.c) void,
 
     /// Get element's scrollLeft
-    get_scroll_left: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
+    get_scrollLeft: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) f64,
 
     /// Set element's scrollLeft
-    set_scroll_left: *const fn (user_context: OpaquePtr, element: OpaquePtr, value: f64) callconv(.c) void,
+    set_scrollLeft: *const fn (user_context: OpaquePtr, element: OpaquePtr, value: f64) callconv(.c) void,
 
-    /// Get element's bounding client rect
-    get_bounding_client_rect: *const fn (
+    /// Get element's bounding client rect (getBoundingClientRect)
+    call_getBoundingClientRect: *const fn (
         user_context: OpaquePtr,
         element: OpaquePtr,
         out_rect: *CDOMRect,
     ) callconv(.c) void,
 
     /// Check if element is rendered (not display: none)
-    is_element_rendered: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) bool,
+    isElementRendered: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) bool,
 
     /// Mark element as needing layout recalculation
-    mark_dirty: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) void,
+    markDirty: *const fn (user_context: OpaquePtr, element: OpaquePtr) callconv(.c) void,
 
     /// Force synchronous layout computation
-    force_layout: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    forceLayout: *const fn (user_context: OpaquePtr) callconv(.c) void,
 };
 
 // =============================================================================
@@ -243,7 +243,7 @@ pub const NotificationResult = enum(i32) {
     error_unknown = -99,
 };
 
-/// Notification options (C-compatible)
+/// Notification options (C-compatible) - NotificationOptions
 pub const CNotificationOptions = extern struct {
     title: [*]const u8,
     title_len: usize,
@@ -255,7 +255,7 @@ pub const CNotificationOptions = extern struct {
     icon_len: usize,
     badge: ?[*]const u8,
     badge_len: usize,
-    require_interaction: bool,
+    requireInteraction: bool,
     silent: bool,
     timestamp: i64, // -1 = use current time
 };
@@ -265,23 +265,23 @@ pub const NotificationHandle = u64;
 
 /// Notification VTable
 pub const NotificationVTable = extern struct {
-    /// Get current permission state
+    /// Get current permission state (Notification.permission)
     get_permission: *const fn (user_context: OpaquePtr) callconv(.c) NotificationPermission,
 
-    /// Request permission from user
-    request_permission: *const fn (user_context: OpaquePtr) callconv(.c) NotificationPermission,
+    /// Request permission from user (Notification.requestPermission())
+    call_requestPermission: *const fn (user_context: OpaquePtr) callconv(.c) NotificationPermission,
 
-    /// Show a notification. Returns handle on success, 0 on failure.
+    /// Show a notification (new Notification()). Returns handle on success, 0 on failure.
     show: *const fn (
         user_context: OpaquePtr,
         options: *const CNotificationOptions,
     ) callconv(.c) NotificationHandle,
 
-    /// Close a notification
-    close: *const fn (user_context: OpaquePtr, handle: NotificationHandle) callconv(.c) NotificationResult,
+    /// Close a notification (notification.close())
+    call_close: *const fn (user_context: OpaquePtr, handle: NotificationHandle) callconv(.c) NotificationResult,
 
-    /// Get maximum number of actions supported
-    get_max_actions: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    /// Get maximum number of actions supported (Notification.maxActions)
+    get_maxActions: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
 // =============================================================================
@@ -292,24 +292,24 @@ pub const NotificationVTable = extern struct {
 /// Push subscription handle (opaque)
 pub const PushSubscriptionHandle = u64;
 
-/// Push VTable
+/// Push VTable - PushManager
 pub const PushVTable = extern struct {
-    /// Subscribe to push notifications.
+    /// Subscribe to push notifications (pushManager.subscribe())
     /// Returns subscription handle on success, 0 on failure.
-    subscribe: *const fn (
+    call_subscribe: *const fn (
         user_context: OpaquePtr,
-        application_server_key: [*]const u8,
-        key_len: usize,
+        applicationServerKey: [*]const u8,
+        keyLen: usize,
     ) callconv(.c) PushSubscriptionHandle,
 
-    /// Unsubscribe from push notifications
-    unsubscribe: *const fn (user_context: OpaquePtr, handle: PushSubscriptionHandle) callconv(.c) bool,
+    /// Unsubscribe from push notifications (subscription.unsubscribe())
+    call_unsubscribe: *const fn (user_context: OpaquePtr, handle: PushSubscriptionHandle) callconv(.c) bool,
 
-    /// Get existing subscription (0 if none)
-    get_subscription: *const fn (user_context: OpaquePtr) callconv(.c) PushSubscriptionHandle,
+    /// Get existing subscription (pushManager.getSubscription())
+    call_getSubscription: *const fn (user_context: OpaquePtr) callconv(.c) PushSubscriptionHandle,
 
     /// Check if push is supported
-    is_supported: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    isSupported: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
 // =============================================================================
@@ -347,60 +347,60 @@ pub const NetworkResult = enum(i32) {
     network_error = -99,
 };
 
-/// Network request options (C-compatible)
+/// Network request options (C-compatible) - RequestInit
 pub const CNetworkRequest = extern struct {
     url: [*]const u8,
     url_len: usize,
     method: HttpMethod,
     headers: ?[*]const CHeader,
-    headers_count: usize,
+    headersCount: usize,
     body: ?[*]const u8,
-    body_len: usize,
+    bodyLen: usize,
     timeout_ms: u32,
-    follow_redirects: bool,
+    followRedirects: bool,
 };
 
 /// Header for network requests
 pub const CHeader = extern struct {
     name: [*]const u8,
-    name_len: usize,
+    nameLen: usize,
     value: [*]const u8,
-    value_len: usize,
+    valueLen: usize,
 };
 
 /// Callback for network response
 pub const NetworkResponseCallback = *const fn (
-    user_data: OpaquePtr,
+    userData: OpaquePtr,
     status: u16,
     headers: [*]const CHeader,
-    headers_count: usize,
+    headersCount: usize,
     body: [*]const u8,
-    body_len: usize,
+    bodyLen: usize,
 ) callconv(.c) void;
 
 /// Callback for network errors
 pub const NetworkErrorCallback = *const fn (
-    user_data: OpaquePtr,
+    userData: OpaquePtr,
     result: NetworkResult,
 ) callconv(.c) void;
 
-/// Network VTable
+/// Network VTable (fetch API)
 pub const NetworkVTable = extern struct {
-    /// Start a network request (async).
+    /// Start a network request (async) - fetch()
     /// Returns request handle for cancellation.
-    start_request: *const fn (
+    call_fetch: *const fn (
         user_context: OpaquePtr,
         request: *const CNetworkRequest,
-        on_response: NetworkResponseCallback,
-        on_error: NetworkErrorCallback,
-        callback_user_data: OpaquePtr,
+        onResponse: NetworkResponseCallback,
+        onError: NetworkErrorCallback,
+        callbackUserData: OpaquePtr,
     ) callconv(.c) NetworkRequestHandle,
 
-    /// Abort a pending request
-    abort_request: *const fn (user_context: OpaquePtr, handle: NetworkRequestHandle) callconv(.c) void,
+    /// Abort a pending request (AbortController.abort())
+    call_abort: *const fn (user_context: OpaquePtr, handle: NetworkRequestHandle) callconv(.c) void,
 
-    /// Check if online
-    is_online: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    /// Check if online (navigator.onLine)
+    get_onLine: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
 // =============================================================================
@@ -418,12 +418,12 @@ pub const StorageResult = enum(i32) {
     error_unknown = -99,
 };
 
-/// Storage VTable
+/// Storage VTable (localStorage/sessionStorage)
 pub const StorageVTable = extern struct {
-    /// Get item from storage.
+    /// Get item from storage (storage.getItem())
     /// Returns length of value, or negative StorageResult on error.
     /// If buffer is null, returns required buffer size.
-    get_item: *const fn (
+    call_getItem: *const fn (
         user_context: OpaquePtr,
         key: [*]const u8,
         key_len: usize,
@@ -431,8 +431,8 @@ pub const StorageVTable = extern struct {
         buffer_size: usize,
     ) callconv(.c) i32,
 
-    /// Set item in storage.
-    set_item: *const fn (
+    /// Set item in storage (storage.setItem())
+    call_setItem: *const fn (
         user_context: OpaquePtr,
         key: [*]const u8,
         key_len: usize,
@@ -440,30 +440,30 @@ pub const StorageVTable = extern struct {
         value_len: usize,
     ) callconv(.c) StorageResult,
 
-    /// Remove item from storage.
-    remove_item: *const fn (
+    /// Remove item from storage (storage.removeItem())
+    call_removeItem: *const fn (
         user_context: OpaquePtr,
         key: [*]const u8,
         key_len: usize,
     ) callconv(.c) StorageResult,
 
-    /// Clear all items from storage.
-    clear: *const fn (user_context: OpaquePtr) callconv(.c) StorageResult,
+    /// Clear all items from storage (storage.clear())
+    call_clear: *const fn (user_context: OpaquePtr) callconv(.c) StorageResult,
 
-    /// Get number of items in storage.
+    /// Get number of items in storage (storage.length)
     get_length: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 
-    /// Get key at index.
+    /// Get key at index (storage.key())
     /// Returns length of key, or negative StorageResult on error.
-    get_key: *const fn (
+    call_key: *const fn (
         user_context: OpaquePtr,
         index: u32,
         buffer: ?[*]u8,
         buffer_size: usize,
     ) callconv(.c) i32,
 
-    /// Get storage quota info.
-    get_quota: *const fn (
+    /// Get storage quota info (StorageManager.estimate())
+    getQuota: *const fn (
         user_context: OpaquePtr,
         out_usage: *u64,
         out_quota: *u64,
@@ -502,63 +502,63 @@ pub const FileSystemResult = enum(i32) {
     error_unknown = -99,
 };
 
-/// FileSystem VTable
+/// FileSystem VTable - File System Access API
 pub const FileSystemVTable = extern struct {
-    /// Open the root directory
-    get_root: *const fn (user_context: OpaquePtr) callconv(.c) DirectoryHandle,
+    /// Open the root directory (navigator.storage.getDirectory())
+    call_getDirectory: *const fn (user_context: OpaquePtr) callconv(.c) DirectoryHandle,
 
-    /// Open a file in directory
-    open_file: *const fn (
+    /// Open a file in directory (directoryHandle.getFileHandle())
+    call_getFileHandle: *const fn (
         user_context: OpaquePtr,
         dir: DirectoryHandle,
         name: [*]const u8,
-        name_len: usize,
+        nameLen: usize,
         mode: FileMode,
         create: bool,
     ) callconv(.c) FileHandle,
 
-    /// Open a subdirectory
-    open_directory: *const fn (
+    /// Open a subdirectory (directoryHandle.getDirectoryHandle())
+    call_getDirectoryHandle: *const fn (
         user_context: OpaquePtr,
         parent: DirectoryHandle,
         name: [*]const u8,
-        name_len: usize,
+        nameLen: usize,
         create: bool,
     ) callconv(.c) DirectoryHandle,
 
-    /// Read from file. Returns bytes read or negative error.
-    read_file: *const fn (
+    /// Read from file (FileSystemSyncAccessHandle.read())
+    call_read: *const fn (
         user_context: OpaquePtr,
         handle: FileHandle,
         offset: u64,
         buffer: [*]u8,
-        buffer_size: usize,
+        bufferSize: usize,
     ) callconv(.c) i64,
 
-    /// Write to file. Returns bytes written or negative error.
-    write_file: *const fn (
+    /// Write to file (FileSystemSyncAccessHandle.write())
+    call_write: *const fn (
         user_context: OpaquePtr,
         handle: FileHandle,
         offset: u64,
         data: [*]const u8,
-        data_len: usize,
+        dataLen: usize,
     ) callconv(.c) i64,
 
-    /// Get file size
-    get_file_size: *const fn (user_context: OpaquePtr, handle: FileHandle) callconv(.c) i64,
+    /// Get file size (FileSystemSyncAccessHandle.getSize())
+    call_getSize: *const fn (user_context: OpaquePtr, handle: FileHandle) callconv(.c) i64,
 
-    /// Close file handle
-    close_file: *const fn (user_context: OpaquePtr, handle: FileHandle) callconv(.c) void,
+    /// Close file handle (FileSystemSyncAccessHandle.close())
+    call_closeFile: *const fn (user_context: OpaquePtr, handle: FileHandle) callconv(.c) void,
 
     /// Close directory handle
-    close_directory: *const fn (user_context: OpaquePtr, handle: DirectoryHandle) callconv(.c) void,
+    closeDirectory: *const fn (user_context: OpaquePtr, handle: DirectoryHandle) callconv(.c) void,
 
-    /// Remove file or directory
-    remove: *const fn (
+    /// Remove file or directory (directoryHandle.removeEntry())
+    call_removeEntry: *const fn (
         user_context: OpaquePtr,
         parent: DirectoryHandle,
         name: [*]const u8,
-        name_len: usize,
+        nameLen: usize,
         recursive: bool,
     ) callconv(.c) FileSystemResult,
 };
@@ -574,36 +574,36 @@ pub const AlertType = enum(u8) {
     prompt = 2,
 };
 
-/// UI VTable
+/// UI VTable - window dialogs
 pub const UIVTable = extern struct {
-    /// Show an alert dialog. Returns true if confirmed (for confirm dialogs).
-    show_alert: *const fn (
+    /// Show an alert dialog (window.alert/confirm). Returns true if confirmed.
+    call_alert: *const fn (
         user_context: OpaquePtr,
-        alert_type: AlertType,
+        alertType: AlertType,
         message: [*]const u8,
-        message_len: usize,
+        messageLen: usize,
     ) callconv(.c) bool,
 
-    /// Show a prompt dialog.
+    /// Show a prompt dialog (window.prompt())
     /// Returns length of response, or -1 if cancelled.
-    show_prompt: *const fn (
+    call_prompt: *const fn (
         user_context: OpaquePtr,
         message: [*]const u8,
-        message_len: usize,
-        default_value: ?[*]const u8,
-        default_len: usize,
+        messageLen: usize,
+        defaultValue: ?[*]const u8,
+        defaultLen: usize,
         buffer: ?[*]u8,
-        buffer_size: usize,
+        bufferSize: usize,
     ) callconv(.c) i32,
 
-    /// Focus the window
-    focus: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    /// Focus the window (window.focus())
+    call_focus: *const fn (user_context: OpaquePtr) callconv(.c) void,
 
-    /// Blur the window
-    blur: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    /// Blur the window (window.blur())
+    call_blur: *const fn (user_context: OpaquePtr) callconv(.c) void,
 
-    /// Print the page
-    print: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    /// Print the page (window.print())
+    call_print: *const fn (user_context: OpaquePtr) callconv(.c) void,
 };
 
 // =============================================================================
@@ -611,13 +611,13 @@ pub const UIVTable = extern struct {
 // Spec: https://w3c.github.io/geolocation-api/
 // =============================================================================
 
-/// Geolocation position (C-compatible)
+/// Geolocation position (C-compatible) - GeolocationCoordinates
 pub const CGeolocationPosition = extern struct {
     latitude: f64,
     longitude: f64,
     altitude: f64, // NaN if unavailable
     accuracy: f64,
-    altitude_accuracy: f64, // NaN if unavailable
+    altitudeAccuracy: f64, // NaN if unavailable
     heading: f64, // NaN if unavailable
     speed: f64, // NaN if unavailable
     timestamp: i64,
@@ -636,42 +636,42 @@ pub const WatchId = u32;
 
 /// Callback for geolocation success
 pub const GeolocationSuccessCallback = *const fn (
-    user_data: OpaquePtr,
+    userData: OpaquePtr,
     position: *const CGeolocationPosition,
 ) callconv(.c) void;
 
 /// Callback for geolocation error
 pub const GeolocationErrorCallback = *const fn (
-    user_data: OpaquePtr,
-    error_code: GeolocationError,
+    userData: OpaquePtr,
+    errorCode: GeolocationError,
 ) callconv(.c) void;
 
 /// Geolocation VTable
 pub const GeolocationVTable = extern struct {
-    /// Get current position (async)
-    get_current_position: *const fn (
+    /// Get current position (async) - navigator.geolocation.getCurrentPosition()
+    call_getCurrentPosition: *const fn (
         user_context: OpaquePtr,
         on_success: GeolocationSuccessCallback,
         on_error: GeolocationErrorCallback,
         callback_user_data: OpaquePtr,
-        enable_high_accuracy: bool,
+        enableHighAccuracy: bool,
         timeout_ms: u32,
-        maximum_age_ms: u32,
+        maximumAge_ms: u32,
     ) callconv(.c) void,
 
-    /// Watch position (async, repeating)
-    watch_position: *const fn (
+    /// Watch position (async, repeating) - navigator.geolocation.watchPosition()
+    call_watchPosition: *const fn (
         user_context: OpaquePtr,
         on_success: GeolocationSuccessCallback,
         on_error: GeolocationErrorCallback,
         callback_user_data: OpaquePtr,
-        enable_high_accuracy: bool,
+        enableHighAccuracy: bool,
         timeout_ms: u32,
-        maximum_age_ms: u32,
+        maximumAge_ms: u32,
     ) callconv(.c) WatchId,
 
-    /// Clear watch
-    clear_watch: *const fn (user_context: OpaquePtr, watch_id: WatchId) callconv(.c) void,
+    /// Clear watch - navigator.geolocation.clearWatch()
+    call_clearWatch: *const fn (user_context: OpaquePtr, watchId: WatchId) callconv(.c) void,
 };
 
 // =============================================================================
@@ -679,162 +679,162 @@ pub const GeolocationVTable = extern struct {
 // These will be expanded as needed
 // =============================================================================
 
-/// Bluetooth VTable (stub)
+/// Bluetooth VTable (stub) - navigator.bluetooth
 pub const BluetoothVTable = extern struct {
-    request_device: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    get_availability: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_requestDevice: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_getAvailability: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
-/// USB VTable (stub)
+/// USB VTable (stub) - navigator.usb
 pub const USBVTable = extern struct {
-    request_device: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    get_devices: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    call_requestDevice: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_getDevices: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// Serial VTable (stub)
+/// Serial VTable (stub) - navigator.serial
 pub const SerialVTable = extern struct {
-    request_port: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    get_ports: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    call_requestPort: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_getPorts: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// HID VTable (stub)
+/// HID VTable (stub) - navigator.hid
 pub const HIDVTable = extern struct {
-    request_device: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    get_devices: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    call_requestDevice: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_getDevices: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// WebRTC VTable (stub)
+/// WebRTC VTable (stub) - RTCPeerConnection
 pub const WebRTCVTable = extern struct {
-    create_peer_connection: *const fn (user_context: OpaquePtr) callconv(.c) u64,
-    close_peer_connection: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    createPeerConnection: *const fn (user_context: OpaquePtr) callconv(.c) u64,
+    call_close: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
 };
 
-/// Media VTable (stub)
+/// Media VTable (stub) - navigator.mediaDevices
 pub const MediaVTable = extern struct {
-    get_user_media: *const fn (user_context: OpaquePtr, audio: bool, video: bool) callconv(.c) u64,
-    stop_stream: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    call_getUserMedia: *const fn (user_context: OpaquePtr, audio: bool, video: bool) callconv(.c) u64,
+    stopStream: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
 };
 
-/// Audio VTable (stub)
+/// Audio VTable (stub) - AudioContext
 pub const AudioVTable = extern struct {
-    create_context: *const fn (user_context: OpaquePtr) callconv(.c) u64,
-    close_context: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    createContext: *const fn (user_context: OpaquePtr) callconv(.c) u64,
+    call_close: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
 };
 
-/// Speech VTable (stub)
+/// Speech VTable (stub) - speechSynthesis
 pub const SpeechVTable = extern struct {
-    speak: *const fn (user_context: OpaquePtr, text: [*]const u8, len: usize) callconv(.c) bool,
-    cancel: *const fn (user_context: OpaquePtr) callconv(.c) void,
-    is_speaking: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_speak: *const fn (user_context: OpaquePtr, text: [*]const u8, len: usize) callconv(.c) bool,
+    call_cancel: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    get_speaking: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
-/// Gamepad VTable (stub)
+/// Gamepad VTable (stub) - navigator.getGamepads()
 pub const GamepadVTable = extern struct {
-    get_gamepads: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    call_getGamepads: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// Sensor VTable (stub)
+/// Sensor VTable (stub) - Generic Sensor API
 pub const SensorVTable = extern struct {
-    is_supported: *const fn (user_context: OpaquePtr, sensor_type: u32) callconv(.c) bool,
+    isSupported: *const fn (user_context: OpaquePtr, sensorType: u32) callconv(.c) bool,
 };
 
-/// Vibration VTable
+/// Vibration VTable - navigator.vibrate()
 pub const VibrationVTable = extern struct {
-    vibrate: *const fn (
+    call_vibrate: *const fn (
         user_context: OpaquePtr,
         pattern: [*]const u32,
-        pattern_len: usize,
+        patternLen: usize,
     ) callconv(.c) bool,
 };
 
 /// Battery VTable
 pub const BatteryVTable = extern struct {
     get_level: *const fn (user_context: OpaquePtr) callconv(.c) f64,
-    is_charging: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    get_charging_time: *const fn (user_context: OpaquePtr) callconv(.c) f64,
-    get_discharging_time: *const fn (user_context: OpaquePtr) callconv(.c) f64,
+    get_charging: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    get_chargingTime: *const fn (user_context: OpaquePtr) callconv(.c) f64,
+    get_dischargingTime: *const fn (user_context: OpaquePtr) callconv(.c) f64,
 };
 
 /// Screen VTable
 pub const ScreenVTable = extern struct {
     get_width: *const fn (user_context: OpaquePtr) callconv(.c) u32,
     get_height: *const fn (user_context: OpaquePtr) callconv(.c) u32,
-    get_avail_width: *const fn (user_context: OpaquePtr) callconv(.c) u32,
-    get_avail_height: *const fn (user_context: OpaquePtr) callconv(.c) u32,
-    get_color_depth: *const fn (user_context: OpaquePtr) callconv(.c) u32,
-    get_pixel_depth: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    get_availWidth: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    get_availHeight: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    get_colorDepth: *const fn (user_context: OpaquePtr) callconv(.c) u32,
+    get_pixelDepth: *const fn (user_context: OpaquePtr) callconv(.c) u32,
     get_orientation: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// WakeLock VTable
+/// WakeLock VTable - navigator.wakeLock
 pub const WakeLockVTable = extern struct {
-    request: *const fn (user_context: OpaquePtr, lock_type: u32) callconv(.c) u64,
-    release: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    call_request: *const fn (user_context: OpaquePtr, lockType: u32) callconv(.c) u64,
+    call_release: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
 };
 
-/// Share VTable
+/// Share VTable - navigator.share()
 pub const ShareVTable = extern struct {
-    can_share: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    share: *const fn (
+    call_canShare: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_share: *const fn (
         user_context: OpaquePtr,
         title: ?[*]const u8,
-        title_len: usize,
+        titleLen: usize,
         text: ?[*]const u8,
-        text_len: usize,
+        textLen: usize,
         url: ?[*]const u8,
-        url_len: usize,
+        urlLen: usize,
     ) callconv(.c) bool,
 };
 
-/// Payment VTable (stub)
+/// Payment VTable (stub) - PaymentRequest
 pub const PaymentVTable = extern struct {
-    can_make_payment: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    call_canMakePayment: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
-/// Credentials VTable (stub)
+/// Credentials VTable (stub) - navigator.credentials
 pub const CredentialsVTable = extern struct {
-    get: *const fn (user_context: OpaquePtr, mediation: u32) callconv(.c) u64,
-    store: *const fn (user_context: OpaquePtr, credential: u64) callconv(.c) bool,
+    call_get: *const fn (user_context: OpaquePtr, mediation: u32) callconv(.c) u64,
+    call_store: *const fn (user_context: OpaquePtr, credential: u64) callconv(.c) bool,
 };
 
-/// WebAuthn VTable (stub)
+/// WebAuthn VTable (stub) - PublicKeyCredential
 pub const WebAuthnVTable = extern struct {
-    is_available: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    isAvailable: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
-/// DeviceOrientation VTable
+/// DeviceOrientation VTable - DeviceOrientationEvent
 pub const DeviceOrientationVTable = extern struct {
-    start_listening: *const fn (user_context: OpaquePtr) callconv(.c) bool,
-    stop_listening: *const fn (user_context: OpaquePtr) callconv(.c) void,
-    get_orientation: *const fn (
+    startListening: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    stopListening: *const fn (user_context: OpaquePtr) callconv(.c) void,
+    getOrientation: *const fn (
         user_context: OpaquePtr,
-        out_alpha: *f64,
-        out_beta: *f64,
-        out_gamma: *f64,
+        outAlpha: *f64,
+        outBeta: *f64,
+        outGamma: *f64,
     ) callconv(.c) bool,
 };
 
-/// NFC VTable (stub)
+/// NFC VTable (stub) - NDEFReader
 pub const NFCVTable = extern struct {
-    is_available: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    isAvailable: *const fn (user_context: OpaquePtr) callconv(.c) bool,
 };
 
-/// Permissions VTable
+/// Permissions VTable - navigator.permissions
 pub const PermissionsVTable = extern struct {
-    /// Query permission state.
+    /// Query permission state (permissions.query())
     /// Returns: 0 = granted, 1 = denied, 2 = prompt, -1 = error
-    query: *const fn (
+    call_query: *const fn (
         user_context: OpaquePtr,
-        permission_name: [*]const u8,
-        name_len: usize,
+        permissionName: [*]const u8,
+        nameLen: usize,
     ) callconv(.c) i32,
 
     /// Request permission.
     /// Returns: 0 = granted, 1 = denied, -1 = error
-    request: *const fn (
+    call_request: *const fn (
         user_context: OpaquePtr,
-        permission_name: [*]const u8,
-        name_len: usize,
+        permissionName: [*]const u8,
+        nameLen: usize,
     ) callconv(.c) i32,
 };
 
