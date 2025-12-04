@@ -4,9 +4,9 @@ This guide covers integrating Crane into your iOS or macOS application using Swi
 
 ## Requirements
 
-- iOS 14.0+ or macOS 11.0+
-- Xcode 15.0+
-- Swift 5.9+
+- iOS 17.0+ / macOS 14.0+ / tvOS 17.0+ / watchOS 10.0+
+- Xcode 16.0+
+- Swift 6.0+
 
 ## Installation
 
@@ -34,7 +34,7 @@ import SwiftUI
 import WhatWG
 
 struct ContentView: View {
-    @StateObject var browser = WhatWGBrowser()
+    @State var browser = WhatWGBrowser()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -77,18 +77,27 @@ struct ContentView: View {
 ```swift
 import WhatWG
 
-// Create platform with default iOS providers
+// Create platform with default providers
 let platform = WhatWGPlatform()
 
-// Use default iOS implementations
-platform.clipboardProvider = iOSClipboardProvider()
-platform.timerProvider = iOSTimerProvider()
-platform.networkProvider = iOSNetworkProvider()
-platform.storageProvider = iOSStorageProvider()
-platform.geolocationProvider = iOSGeolocationProvider()
-platform.notificationProvider = iOSNotificationProvider()
-platform.uiProvider = iOSUIProvider()
-platform.fileSystemProvider = iOSFileSystemProvider()
+// Or with custom provider configuration
+let platform = WhatWGPlatform(providers: ProviderConfiguration(
+    clipboard: UIPasteboardClipboardProvider(),
+    timer: DispatchTimerProvider(),
+    network: URLSessionNetworkProvider(),
+    storage: UserDefaultsStorageProvider(),
+    fileSystem: UIDocumentPickerFileSystemProvider(),
+    geolocation: CoreLocationGeolocationProvider(),
+    notification: UserNotificationsNotificationProvider(),
+    ui: UIKitUIProvider()
+))
+
+// Or using the builder pattern
+let platform = WhatWGPlatform { config in
+    config
+        .storage(MyCloudStorageProvider())
+        .network(CachingNetworkProvider())
+}
 
 // Initialize the platform
 try platform.initialize()
@@ -97,68 +106,107 @@ try platform.initialize()
 let context = try platform.createContext()
 ```
 
-## Capability Providers
+## Provider Configuration
 
-### Implementing Custom Providers
-
-You can implement custom capability providers by conforming to the provider protocols:
+### Built-in Configurations
 
 ```swift
-import WhatWG
+// Default - all system providers enabled
+let platform = WhatWGPlatform(providers: .default)
 
-class MyClipboardProvider: ClipboardProvider {
-    func readText() async throws -> String? {
-        // Your implementation
-        return UIPasteboard.general.string
+// Minimal - only required providers (timer, network, storage)
+let platform = WhatWGPlatform(providers: .minimal)
+
+// Network only - for headless/API use cases
+let platform = WhatWGPlatform(providers: .networkOnly)
+```
+
+### Custom Provider Injection
+
+Swap any provider with your own implementation:
+
+```swift
+// Create a custom storage provider
+final class MyCloudStorageProvider: StorageProvider, Sendable {
+    private let api: CloudStorageAPI
+    
+    init(apiKey: String) {
+        self.api = CloudStorageAPI(key: apiKey)
     }
     
-    func writeText(_ text: String) async throws {
-        UIPasteboard.general.string = text
+    func getItem(key: String) async throws -> String? {
+        try await api.get(key: key)
     }
     
-    func readHTML() async throws -> String? {
-        // Return nil if not supported
-        return nil
+    func setItem(key: String, value: String) async throws {
+        try await api.put(key: key, value: value)
     }
     
-    func writeHTML(_ html: String) async throws {
-        // No-op if not supported
+    func removeItem(key: String) async throws {
+        try await api.delete(key: key)
     }
+    
+    func clear() async throws {
+        try await api.clearAll()
+    }
+    
+    func length() async throws -> Int {
+        try await api.count()
+    }
+    
+    func key(at index: Int) async throws -> String? {
+        try await api.keyAt(index: index)
+    }
+}
+
+// Use it
+let platform = WhatWGPlatform { config in
+    config.storage(MyCloudStorageProvider(apiKey: "..."))
 }
 ```
 
 ### Available Providers
 
-| Protocol | Description | iOS Default |
-|----------|-------------|-------------|
-| `ClipboardProvider` | System clipboard access | `iOSClipboardProvider` |
-| `TimerProvider` | High-resolution timers | `iOSTimerProvider` |
-| `NetworkProvider` | HTTP networking | `iOSNetworkProvider` |
-| `StorageProvider` | Key-value and file storage | `iOSStorageProvider` |
-| `GeolocationProvider` | Location services | `iOSGeolocationProvider` |
-| `NotificationProvider` | Push/local notifications | `iOSNotificationProvider` |
-| `UIProvider` | Alerts, prompts, file pickers | `iOSUIProvider` |
-| `FileSystemProvider` | OPFS-like file access | `iOSFileSystemProvider` |
+| Protocol | Description | Default Implementation |
+|----------|-------------|------------------------|
+| `ClipboardProvider` | System clipboard access | `UIPasteboardClipboardProvider` |
+| `TimerProvider` | High-resolution timers | `DispatchTimerProvider` |
+| `NetworkProvider` | HTTP networking | `URLSessionNetworkProvider` |
+| `StorageProvider` | Key-value storage | `UserDefaultsStorageProvider` |
+| `GeolocationProvider` | Location services | `CoreLocationGeolocationProvider` |
+| `NotificationProvider` | Push/local notifications | `UserNotificationsNotificationProvider` |
+| `UIProvider` | Alerts, prompts, dialogs | `UIKitUIProvider` / `AppKitUIProvider` |
+| `FileSystemProvider` | OPFS-like file access | `UIDocumentPickerFileSystemProvider` |
+
+### macOS Providers
+
+On macOS, use the AppKit-based providers:
+
+| Protocol | macOS Implementation |
+|----------|---------------------|
+| `ClipboardProvider` | `NSPasteboardClipboardProvider` |
+| `UIProvider` | `AppKitUIProvider` |
 
 ## Browser Component
 
 ### WhatWGBrowser
 
-The `WhatWGBrowser` class is an `ObservableObject` that manages browser state:
+The `WhatWGBrowser` class uses the `@Observable` macro for SwiftUI integration:
 
 ```swift
 @MainActor
-public final class WhatWGBrowser: ObservableObject {
-    // Published state
-    @Published var urlString: String
-    @Published private(set) var title: String
-    @Published private(set) var isLoading: Bool
-    @Published private(set) var loadingProgress: Double
-    @Published private(set) var canGoBack: Bool
-    @Published private(set) var canGoForward: Bool
-    @Published private(set) var isSecure: Bool
-    @Published private(set) var tabs: [BrowserTab]
-    @Published var activeTabIndex: Int
+@Observable
+public final class WhatWGBrowser {
+    // Observable state
+    var urlString: String
+    private(set) var title: String
+    private(set) var isLoading: Bool
+    private(set) var loadingProgress: Double
+    private(set) var canGoBack: Bool
+    private(set) var canGoForward: Bool
+    private(set) var isSecure: Bool
+    private(set) var tabs: [BrowserTab]
+    var activeTabIndex: Int
     
     // Navigation
     func loadURL()
@@ -175,12 +223,18 @@ public final class WhatWGBrowser: ObservableObject {
     
     // JavaScript
     func evaluateJavaScript(_ script: String) async throws -> Any?
+    
+    // Event callbacks
+    var onNavigationEvent: ((NavigationEvent) -> Void)?
+    var onConsoleMessage: ((ConsoleMessage) -> Void)?
+    var onTapEvent: ((CGPoint) -> Void)?
+    var onScrollEvent: ((CGSize) -> Void)?
 }
 ```
 
 ### WhatWGWebView
 
-The `WhatWGWebView` is a SwiftUI view that displays web content:
+The `WhatWGWebView` is a native SwiftUI view using Canvas-based rendering:
 
 ```swift
 // Basic usage
@@ -196,6 +250,15 @@ WhatWGWebView(browser: browser)
     .allowsBackForwardGestures(true)
     .userAgent("MyApp/1.0")
 ```
+
+### Gesture Handling
+
+WhatWGWebView supports native SwiftUI gestures:
+
+- **Tap**: `SpatialTapGesture` for link clicks and interactions
+- **Scroll**: `DragGesture` with momentum for content scrolling
+- **Zoom**: `MagnificationGesture` for pinch-to-zoom
+- **Keyboard**: `onKeyPress` for keyboard navigation
 
 ### Configuration Options
 
@@ -300,8 +363,8 @@ Crane follows Swift's standard memory management patterns:
 ```swift
 // Browser is automatically cleaned up when view is dismissed
 struct BrowserView: View {
-    @StateObject var browser = WhatWGBrowser()
-    // browser.deinit() is called automatically
+    @State var browser = WhatWGBrowser()
+    // browser is automatically cleaned up when view is removed
 }
 
 // Manual cleanup if needed
@@ -330,6 +393,38 @@ Task { @MainActor in
     browser.loadURL(URL(string: "https://example.com")!)
 }
 ```
+
+## Migration from Previous Versions
+
+If you're upgrading from a version using `ObservableObject`:
+
+### Before (ObservableObject)
+```swift
+import Combine
+
+@StateObject var browser = WhatWGBrowser()
+```
+
+### After (@Observable)
+```swift
+@State var browser = WhatWGBrowser()
+```
+
+### Provider Name Changes
+
+| Old Name | New Name |
+|----------|----------|
+| `iOSClipboardProvider` | `UIPasteboardClipboardProvider` |
+| `iOSTimerProvider` | `DispatchTimerProvider` |
+| `iOSNetworkProvider` | `URLSessionNetworkProvider` |
+| `iOSStorageProvider` | `UserDefaultsStorageProvider` |
+| `iOSFileSystemProvider` | `UIDocumentPickerFileSystemProvider` |
+| `iOSGeolocationProvider` | `CoreLocationGeolocationProvider` |
+| `iOSNotificationProvider` | `UserNotificationsNotificationProvider` |
+| `iOSUIProvider` | `UIKitUIProvider` |
+| `macOSUIProvider` | `AppKitUIProvider` |
+
+Deprecated typealiases are provided for backwards compatibility.
 
 ## Troubleshooting
 
@@ -363,11 +458,12 @@ browser.onConsoleMessage = { message in
 
 ## Best Practices
 
-1. **Use StateObject for browser instances** - Ensures proper lifecycle management
+1. **Use @State for browser instances** - Ensures proper lifecycle management with @Observable
 2. **Handle errors gracefully** - Always wrap operations in do/catch
 3. **Request permissions early** - For geolocation, notifications, etc.
-4. **Configure providers at startup** - Before creating contexts
+4. **Configure providers at startup** - Use ProviderConfiguration before creating contexts
 5. **Test on real devices** - Some features behave differently in simulator
+6. **Use builder pattern for customization** - Cleaner than manual provider assignment
 
 ## Example Project
 
@@ -380,3 +476,4 @@ For complete API documentation, see:
 - [WhatWGBrowser](api/WhatWGBrowser.md)
 - [WhatWGWebView](api/WhatWGWebView.md)
 - [Provider Protocols](api/Providers.md)
+- [ProviderConfiguration](api/ProviderConfiguration.md)
