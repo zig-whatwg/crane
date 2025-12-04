@@ -151,6 +151,11 @@ pub const DiscoveryResult = struct {
         }
         self.test_files.deinit(self.allocator);
         self.by_type.deinit();
+        // Free the duped category keys
+        var cat_iter = self.by_category.keyIterator();
+        while (cat_iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.by_category.deinit();
         for (self.skipped.items) |*s| {
             s.deinit(self.allocator);
@@ -174,11 +179,14 @@ pub const DiscoveryResult = struct {
         // Count by category (first path component)
         if (std.mem.indexOf(u8, path, "/")) |sep_pos| {
             const category = path[0..sep_pos];
-            const cat_entry = try self.by_category.getOrPut(category);
-            if (!cat_entry.found_existing) {
-                cat_entry.value_ptr.* = 0;
+            // Check if this category already exists first (avoid duplicate key issue)
+            if (self.by_category.getPtr(category)) |count| {
+                count.* += 1;
+            } else {
+                // Need to dupe the key since path will be freed
+                const duped_key = try self.allocator.dupe(u8, category);
+                try self.by_category.put(duped_key, 1);
             }
-            cat_entry.value_ptr.* += 1;
         }
     }
 
