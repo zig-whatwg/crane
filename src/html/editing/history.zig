@@ -170,8 +170,8 @@ pub const UndoManager = struct {
     pub fn init(allocator: std.mem.Allocator) UndoManager {
         return .{
             .allocator = allocator,
-            .undo_stack = std.ArrayList(UndoEntry).init(allocator),
-            .redo_stack = std.ArrayList(UndoEntry).init(allocator),
+            .undo_stack = .{},
+            .redo_stack = .{},
         };
     }
 

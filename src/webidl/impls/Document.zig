@@ -37,6 +37,7 @@ const DocumentTypeImpl = @import("DocumentType.zig");
 const RangeImpl = @import("Range.zig");
 const NodeIteratorImpl = @import("NodeIterator.zig");
 const TreeWalkerImpl = @import("TreeWalker.zig");
+const SelectionImpl = @import("Selection.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
@@ -45,9 +46,10 @@ const ParentNode = mixins.ParentNode;
 // Content Security Policy
 const csp = @import("csp");
 
-// HTML module for stylesheet blocking
+// HTML module for stylesheet blocking and editing
 const html_core = @import("html_core");
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
+const editing = html_core.editing;
 
 pub const State = Document.State;
 
@@ -248,6 +250,12 @@ pub const InternalState = struct {
     /// Tracks pending stylesheets to block script execution until CSS loads.
     stylesheet_tracker: StylesheetBlockingTracker,
 
+    // === Selection API (Selection API spec) ===
+
+    /// The document's selection object (lazily created, [SameObject])
+    /// Spec: https://w3c.github.io/selection-api/#dom-document-getselection
+    selection: ?*runtime.Instance,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -313,6 +321,8 @@ pub const InternalState = struct {
             .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
             // Stylesheet blocking tracker
             .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
+            // Selection
+            .selection = null,
         };
     }
 
@@ -2640,12 +2650,17 @@ pub fn call_exitPointerLock(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: queryCommandState
-/// Returns the state of an editing command. Without editing support, returns false.
+/// Returns the state of a toggle command (e.g., bold, italic).
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandstate
 pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = commandId;
-    // Without editing support, all command states are false
-    return false;
+    const internal = getInternal(instance) orelse return false;
+    const command_name = commandId.asSlice();
+
+    return editing.queryCommandState(
+        internal.allocator,
+        @ptrCast(instance),
+        command_name,
+    ) catch false;
 }
 
 /// Operation: parseHTMLUnsafe
@@ -2737,12 +2752,12 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 }
 
 /// Operation: queryCommandSupported
-/// Returns whether an editing command is supported. Without editing support, returns false.
+/// Returns whether an editing command is supported by this implementation.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandsupported
 pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
     _ = instance;
-    _ = commandId;
-    // Without editing support, no commands are supported
-    return false;
+    const command_name = commandId.asSlice();
+    return editing.queryCommandSupported(command_name);
 }
 
 /// Operation: hasPrivateToken
@@ -2781,14 +2796,154 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 }
 
 /// Operation: execCommand
-/// Executes an editing command. Without editing support, returns false.
+/// Executes an editing command.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-execcommand
+///
+/// This implementation performs actual DOM manipulation for formatting commands.
+/// The editing module (html_core) provides command parsing and validation,
+/// but DOM manipulation happens here since impls has access to interfaces.
 pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(runtime.DOMString)) anyerror!bool {
-    _ = instance;
-    _ = commandId;
-    _ = showUI;
-    _ = value;
-    // Without editing support, commands fail
-    return false;
+    const internal = getInternal(instance) orelse return false;
+
+    // Get command name (case-insensitive per spec)
+    const command_name = commandId.asSlice();
+    _ = showUI; // Ignored by modern browsers
+
+    // Get optional value for commands that need it
+    const value_slice: ?[]const u8 = if (value.wasPassed())
+        value.value.asSlice()
+    else
+        null;
+
+    // Parse command and determine action
+    // Formatting commands that wrap selection in elements
+    if (std.ascii.eqlIgnoreCase(command_name, "bold")) {
+        return applyInlineFormatting(instance, internal, "b");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "italic")) {
+        return applyInlineFormatting(instance, internal, "i");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "underline")) {
+        return applyInlineFormatting(instance, internal, "u");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "strikethrough") or
+        std.ascii.eqlIgnoreCase(command_name, "strikeThrough"))
+    {
+        return applyInlineFormatting(instance, internal, "s");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "subscript")) {
+        return applyInlineFormatting(instance, internal, "sub");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "superscript")) {
+        return applyInlineFormatting(instance, internal, "sup");
+    } else if (std.ascii.eqlIgnoreCase(command_name, "createLink")) {
+        // createLink requires a URL value
+        const url = value_slice orelse return false;
+        return applyCreateLink(instance, internal, url);
+    } else if (std.ascii.eqlIgnoreCase(command_name, "insertText")) {
+        // insertText requires text value
+        const text = value_slice orelse return false;
+        return applyInsertText(instance, internal, text);
+    }
+
+    // For unsupported commands, delegate to the editing module for stub handling
+    return editing.execCommand(
+        internal.allocator,
+        @ptrCast(instance),
+        command_name,
+        false,
+        value_slice,
+    ) catch |err| {
+        if (@import("builtin").mode == .Debug) {
+            std.debug.print("execCommand error: {any}\n", .{err});
+        }
+        return false;
+    };
+}
+
+/// Apply inline formatting by wrapping selection in an element
+/// Used for bold, italic, underline, strikethrough, subscript, superscript
+fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, tag_name: []const u8) bool {
+    // Step 1: Get selection
+    const selection_opt = call_getSelection(document) catch return false;
+    const selection = selection_opt orelse return false;
+
+    // Step 2: Check if selection has content (not collapsed)
+    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    if (is_collapsed) {
+        // No content selected - nothing to format
+        // TODO: Toggle "future typing" state
+        return true;
+    }
+
+    // Step 3: Get the range
+    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+
+    // Step 4: Create the formatting element
+    const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(*const anyopaque).notPassed()) catch return false;
+
+    // Step 5: Surround the selection with the element
+    RangeImpl.call_surroundContents(range, element) catch |err| {
+        if (@import("builtin").mode == .Debug) {
+            std.debug.print("surroundContents failed: {any}\n", .{err});
+        }
+        // surroundContents can fail if range partially contains non-text nodes
+        return false;
+    };
+
+    _ = internal; // Will be used for undo history
+    return true;
+}
+
+/// Apply createLink by wrapping selection in an anchor element
+fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const u8) bool {
+    // Step 1: Get selection
+    const selection_opt = call_getSelection(document) catch return false;
+    const selection = selection_opt orelse return false;
+
+    // Step 2: Check if selection has content
+    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch return false;
+    if (is_collapsed) {
+        // No content selected - can't create link without text
+        return false;
+    }
+
+    // Step 3: Get the range
+    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+
+    // Step 4: Create anchor element
+    const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(*const anyopaque).notPassed()) catch return false;
+
+    // Step 5: Set href attribute
+    // Use Element interface to set attribute
+    interfaces.Element.call_setAttribute(anchor, runtime.DOMString.initInterned("href"), runtime.DOMString.initInterned(url)) catch return false;
+
+    // Step 6: Surround selection with anchor
+    RangeImpl.call_surroundContents(range, anchor) catch return false;
+
+    return true;
+}
+
+/// Apply insertText by inserting text at selection
+fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const u8) bool {
+    // Step 1: Get selection
+    const selection_opt = call_getSelection(document) catch return false;
+    const selection = selection_opt orelse return false;
+
+    // Step 2: Get the range (or create one if collapsed)
+    const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
+
+    // Step 3: Delete selected content if any
+    const is_collapsed = SelectionImpl.get_isCollapsed(selection) catch false;
+    if (!is_collapsed) {
+        RangeImpl.call_deleteContents(range) catch return false;
+    }
+
+    // Step 4: Create text node
+    const text_node = call_createTextNode(document, runtime.DOMString.initInterned(text)) catch return false;
+
+    // Step 5: Insert text node at range position
+    RangeImpl.call_insertNode(range, text_node) catch return false;
+
+    // Step 6: Collapse selection after the inserted text
+    SelectionImpl.call_collapseToEnd(selection) catch {};
+
+    return true;
 }
 
 /// Operation: measureElement
@@ -2927,13 +3082,17 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: queryCommandIndeterm
-/// Returns whether an editing command is in an indeterminate state.
-/// Without editing support, returns false.
+/// Returns whether an editing command is in an indeterminate state (mixed).
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandindeterm
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = commandId;
-    // Without editing support, no commands are indeterminate
-    return false;
+    const internal = getInternal(instance) orelse return false;
+    const command_name = commandId.asSlice();
+
+    return editing.queryCommandIndeterm(
+        internal.allocator,
+        @ptrCast(instance),
+        command_name,
+    ) catch false;
 }
 
 /// Operation: getElementsByTagNameNS
@@ -3461,10 +3620,17 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
 }
 
 /// Operation: queryCommandEnabled
+/// Returns whether an editing command is currently enabled.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandenabled
 pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
-    _ = instance;
-    _ = commandId;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return false;
+    const command_name = commandId.asSlice();
+
+    return editing.queryCommandEnabled(
+        internal.allocator,
+        @ptrCast(instance),
+        command_name,
+    ) catch false;
 }
 
 /// Operation: createRange
@@ -3885,10 +4051,24 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 }
 
 /// Operation: queryCommandValue
+/// Returns the current value for a valued command (e.g., fontName, fontSize).
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandvalue
 pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = commandId;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    const command_name = commandId.asSlice();
+
+    const result = editing.queryCommandValue(
+        internal.allocator,
+        @ptrCast(instance),
+        command_name,
+    ) catch {
+        return runtime.DOMString.initEmpty();
+    };
+
+    if (result) |value| {
+        return runtime.DOMString.initInterned(value);
+    }
+    return runtime.DOMString.initEmpty();
 }
 
 /// Operation: caretPositionFromPoint
@@ -3947,12 +4127,30 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
 }
 
 /// Operation: getSelection
-/// Returns the current text selection, or null if no selection.
-/// Without user interaction, this returns null.
+/// Returns the Selection object for the document.
+/// Spec: https://w3c.github.io/selection-api/#dom-document-getselection
+///
+/// The Selection object is lazily created and cached per document ([SameObject]).
+/// Returns the Selection associated with this document.
 pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // Without user interaction or a visual context, there's no selection
-    return null;
+    const internal = getInternal(instance) orelse return null;
+
+    // Return cached selection if already created ([SameObject])
+    if (internal.selection) |selection| {
+        return selection;
+    }
+
+    // Create new Selection for this document
+    const selection = SelectionImpl.createSelection(internal.allocator, instance.ctx, instance) catch |err| {
+        if (@import("builtin").mode == .Debug) {
+            std.debug.print("Failed to create Selection: {any}\n", .{err});
+        }
+        return null;
+    };
+
+    // Cache the selection
+    internal.selection = selection;
+    return selection;
 }
 
 /// Operation: close
