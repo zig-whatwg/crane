@@ -1744,6 +1744,20 @@ pub fn build(b: *std.Build) void {
         };
     }
 
+    // Platform tests
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
+        const platform_tests = b.addTest(.{ .root_module = platform_mod });
+        const run_platform_tests = b.addRunArtifact(platform_tests);
+        test_step.dependOn(&run_platform_tests.step);
+
+        const platform_imports = [_]std.Build.Module.Import{
+            .{ .name = "platform", .module = platform_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
+        };
+    }
+
     // V8 tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
         const v8_imports = [_]std.Build.Module.Import{

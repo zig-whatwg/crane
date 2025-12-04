@@ -605,8 +605,13 @@ fn stubStorageRemoveItem(
 fn stubStorageClear(user_context: OpaquePtr) callconv(.c) StorageResult {
     const ctx: *StubContext = @ptrCast(@alignCast(user_context));
 
-    var iter = ctx.storage.valueIterator();
-    while (iter.next()) |value| {
+    // Free both keys and values
+    var key_iter = ctx.storage.keyIterator();
+    while (key_iter.next()) |key| {
+        ctx.allocator.free(key.*);
+    }
+    var value_iter = ctx.storage.valueIterator();
+    while (value_iter.next()) |value| {
         ctx.allocator.free(value.*);
     }
     ctx.storage.clearRetainingCapacity();
