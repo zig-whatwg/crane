@@ -1,0 +1,4 @@
+module CWhatWG {
+    header "whatwg.h"
+    export *
+}

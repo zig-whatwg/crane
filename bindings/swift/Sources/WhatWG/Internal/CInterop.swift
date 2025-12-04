@@ -78,43 +78,6 @@ internal func makeClipboardVTable(context: UnsafeMutableRawPointer) -> whatwg_cl
 internal func makeTimerVTable(context: UnsafeMutableRawPointer) -> whatwg_timer_vtable_t {
     var vtable = whatwg_timer_vtable_t()
     
-    vtable.set_timeout = { userContext, callback, delayMs, userData in
-        guard let ctx = userContext?.assumingMemoryBound(to: ProviderContext.self).pointee,
-              let provider = ctx.platform?.timerProvider else {
-            return 0
-        }
-        
-        // Timer implementation would go here
-        return 0
-    }
-    
-    vtable.set_interval = { userContext, callback, intervalMs, userData in
-        guard let ctx = userContext?.assumingMemoryBound(to: ProviderContext.self).pointee,
-              let provider = ctx.platform?.timerProvider else {
-            return 0
-        }
-        
-        return 0
-    }
-    
-    vtable.clear_timeout = { userContext, timerId in
-        guard let ctx = userContext?.assumingMemoryBound(to: ProviderContext.self).pointee,
-              let provider = ctx.platform?.timerProvider else {
-            return
-        }
-        
-        // Clear timer implementation
-    }
-    
-    vtable.clear_interval = { userContext, timerId in
-        guard let ctx = userContext?.assumingMemoryBound(to: ProviderContext.self).pointee,
-              let provider = ctx.platform?.timerProvider else {
-            return
-        }
-        
-        // Clear interval implementation
-    }
-    
     return vtable
 }
 

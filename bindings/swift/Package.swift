@@ -23,10 +23,7 @@ let package = Package(
     ],
     targets: [
         // System library target for the Zig-compiled C library
-        .systemLibrary(
-            name: "CWhatWG",
-            path: "Sources/CWhatWG"
-        ),
+        .binaryTarget(name: "CWhatWG", path: "CWhatWG.xcframework"),
         // Main library target
         .target(
             name: "WhatWG",
@@ -38,6 +35,13 @@ let package = Package(
             name: "WhatWGTests",
             dependencies: ["WhatWG"],
             path: "Tests/WhatWGTests"
+        ),
+
+        .executableTarget(
+            name: "WhatWGTest",
+            dependencies: [
+                "WhatWG"
+            ]
         ),
     ]
 )

@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:crane}/bindings/swift",
+            "name": "Debug WhatWGTest (bindings/swift)",
+            "target": "WhatWGTest",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug WhatWGTest (bindings/swift)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:crane}/bindings/swift",
+            "name": "Release WhatWGTest (bindings/swift)",
+            "target": "WhatWGTest",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release WhatWGTest (bindings/swift)"
+        }
+    ]
+}

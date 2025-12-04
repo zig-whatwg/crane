@@ -170,7 +170,6 @@ final class UIKitWindowHandle: WindowHandle, @unchecked Sendable {
         // Cross-window messaging isn't supported for external URLs on iOS
     }
 }
-#endif
 
 // MARK: - Backwards Compatibility (iOS)
 
