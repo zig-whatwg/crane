@@ -216,7 +216,9 @@ pub fn V8Interface(comptime Interface: type) type {
         const Self = @This();
 
         /// Template cache - created once per interface type at first use
+        /// NOTE: Templates are isolate-specific - cache the isolate too
         var template_cache: ?*v8.FunctionTemplate = null;
+        var template_cache_isolate: ?*v8.Isolate = null;
 
         /// All methods in this interface
         const all_methods = methods;
@@ -496,9 +498,14 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Prototype with all methods
         /// - Internal fields for Zig instance storage
         pub fn createTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
-            // Return cached template if already created
+            // Return cached template if already created AND from same isolate
+            // V8 templates are bound to specific isolates and cannot be reused across isolates
             if (template_cache) |cached| {
-                return cached;
+                if (template_cache_isolate == isolate) {
+                    return cached;
+                }
+                // Different isolate - need to create new template
+                // (old template is now invalid, but V8 will GC it)
             }
 
             // Create function template - only with constructor callback if interface is constructible
@@ -848,8 +855,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // TODO: Handle mixins
 
-            // Cache the template for future use
+            // Cache the template for future use (bound to this isolate)
             template_cache = template;
+            template_cache_isolate = isolate;
 
             return template;
         }
@@ -1373,6 +1381,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // For ReadableStream: invoke pending start callback now that V8 wrappers exist
             if (comptime std.mem.eql(u8, interface_name, "ReadableStream")) {
                 invokeReadableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
+            }
+
+            // For WritableStream: invoke pending start callback now that V8 wrappers exist
+            if (comptime std.mem.eql(u8, interface_name, "WritableStream")) {
+                invokeWritableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
             }
 
             // Return 'this' (V8 does this automatically for constructors)
@@ -2920,6 +2933,50 @@ fn invokeReadableStreamStartCallback(
     // Invoke the pending start callback with the controller wrapper
     // Call through the interface (per Golden Rule #12)
     ReadableStreamInterface.invokePendingStartCallback(
+        instance,
+        @ptrCast(controller_v8),
+        @ptrCast(isolate),
+        @ptrCast(v8_context),
+    );
+}
+
+/// Invoke WritableStream start callback after V8 wrapper exists
+///
+/// Similar to invokeReadableStreamStartCallback but for WritableStream.
+/// This ensures the start() callback can receive a proper V8 controller wrapper.
+///
+/// Called from constructorCallback when interface_name == "WritableStream"
+fn invokeWritableStreamStartCallback(
+    instance: *runtime.Instance,
+    this_obj: *v8.Object,
+    isolate: *v8.Isolate,
+    v8_context: *v8.Context,
+    allocator: std.mem.Allocator,
+) void {
+    _ = allocator;
+    _ = this_obj;
+
+    // Import interfaces module
+    const WritableStreamInterface = @import("interfaces").WritableStream;
+
+    // Get the controller from the stream's internal state
+    const state = instance.getState(WritableStreamInterface.State);
+    const internal = state.own._internal orelse return;
+    const controller_instance = internal.controller orelse return;
+
+    // Wrap the controller as a V8 object so we can pass it to the JS callback
+    const controller_v8 = template_registry.wrapInstanceAsV8Object(
+        controller_instance,
+        "WritableStreamDefaultController",
+        isolate,
+        v8_context,
+    ) catch {
+        return;
+    };
+
+    // Invoke the pending start callback with the controller wrapper
+    // Call through the interface (per Golden Rule #12)
+    WritableStreamInterface.invokePendingStartCallback(
         instance,
         @ptrCast(controller_v8),
         @ptrCast(isolate),

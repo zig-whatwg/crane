@@ -23,42 +23,40 @@ pub const WritableStream = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
             .{ .name = "Transferable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "locked", "get_locked", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "abort", "call_abort", 0 },
             .{ "close", "call_close", 0 },
             .{ "getWriter", "call_getWriter", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
             "close",
             "getWriter",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "locked", "get_locked", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -72,7 +70,6 @@ pub const WritableStream = struct {
     );
 
     const delegates = .{
-
         .get_locked = &get_locked,
 
         .call_abort = &call_abort,
@@ -106,7 +103,6 @@ pub const WritableStream = struct {
     }
 
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-        
         return try WritableStreamImpl.call_abort(instance, reason);
     }
 
@@ -114,4 +110,15 @@ pub const WritableStream = struct {
         return try WritableStreamImpl.call_close(instance);
     }
 
+    /// Invoke the pending start callback for async promise handling.
+    /// Called by V8 after stream construction to properly await the start() Promise.
+    /// This is not part of the WebIDL interface - it's an internal V8 integration method.
+    pub fn invokePendingStartCallback(
+        instance: *runtime.Instance,
+        controller_v8: *anyopaque,
+        v8_isolate: *anyopaque,
+        v8_context: *anyopaque,
+    ) void {
+        WritableStreamImpl.invokePendingStartCallback(instance, controller_v8, v8_isolate, v8_context);
+    }
 };

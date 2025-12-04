@@ -278,6 +278,7 @@ fn createWritableStreamForTransform(
         .write_algorithm = @ptrCast(transform_stream), // Store TransformStream for delegation
         .close_algorithm = @ptrCast(transform_stream),
         .abort_algorithm = @ptrCast(transform_stream),
+        .start_algorithm = null, // TransformStream starts immediately, no deferred start
         .strategy_hwm = writable_hwm,
         .strategy_size_algorithm = null,
         .isolate = ctx.engine_ctx,

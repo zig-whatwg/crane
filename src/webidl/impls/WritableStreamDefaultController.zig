@@ -56,6 +56,11 @@ pub const InternalState = struct {
     /// [[abortAlgorithm]]: Underlying sink abort callback
     abort_algorithm: ?*const anyopaque,
 
+    /// [[startAlgorithm]]: Underlying sink start callback (stored for deferred invocation)
+    /// This is the raw V8 function pointer that will be called when the stream is ready.
+    /// Set to null after invocation.
+    start_algorithm: ?*const anyopaque,
+
     /// [[strategyHWM]]: High water mark for backpressure
     strategy_hwm: f64,
 

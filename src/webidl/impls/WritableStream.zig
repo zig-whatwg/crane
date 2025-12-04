@@ -649,11 +649,13 @@ fn setUpWritableStreamDefaultController(
     const abort_controller = interfaces.AbortController.call_constructor(allocator, stream_instance.ctx) catch null;
 
     // Initialize controller internal state
+    // Store start algorithm for deferred invocation (will be called by V8 after construction)
     controller_internal.* = .{
         .stream = stream_instance,
         .write_algorithm = writeAlgorithm,
         .close_algorithm = closeAlgorithm,
         .abort_algorithm = abortAlgorithm,
+        .start_algorithm = startAlgorithm, // Store for deferred invocation
         .strategy_hwm = highWaterMark,
         .strategy_size_algorithm = sizeAlgorithm,
         .isolate = stream_instance.ctx.engine_ctx, // V8 isolate from runtime context
@@ -670,18 +672,15 @@ fn setUpWritableStreamDefaultController(
     // Set stream.[[controller]] to controller
     stream_internal.controller = controller_instance;
 
-    // Invoke start algorithm if present
-    if (startAlgorithm) |start_fn| {
-        const start_callback: callbacks.UnderlyingSinkStartCallback = @ptrCast(@alignCast(start_fn));
-        const start_result = start_callback(@ptrCast(controller_instance));
-        _ = start_result; // Future: Handle promise
-        controller_internal.started = true;
-    } else {
+    // Note: The start algorithm is NOT invoked here.
+    // Per WHATWG Streams spec, the start callback is invoked asynchronously after construction.
+    // V8 will call invokePendingStartCallback() which handles Promise results properly.
+    // If there's no start algorithm, mark as started immediately.
+    if (startAlgorithm == null) {
         controller_internal.started = true;
     }
-
-    // Set initial desired size
-    // Future: Compute based on queue size and high water mark
+    // If there IS a start algorithm, it remains started=false until invokePendingStartCallback
+    // is called and the Promise (if any) fulfills.
 }
 
 /// WritableStreamCloseQueuedOrInFlight(stream)
@@ -829,4 +828,209 @@ fn writableStreamClose(
     }
 
     return @ptrCast(promise);
+}
+
+// ============================================================================
+// Start Algorithm Invocation (for V8 Promise handling)
+// ============================================================================
+
+/// Invoke the pending start callback for a WritableStream's controller.
+///
+/// This is called by V8 after the stream is constructed to invoke the user's
+/// start() callback. If the callback returns a Promise, we chain handlers
+/// to wait for it to settle before marking the controller as started.
+///
+/// Spec: https://streams.spec.whatwg.org/#set-up-writable-stream-default-controller
+/// Steps 8-10 (start algorithm invocation and promise handling)
+///
+/// Arguments:
+/// - instance: The WritableStream instance
+/// - controller_v8: The V8 Object wrapper for the controller
+/// - v8_isolate: The V8 Isolate
+/// - v8_context: The V8 Context
+///
+/// Returns: void (errors are handled by erroring the stream)
+pub fn invokePendingStartCallback(
+    instance: *runtime.Instance,
+    controller_v8: *anyopaque,
+    v8_isolate: *anyopaque,
+    v8_context: *anyopaque,
+) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    const controller_instance = internal.controller orelse return;
+
+    const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
+    const controller_state = controller_instance.getState(interfaces.WritableStreamDefaultController.State);
+    const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_state.own._internal orelse return));
+
+    // Check if there's a pending start algorithm and controller hasn't started
+    const start_algo = controller_internal.start_algorithm orelse {
+        // No start algorithm - mark as started immediately (if not already)
+        if (!controller_internal.started) {
+            onWritableStartFulfilledImmediate(controller_internal);
+        }
+        return;
+    };
+
+    if (controller_internal.started) {
+        // Already started - nothing to do
+        return;
+    }
+
+    // Import V8 FFI for direct function invocation
+    const v8 = @import("v8").ffi;
+
+    // Cast the opaque pointer to V8 types
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
+    const context: *v8.Context = @ptrCast(@alignCast(v8_context));
+    const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
+
+    // The stored pointer is a raw V8 Value pointer - verify it's a function
+    const v8_value: *v8.Value = @ptrCast(@alignCast(@constCast(start_algo)));
+
+    if (!v8.v8_Value_IsFunction(v8_value)) {
+        // Clear the start algorithm and mark as started
+        controller_internal.start_algorithm = null;
+        onWritableStartFulfilledImmediate(controller_internal);
+        return;
+    }
+
+    const func: *v8.Function = @ptrCast(v8_value);
+
+    // Call the V8 function with the controller as argument
+    // Use 'undefined' as 'this' since start() is not called as a method
+    const undefined_recv = v8.v8_Undefined(isolate) orelse {
+        // Couldn't get undefined - mark as started and return
+        controller_internal.start_algorithm = null;
+        onWritableStartFulfilledImmediate(controller_internal);
+        return;
+    };
+    var args = [_]*v8.Value{@ptrCast(controller_obj)};
+    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
+
+    // Check if call succeeded
+    if (result == null) {
+        // Call threw an exception - error the stream
+        controller_internal.start_algorithm = null;
+        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
+        writableStreamStartErroring(instance, @ptrCast(&js_error));
+        return;
+    }
+
+    // Clear the start algorithm since it's been invoked
+    controller_internal.start_algorithm = null;
+
+    // Per WHATWG Streams spec § 4.5.3 SetUpWritableStreamDefaultController:
+    // Let startPromise be a promise resolved with startResult.
+    // Upon fulfillment of startPromise: set started = true
+    // Upon rejection of startPromise with reason r: error the stream
+
+    // Unwrap the result (already checked for null above)
+    const result_value: *v8.Value = result.?;
+
+    // Check if result is a Promise
+    const is_promise = v8.v8_Value_IsPromise(result_value);
+    if (is_promise) {
+        // Result is a Promise - chain handlers to wait for it to settle
+        const promise: *v8.Promise = @ptrCast(result_value);
+
+        // Create context for the callbacks (store pointers needed for completion)
+        const callback_ctx = controller_internal.allocator.create(WritableStartCallbackContext) catch {
+            // Allocation failed - fall back to immediate fulfillment
+            onWritableStartFulfilledImmediate(controller_internal);
+            return;
+        };
+        callback_ctx.* = .{
+            .controller_internal = controller_internal,
+            .stream_instance = instance,
+            .allocator = controller_internal.allocator,
+        };
+
+        // Create fulfill handler
+        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
+            context,
+            onWritableStartPromiseFulfilled,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - fall back to immediate fulfillment
+            controller_internal.allocator.destroy(callback_ctx);
+            onWritableStartFulfilledImmediate(controller_internal);
+            return;
+        };
+
+        // Create reject handler
+        const reject_handler = v8.v8_CreateZigRejectHandler(
+            context,
+            onWritableStartPromiseRejected,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onWritableStartFulfilledImmediate(controller_internal);
+            return;
+        };
+
+        // Chain handlers onto the promise
+        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        if (chained == null) {
+            // Failed to chain - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onWritableStartFulfilledImmediate(controller_internal);
+            return;
+        }
+        // Promise handlers are now chained - they will be called when the promise settles
+        // The callback context will be freed in the callback handlers
+    } else {
+        // Result is not a Promise - mark as started immediately
+        onWritableStartFulfilledImmediate(controller_internal);
+    }
+}
+
+/// Context for V8 promise callbacks from invokePendingStartCallback
+/// This is allocated and passed to the V8 promise handlers, then freed in the callbacks
+const WritableStartCallbackContext = struct {
+    controller_internal: *@import("WritableStreamDefaultController.zig").InternalState,
+    stream_instance: *runtime.Instance,
+    allocator: std.mem.Allocator,
+};
+
+/// V8 Promise fulfillment callback for start() promise
+/// Called when an async start(controller) function's promise fulfills
+/// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon fulfillment of startPromise
+fn onWritableStartPromiseFulfilled(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *WritableStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    // Mark the controller as started
+    onWritableStartFulfilledImmediate(callback_ctx.controller_internal);
+}
+
+/// V8 Promise rejection callback for start() promise
+/// Called when an async start(controller) function's promise rejects
+/// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon rejection of startPromise with reason r
+fn onWritableStartPromiseRejected(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *WritableStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    // Error the stream with the rejection reason
+    const js_error = streams_common.JSValue{ .string = "Start callback promise rejected" };
+    writableStreamStartErroring(callback_ctx.stream_instance, @ptrCast(&js_error));
+}
+
+/// Immediate start fulfillment (no async)
+/// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon fulfillment of startPromise
+fn onWritableStartFulfilledImmediate(controller_internal: *@import("WritableStreamDefaultController.zig").InternalState) void {
+    // Set controller.[[started]] to true
+    controller_internal.started = true;
+
+    // Per spec: Assert that stream.[[state]] is "writable" or "erroring"
+    // Then: Perform WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+    // This processes any writes that were queued while waiting for start to complete.
+
+    // For now, we just mark as started. The queue advancement will happen
+    // when write operations check the started flag.
 }
