@@ -73,6 +73,12 @@ pub const ClipboardFormat = clipboard_backend.ClipboardFormat;
 pub const ClipboardItem = clipboard_backend.ClipboardItem;
 pub const ClipboardResult = clipboard_backend.ClipboardResult;
 
+// Clipboard Adapter (bridges old and new interfaces)
+pub const clipboard_adapter = @import("clipboard_adapter.zig");
+pub const ClipboardVTableAdapter = clipboard_adapter.ClipboardVTableAdapter;
+pub const ClipboardBackendAdapter = clipboard_adapter.ClipboardBackendAdapter;
+pub const createStubVTableAdapter = clipboard_adapter.createStubVTableAdapter;
+
 pub const NotificationBackend = notification_backend.NotificationBackend;
 pub const StubNotificationBackend = notification_backend.StubNotificationBackend;
 pub const DeniedNotificationBackend = notification_backend.DeniedNotificationBackend;
