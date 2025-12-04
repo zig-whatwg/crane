@@ -312,7 +312,163 @@ pub const Cache = struct {
     pub fn isEmpty(self: *const Self) bool {
         return self.entries.items.len == 0;
     }
+
+    // =========================================================================
+    // Add Methods (Fetch + Cache)
+    // =========================================================================
+
+    /// Fetch a request and store it in the cache.
+    ///
+    /// Spec: https://w3c.github.io/ServiceWorker/#cache-add
+    ///
+    /// Algorithm:
+    /// 1. Let request be the associated request of the result of invoking the
+    ///    Request constructor with requestInfo.
+    /// 2. If request's scheme is not one of "http" and "https", return a promise
+    ///    rejected with a TypeError.
+    /// 3. Set request's response tainting to "cors".
+    /// 4. Let responsePromise be the result of fetching request.
+    /// 5. When responsePromise fulfills with response:
+    ///    a. If response's type is "error", reject.
+    ///    b. If response's status is not an ok status, reject.
+    ///    c. If request's method is not GET, reject.
+    ///    d. Create cache entry and store in cache.
+    pub fn add(
+        self: *Self,
+        request_url: []const u8,
+        fetch_fn: *const fn (allocator: Allocator, url: []const u8) FetchResult,
+    ) !VoidPromise {
+        var promise = VoidPromise.init();
+
+        // Step 1-2: Validate URL scheme
+        if (!isValidCacheScheme(request_url)) {
+            promise.reject(error.TypeError);
+            return promise;
+        }
+
+        // Step 4: Perform fetch
+        const fetch_result = fetch_fn(self.allocator, request_url);
+
+        // Step 5a: Check for error response
+        if (fetch_result.is_error) {
+            promise.reject(error.TypeError);
+            return promise;
+        }
+
+        // Step 5b: Check for ok status (2xx)
+        if (fetch_result.status < 200 or fetch_result.status >= 300) {
+            promise.reject(error.TypeError);
+            return promise;
+        }
+
+        // Step 5d: Store in cache
+        const put_promise = try self.put(
+            request_url,
+            "GET",
+            &[_]HeaderEntry{},
+            fetch_result.status,
+            fetch_result.status_text,
+            fetch_result.headers,
+            fetch_result.body,
+            .basic,
+        );
+
+        if (put_promise.isFulfilled()) {
+            promise.resolve({});
+        } else if (put_promise.isRejected()) {
+            promise.reject(put_promise.err.?);
+        }
+
+        return promise;
+    }
+
+    /// Fetch multiple requests and store them all in the cache.
+    ///
+    /// Spec: https://w3c.github.io/ServiceWorker/#cache-addAll
+    ///
+    /// Algorithm:
+    /// 1. For each requestInfo in requestInfos:
+    ///    a. Let request be the associated request of the result of invoking the
+    ///       Request constructor with requestInfo.
+    ///    b. If request's scheme is not one of "http" and "https", return a promise
+    ///       rejected with a TypeError.
+    ///    c. If request's method is not GET, return a promise rejected with a TypeError.
+    ///    d. Set request's response tainting to "cors".
+    /// 2. Let responsePromises be an empty list.
+    /// 3. For each request in requests, add fetch(request) to responsePromises.
+    /// 4. Wait for all promises to settle.
+    /// 5. For each response, if error or not ok, reject.
+    /// 6. Batch store all request/response pairs.
+    pub fn addAll(
+        self: *Self,
+        request_urls: []const []const u8,
+        fetch_fn: *const fn (allocator: Allocator, url: []const u8) FetchResult,
+    ) !VoidPromise {
+        var promise = VoidPromise.init();
+
+        // Step 1: Validate all URLs first
+        for (request_urls) |url| {
+            if (!isValidCacheScheme(url)) {
+                promise.reject(error.TypeError);
+                return promise;
+            }
+        }
+
+        // Step 2-4: Fetch all requests
+        var fetch_results = std.ArrayList(FetchResult).init(self.allocator);
+        defer fetch_results.deinit();
+
+        for (request_urls) |url| {
+            const result = fetch_fn(self.allocator, url);
+            try fetch_results.append(result);
+        }
+
+        // Step 5: Check all responses
+        for (fetch_results.items) |result| {
+            if (result.is_error) {
+                promise.reject(error.TypeError);
+                return promise;
+            }
+            if (result.status < 200 or result.status >= 300) {
+                promise.reject(error.TypeError);
+                return promise;
+            }
+        }
+
+        // Step 6: Store all request/response pairs
+        for (request_urls, 0..) |url, i| {
+            const result = fetch_results.items[i];
+            _ = try self.put(
+                url,
+                "GET",
+                &[_]HeaderEntry{},
+                result.status,
+                result.status_text,
+                result.headers,
+                result.body,
+                .basic,
+            );
+        }
+
+        promise.resolve({});
+        return promise;
+    }
 };
+
+/// Result of a fetch operation for add/addAll.
+pub const FetchResult = struct {
+    status: u16,
+    status_text: []const u8,
+    headers: []const HeaderEntry,
+    body: ?[]const u8,
+    is_error: bool,
+};
+
+/// Check if URL has a valid scheme for caching (http or https).
+fn isValidCacheScheme(url: []const u8) bool {
+    return std.mem.startsWith(u8, url, "http://") or
+        std.mem.startsWith(u8, url, "https://");
+}
 
 // =============================================================================
 // Tests
@@ -466,4 +622,213 @@ test "Cache.put replaces existing" {
     const promise = try cache.match("https://example.com/api", "GET", &[_]HeaderEntry{}, .{});
     const response = promise.value.?.?;
     try std.testing.expectEqualStrings("v2", response.body.?);
+}
+
+test "Cache.add - successful fetch" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    // Mock fetch function that returns a successful response
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 200,
+                .status_text = "OK",
+                .headers = &[_]HeaderEntry{},
+                .body = "test body",
+                .is_error = false,
+            };
+        }
+    }.fetch;
+
+    const promise = try cache.add("https://example.com/api", mockFetch);
+    try std.testing.expect(promise.isFulfilled());
+    try std.testing.expectEqual(@as(usize, 1), cache.count());
+
+    // Verify the entry was stored
+    const match_promise = try cache.match("https://example.com/api", "GET", &[_]HeaderEntry{}, .{});
+    try std.testing.expect(match_promise.value.? != null);
+}
+
+test "Cache.add - rejects non-http schemes" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 200,
+                .status_text = "OK",
+                .headers = &[_]HeaderEntry{},
+                .body = null,
+                .is_error = false,
+            };
+        }
+    }.fetch;
+
+    // File URL should be rejected
+    const promise = try cache.add("file:///local/file.txt", mockFetch);
+    try std.testing.expect(promise.isRejected());
+    try std.testing.expect(cache.isEmpty());
+}
+
+test "Cache.add - rejects error responses" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 0,
+                .status_text = "",
+                .headers = &[_]HeaderEntry{},
+                .body = null,
+                .is_error = true,
+            };
+        }
+    }.fetch;
+
+    const promise = try cache.add("https://example.com/api", mockFetch);
+    try std.testing.expect(promise.isRejected());
+    try std.testing.expect(cache.isEmpty());
+}
+
+test "Cache.add - rejects non-ok status" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 404,
+                .status_text = "Not Found",
+                .headers = &[_]HeaderEntry{},
+                .body = null,
+                .is_error = false,
+            };
+        }
+    }.fetch;
+
+    const promise = try cache.add("https://example.com/api", mockFetch);
+    try std.testing.expect(promise.isRejected());
+    try std.testing.expect(cache.isEmpty());
+}
+
+test "Cache.addAll - multiple successful fetches" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 200,
+                .status_text = "OK",
+                .headers = &[_]HeaderEntry{},
+                .body = "cached",
+                .is_error = false,
+            };
+        }
+    }.fetch;
+
+    const urls = [_][]const u8{
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+    };
+
+    const promise = try cache.addAll(&urls, mockFetch);
+    try std.testing.expect(promise.isFulfilled());
+    try std.testing.expectEqual(@as(usize, 3), cache.count());
+}
+
+test "Cache.addAll - rejects if any URL invalid" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    const mockFetch = struct {
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            return .{
+                .status = 200,
+                .status_text = "OK",
+                .headers = &[_]HeaderEntry{},
+                .body = null,
+                .is_error = false,
+            };
+        }
+    }.fetch;
+
+    const urls = [_][]const u8{
+        "https://example.com/a",
+        "ftp://invalid.com/b", // Invalid scheme
+        "https://example.com/c",
+    };
+
+    const promise = try cache.addAll(&urls, mockFetch);
+    try std.testing.expect(promise.isRejected());
+    try std.testing.expect(cache.isEmpty());
+}
+
+test "Cache.addAll - rejects if any fetch fails" {
+    const allocator = std.testing.allocator;
+
+    const cache = try Cache.init(allocator, "v1");
+    defer cache.deinit();
+
+    // Return error for the second URL
+    var call_count: usize = 0;
+    const mockFetch = struct {
+        var count: *usize = undefined;
+        fn init(c: *usize) void {
+            count = c;
+        }
+        fn fetch(_: Allocator, _: []const u8) FetchResult {
+            count.* += 1;
+            if (count.* == 2) {
+                return .{
+                    .status = 500,
+                    .status_text = "Error",
+                    .headers = &[_]HeaderEntry{},
+                    .body = null,
+                    .is_error = false,
+                };
+            }
+            return .{
+                .status = 200,
+                .status_text = "OK",
+                .headers = &[_]HeaderEntry{},
+                .body = null,
+                .is_error = false,
+            };
+        }
+    };
+    mockFetch.init(&call_count);
+
+    const urls = [_][]const u8{
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+    };
+
+    const promise = try cache.addAll(&urls, mockFetch.fetch);
+    try std.testing.expect(promise.isRejected());
+}
+
+test "isValidCacheScheme" {
+    try std.testing.expect(isValidCacheScheme("https://example.com"));
+    try std.testing.expect(isValidCacheScheme("http://example.com"));
+    try std.testing.expect(!isValidCacheScheme("ftp://example.com"));
+    try std.testing.expect(!isValidCacheScheme("file:///local"));
+    try std.testing.expect(!isValidCacheScheme("data:text/plain,hello"));
 }
