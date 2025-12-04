@@ -162,6 +162,10 @@ pub const script_runner = @import("script_runner.zig");
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");
 
+/// Selection command implementations with DOM integration
+/// (Used by execCommand for selectAll, delete, forwardDelete)
+pub const selection_commands = @import("selection_commands.zig");
+
 // ============================================================================
 // Re-exports for Testing Convenience
 // ============================================================================

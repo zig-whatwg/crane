@@ -11,6 +11,10 @@
 //! - Selection API for selection manipulation
 //! - Clipboard API for clipboard access (via pluggable ClipboardBackend)
 //! - DOM for content modification
+//!
+//! Note: This module is part of html_core and does NOT have access to runtime/impls.
+//! Full DOM integration happens via the html module (full.zig) which has access to
+//! both html_core and the webidl modules.
 
 const std = @import("std");
 const commands = @import("commands.zig");
@@ -44,15 +48,18 @@ pub const ClipboardItem = platform.ClipboardItem;
 /// 4. Return true (selectAll always succeeds)
 ///
 /// Note: selectAll does NOT create an undo entry as it doesn't modify content.
+///
+/// TODO: Full implementation requires DOM integration via html module (full.zig)
+/// which has access to runtime.Instance and impls.Selection.
 pub fn executeSelectAll(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
     _ = allocator;
     _ = document;
 
     // Algorithm when integrated with DOM:
-    // 1. Get editing host (contenteditable ancestor or document.body)
-    // 2. Get Selection from document
-    // 3. Call selection.selectAllChildren(editingHost)
-    // 4. No undo entry needed
+    // 1. Get document instance from handle
+    // 2. Call document.getSelection() to get Selection object
+    // 3. Get editing host (document.body or contenteditable ancestor)
+    // 4. Call selection.selectAllChildren(editingHost)
 
     return .{ .success = true };
 }
@@ -76,15 +83,20 @@ pub fn executeSelectAll(allocator: std.mem.Allocator, document: DocumentHandle) 
 ///    - Empty block elements: merge with previous block
 ///    - Tables: don't delete across cell boundaries
 /// 5. Create undo entry
+///
+/// TODO: Full implementation requires DOM integration via html module (full.zig)
+/// which has access to runtime.Instance and impls.Selection.
 pub fn executeDelete(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
     _ = allocator;
     _ = document;
 
     // Algorithm when integrated with DOM:
-    // 1. Get Selection and first Range
-    // 2. If not collapsed: deleteFromDocument()
-    // 3. If collapsed: extend backward, then delete
-    // 4. Record undo entry
+    // 1. Get document instance from handle
+    // 2. Call document.getSelection() to get Selection object
+    // 3. If selection.isCollapsed:
+    //    a. Call selection.modify("extend", "backward", "character")
+    // 4. Call selection.deleteFromDocument()
+    // 5. Record undo entry
 
     return .{ .success = true };
 }
@@ -108,15 +120,20 @@ pub fn executeDelete(allocator: std.mem.Allocator, document: DocumentHandle) !Co
 ///    - At end of block: merge with next block
 ///    - Tables: don't delete across cell boundaries
 /// 5. Create undo entry
+///
+/// TODO: Full implementation requires DOM integration via html module (full.zig)
+/// which has access to runtime.Instance and impls.Selection.
 pub fn executeForwardDelete(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
     _ = allocator;
     _ = document;
 
     // Algorithm when integrated with DOM:
-    // 1. Get Selection and first Range
-    // 2. If not collapsed: deleteFromDocument()
-    // 3. If collapsed: extend forward, then delete
-    // 4. Record undo entry
+    // 1. Get document instance from handle
+    // 2. Call document.getSelection() to get Selection object
+    // 3. If selection.isCollapsed:
+    //    a. Call selection.modify("extend", "forward", "character")
+    // 4. Call selection.deleteFromDocument()
+    // 5. Record undo entry
 
     return .{ .success = true };
 }
