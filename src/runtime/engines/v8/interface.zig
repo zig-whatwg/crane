@@ -1495,44 +1495,116 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 return try Interface.call_constructor(allocator, ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
-                // Three arguments constructor
+                // Three arguments constructor (all may be optional)
                 const Param1Type = params[2].type.?;
                 const Param2Type = params[3].type.?;
                 const Param3Type = params[4].type.?;
 
-                if (js_arg_count < 3) {
-                    return error.NotEnoughArguments;
-                }
+                // Handle first parameter - may be optional
+                const arg1 = if (js_arg_count >= 1) blk: {
+                    const v8_arg1 = info.get(0);
+                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param1Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param1Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
-                const v8_arg1 = info.get(0);
-                const v8_arg2 = info.get(1);
-                const v8_arg3 = info.get(2);
+                // Handle second parameter - may be optional
+                const arg2 = if (js_arg_count >= 2) blk: {
+                    const v8_arg2 = info.get(1);
+                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param2Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param2Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
-                const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
-                const arg2 = try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
-                const arg3 = try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                // Handle third parameter - may be optional
+                const arg3 = if (js_arg_count >= 3) blk: {
+                    const v8_arg3 = info.get(2);
+                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param3Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param3Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
                 return try Interface.call_constructor(allocator, ctx, arg1, arg2, arg3);
             } else if (webidl_param_count == 4) {
-                // Four arguments constructor
+                // Four arguments constructor (all may be optional)
                 const Param1Type = params[2].type.?;
                 const Param2Type = params[3].type.?;
                 const Param3Type = params[4].type.?;
                 const Param4Type = params[5].type.?;
 
-                if (js_arg_count < 4) {
-                    return error.NotEnoughArguments;
-                }
+                // Handle first parameter - may be optional
+                const arg1 = if (js_arg_count >= 1) blk: {
+                    const v8_arg1 = info.get(0);
+                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param1Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param1Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
-                const v8_arg1 = info.get(0);
-                const v8_arg2 = info.get(1);
-                const v8_arg3 = info.get(2);
-                const v8_arg4 = info.get(3);
+                // Handle second parameter - may be optional
+                const arg2 = if (js_arg_count >= 2) blk: {
+                    const v8_arg2 = info.get(1);
+                    break :blk try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param2Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param2Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
-                const arg1 = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
-                const arg2 = try conv.fromV8Value(Param2Type, allocator, isolate, v8_context, v8_arg2);
-                const arg3 = try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
-                const arg4 = try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                // Handle third parameter - may be optional
+                const arg3 = if (js_arg_count >= 3) blk: {
+                    const v8_arg3 = info.get(2);
+                    break :blk try conv.fromV8Value(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param3Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param3Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
+
+                // Handle fourth parameter - may be optional
+                const arg4 = if (js_arg_count >= 4) blk: {
+                    const v8_arg4 = info.get(3);
+                    break :blk try conv.fromV8Value(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                } else blk: {
+                    if (comptime getDefaultArgValue(Param4Type)) |default_val| {
+                        break :blk default_val;
+                    } else if (comptime canUseUndefined(Param4Type)) {
+                        break :blk undefined;
+                    } else {
+                        return error.NotEnoughArguments;
+                    }
+                };
 
                 return try Interface.call_constructor(allocator, ctx, arg1, arg2, arg3, arg4);
             } else {
