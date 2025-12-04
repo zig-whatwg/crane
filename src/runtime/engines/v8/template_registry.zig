@@ -60,6 +60,20 @@ fn ensureInitialized() void {
     }
 }
 
+/// Clear all registered templates
+///
+/// MUST be called before disposing an isolate and creating a new one.
+/// V8 FunctionTemplates are bound to a specific isolate and cannot be reused
+/// across isolates. Failure to call this before creating a new isolate will
+/// cause crashes (bus errors) when trying to use stale template references.
+pub fn clear() void {
+    for (&templates) |*entry| {
+        entry.* = null;
+    }
+    template_count = 0;
+    // Don't reset initialized - the registry can be reused
+}
+
 /// Register a FunctionTemplate for an interface
 ///
 /// Called by V8Interface.registerGlobal after creating the template.
