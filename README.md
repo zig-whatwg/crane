@@ -453,6 +453,27 @@ zig build test -- --test-filter "URLSearchParams"
 # Memory leak detection is automatic with std.testing.allocator
 ```
 
+### Web Platform Tests (WPT)
+
+Crane integrates with the official [Web Platform Tests](https://web-platform-tests.org/) suite used by all major browsers:
+
+```bash
+# Run all WPT tests
+zig build wpt
+
+# Run specific category
+zig build wpt -- url/
+
+# Run multiple categories
+zig build wpt -- url/ encoding/ streams/
+```
+
+Results are written to `wpt-results/wptreport.json` in wpt.fyi-compatible format.
+
+**In-scope categories**: `url/`, `encoding/`, `console/`, `mimesniff/`, `streams/`, `fetch/`, `xhr/`, `dom/`, `html/` (non-rendering)
+
+See [docs/wpt.md](docs/wpt.md) for complete setup instructions, troubleshooting, and result interpretation.
+
 ## 📁 Project Structure
 
 ```
