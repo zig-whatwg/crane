@@ -3,20 +3,16 @@ import SwiftUI
 
 #if os(iOS)
 import UIKit
-public typealias PlatformView = UIView
-public typealias PlatformViewRepresentable = UIViewRepresentable
 public typealias PlatformColor = UIColor
 #else
 import AppKit
-public typealias PlatformView = NSView
-public typealias PlatformViewRepresentable = NSViewRepresentable
 public typealias PlatformColor = NSColor
 #endif
 
-/// A SwiftUI view that displays web content using the WHATWG browser engine.
+/// A native SwiftUI view that displays web content using the WHATWG browser engine.
 ///
-/// `WhatWGWebView` wraps the underlying platform-specific web view and integrates
-/// with `WhatWGBrowser` for navigation and JavaScript execution.
+/// `WhatWGWebView` uses SwiftUI's Canvas for rendering and native gesture recognizers
+/// for interaction. It integrates with `WhatWGBrowser` for navigation and JavaScript execution.
 ///
 /// ## Example Usage
 ///
@@ -36,13 +32,22 @@ public typealias PlatformColor = NSColor
 /// ```
 ///
 @available(iOS 17.0, macOS 14.0, *)
-public struct WhatWGWebView: PlatformViewRepresentable {
+public struct WhatWGWebView: View {
     
     /// The browser instance controlling this view.
     var browser: WhatWGBrowser
     
     /// Configuration options for the web view.
     public var configuration: Configuration
+    
+    /// Current scroll offset for the content.
+    @State private var scrollOffset: CGPoint = .zero
+    
+    /// Current zoom scale.
+    @State private var zoomScale: CGFloat = 1.0
+    
+    /// Whether a drag gesture is active.
+    @State private var isDragging: Bool = false
     
     /// Creates a new web view with the specified browser.
     ///
@@ -54,32 +59,187 @@ public struct WhatWGWebView: PlatformViewRepresentable {
         self.configuration = configuration
     }
     
-    #if os(iOS)
-    public func makeUIView(context: Context) -> WhatWGWebViewContainer {
-        let container = WhatWGWebViewContainer(frame: .zero, configuration: configuration)
-        container.delegate = context.coordinator
-        return container
+    public var body: some View {
+        GeometryReader { geometry in
+            contentCanvas(size: geometry.size)
+                .gesture(tapGesture)
+                .gesture(dragGesture)
+                .gesture(magnificationGesture)
+                .focusable()
+                .onKeyPress { keyPress in
+                    handleKeyPress(keyPress)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Web content")
+                .accessibilityValue(browser.title.isEmpty ? "No content loaded" : browser.title)
+                .accessibilityAddTraits(.allowsDirectInteraction)
+        }
+        .background(Color(configuration.backgroundColor))
+        .onChange(of: browser.navigationState.url) { oldValue, newValue in
+            if newValue != oldValue {
+                // Reset scroll position on navigation
+                scrollOffset = .zero
+                zoomScale = 1.0
+            }
+        }
     }
     
-    public func updateUIView(_ container: WhatWGWebViewContainer, context: Context) {
-        context.coordinator.updateBrowser(browser)
-        container.update(with: browser)
-    }
-    #else
-    public func makeNSView(context: Context) -> WhatWGWebViewContainer {
-        let container = WhatWGWebViewContainer(frame: .zero, configuration: configuration)
-        container.delegate = context.coordinator
-        return container
+    // MARK: - Canvas Rendering
+    
+    @ViewBuilder
+    private func contentCanvas(size: CGSize) -> some View {
+        Canvas { context, canvasSize in
+            // Render the web content
+            renderContent(context: context, size: canvasSize)
+        }
+        .frame(width: size.width, height: size.height)
     }
     
-    public func updateNSView(_ container: WhatWGWebViewContainer, context: Context) {
-        context.coordinator.updateBrowser(browser)
-        container.update(with: browser)
+    private func renderContent(context: GraphicsContext, size: CGSize) {
+        // Apply zoom and scroll transforms
+        var transformedContext = context
+        transformedContext.translateBy(x: -scrollOffset.x, y: -scrollOffset.y)
+        transformedContext.scaleBy(x: zoomScale, y: zoomScale)
+        
+        // Render placeholder content (actual rendering would come from browser engine)
+        let placeholderText: String
+        if browser.isLoading {
+            placeholderText = """
+            WHATWG Browser Engine
+            
+            Loading: \(browser.urlString)
+            
+            Progress: \(Int(browser.loadingProgress * 100))%
+            """
+        } else if let url = browser.navigationState.url {
+            placeholderText = """
+            WHATWG Browser Engine
+            
+            URL: \(url.absoluteString)
+            Title: \(browser.title)
+            
+            (Web rendering implementation pending)
+            """
+        } else {
+            placeholderText = """
+            WHATWG Browser Engine
+            
+            No content loaded.
+            Enter a URL to begin browsing.
+            """
+        }
+        
+        // Draw placeholder text centered
+        let textRect = CGRect(
+            x: 20,
+            y: size.height / 2 - 60,
+            width: size.width - 40,
+            height: 120
+        )
+        
+        let text = Text(placeholderText)
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+        
+        transformedContext.draw(text, in: textRect)
     }
-    #endif
     
-    public func makeCoordinator() -> Coordinator {
-        Coordinator(browser: browser)
+    // MARK: - Gesture Handling
+    
+    private var tapGesture: some Gesture {
+        SpatialTapGesture()
+            .onEnded { value in
+                handleTap(at: value.location)
+            }
+    }
+    
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                isDragging = true
+                handleScroll(translation: value.translation)
+            }
+            .onEnded { value in
+                isDragging = false
+                // Apply final scroll with velocity for momentum
+                let velocity = CGPoint(
+                    x: value.predictedEndTranslation.width - value.translation.width,
+                    y: value.predictedEndTranslation.height - value.translation.height
+                )
+                handleScrollEnd(velocity: velocity)
+            }
+    }
+    
+    private var magnificationGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                guard configuration.allowsZooming else { return }
+                let newScale = zoomScale * scale
+                zoomScale = min(max(newScale, configuration.minimumZoomScale), configuration.maximumZoomScale)
+            }
+    }
+    
+    // MARK: - Event Handlers
+    
+    private func handleTap(at location: CGPoint) {
+        // Convert location to content coordinates
+        let contentLocation = CGPoint(
+            x: (location.x + scrollOffset.x) / zoomScale,
+            y: (location.y + scrollOffset.y) / zoomScale
+        )
+        
+        // Notify browser of tap (for hit testing, link activation, etc.)
+        browser.handleTap(at: contentLocation)
+    }
+    
+    private func handleScroll(translation: CGSize) {
+        // Update scroll offset
+        scrollOffset = CGPoint(
+            x: max(0, scrollOffset.x - translation.width),
+            y: max(0, scrollOffset.y - translation.height)
+        )
+        
+        // Notify browser of scroll
+        browser.handleScroll(offset: scrollOffset)
+    }
+    
+    private func handleScrollEnd(velocity: CGPoint) {
+        // Apply momentum scrolling (simplified)
+        withAnimation(.easeOut(duration: 0.3)) {
+            scrollOffset = CGPoint(
+                x: max(0, scrollOffset.x - velocity.x * 0.3),
+                y: max(0, scrollOffset.y - velocity.y * 0.3)
+            )
+        }
+    }
+    
+    private func handleKeyPress(_ keyPress: KeyPress) -> KeyPress.Result {
+        // Handle keyboard navigation
+        switch keyPress.key {
+        case .leftArrow:
+            if keyPress.modifiers.contains(.command) && configuration.allowsBackForwardNavigationGestures {
+                browser.goBack()
+                return .handled
+            }
+        case .rightArrow:
+            if keyPress.modifiers.contains(.command) && configuration.allowsBackForwardNavigationGestures {
+                browser.goForward()
+                return .handled
+            }
+        case .return:
+            if keyPress.modifiers.contains(.command) {
+                browser.reload()
+                return .handled
+            }
+        case .escape:
+            browser.stopLoading()
+            return .handled
+        default:
+            break
+        }
+        
+        return .ignored
     }
 }
 
@@ -179,285 +339,6 @@ extension WhatWGWebView {
         case never
     }
 }
-
-// MARK: - Coordinator
-
-@available(iOS 17.0, macOS 14.0, *)
-extension WhatWGWebView {
-    
-    /// Coordinator that bridges between SwiftUI and the web view.
-    public class Coordinator: NSObject, WhatWGWebViewContainerDelegate {
-        
-        private var browser: WhatWGBrowser
-        
-        init(browser: WhatWGBrowser) {
-            self.browser = browser
-            super.init()
-        }
-        
-        func updateBrowser(_ browser: WhatWGBrowser) {
-            guard self.browser !== browser else { return }
-            self.browser = browser
-        }
-        
-        // MARK: - WhatWGWebViewContainerDelegate
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didStartLoading url: URL) {
-            Task { @MainActor in
-                browser.onNavigationEvent?(.started(url))
-            }
-        }
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didFinishLoading url: URL) {
-            Task { @MainActor in
-                browser.onNavigationEvent?(.finished(url))
-            }
-        }
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didFailWithError error: BrowserError) {
-            Task { @MainActor in
-                browser.onNavigationEvent?(.failed(error))
-            }
-        }
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didUpdateTitle title: String) {
-            // Title update handled by container
-        }
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didUpdateProgress progress: Double) {
-            // Progress update handled by container
-        }
-        
-        public func webViewContainer(_ container: WhatWGWebViewContainer, didReceiveConsoleMessage message: ConsoleMessage) {
-            Task { @MainActor in
-                browser.onConsoleMessage?(message)
-            }
-        }
-    }
-}
-
-// MARK: - Web View Container
-
-/// Protocol for web view container delegate.
-@available(iOS 17.0, macOS 14.0, *)
-public protocol WhatWGWebViewContainerDelegate: AnyObject {
-    func webViewContainer(_ container: WhatWGWebViewContainer, didStartLoading url: URL)
-    func webViewContainer(_ container: WhatWGWebViewContainer, didFinishLoading url: URL)
-    func webViewContainer(_ container: WhatWGWebViewContainer, didFailWithError error: BrowserError)
-    func webViewContainer(_ container: WhatWGWebViewContainer, didUpdateTitle title: String)
-    func webViewContainer(_ container: WhatWGWebViewContainer, didUpdateProgress progress: Double)
-    func webViewContainer(_ container: WhatWGWebViewContainer, didReceiveConsoleMessage message: ConsoleMessage)
-}
-
-/// The platform-specific container view that hosts the web content.
-///
-/// This view manages the actual rendering and interaction with web content.
-/// It interfaces with the underlying WHATWG browser engine.
-///
-@available(iOS 17.0, macOS 14.0, *)
-public class WhatWGWebViewContainer: PlatformView {
-    
-    /// The delegate for receiving events.
-    public weak var delegate: WhatWGWebViewContainerDelegate?
-    
-    /// The current configuration.
-    public let configuration: WhatWGWebView.Configuration
-    
-    /// The current URL being displayed.
-    public private(set) var currentURL: URL?
-    
-    /// The content view that displays web content.
-    private var contentView: ContentRenderView?
-    
-    /// The current loading state.
-    private var isLoading = false
-    
-    #if os(iOS)
-    /// Creates a new container with the specified frame and configuration.
-    public init(frame: CGRect, configuration: WhatWGWebView.Configuration) {
-        self.configuration = configuration
-        super.init(frame: frame)
-        setupView()
-    }
-    
-    required init?(coder: NSCoder) {
-        self.configuration = .standard
-        super.init(coder: coder)
-        setupView()
-    }
-    #else
-    /// Creates a new container with the specified frame and configuration.
-    public init(frame: NSRect, configuration: WhatWGWebView.Configuration) {
-        self.configuration = configuration
-        super.init(frame: frame)
-        setupView()
-    }
-    
-    required init?(coder: NSCoder) {
-        self.configuration = .standard
-        super.init(coder: coder)
-        setupView()
-    }
-    #endif
-    
-    private func setupView() {
-        // Set up the view hierarchy
-        #if os(iOS)
-        backgroundColor = configuration.backgroundColor
-        #else
-        wantsLayer = true
-        layer?.backgroundColor = configuration.backgroundColor.cgColor
-        #endif
-        
-        // Create content view
-        let content = ContentRenderView(frame: bounds)
-        content.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        #if os(iOS)
-        content.backgroundColor = configuration.backgroundColor
-        addSubview(content)
-        #else
-        content.autoresizingMask = [.width, .height]
-        addSubview(content)
-        #endif
-        contentView = content
-    }
-    
-    /// Updates the container based on browser state.
-    public func update(with browser: WhatWGBrowser) {
-        // Check if we need to load a new URL
-        if let stateURL = browser.navigationState.url,
-           stateURL != currentURL,
-           browser.isLoading {
-            loadURL(stateURL)
-        }
-    }
-    
-    /// Loads the specified URL.
-    public func loadURL(_ url: URL) {
-        guard !isLoading else { return }
-        
-        isLoading = true
-        currentURL = url
-        
-        delegate?.webViewContainer(self, didStartLoading: url)
-        
-        // In a real implementation, this would:
-        // 1. Create a network request via the WHATWG Fetch API
-        // 2. Parse the HTML response using the WHATWG HTML parser
-        // 3. Build the DOM tree
-        // 4. Execute scripts via the JS engine
-        // 5. Render the content
-        
-        // For now, display a placeholder
-        contentView?.displayPlaceholder(for: url)
-        
-        // Simulate loading completion
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.isLoading = false
-            self.delegate?.webViewContainer(self, didFinishLoading: url)
-            self.delegate?.webViewContainer(self, didUpdateTitle: url.host ?? "Untitled")
-        }
-    }
-    
-    /// Executes JavaScript in the current context.
-    public func evaluateJavaScript(_ script: String) async throws -> Any? {
-        // Would delegate to the JS engine
-        return nil
-    }
-}
-
-// MARK: - Content Render View
-
-/// Internal view for rendering web content.
-@available(iOS 17.0, macOS 14.0, *)
-class ContentRenderView: PlatformView {
-    
-    private var placeholderLabel: PlatformLabel?
-    
-    #if os(iOS)
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupPlaceholder()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupPlaceholder()
-    }
-    #else
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        setupPlaceholder()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupPlaceholder()
-    }
-    #endif
-    
-    private func setupPlaceholder() {
-        #if os(iOS)
-        let label = UILabel()
-        label.textAlignment = .center
-        label.textColor = .secondaryLabel
-        label.font = .systemFont(ofSize: 14)
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20)
-        ])
-        
-        placeholderLabel = label
-        #else
-        let label = NSTextField(labelWithString: "")
-        label.alignment = .center
-        label.textColor = .secondaryLabelColor
-        label.font = .systemFont(ofSize: 14)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20)
-        ])
-        
-        placeholderLabel = label
-        #endif
-    }
-    
-    func displayPlaceholder(for url: URL) {
-        let text = """
-        WHATWG Browser Engine
-        
-        Loading: \(url.absoluteString)
-        
-        (Web rendering implementation pending)
-        """
-        
-        #if os(iOS)
-        placeholderLabel?.text = text
-        #else
-        placeholderLabel?.stringValue = text
-        #endif
-    }
-}
-
-// MARK: - Platform Label Typealias
-
-#if os(iOS)
-typealias PlatformLabel = UILabel
-#else
-typealias PlatformLabel = NSTextField
-#endif
 
 // MARK: - View Modifiers
 

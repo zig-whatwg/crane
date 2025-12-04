@@ -1,6 +1,7 @@
 #if os(iOS) || os(macOS)
 import Foundation
 import Observation
+import SwiftUI
 
 /// Main browser controller for SwiftUI integration.
 ///
@@ -237,6 +238,66 @@ public final class WhatWGBrowser {
         // For now, return nil
         return nil
     }
+    
+    // MARK: - Content Interaction
+    
+    /// Handles a tap event at the specified location.
+    ///
+    /// This method is called by `WhatWGWebView` when a tap gesture is recognized.
+    /// Override to implement hit testing, link activation, and other tap-based interactions.
+    ///
+    /// - Parameter location: The tap location in content coordinates.
+    public func handleTap(at location: CGPoint) {
+        // In a real implementation, this would:
+        // 1. Perform hit testing against the DOM
+        // 2. Check for clickable elements (links, buttons, etc.)
+        // 3. Dispatch click events
+        // 4. Handle navigation for link clicks
+        
+        // For now, emit a callback if set
+        onTapEvent?(location)
+    }
+    
+    /// Handles scroll offset changes.
+    ///
+    /// This method is called by `WhatWGWebView` when the scroll position changes.
+    /// Override to implement scroll-based interactions like lazy loading.
+    ///
+    /// - Parameter offset: The new scroll offset in content coordinates.
+    public func handleScroll(offset: CGPoint) {
+        // In a real implementation, this would:
+        // 1. Update the viewport
+        // 2. Trigger lazy loading of images
+        // 3. Update visibility observers
+        // 4. Emit scroll events to JavaScript
+        
+        // For now, emit a callback if set
+        onScrollEvent?(offset)
+    }
+    
+    /// Renders content to a graphics context.
+    ///
+    /// This method is called by `WhatWGWebView` to render web content.
+    /// Override to implement actual DOM rendering.
+    ///
+    /// - Parameters:
+    ///   - context: The graphics context to render to.
+    ///   - size: The size of the render area.
+    public func renderContent(to context: inout GraphicsContext, size: CGSize) {
+        // In a real implementation, this would:
+        // 1. Layout the DOM tree
+        // 2. Paint all visible elements
+        // 3. Composite layers
+        // 4. Apply CSS transforms and effects
+        
+        // Currently handled by WhatWGWebView's Canvas directly
+    }
+    
+    /// Callback for tap events.
+    public var onTapEvent: ((CGPoint) -> Void)?
+    
+    /// Callback for scroll events.
+    public var onScrollEvent: ((CGPoint) -> Void)?
     
     // MARK: - Private
     
