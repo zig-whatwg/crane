@@ -178,4 +178,23 @@ pub const ReadableStream = struct {
     ) void {
         ReadableStreamImpl.invokePendingStartCallback(instance, controller_v8, v8_isolate, v8_context);
     }
+
+    /// Invoke the pending start callback for byte streams.
+    ///
+    /// Similar to invokePendingStartCallback but for ReadableByteStreamController.
+    /// Called by V8 after the stream constructor returns and V8 wrappers exist.
+    ///
+    /// Arguments:
+    /// - instance: The ReadableStream instance
+    /// - controller_v8: The V8 Object wrapper for the ReadableByteStreamController
+    /// - v8_isolate: The V8 Isolate
+    /// - v8_context: The V8 Context
+    pub fn invokePendingByteStartCallback(
+        instance: *runtime.Instance,
+        controller_v8: *anyopaque,
+        v8_isolate: *anyopaque,
+        v8_context: *anyopaque,
+    ) void {
+        ReadableStreamImpl.invokePendingByteStartCallback(instance, controller_v8, v8_isolate, v8_context);
+    }
 };

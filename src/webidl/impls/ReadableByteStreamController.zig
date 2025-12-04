@@ -23,6 +23,7 @@ const CancelAlgorithm = streams_common.CancelAlgorithm;
 const PullAlgorithm = streams_common.PullAlgorithm;
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const event_loop = @import("streams_event_loop");
+const Algorithm = @import("streams_algorithm").Algorithm;
 
 // BYOB infrastructure
 const PullIntoDescriptorModule = @import("streams_pull_into_descriptor");
@@ -106,6 +107,11 @@ pub const InternalState = struct {
     /// [[started]]: boolean - underlying source has finished starting
     started: bool,
 
+    /// [[startAlgorithm]]: Algorithm for starting (stored for deferred invocation)
+    /// This is stored during setup and invoked via V8 after construction completes.
+    /// Per WHATWG Streams spec, start() callback receives the controller and may return a Promise.
+    start_algorithm: ?*Algorithm,
+
     /// [[strategyHWM]]: High water mark for backpressure
     strategy_hwm: f64,
 
@@ -141,6 +147,10 @@ pub const InternalState = struct {
         // Clean up algorithms
         self.cancel_algorithm.deinit();
         self.pull_algorithm.deinit();
+        if (self.start_algorithm) |algo| {
+            algo.deinit();
+            self.allocator.destroy(algo);
+        }
 
         allocator.destroy(self);
     }
@@ -168,8 +178,9 @@ pub fn initInternalState(
     autoAllocateChunkSize: ?u64,
     pull_algorithm: PullAlgorithm,
     cancel_algorithm: CancelAlgorithm,
+    start_algorithm: ?*Algorithm,
 ) !void {
-    initInternalStateWithV8(internal, allocator, stream, highWaterMark, autoAllocateChunkSize, pull_algorithm, cancel_algorithm, null, null);
+    initInternalStateWithV8(internal, allocator, stream, highWaterMark, autoAllocateChunkSize, pull_algorithm, cancel_algorithm, start_algorithm, null, null);
 }
 
 /// Initialize the internal state with V8 context for view construction
@@ -182,6 +193,7 @@ pub fn initInternalStateWithV8(
     autoAllocateChunkSize: ?u64,
     pull_algorithm: PullAlgorithm,
     cancel_algorithm: CancelAlgorithm,
+    start_algorithm: ?*Algorithm,
     isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
 ) void {
@@ -199,6 +211,7 @@ pub fn initInternalStateWithV8(
         .queue_total_size = 0.0,
         .close_requested = false,
         .started = false,
+        .start_algorithm = start_algorithm,
         .strategy_hwm = highWaterMark,
         .pull_algorithm = pull_algorithm,
         .cancel_algorithm = cancel_algorithm,

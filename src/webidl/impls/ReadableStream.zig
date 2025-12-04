@@ -429,6 +429,203 @@ pub fn invokePendingStartCallback(
     }
 }
 
+/// Invoke the pending start callback for a ReadableByteStreamController
+///
+/// This is called by V8 after the stream constructor returns and V8 wrappers exist.
+/// It invokes the user-provided start() callback with the controller as argument,
+/// handles any returned Promise, and marks the controller as started when done.
+///
+/// Per WHATWG Streams spec § 4.7.3 steps 14-17:
+/// 14. Let startResult be the result of performing startAlgorithm
+/// 15. Let startPromise be a promise resolved with startResult
+/// 16. Upon fulfillment of startPromise: set started = true, call pull if needed
+/// 17. Upon rejection of startPromise: error the controller
+///
+/// Parameters:
+/// - instance: The ReadableStream instance
+/// - controller_v8: The V8-wrapped ReadableByteStreamController object
+/// - v8_isolate: The V8 Isolate
+/// - v8_context: The V8 Context
+///
+/// Returns: void (errors are handled by erroring the controller)
+pub fn invokePendingByteStartCallback(
+    instance: *runtime.Instance,
+    controller_v8: *anyopaque,
+    v8_isolate: *anyopaque,
+    v8_context: *anyopaque,
+) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    const controller_instance = internal.controller;
+
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+    const controller_state = controller_instance.getState(interfaces.ReadableByteStreamController.State);
+    const controller_internal = controller_state.own._internal orelse return;
+
+    // Check if there's a pending start algorithm and controller hasn't started
+    const start_algo = controller_internal.start_algorithm orelse {
+        // No start algorithm - nothing to do (already marked as started)
+        return;
+    };
+
+    if (controller_internal.started) {
+        // Already started - nothing to do
+        return;
+    }
+
+    // Get the V8 function pointer from the algorithm's context
+    // The context contains the raw V8 Value pointer that was cast from the dictionary
+    const v8_func_ptr = start_algo.context orelse {
+        // No callback - mark as started
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        return;
+    };
+
+    // Import V8 FFI for direct function invocation
+    const v8 = @import("v8").ffi;
+
+    // Cast the opaque pointer to V8 types
+    const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
+    const context: *v8.Context = @ptrCast(@alignCast(v8_context));
+    const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
+
+    // The stored pointer is a raw V8 Value pointer - verify it's a function
+    const v8_value: *v8.Value = @ptrCast(@alignCast(v8_func_ptr));
+
+    if (!v8.v8_Value_IsFunction(v8_value)) {
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        return;
+    }
+
+    const func: *v8.Function = @ptrCast(v8_value);
+
+    // Call the V8 function with the controller as argument
+    // Use 'undefined' as 'this' since start() is not called as a method
+    const undefined_recv = v8.v8_Undefined(isolate) orelse {
+        // Couldn't get undefined - mark as started and return
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        return;
+    };
+    var args = [_]*v8.Value{@ptrCast(controller_obj)};
+    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
+
+    // Check if call succeeded
+    if (result == null) {
+        // Call threw an exception - error the controller
+        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
+        ReadableByteStreamControllerImpl.errorInternal(controller_internal, js_error);
+        return;
+    }
+
+    // Clear the start algorithm since it's been invoked
+    start_algo.deinit();
+    controller_internal.allocator.destroy(start_algo);
+    controller_internal.start_algorithm = null;
+
+    // Per WHATWG Streams spec § 4.7.3 steps 15-17:
+    // 15. Let startPromise be a promise resolved with startResult
+    // 16. Upon fulfillment of startPromise: set started = true, call pull if needed
+    // 17. Upon rejection of startPromise: error the controller
+
+    // Unwrap the result (already checked for null above)
+    const result_value: *v8.Value = result.?;
+
+    // Check if result is a Promise
+    const is_promise = v8.v8_Value_IsPromise(result_value);
+    if (is_promise) {
+        // Result is a Promise - chain handlers to wait for it to settle
+        const promise: *v8.Promise = @ptrCast(result_value);
+
+        // Create context for the callbacks (store pointer to controller internal state)
+        // We need to allocate this because the callbacks are called asynchronously
+        const callback_ctx = controller_internal.allocator.create(ByteStartCallbackContext) catch {
+            // Allocation failed - fall back to immediate fulfillment
+            onByteStartFulfilledImmediate(controller_internal, controller_instance);
+            return;
+        };
+        callback_ctx.* = .{
+            .controller_internal = controller_internal,
+            .controller_instance = controller_instance,
+            .allocator = controller_internal.allocator,
+        };
+
+        // Create fulfill handler
+        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
+            context,
+            onByteStartPromiseFulfilled,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - fall back to immediate fulfillment
+            controller_internal.allocator.destroy(callback_ctx);
+            onByteStartFulfilledImmediate(controller_internal, controller_instance);
+            return;
+        };
+
+        // Create reject handler
+        const reject_handler = v8.v8_CreateZigRejectHandler(
+            context,
+            onByteStartPromiseRejected,
+            callback_ctx,
+        ) orelse {
+            // Failed to create handler - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onByteStartFulfilledImmediate(controller_internal, controller_instance);
+            return;
+        };
+
+        // Chain handlers onto the promise
+        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        if (chained == null) {
+            // Failed to chain - clean up and fall back
+            v8.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            controller_internal.allocator.destroy(callback_ctx);
+            onByteStartFulfilledImmediate(controller_internal, controller_instance);
+            return;
+        }
+        // Promise handlers are now chained - they will be called when the promise settles
+        // The callback context will be freed in the callback handlers
+    } else {
+        // Result is not a Promise - mark as started immediately
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+    }
+}
+
+/// Context for V8 promise callbacks from invokePendingByteStartCallback
+/// This is allocated and passed to the V8 promise handlers, then freed in the callbacks
+const ByteStartCallbackContext = struct {
+    controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
+    controller_instance: *runtime.Instance,
+    allocator: std.mem.Allocator,
+};
+
+/// V8 Promise fulfill handler for byte stream start callback
+fn onByteStartPromiseFulfilled(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    // Mark the controller as started and call pull if needed
+    onByteStartFulfilledImmediate(callback_ctx.controller_internal, callback_ctx.controller_instance);
+}
+
+/// V8 Promise reject handler for byte stream start callback
+fn onByteStartPromiseRejected(ctx: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void {
+    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+    defer callback_ctx.allocator.destroy(callback_ctx);
+
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+
+    // Convert reason to JSValue if provided
+    if (reason) |r| {
+        const js_error = streams_common.JSValue{ .v8_value = r };
+        ReadableByteStreamControllerImpl.errorInternal(callback_ctx.controller_internal, js_error);
+    } else {
+        const js_error = streams_common.JSValue{ .string = "Start callback promise rejected" };
+        ReadableByteStreamControllerImpl.errorInternal(callback_ctx.controller_internal, js_error);
+    }
+}
+
 /// Getter for locked
 ///
 /// Spec: https://streams.spec.whatwg.org/#rs-locked
@@ -2125,6 +2322,17 @@ fn setUpReadableByteStreamController(
         break :blk algo;
     } else defaultByteStreamCancelAlgorithm();
 
+    // Create start algorithm using the same Algorithm type as default controller
+    // This allows proper V8 callback invocation via invokePendingByteStartCallback
+    const start_algo: ?*algorithm_mod.Algorithm = if (startAlgorithm) |cb|
+        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
+    else
+        null;
+    errdefer if (start_algo) |algo| {
+        algo.deinit();
+        allocator.destroy(algo);
+    };
+
     // Create controller internal state
     const controller_internal = try allocator.create(ReadableByteStreamControllerImpl.InternalState);
     errdefer allocator.destroy(controller_internal);
@@ -2140,6 +2348,7 @@ fn setUpReadableByteStreamController(
         autoAllocateChunkSize,
         pull_algo,
         cancel_algo,
+        start_algo,
     );
 
     controller_state.own._internal = controller_internal;
@@ -2155,14 +2364,19 @@ fn setUpReadableByteStreamController(
     // 16. Upon fulfillment of startPromise: set started = true, call pull if needed
     // 17. Upon rejection of startPromise with reason r: error the controller
     //
-    // LIMITATION: Same as default controller - V8 callback invocation requires
-    // V8-specific API calls. See comments in setUpReadableStreamDefaultController.
+    // The start algorithm is stored in controller_internal.start_algorithm.
+    // The V8 bindings layer will invoke it AFTER the constructor returns and
+    // V8 wrappers exist (see invokeReadableStreamStartCallback in interface.zig).
     //
-    // TODO: Implement proper V8 callback invocation - Track issue: whatwg-h8sj
-    _ = startAlgorithm; // Will be used when V8 integration is complete
-
-    // Immediately mark as started and call pull if needed
-    onByteStartFulfilledImmediate(controller_internal, controller_instance);
+    // DO NOT mark as started here - that happens after start callback completes.
+    //
+    // If there's no start callback, mark as started immediately so pull can proceed.
+    if (start_algo == null) {
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+    }
+    // If start_algo exists, invokePendingByteStartCallback will:
+    // 1. Call the JS callback with the controller
+    // 2. Mark as started after callback returns
 }
 
 /// Handle byte stream start promise settlement

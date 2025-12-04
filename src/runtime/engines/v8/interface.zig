@@ -2913,6 +2913,7 @@ fn invokeReadableStreamStartCallback(
 
     // Import interfaces module (should be available via build dependencies)
     const ReadableStreamInterface = @import("interfaces").ReadableStream;
+    const ReadableByteStreamControllerInterface = @import("interfaces").ReadableByteStreamController;
 
     // Get the controller from the stream's internal state
     // Use interface's State type (per Golden Rule #12)
@@ -2920,24 +2921,38 @@ fn invokeReadableStreamStartCallback(
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller;
 
+    // Determine controller type by comparing vtable pointers
+    // This allows us to dispatch to the correct callback handler
+    const is_byte_stream = controller_instance.vtable == &ReadableByteStreamControllerInterface.vtable;
+
     // Wrap the controller as a V8 object so we can pass it to the JS callback
+    const controller_name = if (is_byte_stream) "ReadableByteStreamController" else "ReadableStreamDefaultController";
     const controller_v8 = template_registry.wrapInstanceAsV8Object(
         controller_instance,
-        "ReadableStreamDefaultController",
+        controller_name,
         isolate,
         v8_context,
     ) catch {
         return;
     };
 
-    // Invoke the pending start callback with the controller wrapper
+    // Invoke the appropriate pending start callback based on controller type
     // Call through the interface (per Golden Rule #12)
-    ReadableStreamInterface.invokePendingStartCallback(
-        instance,
-        @ptrCast(controller_v8),
-        @ptrCast(isolate),
-        @ptrCast(v8_context),
-    );
+    if (is_byte_stream) {
+        ReadableStreamInterface.invokePendingByteStartCallback(
+            instance,
+            @ptrCast(controller_v8),
+            @ptrCast(isolate),
+            @ptrCast(v8_context),
+        );
+    } else {
+        ReadableStreamInterface.invokePendingStartCallback(
+            instance,
+            @ptrCast(controller_v8),
+            @ptrCast(isolate),
+            @ptrCast(v8_context),
+        );
+    }
 }
 
 /// Invoke WritableStream start callback after V8 wrapper exists
