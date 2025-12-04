@@ -116,6 +116,26 @@ pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfil
 pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
+// Engine Binding abstraction (WebIDL binding generation)
+pub const engine_binding = @import("engine_binding.zig");
+pub const EngineBinding = engine_binding.EngineBinding;
+pub const BindingError = engine_binding.BindingError;
+pub const InterfaceBindingConfig = engine_binding.InterfaceBindingConfig;
+pub const TemplateHandle = engine_binding.TemplateHandle;
+pub const stub_binding = engine_binding.stub_binding;
+
+// WebIDL binding descriptor types
+pub const binding_types = @import("binding_types.zig");
+pub const TypeDescriptor = binding_types.TypeDescriptor;
+pub const TypeKind = binding_types.TypeKind;
+pub const PrimitiveType = binding_types.PrimitiveType;
+pub const MethodDescriptor = binding_types.MethodDescriptor;
+pub const PropertyDescriptor = binding_types.PropertyDescriptor;
+pub const InterfaceDescriptor = binding_types.InterfaceDescriptor;
+pub const DictionaryDescriptor = binding_types.DictionaryDescriptor;
+pub const EnumDescriptor = binding_types.EnumDescriptor;
+pub const CallbackDescriptor = binding_types.CallbackDescriptor;
+
 // NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
 // It is NOT part of the runtime module to avoid circular dependencies.
 // Use @import("v8") to access V8 bindings and v8.engine for the EngineInterface.
