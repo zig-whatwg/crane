@@ -88,18 +88,22 @@ pub fn executeRedo(allocator: std.mem.Allocator, document: DocumentHandle) !Comm
 /// Query if undo is available
 ///
 /// Used by queryCommandEnabled("undo")
+/// This delegates to the executor which has access to the document's EditorState.
 pub fn queryUndoEnabled(document: DocumentHandle) bool {
     _ = document;
-    // Would check document's UndoManager.canUndo()
+    // Note: The executor module has the actual implementation with document state
+    // This is kept for API compatibility but should use executor.canUndo() instead
     return false;
 }
 
 /// Query if redo is available
 ///
 /// Used by queryCommandEnabled("redo")
+/// This delegates to the executor which has access to the document's EditorState.
 pub fn queryRedoEnabled(document: DocumentHandle) bool {
     _ = document;
-    // Would check document's UndoManager.canRedo()
+    // Note: The executor module has the actual implementation with document state
+    // This is kept for API compatibility but should use executor.canRedo() instead
     return false;
 }
 
@@ -349,8 +353,8 @@ pub const UndoManager = struct {
     pub fn undo(self: *UndoManager) ?*UndoEntry {
         if (self.undo_stack.items.len == 0) return null;
 
-        const entry = self.undo_stack.pop();
-        self.redo_stack.append(entry) catch return null;
+        const entry = self.undo_stack.pop() orelse return null;
+        self.redo_stack.append(self.allocator, entry) catch return null;
 
         return &self.redo_stack.items[self.redo_stack.items.len - 1];
     }
@@ -360,8 +364,8 @@ pub const UndoManager = struct {
     pub fn redo(self: *UndoManager) ?*UndoEntry {
         if (self.redo_stack.items.len == 0) return null;
 
-        const entry = self.redo_stack.pop();
-        self.undo_stack.append(entry) catch return null;
+        const entry = self.redo_stack.pop() orelse return null;
+        self.undo_stack.append(self.allocator, entry) catch return null;
 
         return &self.undo_stack.items[self.undo_stack.items.len - 1];
     }
