@@ -136,6 +136,12 @@ pub const DictionaryDescriptor = binding_types.DictionaryDescriptor;
 pub const EnumDescriptor = binding_types.EnumDescriptor;
 pub const CallbackDescriptor = binding_types.CallbackDescriptor;
 
+// Binding generator (comptime interface descriptor generation)
+pub const binding_generator = @import("binding_generator.zig");
+pub const InterfaceBindingGenerator = binding_generator.InterfaceBindingGenerator;
+pub const generateDescriptor = binding_generator.generateDescriptor;
+pub const getDescriptorPtr = binding_generator.getDescriptorPtr;
+
 // NOTE: V8 engine is in src/runtime/engines/v8/ but is imported as a SEPARATE module.
 // It is NOT part of the runtime module to avoid circular dependencies.
 // Use @import("v8") to access V8 bindings and v8.engine for the EngineInterface.
