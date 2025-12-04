@@ -111,15 +111,42 @@ fn executeInlineFormat(
 
 /// Execute removeFormat command
 /// Removes all formatting from selection
+///
+/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-removeformat-command
+///
+/// Algorithm:
+/// 1. Get current selection
+/// 2. If selection is collapsed, return false (nothing to remove)
+/// 3. Find all "removable formatting elements" within selection:
+///    - Inline formatting: <b>, <i>, <u>, <s>, <strike>, <sub>, <sup>
+///    - Font elements: <font> with any attributes
+///    - Spans with formatting styles: font-weight, font-style,
+///      text-decoration, font-family, font-size, color, background-color
+/// 4. For each formatting element:
+///    a. Extract children to parent
+///    b. Remove the formatting element
+/// 5. Remove relevant CSS properties from remaining elements:
+///    - font-weight, font-style, font-variant
+///    - text-decoration, text-decoration-line
+///    - color, background-color, background
+///    - font-family, font-size
+/// 6. Create undo entry
+/// 7. Return true
+///
+/// Note: removeFormat does NOT affect:
+/// - Block formatting (headings, paragraphs, lists)
+/// - Links (<a> elements) - use unlink for those
+/// - Structural elements (tables, divs)
 pub fn executeRemoveFormat(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
     _ = allocator;
     _ = document;
 
-    // Implementation outline:
-    // 1. Get current selection
-    // 2. Find all formatting elements within selection
-    // 3. Replace formatting elements with their contents
-    // 4. Create undo entry
+    // Algorithm when integrated with DOM:
+    // 1. Get Selection and check if collapsed
+    // 2. Collect all removable formatting elements in range
+    // 3. For each: unwrap (move children to parent, remove element)
+    // 4. Strip formatting CSS properties from remaining elements
+    // 5. Record undo entry
 
     return .{ .success = true };
 }
