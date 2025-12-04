@@ -969,3 +969,28 @@ fn getDefaultStatusText(status: u16) []const u8 {
         else => "",
     };
 }
+
+// === Internal Helper Functions (for Cache API) ===
+
+/// Response data for cache storage
+pub const ResponseData = struct {
+    status: u16,
+    status_text: []const u8,
+    body: ?[]const u8,
+};
+
+/// Get response data for cache storage
+pub fn getResponseData(instance: *runtime.Instance) ResponseData {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return .{
+        .status = 200,
+        .status_text = "OK",
+        .body = null,
+    };
+
+    return .{
+        .status = internal.response.status,
+        .status_text = internal.response.status_message,
+        .body = if (internal.response.body) |body| body.getBytes() else null,
+    };
+}

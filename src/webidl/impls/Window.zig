@@ -1596,14 +1596,30 @@ pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for caches
 /// Service Worker spec: Returns the CacheStorage object for this origin.
 /// https://w3c.github.io/ServiceWorker/#self-caches
-///
-/// TODO: Wire to service_worker.cache.CacheStorage backend once service_worker
-/// module is added to impls in build.zig
 pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // TODO: Implement once service_worker module is available to impls
-    // See whatwg-fnfnl and whatwg-5451o for tracking issues
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available
+    if (internal.cache_storage) |cache_storage_instance| {
+        return cache_storage_instance;
+    }
+
+    // Create the CacheStorage WebIDL instance
+    const CacheStorageImpl = @import("CacheStorage.zig");
+    const CacheStorage = interfaces.CacheStorage;
+
+    const cache_storage_instance = CacheStorageImpl.init(
+        internal.allocator,
+        CacheStorage.State,
+        &CacheStorage.vtable,
+        instance.ctx,
+    ) catch {
+        return error.OutOfMemory;
+    };
+
+    // Cache and return the instance
+    internal.cache_storage = cache_storage_instance;
+    return cache_storage_instance;
 }
 
 /// Getter for scheduler

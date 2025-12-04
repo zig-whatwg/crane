@@ -1308,6 +1308,14 @@ pub fn call_text(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.
 
 // === Helper Functions ===
 
+/// Get URL from instance (for internal use by other impls)
+/// Used by Cache.zig and CacheStorage.zig
+pub fn getUrlInternal(instance: *runtime.Instance) ?[]const u8 {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return null;
+    return internal.request.getUrl();
+}
+
 /// Normalize HTTP method per Fetch spec
 /// Uppercases DELETE, GET, HEAD, OPTIONS, POST, PUT
 fn normalizeMethod(method: []const u8) []const u8 {
