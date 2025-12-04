@@ -120,9 +120,11 @@ fn executeCommandImpl(
         .insertText => structure.executeInsertText(allocator, document, value),
 
         // Clipboard commands
-        .copy => selection_ops.executeCopy(allocator, document),
-        .cut => selection_ops.executeCut(allocator, document),
-        .paste => selection_ops.executePaste(allocator, document),
+        // TODO: Pass clipboard backend from document/editor state when available
+        // For now, use legacy functions that don't require clipboard backend
+        .copy => selection_ops.executeCopyLegacy(allocator, document),
+        .cut => selection_ops.executeCutLegacy(allocator, document),
+        .paste => selection_ops.executePasteLegacy(allocator, document),
 
         // History commands
         .undo => executeUndo(allocator, document),

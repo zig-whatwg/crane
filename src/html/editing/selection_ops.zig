@@ -9,16 +9,23 @@
 //!
 //! These commands require integration with:
 //! - Selection API for selection manipulation
-//! - Clipboard API for clipboard access
+//! - Clipboard API for clipboard access (via pluggable ClipboardBackend)
 //! - DOM for content modification
 
 const std = @import("std");
 const commands = @import("commands.zig");
 const executor = @import("executor.zig");
+const platform = @import("platform");
 
 pub const Command = commands.Command;
 pub const CommandResult = executor.CommandResult;
 pub const DocumentHandle = executor.DocumentHandle;
+
+// Re-export clipboard types for convenience
+pub const ClipboardBackend = platform.ClipboardBackend;
+pub const ClipboardResult = platform.ClipboardResult;
+pub const ClipboardFormat = platform.ClipboardFormat;
+pub const ClipboardItem = platform.ClipboardItem;
 
 // =============================================================================
 // Selection Commands
@@ -118,40 +125,60 @@ pub fn executeForwardDelete(allocator: std.mem.Allocator, document: DocumentHand
 // Clipboard Commands
 // =============================================================================
 
-/// Execute copy command
+/// Execute copy command using the clipboard backend
 /// Copies selection to clipboard
 ///
 /// Spec: https://w3c.github.io/editing/docs/execCommand/#the-copy-command
 /// Clipboard API: https://w3c.github.io/clipboard-apis/#copy-action
 ///
 /// Algorithm:
-/// 1. Get current selection
-/// 2. If selection is collapsed (no content selected):
+/// 1. Check if clipboard write is permitted
+/// 2. Get current selection
+/// 3. If selection is collapsed (no content selected):
 ///    a. Return false (nothing to copy)
-/// 3. Get selected content in multiple formats:
+/// 4. Get selected content in multiple formats:
 ///    a. text/plain: selection.toString()
 ///    b. text/html: serialize selection range to HTML
-/// 4. Create ClipboardItem with both formats
-/// 5. Write to clipboard via navigator.clipboard.write()
+/// 5. Write to clipboard via backend
 /// 6. Return true
 ///
 /// Note: copy does NOT create an undo entry as it doesn't modify content.
-/// Note: May require user gesture or permission in some browsers.
-pub fn executeCopy(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
+pub fn executeCopy(
+    allocator: std.mem.Allocator,
+    document: DocumentHandle,
+    clipboard: ClipboardBackend,
+) !CommandResult {
+    // Check permission
+    if (!clipboard.canWrite()) {
+        return .{ .success = false };
+    }
 
-    // Algorithm when integrated with DOM/Clipboard:
-    // 1. Get Selection
-    // 2. If collapsed, return false
-    // 3. Get text via selection.toString()
-    // 4. Get HTML via range.cloneContents() + serialize
-    // 5. Write to clipboard
+    // Get selection text and HTML
+    // TODO: Integrate with Selection API when available
+    const selection_text = getSelectionText(allocator, document);
+    const selection_html = getSelectionHtml(allocator, document);
 
-    return .{ .success = true };
+    // If no selection, nothing to copy
+    if (selection_text == null and selection_html == null) {
+        return .{ .success = false };
+    }
+
+    // Write to clipboard
+    if (selection_html) |html| {
+        const result = clipboard.writeHtml(html, selection_text);
+        if (selection_text) |text| allocator.free(text);
+        allocator.free(html);
+        return .{ .success = result == .success };
+    } else if (selection_text) |text| {
+        const result = clipboard.writeText(text);
+        allocator.free(text);
+        return .{ .success = result == .success };
+    }
+
+    return .{ .success = false };
 }
 
-/// Execute cut command
+/// Execute cut command using the clipboard backend
 /// Cuts selection to clipboard
 ///
 /// Spec: https://w3c.github.io/editing/docs/execCommand/#the-cut-command
@@ -167,32 +194,38 @@ pub fn executeCopy(allocator: std.mem.Allocator, document: DocumentHandle) !Comm
 /// 4. Return true
 ///
 /// Note: cut DOES create an undo entry (unlike copy) because it modifies content.
-/// Note: May require user gesture or permission in some browsers.
-pub fn executeCut(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
+pub fn executeCut(
+    allocator: std.mem.Allocator,
+    document: DocumentHandle,
+    clipboard: ClipboardBackend,
+) !CommandResult {
+    // First, copy to clipboard
+    const copy_result = try executeCopy(allocator, document, clipboard);
+    if (!copy_result.success) {
+        return .{ .success = false };
+    }
 
-    // Algorithm when integrated with DOM/Clipboard:
-    // 1. Call executeCopy()
-    // 2. If failed, return failure
-    // 3. Delete selection
-    // 4. Record undo entry
+    // Then delete the selection
+    // TODO: Integrate with Selection API and UndoManager
+    // deleteSelection(document);
+    // recordUndoEntry(document, .cut);
 
     return .{ .success = true };
 }
 
-/// Execute paste command
+/// Execute paste command using the clipboard backend
 /// Pastes from clipboard
 ///
 /// Spec: https://w3c.github.io/editing/docs/execCommand/#the-paste-command
 /// Clipboard API: https://w3c.github.io/clipboard-apis/#paste-action
 ///
 /// Algorithm:
-/// 1. Read from clipboard via navigator.clipboard.read()
-/// 2. If clipboard is empty or access denied:
+/// 1. Check if clipboard read is permitted
+/// 2. Read from clipboard via backend
+/// 3. If clipboard is empty:
 ///    a. Return false
-/// 3. Delete current selection if not collapsed
-/// 4. Determine paste format based on content and context:
+/// 4. Delete current selection if not collapsed
+/// 5. Determine paste format based on content and context:
 ///    a. If text/html available and not pasting into <pre> or <code>:
 ///       - Parse HTML via DOMParser or template element
 ///       - Sanitize (remove scripts, normalize styles)
@@ -200,25 +233,73 @@ pub fn executeCut(allocator: std.mem.Allocator, document: DocumentHandle) !Comma
 ///    b. Otherwise (text/plain or constrained context):
 ///       - Create text node with clipboard text
 ///       - Insert at caret position
-/// 5. Create undo entry with inserted content
-/// 6. Return true
+/// 6. Create undo entry with inserted content
+/// 7. Return true
 ///
 /// Security Note: paste requires:
 /// - User gesture (click, keypress)
 /// - Clipboard read permission (may prompt user)
 /// - Content sanitization to prevent XSS
-pub fn executePaste(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
+pub fn executePaste(
+    allocator: std.mem.Allocator,
+    document: DocumentHandle,
+    clipboard: ClipboardBackend,
+) !CommandResult {
     _ = document;
 
-    // Algorithm when integrated with DOM/Clipboard:
-    // 1. Request clipboard read permission
-    // 2. Read clipboard items
-    // 3. Delete selection if any
-    // 4. Parse and sanitize HTML if available
-    // 5. Insert content at caret
-    // 6. Record undo entry
+    // Check permission
+    if (!clipboard.canRead()) {
+        return .{ .success = false };
+    }
 
+    // Check if clipboard has content
+    if (!clipboard.hasContent()) {
+        return .{ .success = false };
+    }
+
+    // Try to read HTML first, fall back to text
+    if (clipboard.readHtml(allocator)) |html| {
+        defer allocator.free(html);
+        // TODO: Sanitize HTML and insert into DOM
+        // const sanitized = sanitizeHtml(html);
+        // insertHtmlAtCaret(document, sanitized);
+        // recordUndoEntry(document, .paste);
+        return .{ .success = true };
+    } else if (clipboard.readText(allocator)) |text| {
+        defer allocator.free(text);
+        // TODO: Insert text at caret
+        // insertTextAtCaret(document, text);
+        // recordUndoEntry(document, .paste);
+        return .{ .success = true };
+    }
+
+    return .{ .success = false };
+}
+
+// =============================================================================
+// Legacy Compatibility Functions (without clipboard backend parameter)
+// =============================================================================
+
+/// Legacy executeCopy - uses stub behavior
+/// For backwards compatibility until all callers pass clipboard backend
+pub fn executeCopyLegacy(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
+    _ = allocator;
+    _ = document;
+    // Legacy stub behavior
+    return .{ .success = true };
+}
+
+/// Legacy executeCut - uses stub behavior
+pub fn executeCutLegacy(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
+    _ = allocator;
+    _ = document;
+    return .{ .success = true };
+}
+
+/// Legacy executePaste - uses stub behavior
+pub fn executePasteLegacy(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
+    _ = allocator;
+    _ = document;
     return .{ .success = true };
 }
 
@@ -241,6 +322,24 @@ pub fn isSelectionCollapsed(selection: *anyopaque) bool {
 }
 
 /// Get selection as plain text
+/// TODO: Integrate with Selection API
+fn getSelectionText(allocator: std.mem.Allocator, document: DocumentHandle) ?[]const u8 {
+    _ = allocator;
+    _ = document;
+    // Would call selection.toString()
+    return null;
+}
+
+/// Get selection as HTML
+/// TODO: Integrate with Selection API
+fn getSelectionHtml(allocator: std.mem.Allocator, document: DocumentHandle) ?[]const u8 {
+    _ = allocator;
+    _ = document;
+    // Would serialize selection range to HTML
+    return null;
+}
+
+/// Get selection as plain text (public interface)
 pub fn getSelectionAsText(
     allocator: std.mem.Allocator,
     selection: *anyopaque,
@@ -251,7 +350,7 @@ pub fn getSelectionAsText(
     return null;
 }
 
-/// Get selection as HTML
+/// Get selection as HTML (public interface)
 pub fn getSelectionAsHTML(
     allocator: std.mem.Allocator,
     document: DocumentHandle,
@@ -287,46 +386,73 @@ pub fn deleteSelection(
 }
 
 // =============================================================================
-// Clipboard Helpers
-// =============================================================================
-
-/// Clipboard data types
-pub const ClipboardFormat = enum {
-    text_plain,
-    text_html,
-    text_rtf,
-    image_png,
-    image_jpeg,
-};
-
-/// Write to clipboard
-pub fn writeToClipboard(
-    allocator: std.mem.Allocator,
-    formats: []const struct { format: ClipboardFormat, data: []const u8 },
-) !bool {
-    _ = allocator;
-    _ = formats;
-
-    // Would use navigator.clipboard.write() or document.execCommand fallback
-    return true;
-}
-
-/// Read from clipboard
-pub fn readFromClipboard(
-    allocator: std.mem.Allocator,
-    preferred_formats: []const ClipboardFormat,
-) !?struct { format: ClipboardFormat, data: []const u8 } {
-    _ = allocator;
-    _ = preferred_formats;
-
-    // Would use navigator.clipboard.read() or document.execCommand fallback
-    return null;
-}
-
-// =============================================================================
 // Tests
 // =============================================================================
 
 test "selection_ops module compiles" {
     try std.testing.expect(true);
+}
+
+test "executeCopy with stub clipboard" {
+    const allocator = std.testing.allocator;
+
+    const stub = try platform.StubClipboardBackend.init(allocator);
+    const clipboard = stub.backend();
+    defer clipboard.deinit();
+
+    // With no selection, copy should fail (return false)
+    // But since getSelectionText/Html return null, it will return false
+    const result = try executeCopy(allocator, null, clipboard);
+    try std.testing.expect(!result.success);
+}
+
+test "executePaste with empty clipboard" {
+    const allocator = std.testing.allocator;
+
+    const stub = try platform.StubClipboardBackend.init(allocator);
+    const clipboard = stub.backend();
+    defer clipboard.deinit();
+
+    // Empty clipboard should fail
+    const result = try executePaste(allocator, null, clipboard);
+    try std.testing.expect(!result.success);
+}
+
+test "executePaste with text content" {
+    const allocator = std.testing.allocator;
+
+    const stub = try platform.StubClipboardBackend.init(allocator);
+    const clipboard = stub.backend();
+    defer clipboard.deinit();
+
+    // Put something in clipboard
+    _ = clipboard.writeText("Hello, world!");
+
+    // Should succeed (clipboard has content)
+    const result = try executePaste(allocator, null, clipboard);
+    try std.testing.expect(result.success);
+}
+
+test "executePaste with denied permissions" {
+    const allocator = std.testing.allocator;
+
+    const denied = try platform.DeniedClipboardBackend.init(allocator);
+    const clipboard = denied.backend();
+    defer clipboard.deinit();
+
+    // Should fail due to permission denied
+    const result = try executePaste(allocator, null, clipboard);
+    try std.testing.expect(!result.success);
+}
+
+test "executeCopy with denied permissions" {
+    const allocator = std.testing.allocator;
+
+    const denied = try platform.DeniedClipboardBackend.init(allocator);
+    const clipboard = denied.backend();
+    defer clipboard.deinit();
+
+    // Should fail due to permission denied
+    const result = try executeCopy(allocator, null, clipboard);
+    try std.testing.expect(!result.success);
 }
