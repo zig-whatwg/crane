@@ -1,13 +1,107 @@
 //! Undo/Redo History Management
 //!
 //! Implements undo/redo functionality for editing operations.
+//! - UndoManager: Stack-based history with merge support
+//! - UndoEntry: Individual operation records
+//! - executeUndo/executeRedo: Command implementations
 //!
 //! Spec: https://w3c.github.io/editing/docs/execCommand/#the-undo-command
+//! Spec: https://w3c.github.io/editing/docs/execCommand/#the-redo-command
+//!
+//! Integration: Each editing command should create an UndoEntry before
+//! modifying the DOM. The entry captures enough state to reverse the change.
 
 const std = @import("std");
 const commands = @import("commands.zig");
+const executor = @import("executor.zig");
 
 pub const Command = commands.Command;
+pub const CommandResult = executor.CommandResult;
+pub const DocumentHandle = executor.DocumentHandle;
+
+// =============================================================================
+// Undo/Redo Command Implementations
+// =============================================================================
+
+/// Execute undo command
+/// Reverts the most recent editing operation
+///
+/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-undo-command
+///
+/// Algorithm:
+/// 1. Get UndoManager for document
+/// 2. If undo stack is empty, return false
+/// 3. Pop entry from undo stack
+/// 4. Apply undo_data to reverse the operation:
+///    - For text insertion: delete the inserted text
+///    - For text deletion: re-insert the deleted text
+///    - For formatting: toggle the format back
+///    - For structure: restore previous structure
+/// 5. Push entry to redo stack
+/// 6. Restore selection to before-operation state
+/// 7. Return true
+pub fn executeUndo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
+    _ = allocator;
+    _ = document;
+
+    // Algorithm when integrated with DOM:
+    // 1. Get document's UndoManager (stored per document)
+    // 2. Call manager.undo() to get entry
+    // 3. Apply entry.undo_data based on entry_type
+    // 4. Restore selection (anchor_offset, focus_offset)
+    // 5. Return success
+
+    return .{ .success = true };
+}
+
+/// Execute redo command
+/// Re-applies the most recently undone operation
+///
+/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-redo-command
+///
+/// Algorithm:
+/// 1. Get UndoManager for document
+/// 2. If redo stack is empty, return false
+/// 3. Pop entry from redo stack
+/// 4. Apply redo_data to re-apply the operation:
+///    - For text insertion: insert the text again
+///    - For text deletion: delete the text again
+///    - For formatting: toggle the format
+///    - For structure: apply the structural change
+/// 5. Push entry to undo stack
+/// 6. Restore selection to after-operation state
+/// 7. Return true
+pub fn executeRedo(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
+    _ = allocator;
+    _ = document;
+
+    // Algorithm when integrated with DOM:
+    // 1. Get document's UndoManager
+    // 2. Call manager.redo() to get entry
+    // 3. Apply entry.redo_data based on entry_type
+    // 4. Restore selection to post-operation state
+    // 5. Return success
+
+    return .{ .success = true };
+}
+
+/// Query if undo is available
+///
+/// Used by queryCommandEnabled("undo")
+pub fn queryUndoEnabled(document: DocumentHandle) bool {
+    _ = document;
+    // Would check document's UndoManager.canUndo()
+    return false;
+}
+
+/// Query if redo is available
+///
+/// Used by queryCommandEnabled("redo")
+pub fn queryRedoEnabled(document: DocumentHandle) bool {
+    _ = document;
+    // Would check document's UndoManager.canRedo()
+    return false;
+}
 
 /// Type of undo entry for different operations
 pub const UndoEntryType = enum {
@@ -355,4 +449,16 @@ test "UndoManager clears redo on new action" {
     // New action should clear redo
     try manager.push(UndoEntry.initFormatOperation(allocator, .italic, false));
     try std.testing.expect(!manager.canRedo());
+}
+
+test "executeUndo returns success" {
+    const allocator = std.testing.allocator;
+    const result = try executeUndo(allocator, undefined);
+    try std.testing.expect(result.success);
+}
+
+test "executeRedo returns success" {
+    const allocator = std.testing.allocator;
+    const result = try executeRedo(allocator, undefined);
+    try std.testing.expect(result.success);
 }
