@@ -679,10 +679,169 @@ pub const GeolocationVTable = extern struct {
 // These will be expanded as needed
 // =============================================================================
 
-/// Bluetooth VTable (stub) - navigator.bluetooth
+// =============================================================================
+// Bluetooth VTable
+// Spec: https://webbluetoothcg.github.io/web-bluetooth/
+// =============================================================================
+
+/// Bluetooth device handle (opaque)
+pub const BluetoothDeviceHandle = u64;
+
+/// GATT service handle (opaque)
+pub const GATTServiceHandle = u64;
+
+/// GATT characteristic handle (opaque)
+pub const GATTCharacteristicHandle = u64;
+
+/// Bluetooth operation result
+pub const BluetoothResult = enum(i32) {
+    success = 0,
+    not_available = -1,
+    permission_denied = -2,
+    device_not_found = -3,
+    connection_failed = -4,
+    service_not_found = -5,
+    characteristic_not_found = -6,
+    not_connected = -7,
+    operation_failed = -8,
+    error_unknown = -99,
+};
+
+/// Bluetooth device filter (C-compatible) - BluetoothLEScanFilterInit
+pub const CBluetoothFilter = extern struct {
+    services: ?[*]const [*]const u8,
+    services_count: usize,
+    service_lens: ?[*]const usize,
+    name: ?[*]const u8,
+    name_len: usize,
+    name_prefix: ?[*]const u8,
+    name_prefix_len: usize,
+};
+
+/// Callback for characteristic value notifications
+pub const CharacteristicValueCallback = *const fn (
+    user_data: OpaquePtr,
+    characteristic: GATTCharacteristicHandle,
+    value: [*]const u8,
+    value_len: usize,
+) callconv(.c) void;
+
+/// Bluetooth VTable - navigator.bluetooth (Web Bluetooth API)
 pub const BluetoothVTable = extern struct {
-    call_requestDevice: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+    /// Check if Bluetooth is available (navigator.bluetooth.getAvailability())
     call_getAvailability: *const fn (user_context: OpaquePtr) callconv(.c) bool,
+
+    /// Request a Bluetooth device (navigator.bluetooth.requestDevice())
+    /// Returns device handle on success, 0 on failure.
+    call_requestDevice: *const fn (
+        user_context: OpaquePtr,
+        filters: ?[*]const CBluetoothFilter,
+        filters_count: usize,
+        optional_services: ?[*]const [*]const u8,
+        optional_services_count: usize,
+        optional_service_lens: ?[*]const usize,
+    ) callconv(.c) BluetoothDeviceHandle,
+
+    /// Get previously paired devices (navigator.bluetooth.getDevices())
+    /// Returns count of devices, fills buffer up to max_count.
+    call_getDevices: *const fn (
+        user_context: OpaquePtr,
+        out_devices: ?[*]BluetoothDeviceHandle,
+        max_count: usize,
+    ) callconv(.c) u32,
+
+    /// Connect to device GATT server (device.gatt.connect())
+    call_connect: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+    ) callconv(.c) BluetoothResult,
+
+    /// Disconnect from device (device.gatt.disconnect())
+    call_disconnect: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+    ) callconv(.c) void,
+
+    /// Check if device is connected (device.gatt.connected)
+    get_connected: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+    ) callconv(.c) bool,
+
+    /// Get primary service (device.gatt.getPrimaryService())
+    /// Returns service handle on success, 0 on failure.
+    call_getPrimaryService: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+        service_uuid: [*]const u8,
+        service_uuid_len: usize,
+    ) callconv(.c) GATTServiceHandle,
+
+    /// Get characteristic from service (service.getCharacteristic())
+    /// Returns characteristic handle on success, 0 on failure.
+    call_getCharacteristic: *const fn (
+        user_context: OpaquePtr,
+        service: GATTServiceHandle,
+        characteristic_uuid: [*]const u8,
+        characteristic_uuid_len: usize,
+    ) callconv(.c) GATTCharacteristicHandle,
+
+    /// Read characteristic value (characteristic.readValue())
+    /// Returns bytes read, or negative BluetoothResult on error.
+    call_readValue: *const fn (
+        user_context: OpaquePtr,
+        characteristic: GATTCharacteristicHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
+
+    /// Write characteristic value (characteristic.writeValue())
+    call_writeValue: *const fn (
+        user_context: OpaquePtr,
+        characteristic: GATTCharacteristicHandle,
+        value: [*]const u8,
+        value_len: usize,
+    ) callconv(.c) BluetoothResult,
+
+    /// Write characteristic value without response (characteristic.writeValueWithoutResponse())
+    call_writeValueWithoutResponse: *const fn (
+        user_context: OpaquePtr,
+        characteristic: GATTCharacteristicHandle,
+        value: [*]const u8,
+        value_len: usize,
+    ) callconv(.c) BluetoothResult,
+
+    /// Start notifications (characteristic.startNotifications())
+    call_startNotifications: *const fn (
+        user_context: OpaquePtr,
+        characteristic: GATTCharacteristicHandle,
+        callback: CharacteristicValueCallback,
+        callback_user_data: OpaquePtr,
+    ) callconv(.c) BluetoothResult,
+
+    /// Stop notifications (characteristic.stopNotifications())
+    call_stopNotifications: *const fn (
+        user_context: OpaquePtr,
+        characteristic: GATTCharacteristicHandle,
+    ) callconv(.c) BluetoothResult,
+
+    /// Get device name (device.name)
+    /// Returns length of name, or negative on error.
+    get_name: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
+
+    /// Get device ID (device.id)
+    /// Returns length of ID, or negative on error.
+    get_id: *const fn (
+        user_context: OpaquePtr,
+        device: BluetoothDeviceHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
 };
 
 /// USB VTable (stub) - navigator.usb
@@ -703,10 +862,301 @@ pub const HIDVTable = extern struct {
     call_getDevices: *const fn (user_context: OpaquePtr) callconv(.c) u32,
 };
 
-/// WebRTC VTable (stub) - RTCPeerConnection
+// =============================================================================
+// WebRTC VTable
+// Spec: https://w3c.github.io/webrtc-pc/
+// =============================================================================
+
+/// RTCPeerConnection handle (opaque)
+pub const RTCPeerConnectionHandle = u64;
+
+/// RTCDataChannel handle (opaque)
+pub const RTCDataChannelHandle = u64;
+
+/// RTCRtpSender handle (opaque)
+pub const RTCRtpSenderHandle = u64;
+
+/// RTCRtpReceiver handle (opaque)
+pub const RTCRtpReceiverHandle = u64;
+
+/// WebRTC operation result
+pub const WebRTCResult = enum(i32) {
+    success = 0,
+    invalid_state = -1,
+    invalid_parameter = -2,
+    operation_failed = -3,
+    not_supported = -4,
+    peer_closed = -5,
+    error_unknown = -99,
+};
+
+/// RTCPeerConnection state
+pub const RTCPeerConnectionState = enum(u8) {
+    new = 0,
+    connecting = 1,
+    connected = 2,
+    disconnected = 3,
+    failed = 4,
+    closed = 5,
+};
+
+/// RTCSignalingState
+pub const RTCSignalingState = enum(u8) {
+    stable = 0,
+    have_local_offer = 1,
+    have_remote_offer = 2,
+    have_local_pranswer = 3,
+    have_remote_pranswer = 4,
+    closed = 5,
+};
+
+/// RTCIceConnectionState
+pub const RTCIceConnectionState = enum(u8) {
+    new = 0,
+    checking = 1,
+    connected = 2,
+    completed = 3,
+    failed = 4,
+    disconnected = 5,
+    closed = 6,
+};
+
+/// RTCIceGatheringState
+pub const RTCIceGatheringState = enum(u8) {
+    new = 0,
+    gathering = 1,
+    complete = 2,
+};
+
+/// RTCSdpType
+pub const RTCSdpType = enum(u8) {
+    offer = 0,
+    pranswer = 1,
+    answer = 2,
+    rollback = 3,
+};
+
+/// RTCSessionDescription (C-compatible)
+pub const CRTCSessionDescription = extern struct {
+    sdp_type: RTCSdpType,
+    sdp: [*]const u8,
+    sdp_len: usize,
+};
+
+/// RTCIceCandidate (C-compatible)
+pub const CRTCIceCandidate = extern struct {
+    candidate: [*]const u8,
+    candidate_len: usize,
+    sdp_mid: ?[*]const u8,
+    sdp_mid_len: usize,
+    sdp_m_line_index: u16,
+    username_fragment: ?[*]const u8,
+    username_fragment_len: usize,
+};
+
+/// RTCConfiguration (C-compatible)
+pub const CRTCConfiguration = extern struct {
+    ice_servers: ?[*]const CRTCIceServer,
+    ice_servers_count: usize,
+    bundle_policy: u8, // 0=balanced, 1=max-compat, 2=max-bundle
+    rtcp_mux_policy: u8, // 0=negotiate, 1=require
+    ice_candidate_pool_size: u8,
+};
+
+/// RTCIceServer (C-compatible)
+pub const CRTCIceServer = extern struct {
+    urls: [*]const [*]const u8,
+    urls_count: usize,
+    url_lens: [*]const usize,
+    username: ?[*]const u8,
+    username_len: usize,
+    credential: ?[*]const u8,
+    credential_len: usize,
+};
+
+/// RTCDataChannelInit (C-compatible)
+pub const CRTCDataChannelInit = extern struct {
+    ordered: bool,
+    max_packet_life_time: u16, // 0 = not set
+    max_retransmits: u16, // 0 = not set
+    protocol: ?[*]const u8,
+    protocol_len: usize,
+    negotiated: bool,
+    id: u16,
+};
+
+/// Callback for ICE candidate
+pub const IceCandidateCallback = *const fn (
+    user_data: OpaquePtr,
+    candidate: *const CRTCIceCandidate,
+) callconv(.c) void;
+
+/// Callback for data channel message
+pub const DataChannelMessageCallback = *const fn (
+    user_data: OpaquePtr,
+    channel: RTCDataChannelHandle,
+    data: [*]const u8,
+    data_len: usize,
+    is_binary: bool,
+) callconv(.c) void;
+
+/// Callback for connection state change
+pub const ConnectionStateCallback = *const fn (
+    user_data: OpaquePtr,
+    state: RTCPeerConnectionState,
+) callconv(.c) void;
+
+/// WebRTC VTable - RTCPeerConnection (WebRTC API)
 pub const WebRTCVTable = extern struct {
-    createPeerConnection: *const fn (user_context: OpaquePtr) callconv(.c) u64,
-    call_close: *const fn (user_context: OpaquePtr, handle: u64) callconv(.c) void,
+    /// Create RTCPeerConnection (new RTCPeerConnection())
+    /// Returns handle on success, 0 on failure.
+    createPeerConnection: *const fn (
+        user_context: OpaquePtr,
+        config: ?*const CRTCConfiguration,
+    ) callconv(.c) RTCPeerConnectionHandle,
+
+    /// Close peer connection (pc.close())
+    call_close: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+    ) callconv(.c) void,
+
+    /// Create SDP offer (pc.createOffer())
+    /// Returns length of SDP, or negative on error. If buffer is null, returns required size.
+    call_createOffer: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
+
+    /// Create SDP answer (pc.createAnswer())
+    /// Returns length of SDP, or negative on error. If buffer is null, returns required size.
+    call_createAnswer: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
+
+    /// Set local description (pc.setLocalDescription())
+    call_setLocalDescription: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        description: *const CRTCSessionDescription,
+    ) callconv(.c) WebRTCResult,
+
+    /// Set remote description (pc.setRemoteDescription())
+    call_setRemoteDescription: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        description: *const CRTCSessionDescription,
+    ) callconv(.c) WebRTCResult,
+
+    /// Add ICE candidate (pc.addIceCandidate())
+    call_addIceCandidate: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        candidate: *const CRTCIceCandidate,
+    ) callconv(.c) WebRTCResult,
+
+    /// Get connection state (pc.connectionState)
+    get_connectionState: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+    ) callconv(.c) RTCPeerConnectionState,
+
+    /// Get signaling state (pc.signalingState)
+    get_signalingState: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+    ) callconv(.c) RTCSignalingState,
+
+    /// Get ICE connection state (pc.iceConnectionState)
+    get_iceConnectionState: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+    ) callconv(.c) RTCIceConnectionState,
+
+    /// Get ICE gathering state (pc.iceGatheringState)
+    get_iceGatheringState: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+    ) callconv(.c) RTCIceGatheringState,
+
+    /// Create data channel (pc.createDataChannel())
+    /// Returns channel handle on success, 0 on failure.
+    call_createDataChannel: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        label: [*]const u8,
+        label_len: usize,
+        options: ?*const CRTCDataChannelInit,
+    ) callconv(.c) RTCDataChannelHandle,
+
+    /// Close data channel (channel.close())
+    closeDataChannel: *const fn (
+        user_context: OpaquePtr,
+        channel: RTCDataChannelHandle,
+    ) callconv(.c) void,
+
+    /// Send data on channel (channel.send())
+    sendDataChannel: *const fn (
+        user_context: OpaquePtr,
+        channel: RTCDataChannelHandle,
+        data: [*]const u8,
+        data_len: usize,
+        is_binary: bool,
+    ) callconv(.c) WebRTCResult,
+
+    /// Add media track (pc.addTrack())
+    /// Returns sender handle on success, 0 on failure.
+    call_addTrack: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        stream: MediaStreamHandle,
+        track_index: u32,
+    ) callconv(.c) RTCRtpSenderHandle,
+
+    /// Remove media track (pc.removeTrack())
+    call_removeTrack: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        sender: RTCRtpSenderHandle,
+    ) callconv(.c) WebRTCResult,
+
+    /// Set ICE candidate callback (onicecandidate)
+    setIceCandidateCallback: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        callback: IceCandidateCallback,
+        callback_user_data: OpaquePtr,
+    ) callconv(.c) void,
+
+    /// Set connection state callback (onconnectionstatechange)
+    setConnectionStateCallback: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        callback: ConnectionStateCallback,
+        callback_user_data: OpaquePtr,
+    ) callconv(.c) void,
+
+    /// Set data channel message callback (ondatachannel + onmessage)
+    setDataChannelMessageCallback: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        callback: DataChannelMessageCallback,
+        callback_user_data: OpaquePtr,
+    ) callconv(.c) void,
+
+    /// Get stats (pc.getStats())
+    /// Returns JSON stats string length, or negative on error.
+    call_getStats: *const fn (
+        user_context: OpaquePtr,
+        handle: RTCPeerConnectionHandle,
+        buffer: ?[*]u8,
+        buffer_size: usize,
+    ) callconv(.c) i32,
 };
 
 // =============================================================================
