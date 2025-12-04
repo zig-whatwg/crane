@@ -10,6 +10,9 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Navigator = interfaces.Navigator;
 
+// StorageManager interface
+const StorageManagerInterface = interfaces.StorageManager;
+
 pub const State = Navigator.State;
 
 pub const ImplError = error{
@@ -17,10 +20,19 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Stores cached instances like StorageManager
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+
+    /// Cached StorageManager instance (singleton per Navigator)
+    storage_manager: ?*runtime.Instance = null,
+
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // StorageManager cleanup handled by GC
+        _ = self;
+        _ = allocator;
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +42,30 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    const state = instance.getState(StateType);
+
+    // Create internal state
+    state.own._internal = try allocator.create(InternalState);
+    const internal = state.own._internal.?;
+    internal.* = .{
+        .allocator = allocator,
+        .storage_manager = null,
+    };
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit(internal.allocator);
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Getter for scheduling
@@ -281,9 +309,35 @@ pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for storage
+///
+/// Returns the StorageManager for this Navigator.
+/// Per WHATWG Storage Standard: https://storage.spec.whatwg.org/#dom-navigatorstorage-storage
+///
+/// The StorageManager provides methods for:
+/// - persisted() - Check if storage is persistent
+/// - persist() - Request persistent storage
+/// - estimate() - Get storage usage/quota estimates
+/// - getDirectory() - Get origin-private file system root
 pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.NotImplemented;
+
+    // Return cached StorageManager if available
+    if (internal.storage_manager) |sm| {
+        return sm;
+    }
+
+    // Create new StorageManager instance
+    const ctx = instance.ctx;
+    const allocator = internal.allocator;
+
+    // Use StorageManager interface to create instance
+    const storage_manager = try StorageManagerInterface.init(allocator, ctx);
+
+    // Cache for future calls
+    internal.storage_manager = storage_manager;
+
+    return storage_manager;
 }
 
 /// Getter for storageBuckets
@@ -606,4 +660,3 @@ pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime
     _ = url;
     return error.NotImplemented;
 }
-
