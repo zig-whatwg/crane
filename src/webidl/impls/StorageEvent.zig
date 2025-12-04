@@ -119,7 +119,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance, allocator);
+    errdefer instance.deinit();
 
     // Create internal state
     const internal = try allocator.create(InternalState);
@@ -127,7 +127,7 @@ pub fn init(
 
     // Store internal state
     const state = instance.getState(State);
-    state._internal = internal;
+    state.own._internal = internal;
 
     return instance;
 }
@@ -135,10 +135,23 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
+    if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
     }
+}
+
+/// Helper to extract slice from DOMString
+fn domStringToSlice(str: runtime.DOMString) []const u8 {
+    return str.asSlice();
+}
+
+/// Helper to convert optional slice to optional DOMString
+fn sliceToDOMString(slice: ?[]const u8) ?runtime.DOMString {
+    if (slice) |s| {
+        return runtime.DOMString.initInterned(s);
+    }
+    return null;
 }
 
 /// Constructor implementation
@@ -158,14 +171,16 @@ pub fn call_constructor(
     _ = @"type";
 
     // Apply dictionary values if provided
-    if (eventInitDict.getValue()) |dict| {
-        if (state._internal) |internal| {
-            // Extract values from dictionary
-            const key = if (dict.key.getValue()) |k| k else null;
-            const old_val = if (dict.oldValue.getValue()) |o| o else null;
-            const new_val = if (dict.newValue.getValue()) |n| n else null;
-            const url_val = if (dict.url.getValue()) |u| u else "";
-            const storage = if (dict.storageArea.getValue()) |s| s else null;
+    if (eventInitDict.was_passed) {
+        const dict = eventInitDict.value;
+        if (state.own._internal) |internal| {
+            // Extract values from dictionary - dict fields are already ?DOMString
+            const key = if (dict.key) |k| domStringToSlice(k) else null;
+            const old_val = if (dict.oldValue) |o| domStringToSlice(o) else null;
+            const new_val = if (dict.newValue) |n| domStringToSlice(n) else null;
+            const url_val = dict.url orelse "";
+            // storageArea is ?*const anyopaque, need to cast to ?*runtime.Instance
+            const storage: ?*runtime.Instance = if (dict.storageArea) |s| @ptrCast(@alignCast(@constCast(s))) else null;
 
             try internal.setFromDict(key, old_val, new_val, url_val, storage);
         }
@@ -178,8 +193,8 @@ pub fn call_constructor(
 /// Returns the key being changed, or null if clear() was called.
 pub fn get_key(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
-        return internal.key;
+    if (state.own._internal) |internal| {
+        return sliceToDOMString(internal.key);
     }
     return null;
 }
@@ -188,8 +203,8 @@ pub fn get_key(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// Returns the old value of the key being changed, or null for new keys.
 pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
-        return internal.old_value;
+    if (state.own._internal) |internal| {
+        return sliceToDOMString(internal.old_value);
     }
     return null;
 }
@@ -198,8 +213,8 @@ pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// Returns the new value of the key being changed, or null for removed keys.
 pub fn get_newValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
-        return internal.new_value;
+    if (state.own._internal) |internal| {
+        return sliceToDOMString(internal.new_value);
     }
     return null;
 }
@@ -208,7 +223,7 @@ pub fn get_newValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// Returns the URL of the document whose storage changed.
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
+    if (state.own._internal) |internal| {
         return internal.url;
     }
     return "";
@@ -218,7 +233,7 @@ pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns the Storage object that was affected.
 pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
-    if (state._internal) |internal| {
+    if (state.own._internal) |internal| {
         return internal.storage_area;
     }
     return null;
@@ -244,12 +259,33 @@ pub fn call_initStorageEvent(
     _ = cancelable;
 
     const state = instance.getState(State);
-    if (state._internal) |internal| {
-        const key_val = if (key.getValue()) |k| k else null;
-        const old_val = if (oldValue.getValue()) |o| o else null;
-        const new_val = if (newValue.getValue()) |n| n else null;
-        const url_val = if (url.getValue()) |u| u else "";
-        const storage = if (storageArea.getValue()) |s| s else null;
+    if (state.own._internal) |internal| {
+        // For Opt types, check was_passed then access value
+        const key_val = if (key.was_passed) blk: {
+            if (key.value) |k| {
+                break :blk domStringToSlice(k);
+            }
+            break :blk null;
+        } else null;
+
+        const old_val = if (oldValue.was_passed) blk: {
+            if (oldValue.value) |o| {
+                break :blk domStringToSlice(o);
+            }
+            break :blk null;
+        } else null;
+
+        const new_val = if (newValue.was_passed) blk: {
+            if (newValue.value) |n| {
+                break :blk domStringToSlice(n);
+            }
+            break :blk null;
+        } else null;
+
+        // url is Opt(USVString) where USVString = []const u8
+        const url_val = if (url.was_passed) url.value else "";
+
+        const storage = if (storageArea.was_passed) storageArea.value else null;
 
         try internal.setFromDict(key_val, old_val, new_val, url_val, storage);
     }
@@ -274,7 +310,7 @@ pub fn createStorageEvent(
     errdefer deinit(instance);
 
     const state = instance.getState(State);
-    if (state._internal) |internal| {
+    if (state.own._internal) |internal| {
         try internal.setFromDict(key, old_value, new_value, url, storage_area);
     }
 
