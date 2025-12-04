@@ -386,3 +386,89 @@ test "ResultCollector basic usage" {
     const totals = collector.getTotals();
     try testing.expectEqual(@as(usize, 1), totals.passed);
 }
+
+test "SubtestResult with assertion failure" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Simulate a testharness.js assertion failure message
+    var subtest = SubtestResult{
+        .name = try allocator.dupe(u8, "URL constructor should parse basic URL"),
+        .status = .fail,
+        .message = try allocator.dupe(u8, "assert_equals: expected \"https\" but got \"http\""),
+        .stack = try allocator.dupe(u8, "    at Test.<anonymous> (url-constructor.any.js:10:5)\n    at Test.step_func"),
+        .duration_ms = 15,
+    };
+    defer subtest.deinit(allocator);
+
+    try testing.expect(subtest.isFailed());
+    try testing.expectEqualStrings("FAIL", subtest.status.toString());
+
+    // Test stack location extraction
+    const location = subtest.getStackLocation();
+    try testing.expect(location != null);
+    try testing.expect(std.mem.indexOf(u8, location.?, "url-constructor.any.js:10:5") != null);
+
+    // Test summary generation
+    const summary = try subtest.getSummary(allocator);
+    defer allocator.free(summary);
+    try testing.expect(std.mem.indexOf(u8, summary, "FAIL") != null);
+    try testing.expect(std.mem.indexOf(u8, summary, "assert_equals") != null);
+}
+
+test "SubtestResult with passing test" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var subtest = SubtestResult{
+        .name = try allocator.dupe(u8, "Simple passing test"),
+        .status = .pass,
+        .duration_ms = 5,
+    };
+    defer subtest.deinit(allocator);
+
+    try testing.expect(!subtest.isFailed());
+    try testing.expectEqualStrings("PASS", subtest.status.toString());
+
+    // No stack for passing tests
+    try testing.expectEqual(@as(?[]const u8, null), subtest.getStackLocation());
+}
+
+test "ResultCollector with mixed results" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var collector = ResultCollector.init(allocator);
+    defer collector.deinit();
+
+    try collector.startTest("encoding/textdecoder.any.js");
+
+    // Add passing test
+    try collector.addResult(SubtestResult{
+        .name = try allocator.dupe(u8, "TextDecoder constructor"),
+        .status = .pass,
+        .duration_ms = 3,
+    });
+
+    // Add failing test
+    try collector.addResult(SubtestResult{
+        .name = try allocator.dupe(u8, "TextDecoder decode UTF-8"),
+        .status = .fail,
+        .message = try allocator.dupe(u8, "assert_equals: expected decoded text"),
+        .duration_ms = 5,
+    });
+
+    // Add timeout test
+    try collector.addResult(SubtestResult{
+        .name = try allocator.dupe(u8, "TextDecoder async decode"),
+        .status = .timeout,
+        .duration_ms = 10000,
+    });
+
+    try collector.finishTest(.ok, null, 10008);
+
+    const totals = collector.getTotals();
+    try testing.expectEqual(@as(usize, 1), totals.passed);
+    try testing.expectEqual(@as(usize, 1), totals.failed);
+    try testing.expectEqual(@as(usize, 1), totals.timeout);
+}
