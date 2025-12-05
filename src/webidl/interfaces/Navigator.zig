@@ -535,7 +535,8 @@ pub const Navigator = struct {
         .call_updateAdInterestGroups = &call_updateAdInterestGroups,
         .call_vibrate = &call_vibrate,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    // Use buildVTableWithDeinit to ensure GC calls impl's deinit for proper cleanup
+    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &NavigatorImpl.deinit);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {

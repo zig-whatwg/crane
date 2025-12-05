@@ -1520,7 +1520,7 @@ pub fn writeVTable(
 ) !void {
     // Debug output
     // Removed noisy debug output - slows down codegen with excessive IO
-    _ = interface_name; // Unused in release builds
+    // interface_name is used for generating impl deinit references
     _ = base_type; // Unused
     const allocator = std.heap.page_allocator;
 
@@ -1688,7 +1688,20 @@ pub fn writeVTable(
     }
 
     try writer.writeAll("    };\n");
-    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates);\n\n");
+    // Use buildVTableWithDeinit to pass the impl's deinit function for proper cleanup
+    // The impl's deinit is called when V8 GC collects the JS wrapper object
+    try writer.writeAll("    pub const vtable = runtime.buildVTableWithDeinit(&delegates, getImplDeinit());\n\n");
+    // Helper to get impl's deinit function if it exists
+    // Uses the interface-specific impl name (e.g., NavigatorImpl for Navigator)
+    try writer.writeAll("    fn getImplDeinit() ?*const fn (*runtime.Instance) void {\n");
+    try writer.print("        const impl_info = @typeInfo(@TypeOf({s}Impl));\n", .{interface_name});
+    try writer.writeAll("        if (impl_info == .@\"struct\") {\n");
+    try writer.print("            if (@hasDecl({s}Impl, \"deinit\")) {{\n", .{interface_name});
+    try writer.print("                return &{s}Impl.deinit;\n", .{interface_name});
+    try writer.writeAll("            }\n");
+    try writer.writeAll("        }\n");
+    try writer.writeAll("        return null;\n");
+    try writer.writeAll("    }\n\n");
 }
 
 /// VTable entry for sorting
@@ -3336,7 +3349,7 @@ test "writeVTable generates vtable constant" {
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "const delegates = .{") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTableWithDeinit(&delegates, getImplDeinit());") != null);
 }
 
 test "writeLifecycleFunctions generates init and deinit" {

@@ -95,7 +95,8 @@ pub const History = struct {
         .call_pushState = &call_pushState,
         .call_replaceState = &call_replaceState,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    // Use buildVTableWithDeinit to ensure GC calls impl's deinit for proper cleanup
+    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &HistoryImpl.deinit);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
