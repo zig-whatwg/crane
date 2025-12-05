@@ -616,9 +616,16 @@ fn executeTestFile(
         // Load test harness
         try ctx.loadTestHarness();
 
-        // Load additional scripts
+        // Load external scripts and collect inline scripts
+        var inline_scripts: std.ArrayListUnmanaged([]const u8) = .{};
+        defer inline_scripts.deinit(allocator);
+
         for (parsed.metadata.scripts.items) |script| {
-            if (!script.inline_script) {
+            if (script.inline_script) {
+                // Collect inline scripts for later execution
+                try inline_scripts.append(allocator, script.path);
+            } else {
+                // Load external scripts
                 const script_path = try test_parser.resolveScriptPath(
                     allocator,
                     options.wpt_root,
@@ -630,9 +637,40 @@ fn executeTestFile(
             }
         }
 
-        // Execute test
-        const result = try ctx.executeTest(parsed.content, parsed.metadata.timeout);
-        return result;
+        // Determine what to execute:
+        // - For JS files: parsed.content (the JS file itself)
+        // - For HTML files: the inline scripts extracted from the HTML
+        if (test_file.file_type == .html) {
+            // Execute inline scripts for HTML tests
+            if (inline_scripts.items.len == 0) {
+                // No inline scripts - nothing to test
+                return test_harness.TestResult.init(allocator, test_file.path);
+            }
+
+            // Concatenate inline scripts
+            var total_len: usize = 0;
+            for (inline_scripts.items) |script| {
+                total_len += script.len + 1; // +1 for newline separator
+            }
+
+            const combined = try allocator.alloc(u8, total_len);
+            defer allocator.free(combined);
+
+            var offset: usize = 0;
+            for (inline_scripts.items) |script| {
+                @memcpy(combined[offset .. offset + script.len], script);
+                offset += script.len;
+                combined[offset] = '\n';
+                offset += 1;
+            }
+
+            const result = try ctx.executeTest(combined, parsed.metadata.timeout);
+            return result;
+        } else {
+            // For JS files, execute the content directly
+            const result = try ctx.executeTest(parsed.content, parsed.metadata.timeout);
+            return result;
+        }
     }
 
     // If we get here, no globals were specified (shouldn't happen)

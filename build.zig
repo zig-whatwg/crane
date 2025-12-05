@@ -2016,6 +2016,12 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },
+                // Platform abstraction for timer backend
+                .{ .name = "platform", .module = platform_mod },
+                // HTML event loop and timer manager
+                .{ .name = "html", .module = html_core_mod },
+                // Infra primitives
+                .{ .name = "infra", .module = infra_mod },
             },
         }),
     });

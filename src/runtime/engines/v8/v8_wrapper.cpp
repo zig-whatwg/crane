@@ -144,6 +144,13 @@ Global<Context>* v8_Context_New(Isolate* isolate) {
     return new Global<Context>(isolate, context);
 }
 
+Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<ObjectTemplate>* global_template) {
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_template = global_template->Get(isolate);
+    Local<Context> context = Context::New(isolate, nullptr, local_template);
+    return new Global<Context>(isolate, context);
+}
+
 void v8_Context_Dispose(Global<Context>* context) {
     if (context) {
         context->Reset();
@@ -373,6 +380,16 @@ Global<String>* v8_Value_ToString(Global<Value>* value, Global<Context>* context
     return new Global<String>(isolate, str);
 }
 
+bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Value> v1 = value1->Get(isolate);
+    Local<Value> v2 = value2->Get(isolate);
+    
+    return v1->StrictEquals(v2);
+}
+
 void v8_Value_Dispose(Global<Value>* value) {
     if (value) {
         value->Reset();
@@ -416,6 +433,25 @@ bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Valu
     Local<Value> v = value->Get(isolate);
     
     Maybe<bool> result = obj->Set(ctx, k, v);
+    return result.FromMaybe(false);
+}
+
+bool v8_Object_CreateDataProperty(Global<Object>* object, Global<Context>* context, Global<String>* key, Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<String> k = key->Get(isolate);
+    Local<Value> v = value->Get(isolate);
+    
+    // Use DefineOwnProperty with explicit attributes to ensure we create an own property
+    // that shadows any prototype accessor
+    PropertyDescriptor desc(v, true); // writable = true
+    desc.set_enumerable(true);
+    desc.set_configurable(true);
+    
+    Maybe<bool> result = obj->DefineOwnProperty(ctx, k, v, static_cast<PropertyAttribute>(None));
     return result.FromMaybe(false);
 }
 

@@ -320,37 +320,47 @@ pub const testharnessreport_js =
     \\(function() {
     \\  'use strict';
     \\
-    \\  // Native function for reporting individual test results
-    \\  // Signature: __wpt_report_result(name, status, message, stack, duration)
-    \\  // status: 0=PASS, 1=FAIL, 2=TIMEOUT, 3=NOTRUN, 4=PRECONDITION_FAILED
+    \\  console.log('TESTHARNESSREPORT: Loading...');
     \\
-    \\  // Native function for reporting test completion
-    \\  // Signature: __wpt_report_completion(status, message)
-    \\  // status: 0=OK, 1=ERROR, 2=TIMEOUT
+    \\  // Verify native functions are available
+    \\  if (typeof __wpt_report_result !== 'function') {
+    \\    throw new Error('__wpt_report_result not available');
+    \\  }
+    \\  if (typeof __wpt_report_completion !== 'function') {
+    \\    throw new Error('__wpt_report_completion not available');
+    \\  }
+    \\
+    \\  console.log('TESTHARNESSREPORT: Native functions verified');
+    \\  console.log('TESTHARNESSREPORT: add_result_callback type = ' + typeof add_result_callback);
     \\
     \\  // Register callback for individual test results
+    \\  // This is called by Tests.notify_result() when a test completes
+    \\  // Note: add_result_callback has closure access to testharness.js's internal 'tests' object
     \\  add_result_callback(function(test) {
-    \\    if (typeof __wpt_report_result === 'function') {
-    \\      __wpt_report_result(
-    \\        test.name || '',
-    \\        test.status,
-    \\        test.message || null,
-    \\        test.stack || null,
-    \\        test.duration || 0
-    \\      );
-    \\    }
+    \\    console.log('TESTHARNESSREPORT: Result callback called for: ' + test.name);
+    \\    __wpt_report_result(
+    \\      test.name || '',
+    \\      test.status,
+    \\      test.message || null,
+    \\      test.stack || null,
+    \\      test.duration || 0
+    \\    );
     \\  });
+    \\
+    \\  console.log('TESTHARNESSREPORT: Result callback registered');
     \\
     \\  // Register callback for test completion
+    \\  // This is called when all tests are done
     \\  add_completion_callback(function(tests, harness_status) {
-    \\    if (typeof __wpt_report_completion === 'function') {
-    \\      __wpt_report_completion(
-    \\        harness_status.status,
-    \\        harness_status.message || null
-    \\      );
-    \\    }
+    \\    console.log('TESTHARNESSREPORT: Completion callback called, status=' + harness_status.status);
+    \\    __wpt_report_completion(
+    \\      harness_status.status,
+    \\      harness_status.message || null
+    \\    );
     \\  });
     \\
+    \\  console.log('TESTHARNESSREPORT: Completion callback registered');
+    \\  console.log('TESTHARNESSREPORT: Setup complete');
     \\})();
 ;
 

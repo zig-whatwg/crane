@@ -337,6 +337,7 @@ pub extern fn v8_Isolate_RequestGarbageCollection(isolate: *Isolate) void;
 
 // Context management
 pub extern fn v8_Context_New(isolate: *Isolate) ?*Context;
+pub extern fn v8_Context_NewWithGlobalTemplate(isolate: *Isolate, global_template: *ObjectTemplate) ?*Context;
 pub extern fn v8_Context_Dispose(context: *Context) void;
 pub extern fn v8_Context_Enter(context: *Context) void;
 pub extern fn v8_Context_Exit(context: *Context) void;
@@ -375,6 +376,7 @@ pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
 pub extern fn v8_Value_Uint32Value(value: *Value, context: *Context) u32;
 pub extern fn v8_Value_IntegerValue(value: *Value, context: *Context) i64;
 pub extern fn v8_Value_ToString(value: *Value, context: *Context) ?*String;
+pub extern fn v8_Value_StrictEquals(value1: *Value, value2: *Value) bool;
 pub extern fn v8_Value_Dispose(value: *Value) void;
 
 // Name Functions
@@ -396,6 +398,7 @@ pub extern fn v8_Value_StringWriteUtf8_Raw(value: *const anyopaque, buffer: [*]u
 // Object operations
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;
+pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
