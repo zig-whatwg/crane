@@ -320,8 +320,6 @@ pub const testharnessreport_js =
     \\(function() {
     \\  'use strict';
     \\
-    \\  console.log('TESTHARNESSREPORT: Loading...');
-    \\
     \\  // Verify native functions are available
     \\  if (typeof __wpt_report_result !== 'function') {
     \\    throw new Error('__wpt_report_result not available');
@@ -330,14 +328,10 @@ pub const testharnessreport_js =
     \\    throw new Error('__wpt_report_completion not available');
     \\  }
     \\
-    \\  console.log('TESTHARNESSREPORT: Native functions verified');
-    \\  console.log('TESTHARNESSREPORT: add_result_callback type = ' + typeof add_result_callback);
-    \\
     \\  // Register callback for individual test results
     \\  // This is called by Tests.notify_result() when a test completes
     \\  // Note: add_result_callback has closure access to testharness.js's internal 'tests' object
     \\  add_result_callback(function(test) {
-    \\    console.log('TESTHARNESSREPORT: Result callback called for: ' + test.name);
     \\    __wpt_report_result(
     \\      test.name || '',
     \\      test.status,
@@ -347,20 +341,14 @@ pub const testharnessreport_js =
     \\    );
     \\  });
     \\
-    \\  console.log('TESTHARNESSREPORT: Result callback registered');
-    \\
     \\  // Register callback for test completion
     \\  // This is called when all tests are done
     \\  add_completion_callback(function(tests, harness_status) {
-    \\    console.log('TESTHARNESSREPORT: Completion callback called, status=' + harness_status.status);
     \\    __wpt_report_completion(
     \\      harness_status.status,
     \\      harness_status.message || null
     \\    );
     \\  });
-    \\
-    \\  console.log('TESTHARNESSREPORT: Completion callback registered');
-    \\  console.log('TESTHARNESSREPORT: Setup complete');
     \\})();
 ;
 

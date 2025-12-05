@@ -588,35 +588,25 @@ pub const BrowserContext = struct {
 
     /// Load testharness.js and testharnessreport.js
     pub fn loadTestHarness(self: *BrowserContext) !void {
-        std.debug.print("DEBUG: About to load testharness.js\n", .{});
-
         const harness_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "resources", "testharness.js" });
         defer self.allocator.free(harness_path);
 
         try self.loadScript(harness_path);
-        std.debug.print("DEBUG: testharness.js loaded successfully\n", .{});
 
         // Load our custom testharnessreport.js content (inline)
         try self.executeScript(test_harness.testharnessreport_js);
-        std.debug.print("DEBUG: testharnessreport.js executed successfully\n", .{});
     }
 
     /// Execute inline script content
     pub fn executeScript(self: *BrowserContext, content: []const u8) !void {
-        std.debug.print("executeScript: start\n", .{});
         const isolate = self.isolate orelse return error.NotInitialized;
         const context = self.context orelse return error.NotInitialized;
-        std.debug.print("executeScript: got isolate and context\n", .{});
 
         // Create V8 string from content
-        std.debug.print("executeScript: creating source string (len={})\n", .{content.len});
         const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return error.StringCreateFailed;
-        std.debug.print("executeScript: source string created\n", .{});
 
         // Compile script
-        std.debug.print("executeScript: compiling script\n", .{});
         const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
-            std.debug.print("executeScript: compile failed\n", .{});
             // Get exception message
             const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
@@ -631,12 +621,9 @@ pub const BrowserContext = struct {
             }
             return error.CompileError;
         };
-        std.debug.print("executeScript: script compiled\n", .{});
 
         // Run script
-        std.debug.print("executeScript: running script\n", .{});
         _ = v8.ffi.v8_Script_Run(context, script) orelse {
-            std.debug.print("executeScript: run failed\n", .{});
             const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
                 const exc_str = v8.ffi.v8_Value_ToString(exc, context);
@@ -650,41 +637,28 @@ pub const BrowserContext = struct {
             }
             return error.RuntimeError;
         };
-        std.debug.print("executeScript: script ran successfully\n", .{});
 
         // Run microtasks
-        std.debug.print("executeScript: running microtasks\n", .{});
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-        std.debug.print("executeScript: done\n", .{});
     }
 
     /// Execute a test and wait for completion
     pub fn executeTest(self: *BrowserContext, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
         // Set result collector for V8 callbacks
         // Timer interface is set once in initialize() and persists for the context lifetime
-        std.debug.print("executeTest: Setting result collector\n", .{});
         setResultCollector(&self.result_collector);
-        defer {
-            std.debug.print("executeTest: Clearing result collector\n", .{});
-            clearResultCollector();
-        }
+        defer clearResultCollector();
 
         // Execute test script
-        std.debug.print("executeTest: Running test script (len={})\n", .{test_content.len});
         try self.executeScript(test_content);
-        std.debug.print("executeTest: Test script complete\n", .{});
 
         // Trigger testharness.js completion - it normally waits for window load
         // but our mock environment doesn't have proper event dispatch
-        std.debug.print("executeTest: Triggering completion\n", .{});
         try self.triggerTestHarnessCompletion();
-        std.debug.print("executeTest: Completion triggered\n", .{});
 
         // Run event loop until completion or timeout
         const timeout_ms = timeout.toMillis();
-        std.debug.print("executeTest: Running event loop (timeout={}ms)\n", .{timeout_ms});
         try self.runEventLoop(timeout_ms);
-        std.debug.print("executeTest: Event loop complete, subtests={}\n", .{self.result_collector.results.items.len});
 
         // Collect and return results
         return self.result_collector.finalize(self.allocator, "test");
@@ -696,38 +670,27 @@ pub const BrowserContext = struct {
     /// The `done()` function is exposed globally by testharness.js and can
     /// be called to signal that all tests have been defined.
     fn triggerTestHarnessCompletion(self: *BrowserContext) !void {
-        std.debug.print("DEBUG: Triggering testharness completion\n", .{});
         const completion_script =
             \\(function() {
-            \\  console.log('DEBUG JS: In completion trigger');
-            \\  
             \\  // CRITICAL: testharness.js WindowTestEnvironment sets all_loaded = true
             \\  // only when the window 'load' event fires. Since we don't have a real
             \\  // window load event, we need to set this manually for tests.all_done() to work.
             \\  // test_environment is a global variable in testharness.js
             \\  if (typeof test_environment !== 'undefined') {
-            \\    console.log('DEBUG JS: Setting test_environment.all_loaded = true');
             \\    test_environment.all_loaded = true;
             \\  }
             \\  
-            \\  console.log('DEBUG JS: typeof done = ' + typeof done);
             \\  // Call the exposed done() function to signal test completion
             \\  // testharness.js exposes this globally via expose(done, 'done')
             \\  if (typeof done === 'function') {
-            \\    console.log('DEBUG JS: Calling done() via setTimeout');
             \\    // Use setTimeout 0 to allow any pending microtasks/promises to resolve first
             \\    setTimeout(function() {
-            \\      console.log('DEBUG JS: Inside setTimeout, calling done()');
             \\      done();
-            \\      console.log('DEBUG JS: done() completed');
             \\    }, 0);
-            \\  } else {
-            \\    console.log('DEBUG JS: done is NOT a function!');
             \\  }
             \\})();
         ;
         try self.executeScript(completion_script);
-        std.debug.print("DEBUG: Completion script executed\n", .{});
     }
 
     /// Run event loop until completion or timeout
