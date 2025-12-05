@@ -36,6 +36,9 @@ pub const IR = struct {
     /// Spec priority resolver for handling duplicates
     spec_priority: spec_priority_mod.SpecPriority,
 
+    /// Allocated dictionary member slices (need to be freed)
+    merged_dict_members: std.ArrayList([]types.DictionaryMember),
+
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !IR {
@@ -53,6 +56,7 @@ pub const IR = struct {
             .type_registry = type_registry,
             .source_map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator),
             .spec_priority = try spec_priority_mod.SpecPriority.initDefault(allocator),
+            .merged_dict_members = std.ArrayList([]types.DictionaryMember).empty,
             .allocator = allocator,
         };
     }
@@ -68,6 +72,12 @@ pub const IR = struct {
 
         // Free dictionaries (keys are owned by source_map, so don't free them)
         self.dictionaries.deinit();
+
+        // Free allocated dictionary member slices (from partial merging)
+        for (self.merged_dict_members.items) |members| {
+            self.allocator.free(members);
+        }
+        self.merged_dict_members.deinit(self.allocator);
 
         // Free typedefs (keys are owned by source_map, so don't free them)
         self.typedefs.deinit();
@@ -216,6 +226,7 @@ pub const IR = struct {
     }
 
     /// Add a dictionary from a parsed IDL file
+    /// Handles partial dictionaries by merging members into existing dictionaries
     pub fn addDictionary(self: *IR, dict: types.Dictionary, source_file: []const u8) !void {
         // Get or create source_map entry first (this owns the name key)
         const source_gop = try self.source_map.getOrPut(dict.name);
@@ -234,11 +245,56 @@ pub const IR = struct {
             return err;
         };
 
-        // Dictionaries don't have partials, so just add (use the key from source_map)
         const shared_key = source_gop.key_ptr.*;
-        try self.dictionaries.put(shared_key, dict);
-        // Register dictionary type
-        try self.type_registry.register(shared_key, .dictionary);
+
+        // Check if dictionary already exists
+        if (self.dictionaries.getPtr(shared_key)) |existing| {
+            if (dict.partial) {
+                // Partial dictionary - merge members into existing
+                // Create new members slice with combined members
+                const old_members = existing.members;
+                const new_members = try self.allocator.alloc(types.DictionaryMember, old_members.len + dict.members.len);
+                @memcpy(new_members[0..old_members.len], old_members);
+                @memcpy(new_members[old_members.len..], dict.members);
+                existing.members = new_members;
+                // Track allocation for cleanup
+                try self.merged_dict_members.append(self.allocator, new_members);
+            } else if (!existing.partial) {
+                // Both are non-partial - check priority
+                const existing_source = source_gop.value_ptr.items[0];
+                const same_file = std.mem.eql(u8, source_file, existing_source);
+
+                if (self.spec_priority.shouldPrefer(dict.name, source_file, existing_source)) {
+                    // New spec has higher priority - replace existing
+                    if (!same_file) {
+                        std.debug.print("  ⚠️  Duplicate dictionary '{s}': preferring {s} over {s}\n", .{ dict.name, source_file, existing_source });
+                    }
+                    existing.* = dict;
+                } else {
+                    // Existing spec has higher priority - skip new one
+                    if (!same_file) {
+                        std.debug.print("  ⚠️  Duplicate dictionary '{s}': keeping {s}, skipping {s}\n", .{ dict.name, existing_source, source_file });
+                    }
+                }
+            } else {
+                // Existing is partial-only, this is the base - merge existing partials into base
+                const old_partial_members = existing.members;
+                const new_members = try self.allocator.alloc(types.DictionaryMember, dict.members.len + old_partial_members.len);
+                @memcpy(new_members[0..dict.members.len], dict.members);
+                @memcpy(new_members[dict.members.len..], old_partial_members);
+                var merged = dict;
+                merged.members = new_members;
+                merged.partial = false;
+                existing.* = merged;
+                // Track allocation for cleanup
+                try self.merged_dict_members.append(self.allocator, new_members);
+            }
+        } else {
+            // First time seeing this dictionary - add it
+            try self.dictionaries.put(shared_key, dict);
+            // Register dictionary type
+            try self.type_registry.register(shared_key, .dictionary);
+        }
     }
 
     /// Add a typedef from a parsed IDL file

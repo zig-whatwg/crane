@@ -264,7 +264,7 @@ pub fn processDirectory(
             // But we still add them to typedef_names so they're exported from root.zig
             if (generator.isSpecialTypedef(typedef.name)) continue;
 
-            try generator.generateTypedef(allocator, typedef, typedefs_path);
+            try generator.generateTypedef(allocator, typedef, typedefs_path, &ir);
 
             typedef_count += 1;
         }
@@ -284,7 +284,7 @@ pub fn processDirectory(
 
         while (dict_iter.next()) |entry| {
             const dict = entry.value_ptr.*;
-            try generator.generateDictionary(allocator, dict, dictionaries_path);
+            try generator.generateDictionary(allocator, dict, dictionaries_path, &ir);
 
             const name_copy = try allocator.dupe(u8, dict.name);
             try dictionary_names.append(allocator, name_copy);

@@ -1361,7 +1361,7 @@ fn generateInterfaceFile(
     }
 
     // Generate VTable (with ONLY own attributes/operations, not inherited)
-    try writer.writeVTable(w, interface.name, interface.inheritance, all_constants.items, own_constants.items, own_attrs.items, own_ops.items);
+    try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items);
 
     // Generate lifecycle functions
     try writer.writeLifecycleFunctions(w, impl_name);
@@ -1479,7 +1479,7 @@ pub fn generateFromFile(
             // Skip typedefs that have special hand-written implementations
             // These are in webidl/types/buffer_sources.zig with proper union types and methods
             if (isSpecialTypedef(typedef.name)) continue;
-            try generateTypedef(allocator, typedef, typedefs_path);
+            try generateTypedef(allocator, typedef, typedefs_path, &ir);
         }
     }
 
@@ -1488,7 +1488,7 @@ pub fn generateFromFile(
         var dict_iter = ir.dictionaries.iterator();
         while (dict_iter.next()) |entry| {
             const dict = entry.value_ptr.*;
-            try generateDictionary(allocator, dict, dictionaries_path);
+            try generateDictionary(allocator, dict, dictionaries_path, &ir);
         }
     }
 
@@ -1710,8 +1710,365 @@ fn typeReferencesCallback(allocator: std.mem.Allocator, idl_type: types.IDLType,
     return true;
 }
 
+/// Check if an IDL type references a typedef (to determine if we need to import typedefs module)
+fn typeReferencesTypedef(idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) bool {
+    // Check the main type
+    if (type_registry.lookup(idl_type.type)) |kind| {
+        if (kind == .typedef) return true;
+    }
+
+    // Check sequence element type (populated by some code paths)
+    if (idl_type.sequence) |elem_type| {
+        if (typeReferencesTypedef(elem_type.*, type_registry)) return true;
+    }
+
+    // Check generic field (used by parser for sequence<T> and record<K,V>)
+    if (idl_type.generic) |generic_str| {
+        if (checkGenericStringForType(generic_str, type_registry, .typedef)) return true;
+    }
+
+    // Check record key and value types
+    if (idl_type.record) |rec| {
+        if (typeReferencesTypedef(rec.key.*, type_registry)) return true;
+        if (typeReferencesTypedef(rec.value.*, type_registry)) return true;
+    }
+
+    // Check union member types
+    if (idl_type.unionTypes) |union_types| {
+        for (union_types) |union_member| {
+            if (typeReferencesTypedef(union_member, type_registry)) return true;
+        }
+    }
+
+    return false;
+}
+
+/// Check if an IDL type references an enum (to determine if we need to import enums module)
+fn typeReferencesEnum(idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) bool {
+    // Check the main type
+    if (type_registry.lookup(idl_type.type)) |kind| {
+        if (kind == .enum_type) return true;
+    }
+
+    // Check sequence element type
+    if (idl_type.sequence) |elem_type| {
+        if (typeReferencesEnum(elem_type.*, type_registry)) return true;
+    }
+
+    // Check generic field
+    if (idl_type.generic) |generic_str| {
+        if (checkGenericStringForType(generic_str, type_registry, .enum_type)) return true;
+    }
+
+    // Check record key and value types
+    if (idl_type.record) |rec| {
+        if (typeReferencesEnum(rec.key.*, type_registry)) return true;
+        if (typeReferencesEnum(rec.value.*, type_registry)) return true;
+    }
+
+    // Check union member types
+    if (idl_type.unionTypes) |union_types| {
+        for (union_types) |union_member| {
+            if (typeReferencesEnum(union_member, type_registry)) return true;
+        }
+    }
+
+    return false;
+}
+
+/// Check if an IDL type references a dictionary (to determine if we need to import dictionaries module)
+fn typeReferencesDictionary(idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) bool {
+    // Check the main type
+    if (type_registry.lookup(idl_type.type)) |kind| {
+        if (kind == .dictionary) return true;
+    }
+
+    // Check sequence element type
+    if (idl_type.sequence) |elem_type| {
+        if (typeReferencesDictionary(elem_type.*, type_registry)) return true;
+    }
+
+    // Check generic field
+    if (idl_type.generic) |generic_str| {
+        if (checkGenericStringForType(generic_str, type_registry, .dictionary)) return true;
+    }
+
+    // Check record key and value types
+    if (idl_type.record) |rec| {
+        if (typeReferencesDictionary(rec.key.*, type_registry)) return true;
+        if (typeReferencesDictionary(rec.value.*, type_registry)) return true;
+    }
+
+    // Check union member types
+    if (idl_type.unionTypes) |union_types| {
+        for (union_types) |union_member| {
+            if (typeReferencesDictionary(union_member, type_registry)) return true;
+        }
+    }
+
+    return false;
+}
+
+/// Check if a generic string (like "CookieListItem" or "K, V") contains a type of the specified kind
+fn checkGenericStringForType(generic_str: []const u8, type_registry: *const ir_mod.TypeRegistry, target_kind: ir_mod.TypeKind) bool {
+    // Split on commas and check each part
+    var iter = std.mem.splitSequence(u8, generic_str, ",");
+    while (iter.next()) |part| {
+        const trimmed = std.mem.trim(u8, part, " \t\n<>");
+        // Extract just the type name (skip sequence/record keywords)
+        var type_name = trimmed;
+        if (std.mem.startsWith(u8, trimmed, "sequence<")) {
+            const start = "sequence<".len;
+            if (start < trimmed.len) {
+                type_name = std.mem.trim(u8, trimmed[start..], " \t\n<>");
+            }
+        }
+        // Check if this type is the target kind
+        if (type_registry.lookup(type_name)) |kind| {
+            if (kind == target_kind) return true;
+        }
+    }
+    return false;
+}
+
+/// Collect dictionary type names referenced by an IDL type (excluding self)
+/// Used to generate individual import statements instead of root import
+fn collectReferencedDictionaries(idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry, self_name: []const u8, result: *std.StringHashMap(void)) !void {
+    // Check the main type
+    if (type_registry.lookup(idl_type.type)) |kind| {
+        if (kind == .dictionary and !std.mem.eql(u8, idl_type.type, self_name)) {
+            try result.put(idl_type.type, {});
+        }
+    }
+
+    // Check sequence element type
+    if (idl_type.sequence) |elem_type| {
+        try collectReferencedDictionaries(elem_type.*, type_registry, self_name, result);
+    }
+
+    // Check generic field
+    if (idl_type.generic) |generic_str| {
+        if (checkGenericStringForType(generic_str, type_registry, .dictionary)) {
+            // Extract the dictionary names from generic string
+            var iter = std.mem.splitSequence(u8, generic_str, ",");
+            while (iter.next()) |part| {
+                const trimmed = std.mem.trim(u8, part, " \t\n<>");
+                if (type_registry.lookup(trimmed)) |kind| {
+                    if (kind == .dictionary and !std.mem.eql(u8, trimmed, self_name)) {
+                        try result.put(trimmed, {});
+                    }
+                }
+            }
+        }
+    }
+
+    // Check record key and value types
+    if (idl_type.record) |rec| {
+        try collectReferencedDictionaries(rec.key.*, type_registry, self_name, result);
+        try collectReferencedDictionaries(rec.value.*, type_registry, self_name, result);
+    }
+
+    // Check union member types
+    if (idl_type.unionTypes) |union_types| {
+        for (union_types) |union_member| {
+            try collectReferencedDictionaries(union_member, type_registry, self_name, result);
+        }
+    }
+}
+
+/// Derive a semantic variant name from an IDL type
+/// Converts WebIDL type names to valid Zig identifiers in snake_case
+fn deriveVariantName(allocator: std.mem.Allocator, idl_type: types.IDLType) ![]const u8 {
+    // Handle sequence types: sequence<T> -> "t_sequence"
+    if (idl_type.sequence) |elem_type| {
+        const elem_name = try deriveVariantName(allocator, elem_type.*);
+        defer allocator.free(elem_name);
+        return std.fmt.allocPrint(allocator, "{s}_sequence", .{elem_name});
+    }
+
+    // Handle record types: record<K, V> -> "k_v_record"
+    if (idl_type.record) |rec| {
+        const key_name = try deriveVariantName(allocator, rec.key.*);
+        defer allocator.free(key_name);
+        const val_name = try deriveVariantName(allocator, rec.value.*);
+        defer allocator.free(val_name);
+        return std.fmt.allocPrint(allocator, "{s}_{s}_record", .{ key_name, val_name });
+    }
+
+    // Handle union types (nested unions) - use first type's name with "_union" suffix
+    if (idl_type.unionTypes) |union_types| {
+        if (union_types.len > 0) {
+            const first_name = try deriveVariantName(allocator, union_types[0]);
+            defer allocator.free(first_name);
+            return std.fmt.allocPrint(allocator, "{s}_union", .{first_name});
+        }
+        return allocator.dupe(u8, "union");
+    }
+
+    // Handle record type stored with .generic field: record<K, V>
+    if (std.mem.eql(u8, idl_type.type, "record") and idl_type.generic != null) {
+        const generic_str = idl_type.generic.?;
+        if (std.mem.indexOf(u8, generic_str, ",")) |comma_idx| {
+            const key_str = std.mem.trim(u8, generic_str[0..comma_idx], " \t");
+            const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
+            const key_name = try sanitizeTypeName(allocator, key_str);
+            defer allocator.free(key_name);
+            const val_name = try sanitizeTypeName(allocator, val_str);
+            defer allocator.free(val_name);
+            return std.fmt.allocPrint(allocator, "{s}_{s}_record", .{ key_name, val_name });
+        }
+    }
+
+    // Handle sequence type stored with .generic field: sequence<T>
+    if (std.mem.eql(u8, idl_type.type, "sequence") and idl_type.generic != null) {
+        const generic_str = idl_type.generic.?;
+        const elem_name = try sanitizeTypeName(allocator, generic_str);
+        defer allocator.free(elem_name);
+        return std.fmt.allocPrint(allocator, "{s}_sequence", .{elem_name});
+    }
+
+    // Handle other generic types: Promise<T> -> "t_promise"
+    if (idl_type.generic) |generic_arg| {
+        const sanitized_generic = try sanitizeTypeName(allocator, generic_arg);
+        defer allocator.free(sanitized_generic);
+        const sanitized_base = try sanitizeTypeName(allocator, idl_type.type);
+        defer allocator.free(sanitized_base);
+        return std.fmt.allocPrint(allocator, "{s}_{s}", .{ sanitized_generic, sanitized_base });
+    }
+
+    // Simple type name - sanitize to valid Zig identifier
+    return sanitizeTypeName(allocator, idl_type.type);
+}
+
+/// Sanitize a WebIDL type name to a valid Zig identifier in snake_case
+fn sanitizeTypeName(allocator: std.mem.Allocator, type_name: []const u8) ![]const u8 {
+    // Handle empty type name
+    if (type_name.len == 0) {
+        return allocator.dupe(u8, "unknown");
+    }
+
+    // Map common multi-word types
+    const mappings = .{
+        .{ "unsigned short", "ushort" },
+        .{ "unsigned long long", "ulong_long" },
+        .{ "unsigned long", "ulong" },
+        .{ "long long", "long_long" },
+        .{ "unrestricted float", "float" },
+        .{ "unrestricted double", "double" },
+    };
+
+    inline for (mappings) |mapping| {
+        if (std.mem.eql(u8, type_name, mapping[0])) {
+            return allocator.dupe(u8, mapping[1]);
+        }
+    }
+
+    // Allocate worst-case buffer: underscore before every char
+    const buf = try allocator.alloc(u8, type_name.len * 2);
+    errdefer allocator.free(buf);
+
+    var len: usize = 0;
+    var prev_was_lower = false;
+
+    for (type_name) |c| {
+        // Skip invalid characters for Zig identifiers
+        if (c == ' ' or c == '-' or c == '<' or c == '>' or c == ',' or c == '?' or c == '(' or c == ')') {
+            if (len > 0 and buf[len - 1] != '_') {
+                buf[len] = '_';
+                len += 1;
+            }
+            prev_was_lower = false;
+            continue;
+        }
+
+        // Insert underscore before uppercase letters (for camelCase/PascalCase)
+        if (std.ascii.isUpper(c)) {
+            if (prev_was_lower and len > 0) {
+                buf[len] = '_';
+                len += 1;
+            }
+            buf[len] = std.ascii.toLower(c);
+            len += 1;
+            prev_was_lower = false;
+        } else {
+            buf[len] = c;
+            len += 1;
+            prev_was_lower = std.ascii.isLower(c);
+        }
+    }
+
+    // Remove trailing underscores
+    while (len > 0 and buf[len - 1] == '_') {
+        len -= 1;
+    }
+
+    // Handle empty result
+    if (len == 0) {
+        allocator.free(buf);
+        return allocator.dupe(u8, "value");
+    }
+
+    // Return slice of actual size
+    const result = try allocator.dupe(u8, buf[0..len]);
+    allocator.free(buf);
+    return result;
+}
+
+/// Parse an inline type string like "sequence<ByteString>" or "ByteString" into an IDLType
+fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.IDLType {
+    const trimmed = std.mem.trim(u8, type_str, " \t\n");
+
+    // Handle sequence<T>
+    if (std.mem.startsWith(u8, trimmed, "sequence<")) {
+        const start = "sequence<".len;
+        var depth: usize = 1;
+        var end = start;
+        while (end < trimmed.len and depth > 0) {
+            if (trimmed[end] == '<') depth += 1;
+            if (trimmed[end] == '>') depth -= 1;
+            if (depth > 0) end += 1;
+        }
+        if (end > start) {
+            const inner = trimmed[start..end];
+            return types.IDLType{
+                .type = try allocator.dupe(u8, "sequence"),
+                .generic = try allocator.dupe(u8, inner),
+            };
+        }
+    }
+
+    // Handle record<K, V>
+    if (std.mem.startsWith(u8, trimmed, "record<")) {
+        const start = "record<".len;
+        var depth: usize = 1;
+        var end = start;
+        while (end < trimmed.len and depth > 0) {
+            if (trimmed[end] == '<') depth += 1;
+            if (trimmed[end] == '>') depth -= 1;
+            if (depth > 0) end += 1;
+        }
+        if (end > start) {
+            const inner = trimmed[start..end];
+            return types.IDLType{
+                .type = try allocator.dupe(u8, "record"),
+                .generic = try allocator.dupe(u8, inner),
+            };
+        }
+    }
+
+    // Simple type name
+    return types.IDLType{
+        .type = try allocator.dupe(u8, trimmed),
+    };
+}
+
 /// Write a type for typedef generation (handles callback references)
 fn writeTypeForTypedef(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, typedefs_path: []const u8) !void {
+    return writeTypeForTypedefWithRegistry(allocator, w, idl_type, typedefs_path, null);
+}
+
+/// Write a type for typedef generation with type registry for proper interface resolution
+fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, typedefs_path: []const u8, type_registry: ?*const ir_mod.TypeRegistry) !void {
     const type_str = idl_type.type;
 
     // Check if this is a callback reference
@@ -1721,8 +2078,51 @@ fn writeTypeForTypedef(allocator: std.mem.Allocator, w: anytype, idl_type: types
         return;
     }
 
-    // Otherwise use writeTypeSimple
-    try writeTypeSimple(w, idl_type, null);
+    // Handle sequence types: sequence<T> -> []const T
+    if (idl_type.sequence) |elem_type| {
+        try w.writeAll("[]const ");
+        try writeTypeForTypedefWithRegistry(allocator, w, elem_type.*, typedefs_path, type_registry);
+        return;
+    }
+
+    // Handle sequence type stored with .generic field (parser sometimes uses this format)
+    if (std.mem.eql(u8, type_str, "sequence") and idl_type.generic != null) {
+        const inner_type_str = idl_type.generic.?;
+        try w.writeAll("[]const ");
+        const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        try writeTypeForTypedefWithRegistry(allocator, w, inner_idl_type, typedefs_path, type_registry);
+        return;
+    }
+
+    // Handle record types: record<K, V> -> []const struct { key: K, value: V }
+    if (idl_type.record) |rec| {
+        try w.writeAll("[]const struct { key: ");
+        try writeTypeForTypedefWithRegistry(allocator, w, rec.key.*, typedefs_path, type_registry);
+        try w.writeAll(", value: ");
+        try writeTypeForTypedefWithRegistry(allocator, w, rec.value.*, typedefs_path, type_registry);
+        try w.writeAll(" }");
+        return;
+    }
+
+    // Handle record type stored with .generic field
+    if (std.mem.eql(u8, type_str, "record") and idl_type.generic != null) {
+        const generic_str = idl_type.generic.?;
+        if (std.mem.indexOf(u8, generic_str, ",")) |comma_idx| {
+            const key_str = std.mem.trim(u8, generic_str[0..comma_idx], " \t");
+            const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
+            try w.writeAll("[]const struct { key: ");
+            const key_idl = try parseInlineType(allocator, key_str);
+            try writeTypeForTypedefWithRegistry(allocator, w, key_idl, typedefs_path, type_registry);
+            try w.writeAll(", value: ");
+            const val_idl = try parseInlineType(allocator, val_str);
+            try writeTypeForTypedefWithRegistry(allocator, w, val_idl, typedefs_path, type_registry);
+            try w.writeAll(" }");
+            return;
+        }
+    }
+
+    // Use writeTypeSimple with registry for proper type resolution
+    try writeTypeSimple(w, idl_type, type_registry);
 }
 
 /// Generate a typedef Zig file
@@ -1730,6 +2130,7 @@ pub fn generateTypedef(
     allocator: std.mem.Allocator,
     typedef: types.Typedef,
     typedefs_path: []const u8,
+    ir: *const ir_mod.IR,
 ) !void {
     // Create typedefs directory
     try std.fs.cwd().makePath(typedefs_path);
@@ -1754,7 +2155,7 @@ pub fn generateTypedef(
     try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
     try w.writeAll("\n");
 
-    // Import runtime (needed for DOMString types)
+    // Import runtime (needed for DOMString types and Instance)
     try w.writeAll("const runtime = @import(\"runtime\");\n");
 
     // Check if typedef references a callback - if so, import callbacks module
@@ -1762,19 +2163,52 @@ pub fn generateTypedef(
     if (needs_callbacks) {
         try w.writeAll("const callbacks = @import(\"callbacks\");\n");
     }
+
+    // Check if typedef references other typedefs - if so, import typedefs module
+    const needs_typedefs = typeReferencesTypedef(typedef.idlType, &ir.type_registry);
+    if (needs_typedefs) {
+        try w.writeAll("const typedefs = @import(\"root.zig\");\n");
+    }
+
+    // NOTE: We do NOT import enums or dictionaries in typedefs to avoid circular dependencies
+    // (dictionaries imports typedefs, so typedefs cannot import dictionaries)
+    // When a typedef references an enum or dictionary, we use *const anyopaque instead
+
     try w.writeAll("\n");
 
     // Check if it's a union type
     if (typedef.idlType.unionTypes) |union_types| {
-        // Generate tagged union
+        // Generate tagged union with semantic variant names
         try w.print("pub const {s} = union(enum) {{\n", .{typedef.name});
 
-        for (union_types, 0..) |union_type, i| {
-            const variant_name = try std.fmt.allocPrint(allocator, "variant_{d}", .{i});
+        // Track used names to handle duplicates
+        var used_names = std.StringHashMap(u32).init(allocator);
+        defer {
+            var key_iter = used_names.keyIterator();
+            while (key_iter.next()) |key| {
+                allocator.free(key.*);
+            }
+            used_names.deinit();
+        }
+
+        for (union_types) |union_type| {
+            // Derive semantic name from the IDL type
+            const base_name = try deriveVariantName(allocator, union_type);
+            defer allocator.free(base_name);
+
+            // Handle duplicate names by appending a number
+            const count = used_names.get(base_name) orelse 0;
+            const key_copy = try allocator.dupe(u8, base_name);
+            try used_names.put(key_copy, count + 1);
+
+            const variant_name = if (count == 0)
+                try allocator.dupe(u8, base_name)
+            else
+                try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_name, count });
             defer allocator.free(variant_name);
 
             try w.print("    {s}: ", .{variant_name});
-            try writeTypeForTypedef(allocator, w, union_type, typedefs_path);
+            try writeTypeForTypedefWithRegistry(allocator, w, union_type, typedefs_path, &ir.type_registry);
             try w.writeAll(",\n");
         }
 
@@ -1788,11 +2222,73 @@ pub fn generateTypedef(
             try w.writeAll("?");
         }
 
-        try writeTypeForTypedef(allocator, w, typedef.idlType, typedefs_path);
+        try writeTypeForTypedefWithRegistry(allocator, w, typedef.idlType, typedefs_path, &ir.type_registry);
         try w.writeAll(";\n");
     }
 
     try w.flush();
+}
+
+/// Write a type for dictionary member with proper type resolution
+/// Handles sequence types, record types, and uses type registry for resolution
+fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) !void {
+    const type_str = idl_type.type;
+
+    // Handle sequence types: sequence<T> -> []const T
+    if (idl_type.sequence) |elem_type| {
+        try w.writeAll("[]const ");
+        try writeDictionaryMemberType(allocator, w, elem_type.*, type_registry);
+        return;
+    }
+
+    // Handle sequence type stored with .generic field (parser sometimes uses this format)
+    if (std.mem.eql(u8, type_str, "sequence") and idl_type.generic != null) {
+        const inner_type_str = idl_type.generic.?;
+        try w.writeAll("[]const ");
+        const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        try writeDictionaryMemberType(allocator, w, inner_idl_type, type_registry);
+        return;
+    }
+
+    // Handle record types: record<K, V> -> []const struct { key: K, value: V }
+    if (idl_type.record) |rec| {
+        try w.writeAll("[]const struct { key: ");
+        try writeDictionaryMemberType(allocator, w, rec.key.*, type_registry);
+        try w.writeAll(", value: ");
+        try writeDictionaryMemberType(allocator, w, rec.value.*, type_registry);
+        try w.writeAll(" }");
+        return;
+    }
+
+    // Handle record type stored with .generic field
+    if (std.mem.eql(u8, type_str, "record") and idl_type.generic != null) {
+        const generic_str = idl_type.generic.?;
+        if (std.mem.indexOf(u8, generic_str, ",")) |comma_idx| {
+            const key_str = std.mem.trim(u8, generic_str[0..comma_idx], " \t");
+            const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
+            try w.writeAll("[]const struct { key: ");
+            const key_idl = try parseInlineType(allocator, key_str);
+            try writeDictionaryMemberType(allocator, w, key_idl, type_registry);
+            try w.writeAll(", value: ");
+            const val_idl = try parseInlineType(allocator, val_str);
+            try writeDictionaryMemberType(allocator, w, val_idl, type_registry);
+            try w.writeAll(" }");
+            return;
+        }
+    }
+
+    // Special handling for dictionary references - use direct import (no module prefix)
+    // since dictionaries import each other directly to avoid circular imports via root
+    if (type_registry.lookup(type_str)) |kind| {
+        if (kind == .dictionary) {
+            // Use the type name directly (imported at top of file)
+            try w.print("{s}", .{type_str});
+            return;
+        }
+    }
+
+    // Use writeTypeSimple with registry for proper type resolution of other types
+    try writeTypeSimple(w, idl_type, type_registry);
 }
 
 /// Generate a dictionary Zig struct
@@ -1800,6 +2296,7 @@ pub fn generateDictionary(
     allocator: std.mem.Allocator,
     dictionary: types.Dictionary,
     dictionaries_path: []const u8,
+    ir: *const ir_mod.IR,
 ) !void {
     // Create dictionaries directory
     try std.fs.cwd().makePath(dictionaries_path);
@@ -1824,12 +2321,55 @@ pub fn generateDictionary(
     try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
     try w.writeAll("\n");
 
+    // Scan dictionary members to determine required imports
+    var needs_typedefs = false;
+    var needs_enums = false;
+    var needs_callbacks = false;
+
+    // Collect referenced dictionary names for individual imports (not self)
+    var referenced_dicts = std.StringHashMap(void).init(allocator);
+    defer referenced_dicts.deinit();
+
+    for (dictionary.members) |member| {
+        if (!needs_typedefs and typeReferencesTypedef(member.idlType, &ir.type_registry)) {
+            needs_typedefs = true;
+        }
+        if (!needs_enums and typeReferencesEnum(member.idlType, &ir.type_registry)) {
+            needs_enums = true;
+        }
+        // Collect dictionary type names instead of just setting a flag
+        try collectReferencedDictionaries(member.idlType, &ir.type_registry, dictionary.name, &referenced_dicts);
+        if (!needs_callbacks) {
+            if (typeReferencesCallback(allocator, member.idlType, dictionaries_path) catch false) {
+                needs_callbacks = true;
+            }
+        }
+    }
+
     // Write imports
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    if (needs_typedefs) {
+        try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+    }
+    if (needs_enums) {
+        try w.writeAll("const enums = @import(\"enums\");\n");
+    }
+    // Import specific dictionary files instead of root (to avoid circular imports)
+    var dict_iter = referenced_dicts.iterator();
+    while (dict_iter.next()) |entry| {
+        const dict_name = entry.key_ptr.*;
+        try w.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ dict_name, dict_name, dict_name });
+    }
+    if (needs_callbacks) {
+        try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    }
 
     // Import base dictionary if inheritance exists
     if (dictionary.inheritance) |base_name| {
-        try w.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ base_name, base_name, base_name });
+        // Don't duplicate if already imported
+        if (!referenced_dicts.contains(base_name)) {
+            try w.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ base_name, base_name, base_name });
+        }
     }
 
     try w.writeAll("\n");
@@ -1858,7 +2398,7 @@ pub fn generateDictionary(
             try w.writeAll("?");
         }
 
-        try writeTypeSimple(w, member.idlType, null);
+        try writeDictionaryMemberType(allocator, w, member.idlType, &ir.type_registry);
 
         // Default value
         if (!is_required) {
