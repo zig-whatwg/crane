@@ -38,6 +38,12 @@ const context_manager = v8.context_manager;
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
+// V8 Event Loop with timer support (uses libuv under the hood)
+const V8EventLoop = v8.V8EventLoop;
+const TimerInterface = runtime.TimerInterface;
+const TimerId = runtime.TimerId;
+const TimerCallback = runtime.TimerCallback;
+
 /// Execution context type
 pub const ContextType = enum {
     /// Window/document context (for .window.js, .html tests)
@@ -75,7 +81,12 @@ pub const BrowserContext = struct {
     history_instance: ?*runtime.Instance = null,
     performance_instance: ?*runtime.Instance = null,
 
+    // V8 event loop with timer support (libuv-based)
+    // This is initialized after V8 isolate is created
+    v8_event_loop: ?*V8EventLoop = null,
+
     pub fn init(allocator: std.mem.Allocator, context_type: ContextType, wpt_root: []const u8) !BrowserContext {
+        // V8 event loop will be created during initialize() after isolate is ready
         return BrowserContext{
             .allocator = allocator,
             .context_type = context_type,
@@ -89,6 +100,15 @@ pub const BrowserContext = struct {
         self.result_collector.deinit();
         self.allocator.free(self.wpt_root);
         self.allocator.free(self.test_url);
+
+        // Clear timer interface from thread-local storage
+        clearTimerInterface();
+
+        // Cleanup V8 event loop (which cleans up libuv timer manager)
+        if (self.v8_event_loop) |event_loop| {
+            event_loop.deinit();
+            self.allocator.destroy(event_loop);
+        }
 
         // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
         if (self.context != null) {
@@ -136,6 +156,12 @@ pub const BrowserContext = struct {
 
         v8.ffi.v8_Isolate_Enter(isolate);
 
+        // Create V8 event loop with timer support (uses libuv under the hood)
+        const event_loop_ptr = try self.allocator.create(V8EventLoop);
+        errdefer self.allocator.destroy(event_loop_ptr);
+        event_loop_ptr.* = try V8EventLoop.init(isolate, self.allocator);
+        self.v8_event_loop = event_loop_ptr;
+
         // Create V8 context
         const context = v8.ffi.v8_Context_New(isolate) orelse return error.ContextCreateFailed;
         self.context = context;
@@ -165,7 +191,43 @@ pub const BrowserContext = struct {
         // Register WPT result callbacks
         try self.registerWptCallbacks();
 
+        // Set up window/self globals via JavaScript
+        // We do this via JS because V8's global proxy has special semantics
+        // that make C++ property setting behave differently from JS assignment.
+        try self.setupGlobalAliases();
+
+        // Set up timer interface in thread-local storage
+        // This needs to be available for testharness.js which uses setTimeout
+        if (self.v8_event_loop) |event_loop| {
+            if (event_loop.timerInterface()) |timer| {
+                setTimerInterface(timer, self.allocator);
+            }
+        }
+
         self.initialized = true;
+    }
+
+    /// Set up window/self/globalThis aliases and GLOBAL object via JavaScript
+    fn setupGlobalAliases(self: *BrowserContext) !void {
+        // Simple direct assignment on globalThis
+        const setup_script =
+            \\// Assign self and window to globalThis
+            \\globalThis.self = globalThis;
+            \\globalThis.window = globalThis;
+            \\
+            \\// Set up GLOBAL object for WPT tests
+            \\// This is normally injected by the WPT server's HTML wrapper
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return true; },
+            \\  isWorker: function() { return false; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+        ;
+
+        self.executeScript(setup_script) catch |err| {
+            std.debug.print("ERROR: Failed to set up global aliases: {}\n", .{err});
+            return err;
+        };
     }
 
     /// Register browser globals (Window, document, navigator, etc.)
@@ -205,14 +267,15 @@ pub const BrowserContext = struct {
         global_obj: *v8.ffi.Object,
         runtime_ctx: runtime.Context,
     ) !void {
-        // Register 'window' as reference to global object
-        // Per spec: window === globalThis === self
-        const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreateFailed;
-        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(window_key), @ptrCast(global_obj));
-
-        // Register 'self' as reference to global object
-        const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
-        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
+        // NOTE: We intentionally DO NOT set Window.prototype as the global's prototype.
+        // The reason is that Window.prototype has getters (like 'self', 'window') that
+        // try to access internal fields of a Window instance. The global object is NOT
+        // a proper Window instance and doesn't have those internal fields set up.
+        // Setting the prototype would cause "Internal field out of bounds" crashes.
+        //
+        // Instead, we:
+        // 1. Register needed globals (document, navigator, etc.) directly on global
+        // 2. Set window/self via JavaScript after context setup
 
         // Register Document singleton
         {
@@ -414,9 +477,9 @@ pub const BrowserContext = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
 
-        // Register setInterval (reuses setTimeout callback for mock)
+        // Register setInterval (uses proper interval callback)
         {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return error.FunctionTemplateCreateFailed;
             v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return error.StringCreateFailed;
@@ -525,25 +588,35 @@ pub const BrowserContext = struct {
 
     /// Load testharness.js and testharnessreport.js
     pub fn loadTestHarness(self: *BrowserContext) !void {
+        std.debug.print("DEBUG: About to load testharness.js\n", .{});
+
         const harness_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "resources", "testharness.js" });
         defer self.allocator.free(harness_path);
 
         try self.loadScript(harness_path);
+        std.debug.print("DEBUG: testharness.js loaded successfully\n", .{});
 
         // Load our custom testharnessreport.js content (inline)
         try self.executeScript(test_harness.testharnessreport_js);
+        std.debug.print("DEBUG: testharnessreport.js executed successfully\n", .{});
     }
 
     /// Execute inline script content
     pub fn executeScript(self: *BrowserContext, content: []const u8) !void {
+        std.debug.print("executeScript: start\n", .{});
         const isolate = self.isolate orelse return error.NotInitialized;
         const context = self.context orelse return error.NotInitialized;
+        std.debug.print("executeScript: got isolate and context\n", .{});
 
         // Create V8 string from content
+        std.debug.print("executeScript: creating source string (len={})\n", .{content.len});
         const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return error.StringCreateFailed;
+        std.debug.print("executeScript: source string created\n", .{});
 
         // Compile script
+        std.debug.print("executeScript: compiling script\n", .{});
         const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
+            std.debug.print("executeScript: compile failed\n", .{});
             // Get exception message
             const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
@@ -558,9 +631,12 @@ pub const BrowserContext = struct {
             }
             return error.CompileError;
         };
+        std.debug.print("executeScript: script compiled\n", .{});
 
         // Run script
+        std.debug.print("executeScript: running script\n", .{});
         _ = v8.ffi.v8_Script_Run(context, script) orelse {
+            std.debug.print("executeScript: run failed\n", .{});
             const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
                 const exc_str = v8.ffi.v8_Value_ToString(exc, context);
@@ -574,53 +650,119 @@ pub const BrowserContext = struct {
             }
             return error.RuntimeError;
         };
+        std.debug.print("executeScript: script ran successfully\n", .{});
 
         // Run microtasks
+        std.debug.print("executeScript: running microtasks\n", .{});
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+        std.debug.print("executeScript: done\n", .{});
     }
 
     /// Execute a test and wait for completion
     pub fn executeTest(self: *BrowserContext, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
         // Set result collector for V8 callbacks
+        // Timer interface is set once in initialize() and persists for the context lifetime
+        std.debug.print("executeTest: Setting result collector\n", .{});
         setResultCollector(&self.result_collector);
-        defer clearResultCollector();
+        defer {
+            std.debug.print("executeTest: Clearing result collector\n", .{});
+            clearResultCollector();
+        }
 
         // Execute test script
+        std.debug.print("executeTest: Running test script (len={})\n", .{test_content.len});
         try self.executeScript(test_content);
+        std.debug.print("executeTest: Test script complete\n", .{});
+
+        // Trigger testharness.js completion - it normally waits for window load
+        // but our mock environment doesn't have proper event dispatch
+        std.debug.print("executeTest: Triggering completion\n", .{});
+        try self.triggerTestHarnessCompletion();
+        std.debug.print("executeTest: Completion triggered\n", .{});
 
         // Run event loop until completion or timeout
         const timeout_ms = timeout.toMillis();
+        std.debug.print("executeTest: Running event loop (timeout={}ms)\n", .{timeout_ms});
         try self.runEventLoop(timeout_ms);
+        std.debug.print("executeTest: Event loop complete, subtests={}\n", .{self.result_collector.results.items.len});
 
         // Collect and return results
         return self.result_collector.finalize(self.allocator, "test");
     }
 
+    /// Trigger testharness.js completion
+    /// testharness.js in WindowTestEnvironment waits for window load event,
+    /// but our mock environment doesn't have proper event dispatch.
+    /// The `done()` function is exposed globally by testharness.js and can
+    /// be called to signal that all tests have been defined.
+    fn triggerTestHarnessCompletion(self: *BrowserContext) !void {
+        std.debug.print("DEBUG: Triggering testharness completion\n", .{});
+        const completion_script =
+            \\(function() {
+            \\  console.log('DEBUG JS: In completion trigger');
+            \\  
+            \\  // CRITICAL: testharness.js WindowTestEnvironment sets all_loaded = true
+            \\  // only when the window 'load' event fires. Since we don't have a real
+            \\  // window load event, we need to set this manually for tests.all_done() to work.
+            \\  // test_environment is a global variable in testharness.js
+            \\  if (typeof test_environment !== 'undefined') {
+            \\    console.log('DEBUG JS: Setting test_environment.all_loaded = true');
+            \\    test_environment.all_loaded = true;
+            \\  }
+            \\  
+            \\  console.log('DEBUG JS: typeof done = ' + typeof done);
+            \\  // Call the exposed done() function to signal test completion
+            \\  // testharness.js exposes this globally via expose(done, 'done')
+            \\  if (typeof done === 'function') {
+            \\    console.log('DEBUG JS: Calling done() via setTimeout');
+            \\    // Use setTimeout 0 to allow any pending microtasks/promises to resolve first
+            \\    setTimeout(function() {
+            \\      console.log('DEBUG JS: Inside setTimeout, calling done()');
+            \\      done();
+            \\      console.log('DEBUG JS: done() completed');
+            \\    }, 0);
+            \\  } else {
+            \\    console.log('DEBUG JS: done is NOT a function!');
+            \\  }
+            \\})();
+        ;
+        try self.executeScript(completion_script);
+        std.debug.print("DEBUG: Completion script executed\n", .{});
+    }
+
     /// Run event loop until completion or timeout
-    /// Returns true if completed normally, false if timed out
+    /// This implements proper browser event loop semantics:
+    /// 1. Process ready timers (macrotasks from setTimeout/setInterval via libuv)
+    /// 2. Run V8 microtasks (Promise resolution)
+    /// 3. Check completion condition
+    /// 4. Sleep until next timer or short interval
     pub fn runEventLoop(self: *BrowserContext, timeout_ms: u64) !void {
-        const isolate = self.isolate orelse return error.NotInitialized;
+        const event_loop = self.v8_event_loop orelse return error.NotInitialized;
 
         const start_time = std.time.milliTimestamp();
 
         while (true) {
-            // Run V8 microtasks (handles Promise resolution)
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+            const now = std.time.milliTimestamp();
 
-            // Check if completion callback has been called
+            // 1. Run one iteration of the V8 event loop
+            // This processes ready timers (via libuv), runs tasks, and runs microtasks
+            _ = event_loop.eventLoop().runOnce();
+
+            // 2. Check if completion callback has been called
             if (self.result_collector.completed) {
                 return;
             }
 
-            // Check timeout
-            const elapsed: u64 = @intCast(std.time.milliTimestamp() - start_time);
+            // 3. Check timeout
+            const elapsed: u64 = @intCast(now - start_time);
             if (elapsed > timeout_ms) {
                 // Mark the test as timed out
                 try self.result_collector.finishTest(.timeout, "Test timed out", elapsed);
                 return;
             }
 
-            // Small sleep to avoid busy-waiting
+            // 4. Short sleep to avoid busy-waiting
+            // The libuv loop handles actual timer scheduling, we just need to poll frequently
             std.Thread.sleep(1 * std.time.ns_per_ms);
         }
     }
@@ -652,6 +794,16 @@ pub const BrowserContext = struct {
 // so we use thread-local storage to pass the result collector.
 threadlocal var current_result_collector: ?*test_harness.ResultCollector = null;
 
+// Thread-local storage for timer interface (accessible from V8 callbacks)
+threadlocal var current_timer_interface: ?TimerInterface = null;
+
+// Thread-local storage for allocator (needed for timer callback contexts)
+threadlocal var current_allocator: ?std.mem.Allocator = null;
+
+// Thread-local storage for interval timer contexts (for cleanup on clearInterval)
+// Maps timer_id -> V8TimerContext* so we can clean up when intervals are cleared
+threadlocal var interval_contexts: ?std.AutoHashMap(TimerId, *V8TimerContext) = null;
+
 /// Set the current result collector for V8 callbacks
 pub fn setResultCollector(collector: *test_harness.ResultCollector) void {
     current_result_collector = collector;
@@ -667,53 +819,374 @@ pub fn clearResultCollector() void {
     current_result_collector = null;
 }
 
+/// Set the current timer interface for V8 callbacks
+pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
+    current_timer_interface = timer;
+    current_allocator = allocator;
+    // Initialize interval contexts map if needed
+    if (interval_contexts == null) {
+        interval_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(allocator);
+    }
+}
+
+/// Get the current timer interface (for V8 callbacks)
+pub fn getTimerInterface() ?TimerInterface {
+    return current_timer_interface;
+}
+
+/// Clear the timer interface reference and clean up interval contexts
+pub fn clearTimerInterface() void {
+    // Clean up any remaining interval contexts
+    if (interval_contexts) |*map| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.*.destroy();
+        }
+        map.deinit();
+        interval_contexts = null;
+    }
+    current_timer_interface = null;
+    current_allocator = null;
+}
+
+/// Register an interval context for cleanup tracking
+fn registerIntervalContext(timer_id: TimerId, ctx: *V8TimerContext) void {
+    if (interval_contexts) |*map| {
+        map.put(timer_id, ctx) catch {};
+    }
+}
+
+/// Unregister and clean up an interval context (marks as cancelled, actual cleanup happens in callback)
+fn cleanupIntervalContext(timer_id: TimerId) void {
+    if (interval_contexts) |*map| {
+        if (map.fetchRemove(timer_id)) |kv| {
+            // Mark as cancelled so the callback knows to stop rescheduling
+            kv.value.cancelled = true;
+            // Don't destroy here - the callback will clean up
+        }
+    }
+}
+
 // V8 Callback Functions
 
-/// Mock setTimeout callback - executes callback immediately for testing
+/// Context for V8 timer callbacks
+/// Stores references needed to invoke the V8 function when the timer fires
+///
+/// NOTE: This stores raw V8 function pointers without proper persistent handles.
+/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+/// This works for short-lived WPT tests but could cause issues if V8 GCs
+/// the function before the timer fires. For production use, the V8 FFI
+/// would need to expose v8::Global<v8::Function> creation.
+const V8TimerContext = struct {
+    /// Raw pointer to the V8 function (not GC-protected!)
+    callback_fn: *v8.ffi.Function,
+    /// V8 isolate
+    isolate: *v8.ffi.Isolate,
+    /// Allocator for cleanup
+    allocator: std.mem.Allocator,
+    /// Whether this is an interval (repeating) timer - affects cleanup
+    is_interval: bool,
+    /// For intervals: the delay in ms for rescheduling
+    interval_delay_ms: u64 = 0,
+    /// For intervals: the current timer ID (updated on each reschedule)
+    current_timer_id: TimerId = 0,
+    /// For intervals: whether the interval has been cancelled
+    cancelled: bool = false,
+
+    /// Create a new timer context
+    fn create(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerContext {
+        // Verify it's a function
+        if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+            return error.NotAFunction;
+        }
+
+        const ctx = try allocator.create(V8TimerContext);
+        ctx.* = V8TimerContext{
+            .callback_fn = @ptrCast(callback_value),
+            .isolate = isolate,
+            .allocator = allocator,
+            .is_interval = is_interval,
+        };
+        return ctx;
+    }
+
+    /// Free resources
+    fn destroy(self: *V8TimerContext) void {
+        // NOTE: We don't have a way to release the V8 function reference
+        // since we're not using proper persistent handles
+        self.allocator.destroy(self);
+    }
+};
+
+/// Timer callback that invokes the V8 function (one-shot timers)
+fn v8TimerCallback(ctx_ptr: ?*anyopaque) void {
+    const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
+
+    // Always destroy one-shot timer contexts after execution
+    defer timer_ctx.destroy();
+
+    const isolate = timer_ctx.isolate;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const global = v8.ffi.v8_Context_Global(context) orelse return;
+
+    // Invoke the V8 function (stored directly, not via persistent handle)
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(timer_ctx.callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Run microtasks after the timer callback (per event loop semantics)
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+}
+
+/// Interval callback that invokes the V8 function and reschedules itself
+fn v8IntervalCallback(ctx_ptr: ?*anyopaque) void {
+    const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
+
+    // Check if interval was cancelled
+    if (timer_ctx.cancelled) {
+        timer_ctx.destroy();
+        return;
+    }
+
+    const isolate = timer_ctx.isolate;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const global = v8.ffi.v8_Context_Global(context) orelse return;
+
+    // Invoke the V8 function
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(timer_ctx.callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Run microtasks after the timer callback
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Reschedule the interval if not cancelled
+    if (!timer_ctx.cancelled) {
+        if (getTimerInterface()) |timer| {
+            const new_timer_id = timer.setTimeout(timer_ctx.interval_delay_ms, v8IntervalCallback, timer_ctx);
+            if (new_timer_id != 0) {
+                // Update the timer ID for potential clearInterval calls
+                const old_id = timer_ctx.current_timer_id;
+                timer_ctx.current_timer_id = new_timer_id;
+                // Update the interval context map with new ID
+                if (interval_contexts) |*map| {
+                    _ = map.remove(old_id);
+                    map.put(new_timer_id, timer_ctx) catch {};
+                }
+            } else {
+                // Failed to reschedule, clean up
+                timer_ctx.destroy();
+            }
+        } else {
+            // No timer interface, clean up
+            timer_ctx.destroy();
+        }
+    } else {
+        // Cancelled, clean up
+        timer_ctx.destroy();
+    }
+}
+
+/// setTimeout callback - schedules callback to run after delay using TimerManager
 fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
 
     // Get the callback function (first argument)
     if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
 
     const callback_value = info.get(0);
     if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
 
-    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
-    const global = v8.ffi.v8_Context_Global(context) orelse {
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+                const result = v8.ffi.v8_Integer_New(isolate, 0);
+                info.setReturnValue(@ptrCast(result));
+                return;
+            };
+            delay_ms = @intFromFloat(v8.ffi.v8_Value_NumberValue(delay_value, context));
+            if (delay_ms < 0) delay_ms = 0;
+        }
+    }
+
+    // Get timer interface from thread-local storage
+    const timer = getTimerInterface() orelse {
+        // Fallback: execute immediately if no timer interface
+        std.debug.print("WARNING: No timer interface, executing setTimeout callback immediately\n", .{});
+        const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            const result = v8.ffi.v8_Integer_New(isolate, 0);
+            info.setReturnValue(@ptrCast(result));
+            return;
+        };
+        const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+        const global = v8.ffi.v8_Context_Global(context) orelse {
+            const result = v8.ffi.v8_Integer_New(isolate, 0);
+            info.setReturnValue(@ptrCast(result));
+            return;
+        };
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
         const result = v8.ffi.v8_Integer_New(isolate, 1);
         info.setReturnValue(@ptrCast(result));
         return;
     };
 
-    // Execute callback immediately (mock implementation)
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
 
-    // Return timer ID
-    const result = v8.ffi.v8_Integer_New(isolate, 1);
+    // Create timer context to hold V8 callback reference (not an interval)
+    const timer_ctx = V8TimerContext.create(allocator, isolate, callback_value, false) catch {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Schedule the timer using TimerInterface
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const timer_id = timer.setTimeout(delay_u64, v8TimerCallback, timer_ctx);
+    if (timer_id == 0) {
+        timer_ctx.destroy();
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Return timer ID (truncate to i32 for V8 Integer)
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
     info.setReturnValue(@ptrCast(result));
 }
 
-/// Mock clearTimeout callback - no-op since setTimeout executes immediately
+/// clearTimeout callback - cancels a pending timer
 fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get timer ID (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const id_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsNumber(id_value)) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const timer_id_f64 = v8.ffi.v8_Value_NumberValue(id_value, context);
+    const timer_id: TimerId = @intFromFloat(timer_id_f64);
+
+    // Get timer interface and cancel the timer
+    if (getTimerInterface()) |timer| {
+        timer.clearTimeout(timer_id);
+    }
+
+    // Clean up interval context if this was an interval timer
+    // (clearTimeout and clearInterval use the same underlying mechanism)
+    cleanupIntervalContext(timer_id);
+
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
     }
+}
+
+/// setInterval callback - schedules repeating callback using TimerManager
+fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+                const result = v8.ffi.v8_Integer_New(isolate, 0);
+                info.setReturnValue(@ptrCast(result));
+                return;
+            };
+            delay_ms = @intFromFloat(v8.ffi.v8_Value_NumberValue(delay_value, context));
+            if (delay_ms < 0) delay_ms = 0;
+        }
+    }
+
+    // Get timer interface from thread-local storage
+    const timer = getTimerInterface() orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Create timer context to hold V8 callback reference (this IS an interval)
+    const timer_ctx = V8TimerContext.create(allocator, isolate, callback_value, true) catch {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Store the interval delay in the context for re-scheduling
+    timer_ctx.interval_delay_ms = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+
+    // Schedule the first timeout (intervals reschedule themselves in v8IntervalCallback)
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const timer_id = timer.setTimeout(delay_u64, v8IntervalCallback, timer_ctx);
+    if (timer_id == 0) {
+        timer_ctx.destroy();
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Store the timer ID in the context so it can be used for rescheduling
+    timer_ctx.current_timer_id = timer_id;
+
+    // Register the interval context for cleanup when clearInterval is called
+    registerIntervalContext(timer_id, timer_ctx);
+
+    // Return timer ID (truncate to i32 for V8 Integer)
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
+    info.setReturnValue(@ptrCast(result));
 }
 
 /// Mock addEventListener callback - stores event listeners for the global object
@@ -750,8 +1223,11 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
 /// WPT result reporting callback - called by testharnessreport.js for each test result
 /// Signature: __wpt_report_result(name, status, message, stack, duration)
 fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    std.debug.print("WPT: __wpt_report_result called!\n", .{});
+
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.debug.print("WPT: No context in __wpt_report_result\n", .{});
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
             info.setReturnValue(undef_value);
         }

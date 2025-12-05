@@ -256,7 +256,8 @@ pub const RealTimerBackend = struct {
     }
 
     fn getHighResTimeImpl(_: *anyopaque) i64 {
-        return std.time.nanoTimestamp();
+        const ns: i128 = std.time.nanoTimestamp();
+        return @intCast(@mod(ns, std.math.maxInt(i64)));
     }
 
     fn scheduleWakeupImpl(ptr: *anyopaque, time_ms: i64) void {
@@ -295,7 +296,7 @@ pub const RealTimerBackend = struct {
         }
 
         if (sleep_time > 0) {
-            std.time.sleep(@intCast(sleep_time * 1_000_000));
+            std.Thread.sleep(@intCast(sleep_time * 1_000_000));
         }
 
         return std.time.milliTimestamp() - start_time;
