@@ -152,8 +152,12 @@ pub const BrowserContext = struct {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
         };
 
-        // Register all WebIDL interfaces and namespaces
-        try self.registerInterfaces();
+        // Register all WebIDL interfaces using the centralized function
+        // This is the single source of truth for interface binding setup
+        v8.interface_bindings.initializeBindings(isolate, context);
+
+        // Register all namespaces using the generic function
+        v8.interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
 
         // Register browser globals (Window, document, navigator, etc.)
         try self.registerBrowserGlobals();
@@ -162,106 +166,6 @@ pub const BrowserContext = struct {
         try self.registerWptCallbacks();
 
         self.initialized = true;
-    }
-
-    /// Register all WebIDL interfaces as constructors on the global object
-    fn registerInterfaces(self: *BrowserContext) !void {
-        const isolate = self.isolate orelse return error.NotInitialized;
-        const context = self.context orelse return error.NotInitialized;
-
-        // Interfaces to skip due to codegen issues
-        const skip_list = .{
-            "CSSMarginRule",
-            "ViewCSS",
-            "AuthenticatorAssertionResponse",
-            "AuthenticatorAttestationResponse",
-            "AuthenticatorResponse",
-            "CSSMediaRule",
-            "CSSViewTransitionRule",
-            "ChapterInformation",
-            "CookieChangeEvent",
-            "DeviceChangeEvent",
-            "ExtendableCookieChangeEvent",
-            "ExtendableMessageEvent",
-            "FontFaceSetLoadEvent",
-            "GamepadHapticActuator",
-            "MediaMetadata",
-            "Notification",
-            "PerformanceLongAnimationFrameTiming",
-            "PerformanceObserver",
-            "PressureObserver",
-            "PublicKeyCredential",
-            "PushManager",
-            "PushSubscriptionOptions",
-            "RTCTrackEvent",
-            "SVGPathElement",
-            "WindowClient",
-            "XRCPUDepthInformation",
-            "XRInputSource",
-            "XRInputSourcesChangeEvent",
-            "XRRay",
-            "XRViewerPose",
-            "XRVisibilityMaskChangeEvent",
-        };
-
-        @setEvalBranchQuota(200_000);
-        const iface_decls = @typeInfo(interfaces).@"struct".decls;
-
-        inline for (iface_decls) |decl| {
-            // Skip problematic interfaces
-            const should_skip = comptime blk: {
-                for (skip_list) |skip| {
-                    if (std.mem.eql(u8, decl.name, skip)) break :blk true;
-                }
-                break :blk false;
-            };
-            if (should_skip) continue;
-
-            const InterfaceType = @field(interfaces, decl.name);
-            if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-                // Skip mixin interfaces
-                const is_mixin = comptime blk: {
-                    const Meta = InterfaceType.Meta;
-                    if (@hasDecl(Meta, "is_mixin")) {
-                        break :blk Meta.is_mixin;
-                    }
-                    break :blk false;
-                };
-                if (is_mixin) continue;
-
-                // Check if this interface has LegacyNamespace
-                const has_legacy_namespace = comptime blk: {
-                    const Meta = InterfaceType.Meta;
-                    if (@hasDecl(Meta, "extended_attributes")) {
-                        const ext_attrs = Meta.extended_attributes;
-                        for (ext_attrs) |attr| {
-                            if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                                break :blk true;
-                            }
-                        }
-                    }
-                    break :blk false;
-                };
-                if (has_legacy_namespace) continue;
-
-                const Binding = v8.V8Interface(InterfaceType);
-                Binding.registerGlobal(isolate, context, decl.name);
-            }
-        }
-
-        // Register namespaces
-        const ns_decls = @typeInfo(namespaces).@"struct".decls;
-
-        inline for (ns_decls) |decl| {
-            const NamespaceType = @field(namespaces, decl.name);
-            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-                const NamespaceBinding = v8.V8Namespace(NamespaceType);
-                NamespaceBinding.registerGlobal(isolate, context, decl.name);
-            }
-        }
-
-        // Set up constructor inheritance chain
-        v8.interface_bindings.setupConstructorInheritance(isolate, context);
     }
 
     /// Register browser globals (Window, document, navigator, etc.)

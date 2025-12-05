@@ -1,16 +1,22 @@
 //! V8 Interface Bindings Registry
 //!
 //! This module provides centralized registration for all WebIDL interfaces.
-//! It uses the V8Interface comptime generator to create bindings for all
-//! generated interface structs.
+//! It is the **single source of truth** for interface registration and the
+//! centralized skip list for problematic interfaces.
+//!
+//! Entry points (WPT runner, REPL) should use `initializeBindings` to set up
+//! all interface bindings, then call their own namespace registration.
 //!
 //! ## Usage
 //!
 //! ```zig
 //! const interface_bindings = @import("v8/interface_bindings.zig");
 //!
-//! // Register all interfaces as global constructors
-//! interface_bindings.registerAll(isolate, context);
+//! // Initialize interface bindings (interfaces + inheritance)
+//! interface_bindings.initializeBindings(isolate, context);
+//!
+//! // Then register namespaces (entry point specific)
+//! // registerNamespaces(isolate, context);
 //!
 //! // Now JavaScript can use:
 //! // const target = new EventTarget();
@@ -21,9 +27,64 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
+pub const V8Namespace = @import("namespace.zig").V8Namespace;
 
 // Import generated interfaces
 const interfaces = @import("interfaces");
+
+// ============================================================================
+// Centralized Skip List
+// ============================================================================
+
+/// Interfaces to skip during registration due to codegen issues.
+/// This is the SINGLE SOURCE OF TRUTH for problematic interfaces.
+/// All entry points (WPT runner, REPL) use this list.
+pub const interface_skip_list = .{
+    "CSSMarginRule", // References undefined CSSMarginDescriptors
+    "ViewCSS", // References undefined AbstractView
+    "AbstractView", // Missing implementation
+    "AuthenticatorAssertionResponse", // ArrayBuffer type issues
+    "AuthenticatorAttestationResponse", // ArrayBuffer type issues
+    "AuthenticatorResponse", // ArrayBuffer type issues
+    "CSSMediaRule", // Missing cached field
+    "CSSViewTransitionRule", // DOMString array issues
+    "ChapterInformation", // MediaImage array issues
+    "CookieChangeEvent", // CookieListItem array issues
+    "DeviceChangeEvent", // MediaDeviceInfo array issues
+    "ExtendableCookieChangeEvent", // CookieListItem array issues
+    "ExtendableMessageEvent", // Union type issues
+    "FontFaceSetLoadEvent", // FontFace array issues
+    "GamepadHapticActuator", // GamepadHapticEffectType array issues
+    "MediaMetadata", // ChapterInformation array issues
+    "Notification", // Missing unsignedlong type
+    "PerformanceLongAnimationFrameTiming", // PerformanceScriptTiming array issues
+    "PerformanceObserver", // Missing cached field
+    "PressureObserver", // Missing cached field
+    "PublicKeyCredential", // ArrayBuffer type issues
+    "PushManager", // Missing cached field
+    "PushSubscriptionOptions", // ArrayBuffer type issues
+    "RTCTrackEvent", // MediaStream array issues
+    "SVGPathElement", // Missing cached field
+    "WindowClient", // Missing VisibilityState type
+    "XRCPUDepthInformation", // ArrayBuffer type issues
+    "XRInputSource", // DOMString array issues
+    "XRInputSourcesChangeEvent", // XRInputSource array issues
+    "XRRay", // TypedArray issues
+    "XRViewerPose", // XRView array issues
+    "XRVisibilityMaskChangeEvent", // TypedArray issues
+};
+
+/// Check if an interface name should be skipped
+pub fn shouldSkipInterface(comptime name: []const u8) bool {
+    // Using a simple array lookup since this is called at comptime
+    // and the skip list is small
+    return comptime blk: {
+        for (interface_skip_list) |skip| {
+            if (std.mem.eql(u8, name, skip)) break :blk true;
+        }
+        break :blk false;
+    };
+}
 
 // ============================================================================
 // Interface Bindings (Comptime Generated)
@@ -47,7 +108,8 @@ pub const Document = V8Interface(interfaces.Document.Document);
 /// Window V8 binding
 pub const Window = V8Interface(interfaces.Window.Window);
 
-// Add more interfaces as needed...
+// Note: Individual bindings above are kept for backward compatibility.
+// New code should use initializeBindings() which registers ALL interfaces.
 
 // ============================================================================
 // Registration
@@ -62,6 +124,8 @@ pub const Window = V8Interface(interfaces.Window.Window);
 /// - Element
 /// - Document
 /// - Window
+///
+/// **DEPRECATED**: Use initializeBindings() instead for full interface registration.
 ///
 /// Example JavaScript usage after initialization:
 /// ```javascript
@@ -95,6 +159,181 @@ pub fn registerCoreDOMInterfaces(
     // In browsers, child constructors have their __proto__ set to parent constructors
     // Example: Element.__proto__ === Node, Node.__proto__ === EventTarget
     setupConstructorInheritance(isolate, context);
+}
+
+/// Register ALL WebIDL interfaces as global constructors
+///
+/// This registers all generated interfaces (except those in the skip list)
+/// as constructors on the global object. Interfaces with [LegacyNamespace]
+/// are skipped here and attached to their namespace in registerAllNamespaces().
+///
+/// This is the **single source of truth** for interface registration.
+pub fn registerAllInterfaces(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces - they should not be exposed as globals
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            // Check if this interface has LegacyNamespace - if so, skip global registration
+            // These interfaces get attached to their namespace in registerAllNamespaces()
+            const has_legacy_namespace = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "extended_attributes")) {
+                    const ext_attrs = Meta.extended_attributes;
+                    for (ext_attrs) |attr| {
+                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+            if (has_legacy_namespace) continue;
+
+            // Register the interface as a global constructor
+            const Binding = V8Interface(InterfaceType);
+            Binding.registerGlobal(isolate, context, decl.name);
+        }
+    }
+}
+
+/// Initialize ALL V8 interface bindings
+///
+/// This is the **main entry point** for V8 interface binding setup.
+/// Entry points (WPT runner, REPL) should call this, then register
+/// namespaces separately using registerNamespacesGeneric.
+///
+/// Steps performed:
+/// 1. Register all interfaces as global constructors (except mixins and LegacyNamespace)
+/// 2. Set up constructor inheritance chain (Element.__proto__ = Node, etc.)
+///
+/// Example:
+/// ```zig
+/// // In WPT runner, REPL, or any V8 entry point:
+/// interface_bindings.initializeBindings(isolate, context);
+/// // Then register namespaces:
+/// interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+/// ```
+pub fn initializeBindings(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    // Step 1: Register all interfaces
+    registerAllInterfaces(isolate, context);
+
+    // Step 2: Set up constructor inheritance chain
+    setupConstructorInheritance(isolate, context);
+}
+
+/// Register all WebIDL namespaces as global objects (generic version)
+///
+/// This is a comptime generic function that takes the namespaces module as a parameter,
+/// allowing it to be called from entry points that have access to the namespaces module.
+///
+/// This registers all namespaces (e.g., console, WebAssembly, CSS) and attaches
+/// interfaces with [LegacyNamespace] attribute to their parent namespace.
+///
+/// Example:
+/// ```zig
+/// const namespaces = @import("namespaces");
+/// interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+/// ```
+pub fn registerNamespacesGeneric(
+    comptime namespaces_mod: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(50_000_000);
+    const ns_decls = @typeInfo(namespaces_mod).@"struct".decls;
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (ns_decls) |decl| {
+        const NamespaceType = @field(namespaces_mod, decl.name);
+
+        // Only bind types that have Meta (actual namespaces)
+        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+            // Use V8Namespace to create object with all methods bound
+            const NamespaceBinding = V8Namespace(NamespaceType);
+            NamespaceBinding.registerGlobal(isolate, context, decl.name);
+
+            // Get the namespace object we just created
+            const global_obj = v8.v8_Context_Global(context);
+            const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len));
+            const ns_obj_value = v8.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
+            const ns_obj: ?*v8.Object = @ptrCast(ns_obj_value);
+
+            // Attach interfaces with [LegacyNamespace=<this namespace>] as properties
+            const namespace_name = decl.name;
+            inline for (iface_decls) |iface_decl| {
+                // Skip interfaces in skip list
+                if (comptime shouldSkipInterface(iface_decl.name)) continue;
+
+                const InterfaceType = @field(interfaces, iface_decl.name);
+                if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+                    // Check if this interface belongs to this namespace
+                    const belongs_here = comptime blk: {
+                        const Meta = InterfaceType.Meta;
+                        if (@hasDecl(Meta, "extended_attributes")) {
+                            const ext_attrs = Meta.extended_attributes;
+                            for (ext_attrs) |attr| {
+                                if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                                    const val = attr.value;
+                                    if (@hasField(@TypeOf(val), "identifier")) {
+                                        if (std.mem.eql(u8, val.identifier, namespace_name)) {
+                                            break :blk true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break :blk false;
+                    };
+
+                    if (belongs_here) {
+                        // Create the interface constructor
+                        const InterfaceBinding = V8Interface(InterfaceType);
+                        const template = InterfaceBinding.createTemplate(isolate);
+                        const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
+
+                        // Attach as property: WebAssembly.Instance = constructor
+                        // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
+                        const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
+                        _ = v8.v8_Object_DefineProperty(
+                            @ptrCast(ns_obj),
+                            context,
+                            @ptrCast(iface_key),
+                            @ptrCast(constructor),
+                            false, // writable
+                            false, // enumerable
+                            false, // configurable
+                        );
+                    }
+                }
+            }
+
+            // Make namespace object non-extensible (per WebIDL spec)
+            _ = v8.v8_Object_PreventExtensions(@ptrCast(ns_obj), context);
+        }
+    }
 }
 
 /// Set up constructor inheritance chain after all constructors are registered
@@ -143,28 +382,14 @@ pub fn setupConstructorInheritance(
     // Automatically set up inheritance chain for all interfaces
     // Iterate over all interface declarations and set Constructor.__proto__ based on Meta.BaseType
     //
-    // Note: We skip interfaces with broken dependencies (e.g., ViewCSS → AbstractView)
-    // This is acceptable because those interfaces likely aren't registered anyway.
-    @setEvalBranchQuota(10000); // Increase quota for large number of interfaces
-
-    // List of interfaces to skip due to missing dependencies or other issues
-    const skip_list = [_][]const u8{
-        "ViewCSS", // References missing AbstractView
-        "AbstractView", // Missing implementation
-        // Add other problematic interfaces here as needed
-    };
+    // Note: We skip interfaces in the centralized skip list.
+    @setEvalBranchQuota(200_000); // Increase quota for large number of interfaces
 
     const decls = @typeInfo(interfaces).@"struct".decls;
 
     inline for (decls) |decl| {
-        // Skip problematic interfaces
-        const should_skip = comptime blk: {
-            for (skip_list) |skip| {
-                if (std.mem.eql(u8, decl.name, skip)) break :blk true;
-            }
-            break :blk false;
-        };
-        if (should_skip) continue;
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
 
         const InterfaceType = @field(interfaces, decl.name);
 
@@ -223,18 +448,17 @@ pub fn setupConstructorInheritance(
     }
 }
 
-/// Register all interfaces (future: all 1240 interfaces)
+/// Register all interfaces
 ///
-/// Currently registers only core DOM interfaces.
-/// In the future, this will register all generated interfaces.
+/// **DEPRECATED**: Use initializeBindings() instead for full setup including namespaces.
+///
+/// This function is kept for backward compatibility.
 pub fn registerAll(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    registerCoreDOMInterfaces(isolate, context);
-
-    // Future: Iterate through all generated interfaces and register them
-    // This could be done with comptime reflection over the interfaces module
+    // Use the new consolidated initialization
+    initializeBindings(isolate, context);
 }
 
 // ============================================================================

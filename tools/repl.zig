@@ -10,6 +10,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 const context_manager = @import("v8").context_manager;
+const interface_bindings = @import("v8").interface_bindings;
 const runtime = @import("runtime");
 const fetch_mod = @import("fetch");
 
@@ -614,164 +615,13 @@ const Repl = struct {
             // Continue anyway - wrapper caching won't work but basic functionality will
         };
 
-        // Register all interface bindings using comptime reflection
-        // The @setEvalBranchQuota is needed because we iterate over 1231 declarations
-        @setEvalBranchQuota(200_000);
-        const interfaces = @import("interfaces");
-        const iface_decls = @typeInfo(interfaces).@"struct".decls;
+        // Register all WebIDL interfaces using the centralized function
+        // This is the single source of truth for interface binding setup
+        interface_bindings.initializeBindings(isolate, context);
 
-        // Interfaces to skip due to codegen issues (missing types, etc.)
-        const skip_list = .{
-            "CSSMarginRule", // References undefined CSSMarginDescriptors
-            "ViewCSS", // References undefined AbstractView
-            "AuthenticatorAssertionResponse", // ArrayBuffer type issues
-            "AuthenticatorAttestationResponse", // ArrayBuffer type issues
-            "AuthenticatorResponse", // ArrayBuffer type issues
-            "CSSMediaRule", // Missing cached field
-            "CSSViewTransitionRule", // DOMString array issues
-            "ChapterInformation", // MediaImage array issues
-            "CookieChangeEvent", // CookieListItem array issues
-            "DeviceChangeEvent", // MediaDeviceInfo array issues
-            "ExtendableCookieChangeEvent", // CookieListItem array issues
-            "ExtendableMessageEvent", // Union type issues
-            "FontFaceSetLoadEvent", // FontFace array issues
-            "GamepadHapticActuator", // GamepadHapticEffectType array issues
-            "MediaMetadata", // ChapterInformation array issues
-            "Notification", // Missing unsignedlong type
-            "PerformanceLongAnimationFrameTiming", // PerformanceScriptTiming array issues
-            "PerformanceObserver", // Missing cached field
-            "PressureObserver", // Missing cached field
-            "PublicKeyCredential", // ArrayBuffer type issues
-            "PushManager", // Missing cached field
-            "PushSubscriptionOptions", // ArrayBuffer type issues
-            "RTCTrackEvent", // MediaStream array issues
-            "SVGPathElement", // Missing cached field
-            "WindowClient", // Missing VisibilityState type
-            "XRCPUDepthInformation", // ArrayBuffer type issues
-            "XRInputSource", // DOMString array issues
-            "XRInputSourcesChangeEvent", // XRInputSource array issues
-            "XRRay", // TypedArray issues
-            "XRViewerPose", // XRView array issues
-            "XRVisibilityMaskChangeEvent", // TypedArray issues
-        };
-
-        inline for (iface_decls) |decl| {
-            // Skip problematic interfaces
-            const should_skip = comptime blk: {
-                for (skip_list) |skip| {
-                    if (std.mem.eql(u8, decl.name, skip)) break :blk true;
-                }
-                break :blk false;
-            };
-            if (should_skip) continue;
-
-            const InterfaceType = @field(interfaces, decl.name);
-            // Only bind types that have Meta (actual interfaces)
-            if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-                // Skip mixin interfaces - they should not be exposed as globals
-                const is_mixin = comptime blk: {
-                    const Meta = InterfaceType.Meta;
-                    if (@hasDecl(Meta, "is_mixin")) {
-                        break :blk Meta.is_mixin;
-                    }
-                    break :blk false;
-                };
-                if (is_mixin) continue;
-
-                // Check if this interface has LegacyNamespace - if so, skip global registration
-                const has_legacy_namespace = comptime blk: {
-                    const Meta = InterfaceType.Meta;
-                    if (@hasDecl(Meta, "extended_attributes")) {
-                        const ext_attrs = Meta.extended_attributes;
-                        for (ext_attrs) |attr| {
-                            if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                                break :blk true;
-                            }
-                        }
-                    }
-                    break :blk false;
-                };
-
-                // Skip interfaces with LegacyNamespace - they get attached to namespaces below
-                if (has_legacy_namespace) continue;
-
-                const Binding = v8.V8Interface(InterfaceType);
-                Binding.registerGlobal(isolate, context, decl.name);
-            }
-        }
-
-        // Register all namespace bindings
+        // Register all namespaces using the generic function
         const namespaces = @import("namespaces");
-        const ns_decls = @typeInfo(namespaces).@"struct".decls;
-
-        inline for (ns_decls) |decl| {
-            const NamespaceType = @field(namespaces, decl.name);
-            // Only bind types that have Meta (actual namespaces)
-            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-                // Use V8Namespace to create object with all methods bound
-                const NamespaceBinding = v8.V8Namespace(NamespaceType);
-                NamespaceBinding.registerGlobal(isolate, context, decl.name);
-
-                // Get the namespace object we just created
-                const global_obj = v8.ffi.v8_Context_Global(context);
-                const ns_key_str = v8.ffi.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len));
-                const ns_obj_value = v8.ffi.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
-                const ns_obj = @as(?*v8.ffi.Object, @ptrCast(ns_obj_value));
-
-                // Now attach interfaces with [LegacyNamespace=<this namespace>] as properties
-                const namespace_name = decl.name;
-                inline for (iface_decls) |iface_decl| {
-                    const InterfaceType = @field(interfaces, iface_decl.name);
-                    if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-                        // Check if this interface belongs to this namespace
-                        const belongs_here = comptime blk: {
-                            const Meta = InterfaceType.Meta;
-                            if (@hasDecl(Meta, "extended_attributes")) {
-                                const ext_attrs = Meta.extended_attributes;
-                                for (ext_attrs) |attr| {
-                                    if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                                        const val = attr.value;
-                                        if (@hasField(@TypeOf(val), "identifier")) {
-                                            if (std.mem.eql(u8, val.identifier, namespace_name)) {
-                                                break :blk true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            break :blk false;
-                        };
-
-                        if (belongs_here) {
-                            // Create the interface constructor
-                            const InterfaceBinding = v8.V8Interface(InterfaceType);
-                            const template = InterfaceBinding.createTemplate(isolate);
-                            const constructor = v8.ffi.v8_FunctionTemplate_GetFunction(template, context);
-
-                            // Attach as property: WebAssembly.Instance = constructor
-                            // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
-                            const iface_key = v8.ffi.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
-                            _ = v8.ffi.v8_Object_DefineProperty(
-                                @ptrCast(ns_obj),
-                                context,
-                                @ptrCast(iface_key),
-                                @ptrCast(constructor),
-                                false, // writable
-                                false, // enumerable
-                                false, // configurable
-                            );
-                        }
-                    }
-                }
-
-                // Make namespace object non-extensible (per WebIDL spec)
-                _ = v8.ffi.v8_Object_PreventExtensions(@ptrCast(ns_obj), context);
-            }
-        }
-
-        // Set up constructor inheritance chain after all interfaces are registered
-        // This makes Element.__proto__ === Node, Node.__proto__ === EventTarget, etc.
-        v8.interface_bindings.setupConstructorInheritance(isolate, context);
+        interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
 
         // Register singleton instances (e.g., indexedDB)
         // These are WebIDL interfaces that are exposed as pre-created instances on the global scope
