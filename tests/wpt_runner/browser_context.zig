@@ -210,10 +210,29 @@ pub const BrowserContext = struct {
     /// Set up window/self/globalThis aliases and GLOBAL object via JavaScript
     fn setupGlobalAliases(self: *BrowserContext) !void {
         // Simple direct assignment on globalThis
+        // Per HTML spec §7.2.2.4 "Accessing related windows":
+        // - window.parent: For top-level window with no parent, returns self
+        // - window.top: For top-level window, returns self
+        // - window.opener: For window with no opener, returns null
+        // - window.frames: Same as window (returns WindowProxy)
+        // - window.length: Number of child navigables (0 for top-level with no iframes)
         const setup_script =
             \\// Assign self and window to globalThis
             \\globalThis.self = globalThis;
             \\globalThis.window = globalThis;
+            \\
+            \\// Window hierarchy properties (per HTML spec §7.2.2.4)
+            \\// For a top-level browsing context:
+            \\// - parent returns the window itself
+            \\// - top returns the window itself
+            \\// - opener returns null (no opener)
+            \\// - frames returns the window itself
+            \\// - length returns 0 (no child navigables)
+            \\globalThis.parent = globalThis;
+            \\globalThis.top = globalThis;
+            \\globalThis.opener = null;
+            \\globalThis.frames = globalThis;
+            \\globalThis.length = 0;
             \\
             \\// Set up GLOBAL object for WPT tests
             \\// This is normally injected by the WPT server's HTML wrapper
@@ -457,6 +476,17 @@ pub const BrowserContext = struct {
         context: *v8.ffi.Context,
         global_obj: *v8.ffi.Object,
     ) !void {
+        // Register fetch() as a global function
+        // This is the approach from whatwg-d6ike: Direct Global Function Registration
+        // (bypasses Window instance issues, similar to how setTimeout is exposed)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // fetch(input, init?)
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch", 5) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
         _ = self;
 
         // Register setTimeout (mock implementation for now)
@@ -643,7 +673,10 @@ pub const BrowserContext = struct {
     }
 
     /// Execute a test and wait for completion
-    pub fn executeTest(self: *BrowserContext, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
+    pub fn executeTest(self: *BrowserContext, test_path: []const u8, test_content: []const u8, timeout: config.Timeout) !test_harness.TestResult {
+        // Start tracking results for this test file
+        try self.result_collector.startTest(test_path);
+
         // Set result collector for V8 callbacks
         // Timer interface is set once in initialize() and persists for the context lifetime
         setResultCollector(&self.result_collector);
@@ -661,7 +694,7 @@ pub const BrowserContext = struct {
         try self.runEventLoop(timeout_ms);
 
         // Collect and return results
-        return self.result_collector.finalize(self.allocator, "test");
+        return self.result_collector.finalize(self.allocator, test_path);
     }
 
     /// Trigger testharness.js completion
@@ -1201,6 +1234,374 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     // Return true to indicate the event was not cancelled
     if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
         info.setReturnValue(result);
+    }
+}
+
+// ============================================================================
+// Fetch API Callback
+// ============================================================================
+
+// Import the fetch implementation
+const global_fetch = @import("fetch").webidl.global_fetch;
+const FetchInput = global_fetch.FetchInput;
+const FetchResult = global_fetch.FetchResult;
+const Response = @import("fetch").webidl.Response;
+
+/// Global fetch() callback for WPT tests
+/// Implements the WHATWG Fetch Standard global fetch() function.
+///
+/// This callback:
+/// 1. Extracts the URL from the first argument
+/// 2. Calls the real Zig fetch implementation
+/// 3. Wraps the result in a V8 Promise (per spec, fetch() returns Promise<Response>)
+///
+/// For file: URLs, it reads the file directly (needed for WPT test resources).
+fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        // Return undefined on failure
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // fetch() requires at least 1 argument (input)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        // Throw TypeError: "Failed to execute 'fetch': 1 argument required, but only 0 present."
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'fetch': 1 argument required", 47) orelse {
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                info.setReturnValue(undef);
+            }
+            return;
+        };
+        if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    }
+
+    // Get the URL from first argument
+    const input_value = info.get(0);
+
+    // Use a temporary allocator for this callback
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    // Extract URL string from input
+    const url_str = extractString(allocator, isolate, v8_context, input_value) catch {
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert input to string", 34) orelse {
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                info.setReturnValue(undef);
+            }
+            return;
+        };
+        if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    };
+    defer allocator.free(url_str);
+
+    // Create a Promise to return (fetch() returns Promise<Response>)
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        v8.ffi.v8_PromiseResolver_Dispose(resolver);
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Set the Promise as return value immediately (async behavior)
+    info.setReturnValue(@ptrCast(promise));
+
+    // Check for file: URL scheme (needed for WPT test resources)
+    if (std.mem.startsWith(u8, url_str, "file://")) {
+        // Extract the file path from file:// URL
+        const file_path = url_str[7..]; // Skip "file://"
+
+        // Read the file
+        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+            // Reject with network error
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to open file", 19) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to read file", 19) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        defer allocator.free(content);
+
+        // Create a simple Response-like object for file contents
+        // In a full implementation, we'd create a proper Response instance
+        // For now, create an object with json() method for WPT tests
+        const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create response", 25) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+
+        // Set ok = true
+        const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |ok_val| {
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), ok_val);
+        }
+
+        // Set status = 200
+        const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
+        const status_val: *v8.ffi.Value = @ptrCast(v8.ffi.v8_Integer_New(isolate, 200));
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), status_val);
+
+        // Store the content for json() method
+        // We'll create a json() method that parses and returns the content
+        const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
+        const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
+
+        // Add json() method
+        const json_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseJsonCallback, null) orelse return;
+        const json_func = v8.ffi.v8_FunctionTemplate_GetFunction(json_template, v8_context) orelse return;
+        const json_key = v8.ffi.v8_String_NewFromUtf8(isolate, "json", 4) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(json_key), @ptrCast(json_func));
+
+        // Add text() method
+        const text_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseTextCallback, null) orelse return;
+        const text_func = v8.ffi.v8_FunctionTemplate_GetFunction(text_template, v8_context) orelse return;
+        const text_key = v8.ffi.v8_String_NewFromUtf8(isolate, "text", 4) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(text_key), @ptrCast(text_func));
+
+        // Resolve the promise with the response object
+        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
+        return;
+    }
+
+    // For non-file URLs, use the real fetch implementation
+    var fetch_result = global_fetch.globalFetch(allocator, .{ .url = url_str }, .{});
+    defer fetch_result.deinit();
+
+    switch (fetch_result) {
+        .response => |response| {
+            // Create a Response-like object
+            const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
+                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create response", 25) orelse return;
+                if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+                }
+                return;
+            };
+
+            // Set ok based on status
+            const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
+            const is_ok = response.status() >= 200 and response.status() < 300;
+            if (v8.ffi.v8_Boolean_New(isolate, is_ok)) |ok_val| {
+                _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), ok_val);
+            }
+
+            // Set status
+            const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
+            const status_val: *v8.ffi.Value = @ptrCast(v8.ffi.v8_Integer_New(isolate, @intCast(response.status())));
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), status_val);
+
+            // Get body if available
+            if (response.internal.body) |body| {
+                switch (body.source) {
+                    .bytes => |source| {
+                        const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
+                        const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
+                        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
+                    },
+                    .none, .blob, .form_data => {},
+                }
+            }
+
+            // Add json() method
+            const json_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseJsonCallback, null) orelse return;
+            const json_func = v8.ffi.v8_FunctionTemplate_GetFunction(json_template, v8_context) orelse return;
+            const json_key = v8.ffi.v8_String_NewFromUtf8(isolate, "json", 4) orelse return;
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(json_key), @ptrCast(json_func));
+
+            // Add text() method
+            const text_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseTextCallback, null) orelse return;
+            const text_func = v8.ffi.v8_FunctionTemplate_GetFunction(text_template, v8_context) orelse return;
+            const text_key = v8.ffi.v8_String_NewFromUtf8(isolate, "text", 4) orelse return;
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(text_key), @ptrCast(text_func));
+
+            // Resolve the promise with the response object
+            _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
+        },
+        .err => |err| {
+            const err_str = switch (err) {
+                global_fetch.FetchError.NetworkError => "NetworkError",
+                global_fetch.FetchError.AbortError => "AbortError",
+                global_fetch.FetchError.TypeError => "TypeError",
+                global_fetch.FetchError.OutOfMemory => "OutOfMemory",
+            };
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, err_str.ptr, @intCast(err_str.len)) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+        },
+    }
+}
+
+/// Response.json() callback - parses the _body as JSON and returns a Promise
+fn responseJsonCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Get 'this' (the Response object)
+    const this_obj = info.getThis();
+
+    // Get the _body property
+    const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const body_value = v8.ffi.v8_Object_Get(this_obj, v8_context, @ptrCast(body_key)) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Create a Promise for the result
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        v8.ffi.v8_PromiseResolver_Dispose(resolver);
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Set promise as return value
+    info.setReturnValue(@ptrCast(promise));
+
+    // Parse JSON using JavaScript's JSON.parse()
+    // We need to call JSON.parse(body_value)
+    const global = v8.ffi.v8_Context_Global(v8_context) orelse {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to get global", 20) orelse return;
+        if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+        }
+        return;
+    };
+
+    // Get JSON object
+    const json_key = v8.ffi.v8_String_NewFromUtf8(isolate, "JSON", 4) orelse return;
+    const json_obj = v8.ffi.v8_Object_Get(global, v8_context, @ptrCast(json_key)) orelse {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "JSON not found", 14) orelse return;
+        if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+        }
+        return;
+    };
+
+    // Get JSON.parse
+    const parse_key = v8.ffi.v8_String_NewFromUtf8(isolate, "parse", 5) orelse return;
+    const parse_value = v8.ffi.v8_Object_Get(@ptrCast(json_obj), v8_context, @ptrCast(parse_key)) orelse {
+        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "JSON.parse not found", 20) orelse return;
+        if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+        }
+        return;
+    };
+
+    // Call JSON.parse(body_value)
+    const parse_fn: *v8.ffi.Function = @ptrCast(parse_value);
+    var args = [_]*v8.ffi.Value{body_value};
+    const parsed = v8.ffi.v8_Function_Call(parse_fn, v8_context, json_obj, 1, &args);
+
+    if (parsed) |result| {
+        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, result);
+    } else {
+        // JSON parse failed - get the exception
+        if (v8.ffi.v8_TryCatch_Exception(v8_context)) |exc| {
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+        } else {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "JSON parse failed", 17) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+        }
+    }
+}
+
+/// Response.text() callback - returns the _body as a string Promise
+fn responseTextCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Get 'this' (the Response object)
+    const this_obj = info.getThis();
+
+    // Get the _body property
+    const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const body_value = v8.ffi.v8_Object_Get(this_obj, v8_context, @ptrCast(body_key));
+
+    // Create a Promise for the result
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        v8.ffi.v8_PromiseResolver_Dispose(resolver);
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Set promise as return value
+    info.setReturnValue(@ptrCast(promise));
+
+    // Resolve with the body text (or empty string if no body)
+    if (body_value) |value| {
+        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, value);
+    } else {
+        const empty_str = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(empty_str));
     }
 }
 
