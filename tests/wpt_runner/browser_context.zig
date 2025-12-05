@@ -1608,11 +1608,8 @@ fn responseTextCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
 /// WPT result reporting callback - called by testharnessreport.js for each test result
 /// Signature: __wpt_report_result(name, status, message, stack, duration)
 fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    std.debug.print("WPT: __wpt_report_result called!\n", .{});
-
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.debug.print("WPT: No context in __wpt_report_result\n", .{});
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
             info.setReturnValue(undef_value);
         }
@@ -1621,7 +1618,6 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
 
     // Get result collector from thread-local storage
     const collector = getResultCollector() orelse {
-        std.debug.print("WPT: No result collector set\n", .{});
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
             info.setReturnValue(undef_value);
         }
@@ -1631,7 +1627,6 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
     // Parse arguments: name, status, message, stack, duration
     const arg_count = info.v8_FunctionCallbackInfo_Length();
     if (arg_count < 2) {
-        std.debug.print("WPT: __wpt_report_result requires at least 2 arguments\n", .{});
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
             info.setReturnValue(undef_value);
         }
@@ -1645,8 +1640,7 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
 
     // Arg 0: name (string)
     const name_value = info.get(0);
-    const name_str = extractString(allocator, isolate, context, name_value) catch |err| {
-        std.debug.print("WPT: Failed to extract name: {}\n", .{err});
+    const name_str = extractString(allocator, isolate, context, name_value) catch {
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
             info.setReturnValue(undef_value);
         }
