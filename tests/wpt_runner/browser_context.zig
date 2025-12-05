@@ -800,9 +800,9 @@ threadlocal var current_timer_interface: ?TimerInterface = null;
 // Thread-local storage for allocator (needed for timer callback contexts)
 threadlocal var current_allocator: ?std.mem.Allocator = null;
 
-// Thread-local storage for interval timer contexts (for cleanup on clearInterval)
-// Maps timer_id -> V8TimerContext* so we can clean up when intervals are cleared
-threadlocal var interval_contexts: ?std.AutoHashMap(TimerId, *V8TimerContext) = null;
+// Thread-local storage for ALL timer contexts (for cleanup on clearTimeout/clearInterval and deinit)
+// Maps timer_id -> V8TimerContext* so we can clean up pending timers when context is torn down
+threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerContext) = null;
 
 /// Set the current result collector for V8 callbacks
 pub fn setResultCollector(collector: *test_harness.ResultCollector) void {
@@ -823,9 +823,9 @@ pub fn clearResultCollector() void {
 pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
     current_timer_interface = timer;
     current_allocator = allocator;
-    // Initialize interval contexts map if needed
-    if (interval_contexts == null) {
-        interval_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(allocator);
+    // Initialize timer contexts map if needed
+    if (timer_contexts == null) {
+        timer_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(allocator);
     }
 }
 
@@ -834,35 +834,35 @@ pub fn getTimerInterface() ?TimerInterface {
     return current_timer_interface;
 }
 
-/// Clear the timer interface reference and clean up interval contexts
+/// Clear the timer interface reference and clean up ALL pending timer contexts
 pub fn clearTimerInterface() void {
-    // Clean up any remaining interval contexts
-    if (interval_contexts) |*map| {
+    // Clean up any remaining timer contexts (both one-shot and intervals)
+    if (timer_contexts) |*map| {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             entry.value_ptr.*.destroy();
         }
         map.deinit();
-        interval_contexts = null;
+        timer_contexts = null;
     }
     current_timer_interface = null;
     current_allocator = null;
 }
 
-/// Register an interval context for cleanup tracking
-fn registerIntervalContext(timer_id: TimerId, ctx: *V8TimerContext) void {
-    if (interval_contexts) |*map| {
+/// Register a timer context for cleanup tracking (both one-shot and intervals)
+fn registerTimerContext(timer_id: TimerId, ctx: *V8TimerContext) void {
+    if (timer_contexts) |*map| {
         map.put(timer_id, ctx) catch {};
     }
 }
 
-/// Unregister and clean up an interval context (marks as cancelled, actual cleanup happens in callback)
-fn cleanupIntervalContext(timer_id: TimerId) void {
-    if (interval_contexts) |*map| {
+/// Unregister a timer context (marks intervals as cancelled, removes from tracking)
+fn unregisterTimerContext(timer_id: TimerId) void {
+    if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
-            // Mark as cancelled so the callback knows to stop rescheduling
+            // Mark as cancelled so interval callbacks know to stop rescheduling
             kv.value.cancelled = true;
-            // Don't destroy here - the callback will clean up
+            // Don't destroy here - the callback will clean up when it fires
         }
     }
 }
@@ -922,6 +922,11 @@ const V8TimerContext = struct {
 fn v8TimerCallback(ctx_ptr: ?*anyopaque) void {
     const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
 
+    // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
+    if (timer_contexts) |*map| {
+        _ = map.remove(timer_ctx.current_timer_id);
+    }
+
     // Always destroy one-shot timer contexts after execution
     defer timer_ctx.destroy();
 
@@ -941,9 +946,19 @@ fn v8TimerCallback(ctx_ptr: ?*anyopaque) void {
 fn v8IntervalCallback(ctx_ptr: ?*anyopaque) void {
     const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
 
+    // Helper to unregister and destroy the timer context
+    const destroyTimerCtx = struct {
+        fn f(ctx: *V8TimerContext) void {
+            if (timer_contexts) |*map| {
+                _ = map.remove(ctx.current_timer_id);
+            }
+            ctx.destroy();
+        }
+    }.f;
+
     // Check if interval was cancelled
     if (timer_ctx.cancelled) {
-        timer_ctx.destroy();
+        destroyTimerCtx(timer_ctx);
         return;
     }
 
@@ -966,22 +981,22 @@ fn v8IntervalCallback(ctx_ptr: ?*anyopaque) void {
                 // Update the timer ID for potential clearInterval calls
                 const old_id = timer_ctx.current_timer_id;
                 timer_ctx.current_timer_id = new_timer_id;
-                // Update the interval context map with new ID
-                if (interval_contexts) |*map| {
+                // Update the timer context map with new ID
+                if (timer_contexts) |*map| {
                     _ = map.remove(old_id);
                     map.put(new_timer_id, timer_ctx) catch {};
                 }
             } else {
                 // Failed to reschedule, clean up
-                timer_ctx.destroy();
+                destroyTimerCtx(timer_ctx);
             }
         } else {
             // No timer interface, clean up
-            timer_ctx.destroy();
+            destroyTimerCtx(timer_ctx);
         }
     } else {
         // Cancelled, clean up
-        timer_ctx.destroy();
+        destroyTimerCtx(timer_ctx);
     }
 }
 
@@ -1063,6 +1078,12 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     }
 
+    // Store the timer ID in the context so the callback can unregister it
+    timer_ctx.current_timer_id = timer_id;
+
+    // Register the timer context for cleanup tracking (prevents memory leak on deinit)
+    registerTimerContext(timer_id, timer_ctx);
+
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
     info.setReturnValue(@ptrCast(result));
@@ -1105,7 +1126,7 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
 
     // Clean up interval context if this was an interval timer
     // (clearTimeout and clearInterval use the same underlying mechanism)
-    cleanupIntervalContext(timer_id);
+    unregisterTimerContext(timer_id);
 
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
@@ -1182,7 +1203,7 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     timer_ctx.current_timer_id = timer_id;
 
     // Register the interval context for cleanup when clearInterval is called
-    registerIntervalContext(timer_id, timer_ctx);
+    registerTimerContext(timer_id, timer_ctx);
 
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));

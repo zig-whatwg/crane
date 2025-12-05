@@ -576,6 +576,10 @@ pub fn executeTests(
         progress.printProgress(test_file.path);
 
         try report.addResult(test_result);
+
+        // Clean up the test result (addResult copies the data)
+        var mutable_result = test_result;
+        mutable_result.deinit(allocator);
     }
 
     // Generate output path
