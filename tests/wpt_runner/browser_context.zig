@@ -431,6 +431,36 @@ pub const BrowserContext = struct {
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
+
+        // Register EventTarget methods on the global object
+        // The global object (window/self) needs these methods for testharness.js to work
+        // testharness.js calls on_event(window, 'load', callback) which internally calls
+        // window.addEventListener('load', callback, false)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "addEventListener", 16) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register removeEventListener
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, removeEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "removeEventListener", 19) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register dispatchEvent
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, dispatchEventCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     /// Register WPT result callbacks (__wpt_report_result, __wpt_report_completion)
@@ -683,6 +713,37 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
+    }
+}
+
+/// Mock addEventListener callback - stores event listeners for the global object
+/// The WPT testharness.js calls window.addEventListener('load', callback) to register
+/// callbacks that should fire when the document is loaded.
+/// For our mock environment, we just store them and they'll be called when we trigger 'load'.
+fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // For now, just return undefined - we don't actually need event handling
+    // The testharness.js just needs this function to exist and not throw.
+    // In the future, we could store listeners and dispatch events properly.
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
+/// Mock removeEventListener callback - no-op for now
+fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
+
+/// Mock dispatchEvent callback - returns true (event was not cancelled)
+fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Return true to indicate the event was not cancelled
+    if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+        info.setReturnValue(result);
     }
 }
 
