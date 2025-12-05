@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const BluetoothDescriptorUUID = union(enum) {
-    variant_0: runtime.DOMString,
-    variant_1: u32,
+    domstring: runtime.DOMString,
+    ulong: u32,
 };

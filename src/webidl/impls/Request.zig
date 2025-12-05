@@ -173,8 +173,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
     var signal: ?*runtime.Instance = null;
 
     // Step 5: If input is a string
+    // RequestInfo = (Request or USVString)
     switch (input) {
-        .variant_1 => |url_string| {
+        .usvstring => |url_string| {
             // Step 5.1: Parse URL
             const api_parser = @import("api_parser");
 
@@ -202,7 +203,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
             // Step 5.5: Set fallbackMode to "cors"
             fallback_mode = enums.RequestMode._cors_;
         },
-        .variant_0 => |input_request_opaque| {
+        .request => |input_request_opaque| {
             // Step 6: Otherwise (input is a Request object)
             // Step 6.1: Assert input is a Request object
             const input_request = @as(*runtime.Instance, @ptrFromInt(@intFromPtr(input_request_opaque)));

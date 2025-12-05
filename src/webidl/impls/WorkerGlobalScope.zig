@@ -799,10 +799,10 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const allocator = internal.allocator;
 
     // Step 1: Get the URL from RequestInfo
-    // RequestInfo is either a URL string or a Request object
+    // RequestInfo = (Request or USVString)
     const url_str: []const u8 = switch (input) {
-        .variant_1 => |url| url, // USVString (URL)
-        .variant_0 => {
+        .usvstring => |url| url, // USVString (URL)
+        .request => {
             // Request object - extract URL
             // For now, we don't have access to Request's URL directly from anyopaque
             // This requires the Request interface to expose its URL

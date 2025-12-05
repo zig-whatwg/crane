@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
+const dictionaries = @import("dictionaries");
 
 pub const FileSystemWriteChunkType = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: runtime.USVString,
-    variant_3: *const anyopaque,
+    buffer_source: typedefs.BufferSource,
+    blob: *runtime.Instance,
+    usvstring: runtime.USVString,
+    write_params: dictionaries.WriteParams,
 };

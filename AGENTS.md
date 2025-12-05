@@ -579,6 +579,21 @@ Did user explicitly request a different location?
 
 These apply to ALL work on this project:
 
+### -1. **NEVER Take Shortcuts** ⭐⭐⭐
+**ALWAYS implement the BEST solution, not the fastest or cheapest.**
+
+- ❌ NEVER choose an approach because it's "quicker to implement"
+- ❌ NEVER choose an approach because it uses "fewer tokens"
+- ❌ NEVER choose a lazy workaround over a proper fix
+- ✅ ALWAYS implement the architecturally correct solution
+- ✅ ALWAYS fix root causes, not symptoms
+- ✅ ALWAYS consider long-term maintainability over short-term convenience
+
+**If you find yourself thinking "this is faster" or "this is easier" - STOP.** 
+That's a red flag that you're about to make a bad decision.
+
+The right solution may take longer, require more code, or cost more tokens. **Do it anyway.**
+
 ### 0. **Ask When Unclear** ⭐
 When requirements are ambiguous or unclear, **ASK CLARIFYING QUESTIONS** before proceeding. One question at a time. Wait for answer. Never assume.
 
@@ -819,6 +834,68 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 - Other impls: HTMLParser, Range, Selection, Request, Response, etc.
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
+
+### 14. **NEVER Replace runtime.* Types in Codegen** ⭐⭐⭐
+
+**Codegen MUST use `runtime.*` type aliases, NEVER replace them with concrete types.**
+
+**The runtime module provides centralized type aliases:**
+- `runtime.DOMString` - Not `[]const u8`
+- `runtime.USVString` - Not `[]const u8`
+- `runtime.ByteString` - Not `[]const u8`
+- `runtime.ConsoleValue` - Not `*const anyopaque`
+- And others in `src/runtime/typedefs/`
+
+**Why This Matters:**
+- These are **single chokepoints** for type changes
+- Changing `runtime.DOMString` updates ALL usages automatically
+- Replacing with concrete types means updating thousands of files for any change
+- This is fundamental architecture, not a style preference
+
+**If a Type is Wrong:**
+1. ✅ Update the SINGLE definition in `src/runtime/typedefs/*.zig`
+2. ❌ DO NOT update all usages in codegen output
+3. ❌ DO NOT replace `runtime.DOMString` with `[]const u8` in generated code
+
+**Codegen Must Generate:**
+```zig
+// ✅ CORRECT
+pub const SomeTypedef = runtime.DOMString;
+pub fn someMethod(arg: runtime.USVString) runtime.ByteString { ... }
+```
+
+**Codegen Must NOT Generate:**
+```zig
+// ❌ WRONG - loses indirection
+pub const SomeTypedef = []const u8;
+pub fn someMethod(arg: []const u8) []const u8 { ... }
+```
+
+### 15. **NEVER Write to Generated Files Directly** ⭐⭐⭐
+
+**All changes to interfaces, typedefs, dictionaries, enums, callbacks, and namespaces MUST go through codegen.**
+
+**Generated directories (NEVER edit directly):**
+- `src/webidl/interfaces/` - Generated from IDL + codegen
+- `src/webidl/typedefs/` - Generated from IDL + codegen
+- `src/webidl/dictionaries/` - Generated from IDL + codegen
+- `src/webidl/enums/` - Generated from IDL + codegen
+- `src/webidl/callbacks/` - Generated from IDL + codegen
+- `src/webidl/namespaces/` - Generated from IDL + codegen
+
+**If generated code is wrong:**
+1. ✅ Fix the codegen source in `src/webidl/codegen/`
+2. ✅ Regenerate ALL files with `zig build codegen`
+3. ❌ DO NOT manually edit the generated file
+4. ❌ DO NOT write "MANUAL OVERRIDE" comments to skip regeneration
+
+**Why This Matters:**
+- Manual edits are overwritten on next codegen run
+- Creates maintenance nightmare tracking "which files are manual"
+- Codegen must be the single source of truth
+- If codegen can't generate it correctly, FIX THE CODEGEN
+
+**Exception:** Only `src/webidl/impls/` contains manual code (implementation logic).
 
 ---
 
@@ -1213,6 +1290,8 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Modifying generated files directly** (changes must go through codegen source files)
 - **Calling impls directly from external code** (must go through interfaces - see Golden Rule #12)
 - **Impls calling other impls directly** (must go through interfaces - see Golden Rule #13)
+- **Replacing runtime.* types with concrete types** (must use runtime.DOMString not []const u8 - see Golden Rule #14)
+- **Writing to generated files instead of fixing codegen** (fix the source, not the output - see Golden Rule #15)
 
 ---
 

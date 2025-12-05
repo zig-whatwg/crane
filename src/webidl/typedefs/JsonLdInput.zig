@@ -3,10 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const JsonLdInput = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: runtime.USVString,
-    variant_3: *const anyopaque,
+    json_ld_record: typedefs.JsonLdRecord,
+    json_ld_record_sequence: []const typedefs.JsonLdRecord,
+    usvstring: runtime.USVString,
+    remote_document: *runtime.Instance,
 };

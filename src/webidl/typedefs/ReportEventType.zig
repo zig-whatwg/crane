@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
+const dictionaries = @import("dictionaries");
 
 pub const ReportEventType = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: runtime.DOMString,
+    fence_event: dictionaries.FenceEvent,
+    domstring: runtime.DOMString,
 };

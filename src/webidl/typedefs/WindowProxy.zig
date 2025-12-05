@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const WindowProxy = *const anyopaque;
+pub const WindowProxy = *runtime.Instance;

@@ -131,33 +131,23 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
     errdefer deinit(instance);
 
     // Handle init_data based on its variant
+    // HeadersInit = (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
     if (init_data.wasPassed()) {
         const headers_init = init_data.getValue();
         switch (headers_init) {
-            .pairs => |pairs| {
-                // Array of [name, value] pairs
-                for (pairs) |pair| {
-                    try call_append(instance, pair[0], pair[1]);
-                }
-            },
-            .record => |entries| {
-                // Object with header entries
-                for (entries) |entry| {
-                    try call_append(instance, entry.name, entry.value);
-                }
-            },
-            .headers_ptr => |ptr| {
-                // Existing Headers object - copy its entries
-                const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
-                if (getEntriesInternal(other_instance)) |entries| {
-                    for (entries) |entry| {
-                        try call_append(instance, entry.name, entry.value);
+            .sequence_byte_string_sequence => |outer_seq| {
+                // Array of [name, value] pairs: [["key1", "value1"], ["key2", "value2"]]
+                for (outer_seq) |inner_seq| {
+                    if (inner_seq.len >= 2) {
+                        try call_append(instance, inner_seq[0], inner_seq[1]);
                     }
                 }
             },
-            .v8_value => {
-                // V8 value fallback - this should be handled by V8 layer
-                // If we get here, we can't parse it
+            .byte_string_byte_string_record => |entries| {
+                // Object with header entries: { "key1": "value1", "key2": "value2" }
+                for (entries) |entry| {
+                    try call_append(instance, entry.key, entry.value);
+                }
             },
         }
     }

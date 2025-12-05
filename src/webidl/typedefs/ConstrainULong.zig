@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const ConstrainULong = union(enum) {
-    variant_0: u32,
-    variant_1: *const anyopaque,
+    ulong: u32,
+    constrain_ulong_range: dictionaries.ConstrainULongRange,
 };

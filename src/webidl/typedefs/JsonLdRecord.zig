@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const JsonLdRecord = *const anyopaque;
+pub const JsonLdRecord = []const struct { key: runtime.USVString, value: *const anyopaque };

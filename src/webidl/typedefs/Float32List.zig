@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const Float32List = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    float32array: *const anyopaque,
+    glfloat_sequence: []const typedefs.GLfloat,
 };

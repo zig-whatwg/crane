@@ -3,12 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const GPUBindingResource = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
-    variant_3: *const anyopaque,
-    variant_4: *const anyopaque,
-    variant_5: *const anyopaque,
+    gpusampler: *runtime.Instance,
+    gputexture: *runtime.Instance,
+    gputexture_view: *runtime.Instance,
+    gpubuffer: *runtime.Instance,
+    gpubuffer_binding: dictionaries.GPUBufferBinding,
+    gpuexternal_texture: *runtime.Instance,
 };

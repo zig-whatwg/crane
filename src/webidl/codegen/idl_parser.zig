@@ -1158,32 +1158,56 @@ pub const Parser = struct {
             try self.advance();
             try self.expect(.left_angle);
 
-            // Skip to closing angle bracket
+            // Collect inner types as string (K, V)
             // Need to track depth for nested generics like record<K, sequence<V>>
+            var inner_type_str = std.ArrayList(u8).empty;
+            defer inner_type_str.deinit(self.allocator);
+
             var depth: usize = 1;
+            var needs_space = false;
             while (depth > 0 and self.current_token.type != .eof) {
                 if (self.current_token.type == .left_angle) {
                     depth += 1;
+                    try inner_type_str.appendSlice(self.allocator, self.current_token.lexeme);
                     try self.advance();
+                    needs_space = false;
                 } else if (self.current_token.type == .right_angle) {
                     depth -= 1;
                     if (depth > 0) {
+                        try inner_type_str.appendSlice(self.allocator, self.current_token.lexeme);
                         try self.advance();
+                        needs_space = false;
                     }
                 } else {
+                    // Add space before this token if needed (for multi-word types like "unsigned long")
+                    if (needs_space and inner_type_str.items.len > 0 and self.current_token.type != .comma) {
+                        try inner_type_str.append(self.allocator, ' ');
+                    }
+                    try inner_type_str.appendSlice(self.allocator, self.current_token.lexeme);
                     try self.advance();
+                    needs_space = (self.current_token.type != .comma); // Don't add space after comma
                 }
             }
 
             try self.expect(.right_angle); // Consume final '>'
 
             // Handle nullable record<K,V>?
-            if (self.current_token.type == .question) {
+            const is_nullable = if (self.current_token.type == .question) blk: {
                 try self.advance();
-                return types.IDLType{ .type = try self.allocator.dupe(u8, "record?") };
-            }
+                break :blk true;
+            } else false;
 
-            return types.IDLType{ .type = try self.allocator.dupe(u8, "record") };
+            // Store the inner types in the generic field
+            const inner_type_owned = try inner_type_str.toOwnedSlice(self.allocator);
+            const trimmed = std.mem.trim(u8, inner_type_owned, " \t\n");
+            const final_inner = try self.allocator.dupe(u8, trimmed);
+            self.allocator.free(inner_type_owned);
+
+            return types.IDLType{
+                .type = try self.allocator.dupe(u8, "record"),
+                .generic = final_inner,
+                .nullable = is_nullable,
+            };
         }
 
         // Parse identifier (possibly multi-word like "unsigned long")

@@ -1,0 +1,38 @@
+{
+  "run_info": {
+    "product": "whatwg-zig",
+    "browser_version": "0.1.0",
+    "os": "darwin",
+    "os_version": "",
+    "processor": "aarch64",
+    "revision": ""
+  },
+  "time_start": 1764915783140,
+  "time_end": 1764915803180,
+  "results": [
+    {
+      "test": "url/urlsearchparams-foreach.any.js",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "ForEach Check", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"a\", \"b\", \"c\"] length 3, got [] length 0"},
+        {"name": "For-of Check", "status": "FAIL", "message": "b is not iterable"},
+        {"name": "empty", "status": "FAIL", "message": "b is not iterable"},
+        {"name": "delete next param during iteration", "status": "FAIL", "message": "searchParams is not iterable"},
+        {"name": "delete current param during iteration", "status": "FAIL", "message": "searchParams is not iterable"},
+        {"name": "delete every param seen during iteration", "status": "FAIL", "message": "searchParams is not iterable"}
+      ]
+    },
+    {
+      "test": "url/urlsearchparams-get.any.js",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Get basics", "status": "FAIL", "message": "assert_equals: expected \"b\" but got \"\""},
+        {"name": "More get() basics", "status": "FAIL", "message": "assert_true: Search params object has name \"first\" expected true got false"}
+      ]
+    }
+  ]
+}

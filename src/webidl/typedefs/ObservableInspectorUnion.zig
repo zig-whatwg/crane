@@ -4,8 +4,9 @@
 
 const runtime = @import("runtime");
 const callbacks = @import("callbacks");
+const dictionaries = @import("dictionaries");
 
 pub const ObservableInspectorUnion = union(enum) {
-    variant_0: callbacks.ObservableSubscriptionCallback,
-    variant_1: *const anyopaque,
+    observable_subscription_callback: callbacks.ObservableSubscriptionCallback,
+    observable_inspector: dictionaries.ObservableInspector,
 };

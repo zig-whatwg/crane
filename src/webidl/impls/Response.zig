@@ -117,31 +117,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
         }
 
         // Handle headers from init
-        if (init_data.value.headers) |headers_init| {
-            const Headers = @import("Headers.zig");
-            switch (headers_init) {
-                .pairs => |pairs| {
-                    for (pairs) |pair| {
-                        try internal.response.header_list.append(pair[0], pair[1]);
-                    }
-                },
-                .record => |entries| {
-                    for (entries) |entry| {
-                        try internal.response.header_list.append(entry.name, entry.value);
-                    }
-                },
-                .headers_ptr => |ptr| {
-                    const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
-                    if (Headers.getEntriesInternal(other_instance)) |entries| {
-                        for (entries) |entry| {
-                            try internal.response.header_list.append(entry.name, entry.value);
-                        }
-                    }
-                },
-                .v8_value => {
-                    // V8 value fallback - should be handled by V8 layer
-                },
-            }
+        // Note: headers field is typed as *const anyopaque in the generated dictionary
+        // because dictionary codegen doesn't fully resolve typedef references yet.
+        // TODO: Fix dictionary codegen to properly resolve HeadersInit typedef
+        if (init_data.value.headers) |_| {
+            // For now, skip header initialization from dict as it's typed as anyopaque
+            // Headers should be handled at the V8 conversion layer
         }
     }
 
@@ -161,12 +142,26 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
             }
 
             // Extract body bytes based on BodyInit variant
-            const body_bytes: ?[]const u8 = switch (body_init) {
-                .string => |s| s,
-                .buffer => |b| b,
-                // For opaque types, we can't extract bytes yet
-                .blob_ptr, .form_data_ptr, .url_search_params_ptr, .readable_stream_ptr, .v8_value => null,
-            };
+            // BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
+            // XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
+            var body_bytes: ?[]const u8 = null;
+            var is_string = false;
+
+            switch (body_init) {
+                .readable_stream => {}, // ReadableStream - can't extract bytes directly
+                .xmlhttp_request_body_init => |xhr_body| switch (xhr_body) {
+                    .usvstring => |s| {
+                        body_bytes = s;
+                        is_string = true;
+                    },
+                    .buffer_source => |bs| {
+                        // BufferSource has asBytes() method
+                        body_bytes = bs.asBytes() catch null;
+                    },
+                    // For opaque types (Blob, FormData, URLSearchParams), we can't extract bytes yet
+                    .blob, .form_data, .urlsearch_params => {},
+                },
+            }
 
             if (body_bytes) |bytes| {
                 if (bytes.len > 0) {
@@ -177,7 +172,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
                     internal.response.body = fetch_body;
 
                     // Set Content-Type header if not already set and body is string
-                    if (body_init == .string) {
+                    if (is_string) {
                         // Per spec: if body is USVString, set Content-Type to text/plain;charset=UTF-8
                         const has_content_type = internal.response.header_list.contains("content-type");
                         if (!has_content_type) {
@@ -242,7 +237,10 @@ pub fn call_json_static(instance: *runtime.Instance, data: *const anyopaque, ini
     const ctx = instance.ctx;
 
     // Create an empty body (TODO: serialize data to JSON)
-    const empty_body = typedefs.BodyInit{ .string = "" };
+    // BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
+    // XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
+    const xhr_body_init = typedefs.XMLHttpRequestBodyInit{ .usvstring = "" };
+    const empty_body = typedefs.BodyInit{ .xmlhttp_request_body_init = xhr_body_init };
     // Wrap body in Opt for call_constructor which expects Opt(?BodyInit)
     const body_opt = webidl.Opt(?typedefs.BodyInit).passed(empty_body);
     const json_instance = try call_constructor(allocator, ctx, body_opt, init_data);

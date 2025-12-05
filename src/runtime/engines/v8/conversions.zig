@@ -290,7 +290,7 @@ pub fn fromV8Record(
 }
 
 /// Convert V8 value to HeadersInit union
-/// Handles: sequence<sequence<ByteString>>, record<ByteString, ByteString>, Headers
+/// HeadersInit = (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
 fn convertHeadersInit(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -298,98 +298,79 @@ fn convertHeadersInit(
     value: *v8.Value,
 ) ConversionError!typedefs.HeadersInit {
     _ = isolate; // Used only for potential future error reporting
+
     // Check if it's an array (sequence<sequence<ByteString>>)
+    // Format: [["key1", "value1"], ["key2", "value2"]]
     if (v8.v8_Value_IsArray(value)) {
         const array = @as(*v8.Array, @ptrCast(value));
         const length = v8.v8_Array_Length(array);
 
-        // Allocate array for pairs
-        const pairs = try allocator.alloc([2][]const u8, length);
-        errdefer allocator.free(pairs);
+        // Allocate array of inner sequences (each inner sequence is []const ByteString)
+        const outer_seq = try allocator.alloc([]const runtime.ByteString, length);
+        errdefer allocator.free(outer_seq);
 
         for (0..length) |i| {
-            const elem = v8.v8_Array_Get(context, array, @intCast(i)) orelse continue;
+            const elem = v8.v8_Array_Get(context, array, @intCast(i)) orelse {
+                // Empty inner sequence
+                outer_seq[i] = &.{};
+                continue;
+            };
 
             // Each element should be an array of [key, value]
             if (!v8.v8_Value_IsArray(elem)) {
-                // Not a valid pair, skip
-                pairs[i] = .{ "", "" };
+                outer_seq[i] = &.{};
                 continue;
             }
 
             const pair_array = @as(*v8.Array, @ptrCast(elem));
             const pair_len = v8.v8_Array_Length(pair_array);
-            if (pair_len < 2) {
-                pairs[i] = .{ "", "" };
-                continue;
-            }
 
-            // Get key and value
-            const key_val = v8.v8_Array_Get(context, pair_array, 0);
-            const val_val = v8.v8_Array_Get(context, pair_array, 1);
+            // Allocate inner sequence
+            const inner_seq = try allocator.alloc(runtime.ByteString, pair_len);
+            errdefer allocator.free(inner_seq);
 
-            var key_str: []const u8 = "";
-            var val_str: []const u8 = "";
-
-            if (key_val) |kv| {
-                if (v8.v8_Value_IsString(kv)) {
-                    const str = v8.v8_Value_ToString(kv, context);
-                    if (str) |s| {
-                        const len = v8.v8_String_Utf8Length(s);
-                        if (len > 0) {
-                            const buf = try allocator.alloc(u8, @intCast(len));
-                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
-                            key_str = buf;
+            for (0..pair_len) |j| {
+                const item = v8.v8_Array_Get(context, pair_array, @intCast(j));
+                if (item) |it| {
+                    if (v8.v8_Value_IsString(it)) {
+                        const str = v8.v8_Value_ToString(it, context);
+                        if (str) |s| {
+                            const len = v8.v8_String_Utf8Length(s);
+                            if (len > 0) {
+                                const buf = try allocator.alloc(u8, @intCast(len));
+                                _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
+                                inner_seq[j] = buf;
+                                continue;
+                            }
                         }
                     }
                 }
+                inner_seq[j] = "";
             }
 
-            if (val_val) |vv| {
-                if (v8.v8_Value_IsString(vv)) {
-                    const str = v8.v8_Value_ToString(vv, context);
-                    if (str) |s| {
-                        const len = v8.v8_String_Utf8Length(s);
-                        if (len > 0) {
-                            const buf = try allocator.alloc(u8, @intCast(len));
-                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
-                            val_str = buf;
-                        }
-                    }
-                }
-            }
-
-            pairs[i] = .{ key_str, val_str };
+            outer_seq[i] = inner_seq;
         }
 
-        return .{ .pairs = pairs };
+        return .{ .sequence_byte_string_sequence = outer_seq };
     }
 
-    // Check if it's an object (record<ByteString, ByteString> or Headers)
+    // Check if it's an object (record<ByteString, ByteString>)
+    // Format: { "key1": "value1", "key2": "value2" }
     if (v8.v8_Value_IsObject(value)) {
         const obj = @as(*v8.Object, @ptrCast(value));
 
-        // Check if it's a Headers object (has internal fields with instance)
-        // Plain JS objects have 0 internal fields, wrapped Zig objects have 2
-        const field_count = v8.v8_Object_InternalFieldCount(obj);
-        if (field_count >= 1) {
-            const internal_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0);
-            if (internal_ptr != null) {
-                // This might be a Headers object - pass as headers_ptr
-                return .{ .headers_ptr = @ptrCast(internal_ptr) };
-            }
-        }
-
-        // It's a plain object - get OWN property names only (not inherited)
-        // This avoids including __proto__, constructor, toString, etc.
+        // Get OWN property names only (not inherited)
         const prop_names = v8.v8_Object_GetOwnPropertyNames(context, obj) orelse {
-            // Empty object
-            return .{ .record = &.{} };
+            // Empty record
+            return .{ .byte_string_byte_string_record = &.{} };
         };
 
         const prop_count = v8.v8_Array_Length(prop_names);
-        // Use the actual HeaderEntry type from typedefs
-        const entries = try allocator.alloc(typedefs.HeaderEntry, prop_count);
+        // Get the entry type from the typedef's union field
+        // This ensures we use the exact same type as the generated typedef
+        const RecordSlice = @TypeOf(@as(typedefs.HeadersInit, undefined).byte_string_byte_string_record);
+        const RecordEntry = std.meta.Elem(RecordSlice);
+        const entries = try allocator.alloc(RecordEntry, prop_count);
         errdefer allocator.free(entries);
 
         var valid_count: usize = 0;
@@ -408,7 +389,7 @@ fn convertHeadersInit(
             // Get property value
             const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
 
-            var val_str: []const u8 = "";
+            var val_str: runtime.ByteString = "";
             if (v8.v8_Value_IsString(prop_val)) {
                 const str = v8.v8_Value_ToString(prop_val, context);
                 if (str) |s| {
@@ -422,17 +403,17 @@ fn convertHeadersInit(
             }
 
             entries[valid_count] = .{
-                .name = name_buf,
+                .key = name_buf,
                 .value = val_str,
             };
             valid_count += 1;
         }
 
-        return .{ .record = entries[0..valid_count] };
+        return .{ .byte_string_byte_string_record = entries[0..valid_count] };
     }
 
-    // Fallback - pass V8 value as opaque
-    return .{ .v8_value = @ptrCast(value) };
+    // Fallback - return empty record for unsupported types
+    return .{ .byte_string_byte_string_record = &.{} };
 }
 
 /// Convert V8 value to BodyInit union
@@ -446,9 +427,12 @@ fn convertBodyInit(
 ) ConversionError!typedefs.BodyInit {
     _ = isolate; // Used only for potential future error reporting
 
-    // Check for null/undefined - return empty string
+    // BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
+    // XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
+
+    // Check for null/undefined - return empty USVString
     if (v8.v8_Value_IsNullOrUndefined(value)) {
-        return .{ .string = "" };
+        return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
     }
 
     // Check if it's a string (most common case: USVString)
@@ -456,7 +440,7 @@ fn convertBodyInit(
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
         const length = v8.v8_String_Utf8Length(string);
         if (length <= 0) {
-            return .{ .string = "" };
+            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
         }
 
         const buffer = try allocator.alloc(u8, @intCast(length));
@@ -466,38 +450,45 @@ fn convertBodyInit(
             allocator.free(buffer);
             return ConversionError.StringError;
         }
-        return .{ .string = buffer };
+        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
     }
 
-    // Check if it's a TypedArray (Uint8Array, etc.)
+    // Check if it's a TypedArray (Uint8Array, etc.) - maps to BufferSource
     if (v8.v8_Value_IsTypedArray(value)) {
         const byte_length = v8.v8_TypedArray_ByteLength(value);
 
         if (byte_length == 0) {
-            return .{ .buffer = "" };
+            // Empty BufferSource - for now use an empty string as USVString fallback
+            // TODO: Properly handle BufferSource typedef when it's fully implemented
+            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
         }
 
         // Get the underlying ArrayBuffer and offset
-        const ab = v8.v8_TypedArray_Buffer(value) orelse return .{ .buffer = "" };
+        const ab = v8.v8_TypedArray_Buffer(value) orelse {
+            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
+        };
         const byte_offset = v8.v8_TypedArray_ByteOffset(value);
         const data = v8.v8_ArrayBuffer_Data(ab);
 
         if (data == null) {
-            return .{ .buffer = "" };
+            return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
         }
 
         // Copy the data from the correct offset
         const buffer = try allocator.alloc(u8, byte_length);
         const src_ptr = @as([*]const u8, @ptrCast(data.?)) + byte_offset;
         @memcpy(buffer, src_ptr[0..byte_length]);
-        return .{ .buffer = buffer };
+
+        // TODO: Return as BufferSource when typedef is properly implemented
+        // For now, return as USVString (the buffer contains raw bytes, this is lossy)
+        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
     }
 
-    // TODO: Check for Blob, FormData, URLSearchParams, ReadableStream instances
-    // These require checking the object's constructor name or internal state
+    // TODO: Check for ReadableStream - return .readable_stream variant
+    // TODO: Check for Blob, FormData, URLSearchParams instances
 
-    // Fallback - pass V8 value as opaque for later processing
-    return .{ .v8_value = @ptrCast(value) };
+    // Fallback - return empty string for unknown types
+    return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
 }
 
 /// Generic V8 Value to Zig type conversion

@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const MediaProvider = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
+    media_stream: *runtime.Instance,
+    media_source: *runtime.Instance,
+    blob: *runtime.Instance,
 };

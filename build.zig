@@ -482,6 +482,9 @@ pub fn build(b: *std.Build) void {
     typedefs_mod.addImport("runtime", runtime_mod);
     typedefs_mod.addImport("callbacks", callbacks_mod);
     typedefs_mod.addImport("webidl", webidl_mod);
+    // Typedefs can reference dictionaries and enums in union types
+    typedefs_mod.addImport("dictionaries", dictionaries_mod);
+    typedefs_mod.addImport("enums", enums_mod);
 
     // ========================================================================
     // INTERFACES MODULE (WebIDL interface definitions)

@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const enums = @import("enums");
 
 pub const LineAndPositionSetting = union(enum) {
-    variant_0: f64,
-    variant_1: *const anyopaque,
+    double: f64,
+    auto_keyword: enums.AutoKeyword,
 };

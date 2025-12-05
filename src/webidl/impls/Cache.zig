@@ -118,15 +118,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Helper to extract URL from RequestInfo
+/// RequestInfo = (Request or USVString)
 fn extractUrl(request: typedefs.RequestInfo) []const u8 {
     return switch (request) {
-        .variant_0 => |req_ptr| blk: {
+        .request => |req_ptr| blk: {
             // Request object - get URL from it
             const req_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(req_ptr)));
             const RequestImpl = @import("Request.zig");
             break :blk RequestImpl.getUrlInternal(req_instance) orelse "";
         },
-        .variant_1 => |url_str| url_str,
+        .usvstring => |url_str| url_str,
     };
 }
 

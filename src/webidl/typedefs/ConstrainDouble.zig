@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const ConstrainDouble = union(enum) {
-    variant_0: f64,
-    variant_1: *const anyopaque,
+    double: f64,
+    constrain_double_range: dictionaries.ConstrainDoubleRange,
 };

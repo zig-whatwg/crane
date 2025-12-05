@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const TrustedType = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
+    trusted_html: *runtime.Instance,
+    trusted_script: *runtime.Instance,
+    trusted_script_url: *runtime.Instance,
 };

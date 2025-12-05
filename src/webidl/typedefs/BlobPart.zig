@@ -3,9 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const BlobPart = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: runtime.USVString,
+    buffer_source: typedefs.BufferSource,
+    blob: *runtime.Instance,
+    usvstring: runtime.USVString,
 };

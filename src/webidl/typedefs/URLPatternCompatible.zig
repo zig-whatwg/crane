@@ -3,9 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const URLPatternCompatible = union(enum) {
-    variant_0: runtime.USVString,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
+    usvstring: runtime.USVString,
+    urlpattern_init: dictionaries.URLPatternInit,
+    urlpattern: *runtime.Instance,
 };

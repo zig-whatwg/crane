@@ -264,7 +264,7 @@ pub fn processDirectory(
             // But we still add them to typedef_names so they're exported from root.zig
             if (generator.isSpecialTypedef(typedef.name)) continue;
 
-            try generator.generateTypedef(allocator, typedef, typedefs_path);
+            try generator.generateTypedef(allocator, typedef, typedefs_path, &ir);
 
             typedef_count += 1;
         }

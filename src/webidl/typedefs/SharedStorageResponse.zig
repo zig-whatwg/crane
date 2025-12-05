@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const SharedStorageResponse = union(enum) {
-    variant_0: runtime.USVString,
-    variant_1: *const anyopaque,
+    usvstring: runtime.USVString,
+    fenced_frame_config: *runtime.Instance,
 };

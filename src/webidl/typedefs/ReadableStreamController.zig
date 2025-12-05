@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const ReadableStreamController = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    readable_stream_default_controller: *runtime.Instance,
+    readable_byte_stream_controller: *runtime.Instance,
 };
