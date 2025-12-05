@@ -244,11 +244,8 @@ pub const BrowserContext = struct {
                 };
                 if (has_legacy_namespace) continue;
 
-                std.debug.print("Creating binding for: {s}\n", .{decl.name});
                 const Binding = v8.V8Interface(InterfaceType);
-                std.debug.print("Calling registerGlobal for: {s}\n", .{decl.name});
                 Binding.registerGlobal(isolate, context, decl.name);
-                std.debug.print("Registered interface: {s}\n", .{decl.name});
             }
         }
 
