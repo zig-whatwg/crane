@@ -36,6 +36,7 @@ const url_record = @import("url_record");
 const url_serializer = @import("url_serializer");
 const host_serializer = @import("host_serializer");
 const origin = @import("origin");
+const basic_parser = @import("basic_parser");
 
 /// Special schemes default ports
 /// Per WHATWG URL spec: https://url.spec.whatwg.org/#special-scheme
@@ -85,6 +86,11 @@ pub const InternalState = struct {
         if (self.cached_href) |href| {
             self.allocator.free(href);
         }
+        // Free the URL if we own it (allocated in init)
+        if (self.url) |url| {
+            url.deinit();
+            self.allocator.destroy(url);
+        }
     }
 };
 
@@ -114,6 +120,13 @@ pub fn init(
     internal.* = .{
         .allocator = allocator,
     };
+
+    // Initialize with default URL (about:blank)
+    // Per spec, Location's URL should be the document's URL
+    // For WPT tests, we initialize to a default URL that can be updated later
+    const parsed_url = try allocator.create(url_record.URLRecord);
+    parsed_url.* = try basic_parser.parse(allocator, "about:blank", null);
+    internal.url = parsed_url;
 
     // Store internal state in the instance
     const state = instance.getState(StateType);

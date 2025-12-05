@@ -668,11 +668,11 @@ fn executeTestFile(
                 offset += 1;
             }
 
-            const result = try ctx.executeTest(combined, parsed.metadata.timeout);
+            const result = try ctx.executeTest(test_file.path, combined, parsed.metadata.timeout);
             return result;
         } else {
             // For JS files, execute the content directly
-            const result = try ctx.executeTest(parsed.content, parsed.metadata.timeout);
+            const result = try ctx.executeTest(test_file.path, parsed.content, parsed.metadata.timeout);
             return result;
         }
     }
