@@ -53,6 +53,12 @@ var templates: [MAX_TEMPLATES]?TemplateEntry = [_]?TemplateEntry{null} ** MAX_TE
 var template_count: usize = 0;
 var initialized: bool = false;
 
+/// Global cache generation counter
+/// Incremented each time clear() is called to invalidate all per-interface caches.
+/// Per-interface static caches in V8Interface(T) store this generation along with
+/// their cached templates. When the generation doesn't match, the cache is stale.
+pub var cache_generation: u64 = 0;
+
 /// Initialize the registry (called automatically on first use)
 fn ensureInitialized() void {
     if (!initialized) {
@@ -66,11 +72,21 @@ fn ensureInitialized() void {
 /// V8 FunctionTemplates are bound to a specific isolate and cannot be reused
 /// across isolates. Failure to call this before creating a new isolate will
 /// cause crashes (bus errors) when trying to use stale template references.
+///
+/// This also increments the cache_generation counter, which invalidates all
+/// per-interface static caches in V8Interface(T). This is necessary because:
+/// 1. V8 may reuse the same memory address for a new isolate
+/// 2. Per-interface caches check (isolate == cached_isolate) which would
+///    incorrectly match if addresses are reused
+/// 3. The generation counter ensures we detect isolate disposal even if
+///    the new isolate has the same address
 pub fn clear() void {
     for (&templates) |*entry| {
         entry.* = null;
     }
     template_count = 0;
+    // Increment generation to invalidate all per-interface static caches
+    cache_generation +%= 1;
     // Don't reset initialized - the registry can be reused
 }
 

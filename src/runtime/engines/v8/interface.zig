@@ -216,9 +216,12 @@ pub fn V8Interface(comptime Interface: type) type {
         const Self = @This();
 
         /// Template cache - created once per interface type at first use
-        /// NOTE: Templates are isolate-specific - cache the isolate too
+        /// NOTE: Templates are isolate-specific - cache the isolate and generation
         var template_cache: ?*v8.FunctionTemplate = null;
         var template_cache_isolate: ?*v8.Isolate = null;
+        /// Cache generation at time of caching - used to detect isolate disposal
+        /// Even if V8 reuses the same isolate address, the generation will differ
+        var template_cache_generation: u64 = 0;
 
         /// All methods in this interface
         const all_methods = methods;
@@ -498,14 +501,21 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Prototype with all methods
         /// - Internal fields for Zig instance storage
         pub fn createTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
-            // Return cached template if already created AND from same isolate
-            // V8 templates are bound to specific isolates and cannot be reused across isolates
+            // Return cached template if already created AND from same isolate AND same generation
+            // V8 templates are bound to specific isolates and cannot be reused across isolates.
+            // The generation check handles the case where V8 reuses the same isolate address
+            // after the old isolate was disposed - without generation check, the stale cache
+            // would incorrectly match and return a dangling pointer.
             if (template_cache) |cached| {
-                if (template_cache_isolate == isolate) {
+                if (template_cache_isolate == isolate and
+                    template_cache_generation == template_registry.cache_generation)
+                {
                     return cached;
                 }
-                // Different isolate - need to create new template
-                // (old template is now invalid, but V8 will GC it)
+                // Different isolate or different generation - cache is stale
+                // Clear it before creating new template
+                template_cache = null;
+                template_cache_isolate = null;
             }
 
             // Create function template - only with constructor callback if interface is constructible
@@ -855,9 +865,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // TODO: Handle mixins
 
-            // Cache the template for future use (bound to this isolate)
+            // Cache the template for future use (bound to this isolate and generation)
             template_cache = template;
             template_cache_isolate = isolate;
+            template_cache_generation = template_registry.cache_generation;
 
             return template;
         }

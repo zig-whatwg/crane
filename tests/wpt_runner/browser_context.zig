@@ -95,6 +95,12 @@ pub const BrowserContext = struct {
             context_manager.deinit();
         }
 
+        // CRITICAL: Clear template registry BEFORE disposing isolate
+        // V8 FunctionTemplates are bound to specific isolates and cannot be reused.
+        // Failure to clear before creating a new isolate causes bus errors when
+        // trying to use stale template references.
+        v8.template_registry.clear();
+
         // Exit and dispose V8 context
         if (self.context) |ctx| {
             v8.ffi.v8_Context_Exit(ctx);
