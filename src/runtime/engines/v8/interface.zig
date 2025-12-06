@@ -229,6 +229,117 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Interface name
         pub const name = interface_name;
 
+        /// Register all callbacks used by this interface with the external references registry
+        ///
+        /// This MUST be called before creating a V8 snapshot. The external references
+        /// array tells V8 where to find callback functions when loading a snapshot.
+        ///
+        /// Call this for ALL interfaces before snapshot creation:
+        /// ```zig
+        /// // Register all interface callbacks
+        /// inline for (@typeInfo(interfaces).@"struct".decls) |decl| {
+        ///     const InterfaceType = @field(interfaces, decl.name);
+        ///     if (@hasDecl(InterfaceType, "Meta")) {
+        ///         V8Interface(InterfaceType).registerExternalReferences();
+        ///     }
+        /// }
+        /// // Now create snapshot with external_references.getRuntimeExternalReferencesPtr()
+        /// ```
+        pub fn registerExternalReferences() void {
+            const ext_refs = @import("external_references.zig");
+
+            // Register constructor/non-constructor callback
+            if (has_constructor) {
+                ext_refs.registerCallbackRuntime(constructorCallback);
+            } else {
+                ext_refs.registerCallbackRuntime(nonConstructorCallback);
+            }
+
+            // Register property getter/setter callbacks
+            // Each property generates a unique getter callback (and optionally setter)
+            // Now using PropertyGetterCallback which provides named, referenceable callbacks
+            inline for (eager_properties) |prop| {
+                const getter_name: []const u8 = prop[1];
+                const setter_name: ?[]const u8 = prop[2];
+
+                // Register getter callback using the named PropertyGetterCallback type
+                const GetterCallback = PropertyGetterCallback(getter_name);
+                ext_refs.registerCallbackRuntime(GetterCallback.callback);
+
+                // Register setter callback if present
+                if (setter_name) |s_name| {
+                    const setter_cb = makeSetterCallback(s_name);
+                    ext_refs.registerCallbackRuntime(setter_cb);
+                }
+            }
+
+            // Also register lazy property callbacks if any
+            inline for (lazy_properties) |prop| {
+                const getter_name: []const u8 = prop[1];
+                const setter_name: ?[]const u8 = prop[2];
+
+                const GetterCallback = PropertyGetterCallback(getter_name);
+                ext_refs.registerCallbackRuntime(GetterCallback.callback);
+
+                if (setter_name) |s_name| {
+                    const setter_cb = makeSetterCallback(s_name);
+                    ext_refs.registerCallbackRuntime(setter_cb);
+                }
+            }
+
+            // Register method callbacks
+            inline for (methods) |method| {
+                const Callback = MethodCallback(method.zig_name);
+                ext_refs.registerCallbackRuntime(Callback.callback);
+            }
+
+            // Register static method callbacks
+            // Static methods are defined in Meta.static_operations
+            if (@hasDecl(Meta, "static_operations")) {
+                inline for (Meta.static_operations) |op| {
+                    const StaticCallback = StaticMethodCallback(op.zig_name);
+                    ext_refs.registerCallbackRuntime(StaticCallback.callback);
+                }
+            }
+
+            // Register iterator callbacks if interface is iterable
+            if (@hasDecl(Meta, "iterable")) {
+                ext_refs.registerCallbackRuntime(iteratorCallback);
+                ext_refs.registerCallbackRuntime(entriesCallback);
+                ext_refs.registerCallbackRuntime(keysCallback);
+                ext_refs.registerCallbackRuntime(valuesCallback);
+                ext_refs.registerCallbackRuntime(forEachCallback);
+            }
+
+            // Register async iterator callbacks if interface is async iterable
+            if (@hasDecl(Meta, "async_iterable")) {
+                ext_refs.registerCallbackRuntime(asyncIteratorCallback);
+            }
+
+            // Register pair iterator callbacks
+            if (@hasDecl(Meta, "pair_iterable")) {
+                ext_refs.registerCallbackRuntime(iteratorSelfCallback);
+                ext_refs.registerCallbackRuntime(pairIteratorNextCallback);
+            }
+
+            // Register value iterator callbacks
+            if (@hasDecl(Meta, "value_iterable")) {
+                ext_refs.registerCallbackRuntime(iteratorSelfCallback);
+                ext_refs.registerCallbackRuntime(iteratorNextCallback);
+            }
+
+            // Register lazy property handlers if there are lazy properties
+            if (lazy_properties.len > 0) {
+                ext_refs.registerCallbackRuntime(lazyPropertyGetter);
+                ext_refs.registerCallbackRuntime(lazyPropertySetter);
+            }
+
+            // Register indexed property handler if interface is iterable
+            if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
+                ext_refs.registerCallbackRuntime(indexedPropertyGetter);
+            }
+        }
+
         /// Register interface as a global constructor in V8
         ///
         /// Creates a FunctionTemplate and attaches it to the global object.
@@ -579,169 +690,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     @intCast(prop_name.len),
                 ).?;
 
-                // Generate getter callback that calls the actual Zig function
-                // Uses FunctionCallback signature (same as methods) to avoid PropertyCallbackInfo issues
-                const getter_cb: v8.FunctionCallback = struct {
-                    fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-                        const zig_getter = @field(Interface, getter_name);
-                        const isolate_inner = info.getIsolate();
-
-                        // Check return type
-                        const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
-                        const ReturnType = fn_info.return_type.?;
-
-                        // Skip void return types (skipped properties)
-                        if (ReturnType == void) {
-                            conv.throwError(isolate_inner, "Property not implemented");
-                            return;
-                        }
-
-                        // Check if getter takes an instance argument
-                        const params = fn_info.params;
-                        if (params.len == 0) {
-                            // Static getter (constants)
-                            const result = zig_getter();
-                            const v8_num = conv.toV8Long(isolate_inner, @intCast(result));
-                            info.setReturnValue(@ptrCast(v8_num));
-                        } else {
-                            // Instance getter - extract instance from 'this' and call
-                            const this_obj = info.getThis();
-
-                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-
-                            // If instance_ptr is null, we're being called on the prototype, not an instance
-                            // This happens when accessing properties via Object.getOwnPropertyDescriptor
-                            // or when accessing properties on the prototype directly
-                            if (instance_ptr == null) {
-                                // Return undefined for prototype access
-                                if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                    info.setReturnValue(undef);
-                                }
-                                return;
-                            }
-
-                            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-
-                            // Determine payload type from return type
-                            const return_type_info = @typeInfo(ReturnType);
-                            const PayloadType = if (return_type_info == .error_union)
-                                return_type_info.error_union.payload
-                            else
-                                ReturnType;
-
-                            // Call getter (handle error union)
-                            const result: PayloadType = if (return_type_info == .error_union)
-                                zig_getter(instance) catch |err| {
-                                    conv.throwError(isolate_inner, @errorName(err));
-                                    return;
-                                }
-                            else
-                                zig_getter(instance);
-
-                            // Convert to V8 using comptime type dispatch
-                            const v8_value: *v8.Value = comptime_convert: {
-                                // WebIDL primitive types
-                                // Handle all unsigned integer types (u8, u16, u32)
-                                if (PayloadType == u32 or PayloadType == runtime.UnsignedLong) {
-                                    break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, result));
-                                } else if (PayloadType == u16) {
-                                    // WebIDL unsigned short (u16) - convert to u32 for V8
-                                    break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
-                                } else if (PayloadType == u8) {
-                                    // WebIDL octet (u8) - convert to u32 for V8
-                                    break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
-                                } else if (PayloadType == i32 or PayloadType == runtime.Long) {
-                                    break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, result));
-                                } else if (PayloadType == i16) {
-                                    // WebIDL short (i16) - convert to i32 for V8
-                                    break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
-                                } else if (PayloadType == i8) {
-                                    // WebIDL byte (i8) - convert to i32 for V8
-                                    break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
-                                } else if (PayloadType == u64 or PayloadType == runtime.UnsignedLongLong) {
-                                    const val: f64 = @floatFromInt(result);
-                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
-                                } else if (PayloadType == ?u64) {
-                                    // Optional u64 - null or number
-                                    if (result) |num| {
-                                        const val: f64 = @floatFromInt(num);
-                                        break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
-                                    } else {
-                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                    }
-                                } else if (PayloadType == i64 or PayloadType == runtime.LongLong) {
-                                    const val: f64 = @floatFromInt(result);
-                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
-                                } else if (PayloadType == ?i64) {
-                                    // Optional i64 - null or number
-                                    if (result) |num| {
-                                        const val: f64 = @floatFromInt(num);
-                                        break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
-                                    } else {
-                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                    }
-                                } else if (PayloadType == f64 or PayloadType == runtime.Double) {
-                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, result));
-                                } else if (PayloadType == f32 or PayloadType == runtime.Float) {
-                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, @floatCast(result)));
-                                } else if (PayloadType == bool or PayloadType == runtime.Boolean) {
-                                    break :comptime_convert v8.v8_Boolean_New(isolate_inner, result) orelse unreachable;
-                                } else if (PayloadType == runtime.DOMString) {
-                                    break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, result));
-                                } else if (PayloadType == ?runtime.DOMString) {
-                                    // Optional DOMString - null or convert to string
-                                    if (result) |str| {
-                                        break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, str));
-                                    } else {
-                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                    }
-                                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
-                                    // USVString is []const u8 - convert to V8 string
-                                    if (v8.v8_String_NewFromUtf8(isolate_inner, result.ptr, @intCast(result.len))) |str| {
-                                        break :comptime_convert @ptrCast(str);
-                                    } else {
-                                        break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-                                    }
-                                } else if (@typeInfo(PayloadType) == .@"enum") {
-                                    // WebIDL enum - convert to string using @tagName
-                                    // This is a runtime conversion so we use a helper function
-                                    break :comptime_convert @ptrCast(conv.enumToV8String(PayloadType, isolate_inner, result));
-                                } else if (PayloadType == *runtime.Instance) {
-                                    // Instance pointer - wrap with correct V8 prototype
-                                    break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, result));
-                                } else if (PayloadType == ?*runtime.Instance) {
-                                    // Optional Instance pointer - null or wrap
-                                    if (result) |inst| {
-                                        break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, inst));
-                                    } else {
-                                        break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                    }
-                                } else if (PayloadType == *const anyopaque) {
-                                    // Opaque pointer is already a V8 value - just cast it
-                                    // This is used for WebIDL 'any' type and pre-converted values
-                                    break :comptime_convert @ptrCast(@constCast(result));
-                                } else if (PayloadType == ?*runtime.CallbackWrapper) {
-                                    // EventHandler (callback wrapper) - extract V8 function from wrapper
-                                    if (result) |wrapper| {
-                                        const cb_wrapper = @import("callback_wrapper.zig");
-                                        const v8_wrapper: *cb_wrapper.CallbackWrapper = @ptrCast(@alignCast(wrapper));
-                                        if (v8_wrapper.callback_function) |func| {
-                                            break :comptime_convert @ptrCast(func);
-                                        }
-                                    }
-                                    // No callback or no function stored - return null
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                } else {
-                                    // For complex types (interfaces, objects, etc.), return undefined for now
-                                    // TODO: Implement proper object/interface conversions
-                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-                                }
-                            };
-
-                            info.setReturnValue(v8_value);
-                        }
-                    }
-                }.callback;
+                // Use PropertyGetterCallback to generate the getter callback
+                // This is now a named function that can be registered for V8 snapshots
+                const getter_cb: v8.FunctionCallback = PropertyGetterCallback(getter_name).callback;
 
                 // Generate setter callback that calls the actual Zig function
                 // Uses FunctionCallback signature - setter receives new value as info[0]
@@ -902,6 +853,179 @@ pub fn V8Interface(comptime Interface: type) type {
             template_cache_generation = template_registry.cache_generation;
 
             return template;
+        }
+
+        /// Generate a property getter callback for a specific property at comptime
+        ///
+        /// This creates a callback that:
+        /// 1. Gets the Zig Instance from V8 object's internal field
+        /// 2. Calls the getter function (either static or instance)
+        /// 3. Converts and returns the result to V8
+        ///
+        /// This is used for both eager and lazy properties, and can be
+        /// referenced from registerExternalReferences() for V8 snapshots.
+        fn PropertyGetterCallback(comptime getter_name: []const u8) type {
+            return struct {
+                pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const zig_getter = @field(Interface, getter_name);
+                    const isolate_inner = info.getIsolate();
+
+                    // Check return type
+                    const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
+                    const ReturnType = fn_info.return_type.?;
+
+                    // Skip void return types (skipped properties)
+                    if (ReturnType == void) {
+                        conv.throwError(isolate_inner, "Property not implemented");
+                        return;
+                    }
+
+                    // Check if getter takes an instance argument
+                    const params = fn_info.params;
+                    if (params.len == 0) {
+                        // Static getter (constants)
+                        const result = zig_getter();
+                        const v8_num = conv.toV8Long(isolate_inner, @intCast(result));
+                        info.setReturnValue(@ptrCast(v8_num));
+                    } else {
+                        // Instance getter - extract instance from 'this' and call
+                        const this_obj = info.getThis();
+
+                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                        // If instance_ptr is null, we're being called on the prototype, not an instance
+                        // This happens when accessing properties via Object.getOwnPropertyDescriptor
+                        // or when accessing properties on the prototype directly
+                        if (instance_ptr == null) {
+                            // Return undefined for prototype access
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
+
+                        const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+                        // Determine payload type from return type
+                        const return_type_info = @typeInfo(ReturnType);
+                        const PayloadType = if (return_type_info == .error_union)
+                            return_type_info.error_union.payload
+                        else
+                            ReturnType;
+
+                        // Call getter (handle error union)
+                        const result: PayloadType = if (return_type_info == .error_union)
+                            zig_getter(instance) catch |err| {
+                                conv.throwError(isolate_inner, @errorName(err));
+                                return;
+                            }
+                        else
+                            zig_getter(instance);
+
+                        // Convert to V8 using comptime type dispatch
+                        const v8_value: *v8.Value = comptime_convert: {
+                            // WebIDL primitive types
+                            // Handle all unsigned integer types (u8, u16, u32)
+                            if (PayloadType == u32 or PayloadType == runtime.UnsignedLong) {
+                                break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, result));
+                            } else if (PayloadType == u16) {
+                                // WebIDL unsigned short (u16) - convert to u32 for V8
+                                break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
+                            } else if (PayloadType == u8) {
+                                // WebIDL octet (u8) - convert to u32 for V8
+                                break :comptime_convert @ptrCast(conv.toV8UnsignedLong(isolate_inner, @as(u32, result)));
+                            } else if (PayloadType == i32 or PayloadType == runtime.Long) {
+                                break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, result));
+                            } else if (PayloadType == i16) {
+                                // WebIDL short (i16) - convert to i32 for V8
+                                break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
+                            } else if (PayloadType == i8) {
+                                // WebIDL byte (i8) - convert to i32 for V8
+                                break :comptime_convert @ptrCast(conv.toV8Long(isolate_inner, @as(i32, result)));
+                            } else if (PayloadType == u64 or PayloadType == runtime.UnsignedLongLong) {
+                                const val: f64 = @floatFromInt(result);
+                                break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                            } else if (PayloadType == ?u64) {
+                                // Optional u64 - null or number
+                                if (result) |num| {
+                                    const val: f64 = @floatFromInt(num);
+                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                } else {
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
+                            } else if (PayloadType == i64 or PayloadType == runtime.LongLong) {
+                                const val: f64 = @floatFromInt(result);
+                                break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                            } else if (PayloadType == ?i64) {
+                                // Optional i64 - null or number
+                                if (result) |num| {
+                                    const val: f64 = @floatFromInt(num);
+                                    break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, val));
+                                } else {
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
+                            } else if (PayloadType == f64 or PayloadType == runtime.Double) {
+                                break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, result));
+                            } else if (PayloadType == f32 or PayloadType == runtime.Float) {
+                                break :comptime_convert @ptrCast(v8.v8_Number_New(isolate_inner, @floatCast(result)));
+                            } else if (PayloadType == bool or PayloadType == runtime.Boolean) {
+                                break :comptime_convert v8.v8_Boolean_New(isolate_inner, result) orelse unreachable;
+                            } else if (PayloadType == runtime.DOMString) {
+                                break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, result));
+                            } else if (PayloadType == ?runtime.DOMString) {
+                                // Optional DOMString - null or convert to string
+                                if (result) |str| {
+                                    break :comptime_convert @ptrCast(conv.toV8String(isolate_inner, str));
+                                } else {
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
+                            } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                                // USVString is []const u8 - convert to V8 string
+                                if (v8.v8_String_NewFromUtf8(isolate_inner, result.ptr, @intCast(result.len))) |str| {
+                                    break :comptime_convert @ptrCast(str);
+                                } else {
+                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                }
+                            } else if (@typeInfo(PayloadType) == .@"enum") {
+                                // WebIDL enum - convert to string using @tagName
+                                // This is a runtime conversion so we use a helper function
+                                break :comptime_convert @ptrCast(conv.enumToV8String(PayloadType, isolate_inner, result));
+                            } else if (PayloadType == *runtime.Instance) {
+                                // Instance pointer - wrap with correct V8 prototype
+                                break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, result));
+                            } else if (PayloadType == ?*runtime.Instance) {
+                                // Optional Instance pointer - null or wrap
+                                if (result) |inst| {
+                                    break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, inst));
+                                } else {
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
+                            } else if (PayloadType == *const anyopaque) {
+                                // Opaque pointer is already a V8 value - just cast it
+                                // This is used for WebIDL 'any' type and pre-converted values
+                                break :comptime_convert @ptrCast(@constCast(result));
+                            } else if (PayloadType == ?*runtime.CallbackWrapper) {
+                                // EventHandler (callback wrapper) - extract V8 function from wrapper
+                                if (result) |wrapper| {
+                                    const cb_wrapper = @import("callback_wrapper.zig");
+                                    const v8_wrapper: *cb_wrapper.CallbackWrapper = @ptrCast(@alignCast(wrapper));
+                                    if (v8_wrapper.callback_function) |func| {
+                                        break :comptime_convert @ptrCast(func);
+                                    }
+                                }
+                                // No callback or no function stored - return null
+                                break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                            } else {
+                                // For complex types (interfaces, objects, etc.), return undefined for now
+                                // TODO: Implement proper object/interface conversions
+                                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                            }
+                        };
+
+                        info.setReturnValue(v8_value);
+                    }
+                }
+            };
         }
 
         /// Generate a method callback for a specific method at comptime
