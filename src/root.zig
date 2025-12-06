@@ -37,6 +37,7 @@ pub const csp = @import("csp");
 pub const hr_time = @import("hr_time");
 pub const websocket = @import("websocket");
 pub const permissions = @import("permissions");
+pub const browser = @import("browser");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -60,6 +61,7 @@ test {
     _ = csp;
     _ = websocket;
     _ = permissions;
+    _ = browser;
     _ = v8;
     _ = js_bindings;
     _ = codegen;

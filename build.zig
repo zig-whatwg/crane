@@ -1391,6 +1391,16 @@ pub fn build(b: *std.Build) void {
     // Add permissions to impls for navigator.permissions implementation
     impls_mod.addImport("permissions", permissions_mod);
 
+    // Browser module - Single V8 isolate browser implementation for WPT
+    const browser_mod = b.addModule("browser", .{
+        .root_source_file = b.path("src/browser/root.zig"),
+        .target = target,
+    });
+    browser_mod.addImport("v8", v8_mod);
+    browser_mod.addImport("runtime", runtime_mod);
+    browser_mod.addImport("interfaces", interfaces_mod);
+    browser_mod.addImport("namespaces", namespaces_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1414,6 +1424,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("websocket", websocket_mod);
     whatwg_mod.addImport("permissions", permissions_mod);
     whatwg_mod.addImport("html", html_mod);
+    whatwg_mod.addImport("browser", browser_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1739,6 +1750,24 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
+        };
+    }
+
+    // CookieStore tests (WHATWG Cookie Store API)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
+        const cookiestore_tests = b.addTest(.{ .root_module = cookiestore_mod });
+        const run_cookiestore_tests = b.addRunArtifact(cookiestore_tests);
+        test_step.dependOn(&run_cookiestore_tests.step);
+
+        // Add dedicated test files from tests/cookiestore/
+        const cookiestore_imports = [_]std.Build.Module.Import{
+            .{ .name = "cookiestore", .module = cookiestore_mod },
+            .{ .name = "impls", .module = impls_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/cookiestore", target, &cookiestore_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add cookiestore test files: {}\n", .{err});
         };
     }
 
