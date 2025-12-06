@@ -1287,6 +1287,25 @@ pub extern fn v8_SnapshotCreator_Dispose(creator: *SnapshotCreator) void;
 /// @param data - Pointer returned in out_data from CreateBlob
 pub extern fn v8_Snapshot_FreeData(data: ?[*]const u8) void;
 
+/// Enable snapshot mode - track Global handles for later cleanup
+///
+/// When enabled, all Global handles created by the wrapper will be tracked
+/// so they can be disposed before calling SnapshotCreator_CreateBlob.
+/// V8 requires that there be no outstanding Global handles when creating a snapshot.
+pub extern fn v8_Snapshot_EnableMode() void;
+
+/// Disable snapshot mode
+///
+/// Clears the tracked handles and disables tracking.
+pub extern fn v8_Snapshot_DisableMode() void;
+
+/// Clear all tracked Global handles before CreateBlob
+///
+/// This disposes all Global handles created since EnableMode was called.
+/// MUST be called before v8_SnapshotCreator_CreateBlob to avoid
+/// "CheckGlobalAndEternalHandles failed" error.
+pub extern fn v8_Snapshot_ClearGlobalHandles() void;
+
 /// Create a new isolate from a snapshot blob
 ///
 /// This is the runtime counterpart to SnapshotCreator. The isolate

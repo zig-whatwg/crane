@@ -102,6 +102,11 @@ pub fn main() !void {
     log(allocator, "Step 5: Creating context and registering interfaces...\n", .{});
     v8.ffi.v8_Isolate_Enter(isolate);
 
+    // Enable snapshot mode BEFORE creating any V8 objects
+    // This enables tracking of Global handles in C++ for cleanup before CreateBlob
+    v8.template_registry.snapshot_mode = true;
+    v8.ffi.v8_Snapshot_EnableMode();
+
     const context = v8.ffi.v8_Context_New(isolate) orelse {
         log(allocator, "  ERROR: Failed to create context\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
@@ -134,6 +139,11 @@ pub fn main() !void {
     v8.ffi.v8_Context_Exit(context);
     v8.ffi.v8_Isolate_Exit(isolate);
 
+    // CRITICAL: Clear all tracked Global handles before CreateBlob
+    // V8 requires no outstanding Global handles when creating a snapshot
+    log(allocator, "  Clearing tracked Global handles...\n", .{});
+    v8.ffi.v8_Snapshot_ClearGlobalHandles();
+
     var out_data: ?[*]const u8 = null;
     var out_size: c_int = 0;
     const success = v8.ffi.v8_SnapshotCreator_CreateBlob(
@@ -160,6 +170,10 @@ pub fn main() !void {
     log(allocator, "Step 8: Disposing SnapshotCreator...\n", .{});
     v8.ffi.v8_SnapshotCreator_Dispose(creator);
     log(allocator, "  SnapshotCreator disposed\n\n", .{});
+
+    // Disable snapshot mode now that snapshot is created
+    v8.template_registry.snapshot_mode = false;
+    v8.ffi.v8_Snapshot_DisableMode();
 
     // Cleanup WebIDL runtime
     runtime.deinitializeRuntime();

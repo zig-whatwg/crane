@@ -12,12 +12,52 @@
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
 #include <cstring>
+#include <vector>
 
 using namespace v8;
 
 // Platform singleton
 static std::unique_ptr<Platform> g_platform = nullptr;
 static bool v8_initialized = false;
+
+// ============================================================================
+// Snapshot Mode Global Handle Tracking
+// ============================================================================
+//
+// V8's SnapshotCreator::CreateBlob() requires that there be no outstanding
+// Global handles when called. Since our wrapper returns Global<T>* from most
+// functions, we need a way to track and dispose them before snapshot creation.
+//
+// When snapshot mode is enabled:
+// 1. All Global handles created are tracked in a vector
+// 2. Before calling CreateBlob(), call v8_Snapshot_ClearGlobalHandles() to reset them all
+// 3. This allows V8 to serialize the heap without complaining about Global handles
+
+static bool g_snapshot_mode = false;
+
+// We store void* pointers along with type-specific reset functions
+struct GlobalHandleEntry {
+    void* handle;
+    void (*reset_fn)(void*);
+};
+static std::vector<GlobalHandleEntry> g_snapshot_handles;
+
+// Type-erased reset function template
+template<typename T>
+static void resetGlobalHandle(void* ptr) {
+    Global<T>* handle = static_cast<Global<T>*>(ptr);
+    handle->Reset();
+    delete handle;
+}
+
+// Track a handle for snapshot cleanup
+template<typename T>
+static Global<T>* trackHandle(Global<T>* handle) {
+    if (g_snapshot_mode && handle) {
+        g_snapshot_handles.push_back({handle, resetGlobalHandle<T>});
+    }
+    return handle;
+}
 
 // ============================================================================
 // Weak Callback Support (must be outside extern "C")
@@ -47,6 +87,30 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 }
 
 extern "C" {
+
+// ============================================================================
+// Snapshot Mode Control
+// ============================================================================
+
+/// Enable snapshot mode - start tracking Global handles for later cleanup
+void v8_Snapshot_EnableMode() {
+    g_snapshot_mode = true;
+    g_snapshot_handles.clear();
+}
+
+/// Disable snapshot mode and clear tracked handles
+void v8_Snapshot_DisableMode() {
+    g_snapshot_mode = false;
+    g_snapshot_handles.clear();
+}
+
+/// Clear all tracked Global handles - MUST be called before CreateBlob
+void v8_Snapshot_ClearGlobalHandles() {
+    for (auto& entry : g_snapshot_handles) {
+        entry.reset_fn(entry.handle);
+    }
+    g_snapshot_handles.clear();
+}
 
 // ============================================================================
 // Platform Management
@@ -102,7 +166,7 @@ void v8_Isolate_Exit(Isolate* isolate) {
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
-    return new Global<Context>(isolate, ctx);
+    return trackHandle(new Global<Context>(isolate, ctx));
 }
 
 Isolate* v8_Isolate_GetCurrent() {
@@ -142,14 +206,14 @@ void* v8_Isolate_GetData(Isolate* isolate, int slot) {
 Global<Context>* v8_Context_New(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> context = Context::New(isolate);
-    return new Global<Context>(isolate, context);
+    return trackHandle(new Global<Context>(isolate, context));
 }
 
 Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<ObjectTemplate>* global_template) {
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_template = global_template->Get(isolate);
     Local<Context> context = Context::New(isolate, nullptr, local_template);
-    return new Global<Context>(isolate, context);
+    return trackHandle(new Global<Context>(isolate, context));
 }
 
 void v8_Context_Dispose(Global<Context>* context) {
@@ -178,7 +242,7 @@ Global<Object>* v8_Context_Global(Global<Context>* context) {
     HandleScope handle_scope(isolate);
     Local<Context> local_context = context->Get(isolate);
     Local<Object> global = local_context->Global();
-    return new Global<Object>(isolate, global);
+    return trackHandle(new Global<Object>(isolate, global));
 }
 
 // ============================================================================
@@ -197,7 +261,7 @@ Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int
         return nullptr;
     }
     Local<String> str = maybe_str.ToLocalChecked();
-    return new Global<String>(isolate, str);
+    return trackHandle(new Global<String>(isolate, str));
 }
 
 void v8_String_Dispose(Global<String>* str) {
@@ -224,7 +288,7 @@ int v8_String_WriteUtf8(Global<String>* str, char* buffer, int length) {
 Global<String>* v8_String_Empty(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<String> empty = String::Empty(isolate);
-    return new Global<String>(isolate, empty);
+    return trackHandle(new Global<String>(isolate, empty));
 }
 
 // ============================================================================
@@ -378,7 +442,7 @@ Global<String>* v8_Value_ToString(Global<Value>* value, Global<Context>* context
     }
     
     Local<String> str = maybe_str.ToLocalChecked();
-    return new Global<String>(isolate, str);
+    return trackHandle(new Global<String>(isolate, str));
 }
 
 bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
@@ -405,13 +469,13 @@ void v8_Value_Dispose(Global<Value>* value) {
 Global<Number>* v8_Number_New(Isolate* isolate, double value) {
     HandleScope handle_scope(isolate);
     Local<Number> num = Number::New(isolate, value);
-    return new Global<Number>(isolate, num);
+    return trackHandle(new Global<Number>(isolate, num));
 }
 
 Global<Number>* v8_Integer_New(Isolate* isolate, int32_t value) {
     HandleScope handle_scope(isolate);
     Local<Integer> num = Integer::New(isolate, value);
-    return new Global<Number>(isolate, num.As<Number>());
+    return trackHandle(new Global<Number>(isolate, num.As<Number>()));
 }
 
 // ============================================================================
@@ -421,7 +485,7 @@ Global<Number>* v8_Integer_New(Isolate* isolate, int32_t value) {
 Global<Object>* v8_Object_New(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Object> obj = Object::New(isolate);
-    return new Global<Object>(isolate, obj);
+    return trackHandle(new Global<Object>(isolate, obj));
 }
 
 bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Value>* key, Global<Value>* value) {
@@ -470,7 +534,7 @@ Global<Value>* v8_Object_Get(Global<Object>* object, Global<Context>* context, G
     }
     
     Local<Value> val = maybe_val.ToLocalChecked();
-    return new Global<Value>(isolate, val);
+    return trackHandle(new Global<Value>(isolate, val));
 }
 
 Global<Array>* v8_Object_GetOwnPropertyNames(Global<Context>* context, Global<Object>* obj) {
@@ -486,7 +550,7 @@ Global<Array>* v8_Object_GetOwnPropertyNames(Global<Context>* context, Global<Ob
     }
     
     Local<Array> names = maybe_names.ToLocalChecked();
-    return new Global<Array>(isolate, names);
+    return trackHandle(new Global<Array>(isolate, names));
 }
 
 // Get all property names including prototype chain and non-enumerable
@@ -510,7 +574,7 @@ Global<Array>* v8_Object_GetPropertyNames(Global<Context>* context, Global<Objec
     }
     
     Local<Array> names = maybe_names.ToLocalChecked();
-    return new Global<Array>(isolate, names);
+    return trackHandle(new Global<Array>(isolate, names));
 }
 
 void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, void* value) {
@@ -548,7 +612,7 @@ void v8_Object_Dispose(Global<Object>* obj) {
 Global<Array>* v8_Array_New(Isolate* isolate, int length) {
     HandleScope handle_scope(isolate);
     Local<Array> arr = Array::New(isolate, length);
-    return new Global<Array>(isolate, arr);
+    return trackHandle(new Global<Array>(isolate, arr));
 }
 
 uint32_t v8_Array_Length(Global<Array>* arr) {
@@ -571,7 +635,7 @@ Global<Value>* v8_Array_Get(Global<Context>* context, Global<Array>* arr, uint32
     }
     
     Local<Value> value = maybe_value.ToLocalChecked();
-    return new Global<Value>(isolate, value);
+    return trackHandle(new Global<Value>(isolate, value));
 }
 
 bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, Global<Value>* value) {
@@ -610,7 +674,7 @@ Global<Script>* v8_Script_Compile(Global<Context>* context, Global<String>* sour
     }
     
     Local<Script> script = maybe_script.ToLocalChecked();
-    return new Global<Script>(isolate, script);
+    return trackHandle(new Global<Script>(isolate, script));
 }
 
 /// Compile a script with a source URL (for error messages and source maps)
@@ -632,7 +696,7 @@ Global<Script>* v8_Script_CompileWithOrigin(Global<Context>* context, Global<Str
     }
     
     Local<Script> script = maybe_script.ToLocalChecked();
-    return new Global<Script>(isolate, script);
+    return trackHandle(new Global<Script>(isolate, script));
 }
 
 Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
@@ -648,7 +712,7 @@ Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
     }
     
     Local<Value> result = maybe_result.ToLocalChecked();
-    return new Global<Value>(isolate, result);
+    return trackHandle(new Global<Value>(isolate, result));
 }
 
 void v8_Script_Dispose(Global<Script>* script) {
@@ -766,7 +830,7 @@ Global<Module>* v8_Module_Compile(
     }
     
     Local<Module> module = maybe_module.ToLocalChecked();
-    return new Global<Module>(isolate, module);
+    return trackHandle(new Global<Module>(isolate, module));
 }
 
 /// Get the number of module requests (imports) in a module
@@ -852,7 +916,7 @@ Global<Value>* v8_Module_Evaluate(Global<Context>* context, Global<Module>* modu
     }
     
     Local<Value> result = maybe_result.ToLocalChecked();
-    return new Global<Value>(isolate, result);
+    return trackHandle(new Global<Value>(isolate, result));
 }
 
 /// Get the module's exception (if status is Errored)
@@ -867,7 +931,7 @@ Global<Value>* v8_Module_GetException(Global<Module>* module) {
     }
     
     Local<Value> exception = local_module->GetException();
-    return new Global<Value>(isolate, exception);
+    return trackHandle(new Global<Value>(isolate, exception));
 }
 
 /// Get the module's namespace object (exports)
@@ -882,7 +946,7 @@ Global<Object>* v8_Module_GetModuleNamespace(Global<Module>* module) {
         return nullptr;
     }
     
-    return new Global<Object>(isolate, ns.As<Object>());
+    return trackHandle(new Global<Object>(isolate, ns.As<Object>()));
 }
 
 /// Get the module's identity hash (for use as map key)
@@ -1113,7 +1177,7 @@ Global<Value>* v8_Exception_TypeError(Global<String>* message) {
     HandleScope handle_scope(isolate);
     Local<String> msg = message->Get(isolate);
     Local<Value> exception = Exception::TypeError(msg);
-    return new Global<Value>(isolate, exception);
+    return trackHandle(new Global<Value>(isolate, exception));
 }
 
 Global<Value>* v8_Exception_RangeError(Global<String>* message) {
@@ -1121,7 +1185,7 @@ Global<Value>* v8_Exception_RangeError(Global<String>* message) {
     HandleScope handle_scope(isolate);
     Local<String> msg = message->Get(isolate);
     Local<Value> exception = Exception::RangeError(msg);
-    return new Global<Value>(isolate, exception);
+    return trackHandle(new Global<Value>(isolate, exception));
 }
 
 Global<Value>* v8_Exception_SyntaxError(Global<String>* message) {
@@ -1129,7 +1193,7 @@ Global<Value>* v8_Exception_SyntaxError(Global<String>* message) {
     HandleScope handle_scope(isolate);
     Local<String> msg = message->Get(isolate);
     Local<Value> exception = Exception::SyntaxError(msg);
-    return new Global<Value>(isolate, exception);
+    return trackHandle(new Global<Value>(isolate, exception));
 }
 
 Global<Value>* v8_Exception_Error(Global<String>* message) {
@@ -1137,7 +1201,7 @@ Global<Value>* v8_Exception_Error(Global<String>* message) {
     HandleScope handle_scope(isolate);
     Local<String> msg = message->Get(isolate);
     Local<Value> exception = Exception::Error(msg);
-    return new Global<Value>(isolate, exception);
+    return trackHandle(new Global<Value>(isolate, exception));
 }
 
 Global<Value>* v8_TryCatch_Exception(Global<Context>* context) {
@@ -1147,7 +1211,7 @@ Global<Value>* v8_TryCatch_Exception(Global<Context>* context) {
     
     if (try_catch.HasCaught()) {
         Local<Value> exception = try_catch.Exception();
-        return new Global<Value>(isolate, exception);
+        return trackHandle(new Global<Value>(isolate, exception));
     }
     
     return nullptr;
@@ -1160,19 +1224,19 @@ Global<Value>* v8_TryCatch_Exception(Global<Context>* context) {
 Global<Value>* v8_Undefined(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Value> undef = Undefined(isolate);
-    return new Global<Value>(isolate, undef);
+    return trackHandle(new Global<Value>(isolate, undef));
 }
 
 Global<Value>* v8_Null(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Value> null_val = Null(isolate);
-    return new Global<Value>(isolate, null_val);
+    return trackHandle(new Global<Value>(isolate, null_val));
 }
 
 Global<Value>* v8_Boolean_New(Isolate* isolate, bool value) {
     HandleScope handle_scope(isolate);
     Local<Boolean> bool_val = Boolean::New(isolate, value);
-    return new Global<Value>(isolate, bool_val);
+    return trackHandle(new Global<Value>(isolate, bool_val));
 }
 
 // ============================================================================
@@ -1193,7 +1257,7 @@ Global<FunctionTemplate>* v8_FunctionTemplate_New(
         reinterpret_cast<FunctionCallback>(callback),
         data ? data->Get(isolate) : Local<Value>()
     );
-    return new Global<FunctionTemplate>(isolate, tpl);
+    return trackHandle(new Global<FunctionTemplate>(isolate, tpl));
 }
 
 // Create FunctionTemplate with Signature (receiver type checking)
@@ -1218,7 +1282,7 @@ Global<FunctionTemplate>* v8_FunctionTemplate_NewWithSignature(
         data ? data->Get(isolate) : Local<Value>(),
         signature  // V8 will enforce receiver type
     );
-    return new Global<FunctionTemplate>(isolate, tpl);
+    return trackHandle(new Global<FunctionTemplate>(isolate, tpl));
 }
 
 Global<Function>* v8_FunctionTemplate_GetFunction(Global<FunctionTemplate>* function_template, Global<Context>* context) {
@@ -1234,7 +1298,7 @@ Global<Function>* v8_FunctionTemplate_GetFunction(Global<FunctionTemplate>* func
     }
     
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    return new Global<Function>(isolate, fn);
+    return trackHandle(new Global<Function>(isolate, fn));
 }
 
 void v8_FunctionTemplate_Dispose(Global<FunctionTemplate>* tpl) {
@@ -1257,7 +1321,7 @@ Global<ObjectTemplate>* v8_FunctionTemplate_InstanceTemplate(Global<FunctionTemp
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<ObjectTemplate> instance_tpl = local_tpl->InstanceTemplate();
-    return new Global<ObjectTemplate>(isolate, instance_tpl);
+    return trackHandle(new Global<ObjectTemplate>(isolate, instance_tpl));
 }
 
 Global<ObjectTemplate>* v8_FunctionTemplate_PrototypeTemplate(Global<FunctionTemplate>* tpl) {
@@ -1265,7 +1329,7 @@ Global<ObjectTemplate>* v8_FunctionTemplate_PrototypeTemplate(Global<FunctionTem
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<ObjectTemplate> proto_tpl = local_tpl->PrototypeTemplate();
-    return new Global<ObjectTemplate>(isolate, proto_tpl);
+    return trackHandle(new Global<ObjectTemplate>(isolate, proto_tpl));
 }
 
 void v8_FunctionTemplate_Inherit(Global<FunctionTemplate>* tpl, Global<FunctionTemplate>* parent) {
@@ -1295,7 +1359,7 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
 Global<Value>* v8_FunctionCallbackInfo_GetArgument(const FunctionCallbackInfo<Value>* info, int index) {
     Isolate* isolate = info->GetIsolate();
     Local<Value> arg = (*info)[index];
-    return new Global<Value>(isolate, arg);
+    return trackHandle(new Global<Value>(isolate, arg));
 }
 
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
@@ -1316,7 +1380,7 @@ Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* 
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> self = info->This();
-    return new Global<Object>(isolate, self);
+    return trackHandle(new Global<Object>(isolate, self));
 }
 
 // FunctionCallbackInfo - get callback data
@@ -1324,7 +1388,7 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Value> data = info->Data();
-    return new Global<Value>(isolate, data);
+    return trackHandle(new Global<Value>(isolate, data));
 }
 
 // ============================================================================
@@ -1335,7 +1399,7 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
 Global<External>* v8_External_New(Isolate* isolate, void* value) {
     HandleScope handle_scope(isolate);
     Local<External> external = External::New(isolate, value);
-    return new Global<External>(isolate, external);
+    return trackHandle(new Global<External>(isolate, external));
 }
 
 // Extract wrapped pointer from External
@@ -1520,7 +1584,7 @@ Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Globa
     if (maybe_obj.IsEmpty()) {
         return nullptr;
     }
-    return new Global<Object>(isolate, maybe_obj.ToLocalChecked());
+    return trackHandle(new Global<Object>(isolate, maybe_obj.ToLocalChecked()));
 }
 
 // PropertyCallbackInfo - get isolate
@@ -1537,7 +1601,7 @@ Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void
 Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    return new Global<Object>(isolate, info->This());
+    return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
 // PropertyCallbackInfo - get holder object
@@ -1725,19 +1789,19 @@ bool v8_Object_PreventExtensions(Global<Object>* object, Global<Context>* contex
 Global<Symbol>* v8_Symbol_GetToStringTag(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Symbol> symbol = Symbol::GetToStringTag(isolate);
-    return new Global<Symbol>(isolate, symbol);
+    return trackHandle(new Global<Symbol>(isolate, symbol));
 }
 
 Global<Symbol>* v8_Symbol_GetIterator(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Symbol> symbol = Symbol::GetIterator(isolate);
-    return new Global<Symbol>(isolate, symbol);
+    return trackHandle(new Global<Symbol>(isolate, symbol));
 }
 
 Global<Symbol>* v8_Symbol_GetAsyncIterator(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Symbol> symbol = Symbol::GetAsyncIterator(isolate);
-    return new Global<Symbol>(isolate, symbol);
+    return trackHandle(new Global<Symbol>(isolate, symbol));
 }
 
 void v8_Symbol_Dispose(Global<Symbol>* symbol) {
@@ -1761,7 +1825,7 @@ Global<Value>* v8_Object_GetPropertyWithSymbol(
         return nullptr;
     }
     
-    return new Global<Value>(isolate, result.ToLocalChecked());
+    return trackHandle(new Global<Value>(isolate, result.ToLocalChecked()));
 }
 
 bool v8_Object_Has(
@@ -1805,7 +1869,7 @@ Global<Value>* v8_Function_CallWithReceiver(
         return nullptr;
     }
     
-    return new Global<Value>(isolate, result.ToLocalChecked());
+    return trackHandle(new Global<Value>(isolate, result.ToLocalChecked()));
 }
 
 // ============================================================================
@@ -1907,7 +1971,7 @@ Global<Value>* v8_Function_Call(
     
     // Return the result as a Global handle
     Local<Value> result = maybe_result.ToLocalChecked();
-    return new Global<Value>(isolate, result);
+    return trackHandle(new Global<Value>(isolate, result));
 }
 
 // ============================================================================
@@ -1926,7 +1990,7 @@ Global<Promise::Resolver>* v8_PromiseResolver_New(Global<Context>* context) {
     }
     
     Local<Promise::Resolver> resolver = maybe_resolver.ToLocalChecked();
-    return new Global<Promise::Resolver>(isolate, resolver);
+    return trackHandle(new Global<Promise::Resolver>(isolate, resolver));
 }
 
 /// Get Promise from resolver
@@ -1935,7 +1999,7 @@ Global<Promise>* v8_PromiseResolver_GetPromise(Global<Promise::Resolver>* resolv
     HandleScope handle_scope(isolate);
     Local<Promise::Resolver> res = resolver->Get(isolate);
     Local<Promise> promise = res->GetPromise();
-    return new Global<Promise>(isolate, promise);
+    return trackHandle(new Global<Promise>(isolate, promise));
 }
 
 /// Resolve a Promise with a value
@@ -1993,7 +2057,7 @@ Global<Promise>* v8_Promise_Then(
     }
     
     Local<Promise> result = maybe_result.ToLocalChecked();
-    return new Global<Promise>(isolate, result);
+    return trackHandle(new Global<Promise>(isolate, result));
 }
 
 /// Chain a .catch() handler to a Promise
@@ -2015,7 +2079,7 @@ Global<Promise>* v8_Promise_Catch(
     }
     
     Local<Promise> result = maybe_result.ToLocalChecked();
-    return new Global<Promise>(isolate, result);
+    return trackHandle(new Global<Promise>(isolate, result));
 }
 
 /// Dispose a Promise
@@ -2085,7 +2149,7 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
     }
     
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    return new Global<Function>(isolate, fn);
+    return trackHandle(new Global<Function>(isolate, fn));
 }
 
 /// Create a function that rejects a PromiseResolver
@@ -2134,7 +2198,7 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
     }
     
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    return new Global<Function>(isolate, fn);
+    return trackHandle(new Global<Function>(isolate, fn));
 }
 
 // ============================================================================
@@ -2225,7 +2289,7 @@ Global<Function>* v8_CreateZigFulfillHandler(
     }
     
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    return new Global<Function>(isolate, fn);
+    return trackHandle(new Global<Function>(isolate, fn));
 }
 
 /// Create a V8 Function that invokes a Zig reject callback when called
@@ -2295,7 +2359,7 @@ Global<Function>* v8_CreateZigRejectHandler(
     }
     
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    return new Global<Function>(isolate, fn);
+    return trackHandle(new Global<Function>(isolate, fn));
 }
 
 /// Dispose a Zig callback handler function
@@ -2324,7 +2388,7 @@ void v8_DisposeZigCallbackHandler(Global<Function>* handler) {
 Global<ArrayBuffer>* v8_ArrayBuffer_New(Isolate* isolate, size_t byte_length) {
     HandleScope handle_scope(isolate);
     Local<ArrayBuffer> buffer = ArrayBuffer::New(isolate, byte_length);
-    return new Global<ArrayBuffer>(isolate, buffer);
+    return trackHandle(new Global<ArrayBuffer>(isolate, buffer));
 }
 
 /// Get ArrayBuffer backing store pointer
@@ -2520,7 +2584,7 @@ Global<ArrayBuffer>* v8_TypedArray_Buffer(Global<Value>* typed_array) {
     
     Local<TypedArray> ta = val.As<TypedArray>();
     Local<ArrayBuffer> buffer = ta->Buffer();
-    return new Global<ArrayBuffer>(isolate, buffer);
+    return trackHandle(new Global<ArrayBuffer>(isolate, buffer));
 }
 
 /// Get TypedArray byte length
@@ -2597,7 +2661,7 @@ Global<Value>* v8_Uint8Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, 
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Uint8Array> arr = Uint8Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create an Int8Array view over an ArrayBuffer
@@ -2608,7 +2672,7 @@ Global<Value>* v8_Int8Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, s
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Int8Array> arr = Int8Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a Uint8ClampedArray view over an ArrayBuffer
@@ -2619,7 +2683,7 @@ Global<Value>* v8_Uint8ClampedArray_New(Isolate* isolate, Global<ArrayBuffer>* b
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Uint8ClampedArray> arr = Uint8ClampedArray::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a Uint16Array view over an ArrayBuffer
@@ -2630,7 +2694,7 @@ Global<Value>* v8_Uint16Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer,
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Uint16Array> arr = Uint16Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create an Int16Array view over an ArrayBuffer
@@ -2641,7 +2705,7 @@ Global<Value>* v8_Int16Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, 
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Int16Array> arr = Int16Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a Uint32Array view over an ArrayBuffer
@@ -2652,7 +2716,7 @@ Global<Value>* v8_Uint32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer,
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Uint32Array> arr = Uint32Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create an Int32Array view over an ArrayBuffer
@@ -2663,7 +2727,7 @@ Global<Value>* v8_Int32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer, 
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Int32Array> arr = Int32Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a Float32Array view over an ArrayBuffer
@@ -2674,7 +2738,7 @@ Global<Value>* v8_Float32Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Float32Array> arr = Float32Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a Float64Array view over an ArrayBuffer
@@ -2685,7 +2749,7 @@ Global<Value>* v8_Float64Array_New(Isolate* isolate, Global<ArrayBuffer>* buffer
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<Float64Array> arr = Float64Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a BigInt64Array view over an ArrayBuffer
@@ -2696,7 +2760,7 @@ Global<Value>* v8_BigInt64Array_New(Isolate* isolate, Global<ArrayBuffer>* buffe
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<BigInt64Array> arr = BigInt64Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a BigUint64Array view over an ArrayBuffer
@@ -2707,7 +2771,7 @@ Global<Value>* v8_BigUint64Array_New(Isolate* isolate, Global<ArrayBuffer>* buff
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<BigUint64Array> arr = BigUint64Array::New(local_buffer, byte_offset, length);
-    return new Global<Value>(isolate, arr);
+    return trackHandle(new Global<Value>(isolate, arr));
 }
 
 /// Create a DataView over an ArrayBuffer
@@ -2718,7 +2782,7 @@ Global<Value>* v8_DataView_New(Isolate* isolate, Global<ArrayBuffer>* buffer, si
     Local<ArrayBuffer> local_buffer = buffer->Get(isolate);
     
     Local<DataView> view = DataView::New(local_buffer, byte_offset, byte_length);
-    return new Global<Value>(isolate, view);
+    return trackHandle(new Global<Value>(isolate, view));
 }
 
 // ============================================================================
@@ -2995,7 +3059,7 @@ Global<Object>* v8_AsyncIterator_New(
     obj->Set(ctx, async_iterator_symbol, self_fn).Check();
     
     // Return as Global handle
-    return new Global<Object>(isolate, obj);
+    return trackHandle(new Global<Object>(isolate, obj));
 }
 
 /// Dispose an async iterator object and free its internal data
@@ -3268,7 +3332,7 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
         return nullptr;
     }
     
-    return new Global<Context>(isolate, context);
+    return trackHandle(new Global<Context>(isolate, context));
 }
 
 /// Check if a snapshot blob is valid
