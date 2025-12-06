@@ -99,10 +99,15 @@ pub const CookieError = algorithms.CookieError;
 pub const SetCookieOptions = algorithms.SetCookieOptions;
 pub const DeleteCookieOptions = algorithms.DeleteCookieOptions;
 
+// Storage integration
+pub const storage_integration = @import("storage_integration.zig");
+pub const CookieStorageArea = storage_integration.CookieStorageArea;
+
 test {
     _ = cookie;
     _ = validation;
     _ = domain_matching;
     _ = jar;
     _ = algorithms;
+    _ = storage_integration;
 }
