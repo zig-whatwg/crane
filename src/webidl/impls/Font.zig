@@ -50,4 +50,3 @@ pub fn get_glyphsRendered(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
-

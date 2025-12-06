@@ -58,4 +58,3 @@ pub fn call_getOffsetReferenceSpace(instance: *runtime.Instance, originOffset: *
     _ = originOffset;
     return error.NotImplemented;
 }
-

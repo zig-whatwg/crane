@@ -62,4 +62,3 @@ pub fn get_overrideColors(instance: *runtime.Instance) anyerror!typedefs.CSSOMSt
     _ = instance;
     return error.NotImplemented;
 }
-

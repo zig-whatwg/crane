@@ -154,4 +154,3 @@ pub fn call_setSinkId(instance: *runtime.Instance, sinkId: *const anyopaque) any
     _ = sinkId;
     return error.NotImplemented;
 }
-

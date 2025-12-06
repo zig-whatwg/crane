@@ -77,4 +77,3 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHa
     _ = value;
     return error.NotImplemented;
 }
-

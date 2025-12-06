@@ -57,4 +57,3 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) a
     _ = value;
     return error.NotImplemented;
 }
-

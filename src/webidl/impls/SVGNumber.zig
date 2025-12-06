@@ -51,4 +51,3 @@ pub fn set_value(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

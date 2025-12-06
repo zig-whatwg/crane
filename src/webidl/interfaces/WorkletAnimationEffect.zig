@@ -1,5 +1,5 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,40 +22,38 @@ pub const WorkletAnimationEffect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "AnimationWorklet" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .AnimationWorklet = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "localTime", "get_localTime", "set_localTime" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTiming", "call_getTiming", 0 },
             .{ "getComputedTiming", "call_getComputedTiming", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getTiming",
             "getComputedTiming",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "localTime", "get_localTime", "set_localTime" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -69,13 +67,14 @@ pub const WorkletAnimationEffect = struct {
     );
 
     const delegates = .{
-
         .get_localTime = &get_localTime,
 
         .set_localTime = &set_localTime,
 
         .call_getComputedTiming = &call_getComputedTiming,
         .call_getTiming = &call_getTiming,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -104,5 +103,4 @@ pub const WorkletAnimationEffect = struct {
     pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!ComputedEffectTiming {
         return try WorkletAnimationEffectImpl.call_getComputedTiming(instance);
     }
-
 };

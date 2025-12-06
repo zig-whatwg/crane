@@ -1,5 +1,5 @@
 //! Generated from: ink-enhancement.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,38 +23,36 @@ pub const DelegatedInkTrailPresenter = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "presentationArea", "get_presentationArea", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateInkTrailStartPoint", "call_updateInkTrailStartPoint", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "updateInkTrailStartPoint",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "presentationArea", "get_presentationArea", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -68,10 +66,11 @@ pub const DelegatedInkTrailPresenter = struct {
     );
 
     const delegates = .{
-
         .get_presentationArea = &get_presentationArea,
 
         .call_updateInkTrailStartPoint = &call_updateInkTrailStartPoint,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -90,8 +89,6 @@ pub const DelegatedInkTrailPresenter = struct {
     }
 
     pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtime.Instance, style: InkTrailStyle) anyerror!void {
-        
         return try DelegatedInkTrailPresenterImpl.call_updateInkTrailStartPoint(instance, event, style);
     }
-
 };

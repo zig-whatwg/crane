@@ -1,5 +1,5 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,41 +23,39 @@ pub const RTCEncodedAudioFrame = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", "set_data" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getMetadata", "call_getMetadata", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getMetadata",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", "set_data" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -71,12 +69,13 @@ pub const RTCEncodedAudioFrame = struct {
     );
 
     const delegates = .{
-
         .get_data = &get_data,
 
         .set_data = &set_data,
 
         .call_getMetadata = &call_getMetadata,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -107,5 +106,4 @@ pub const RTCEncodedAudioFrame = struct {
     pub fn call_getMetadata(instance: *runtime.Instance) anyerror!RTCEncodedAudioFrameMetadata {
         return try RTCEncodedAudioFrameImpl.call_getMetadata(instance);
     }
-
 };

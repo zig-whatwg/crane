@@ -104,4 +104,3 @@ pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
     _ = count;
     return error.NotImplemented;
 }
-

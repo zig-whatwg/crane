@@ -68,4 +68,3 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -156,4 +156,3 @@ pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Inst
     _ = view;
     return null;
 }
-

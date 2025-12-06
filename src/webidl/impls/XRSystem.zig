@@ -67,4 +67,3 @@ pub fn call_isSessionSupported(instance: *runtime.Instance, mode: enums.XRSessio
     _ = mode;
     return error.NotImplemented;
 }
-

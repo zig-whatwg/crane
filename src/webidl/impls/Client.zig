@@ -76,4 +76,3 @@ pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, 
     _ = transfer;
     return error.NotImplemented;
 }
-

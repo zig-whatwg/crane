@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -300,6 +300,8 @@ pub const HTMLScriptElement = struct {
         .set_src = &set_src,
         .set_text = &set_text,
         .set_type = &set_type,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -531,69 +533,43 @@ pub const HTMLScriptElement = struct {
         return try HTMLScriptElementImpl.call_supports(instance, @"type");
     }
 
-    // =============================================================================
-    // Script Preparation and Execution Algorithms (HTML Standard §4.12.1.1)
-    // =============================================================================
+    // =========================================================================
+    // Custom internal functions (not from WebIDL, delegated to impl)
+    // These are HTML spec-defined internal slot accessors needed by script_execution
+    // Per Golden Rule #12: External code calls interfaces, not impls
+    // =========================================================================
 
-    /// Prepare the script element
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
-    ///
-    /// This is the main entry point for script preparation. It determines the script type,
-    /// validates preconditions, and either immediately executes (for inline classic scripts)
-    /// or queues the script for later execution.
-    ///
-    /// Returns true if the script was prepared successfully and may need execution,
-    /// false if preparation was aborted.
-    pub fn prepareScriptElement(
-        allocator: std.mem.Allocator,
-        script_element: *runtime.Instance,
-    ) HTMLScriptElementImpl.ScriptExecutionError!bool {
-        return HTMLScriptElementImpl.prepareScriptElement(allocator, script_element);
+    /// Check if script is ready to be parser-executed
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#ready-to-be-parser-executed
+    pub fn isReadyToBeParserExecuted(instance: *runtime.Instance) bool {
+        return HTMLScriptElementImpl.isReadyToBeParserExecuted(instance);
     }
 
-    /// Execute the script element
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
-    ///
-    /// Executes the prepared script using V8.
-    pub fn executeScriptElement(
-        allocator: std.mem.Allocator,
-        script_element: *runtime.Instance,
-    ) HTMLScriptElementImpl.ScriptExecutionError!void {
-        return HTMLScriptElementImpl.executeScriptElement(allocator, script_element);
+    /// Set ready to be parser-executed flag
+    pub fn setReadyToBeParserExecuted(instance: *runtime.Instance, value: bool) void {
+        HTMLScriptElementImpl.setReadyToBeParserExecuted(instance, value);
     }
-
-    // =============================================================================
-    // Internal State Accessors (for script execution algorithms)
-    // =============================================================================
 
     /// Check if script has already started
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#already-started
     pub fn hasAlreadyStarted(instance: *runtime.Instance) bool {
         return HTMLScriptElementImpl.hasAlreadyStarted(instance);
     }
 
-    /// Get the parser document for this script element
-    pub fn getParserDocument(instance: *runtime.Instance) ?*runtime.Instance {
-        return HTMLScriptElementImpl.getParserDocument(instance);
-    }
-
-    /// Set the parser document for this script element
-    pub fn setParserDocument(instance: *runtime.Instance, document: ?*runtime.Instance) void {
-        HTMLScriptElementImpl.setParserDocument(instance, document);
-    }
-
-    /// Set force_async to false (called by parser)
-    pub fn clearForceAsync(instance: *runtime.Instance) void {
-        HTMLScriptElementImpl.clearForceAsync(instance);
-    }
-
-    /// Set already_started flag
+    /// Set already started flag
     pub fn setAlreadyStarted(instance: *runtime.Instance, value: bool) void {
         HTMLScriptElementImpl.setAlreadyStarted(instance, value);
     }
 
-    /// Set preparation-time document
-    pub fn setPreparationTimeDocument(instance: *runtime.Instance, document: ?*runtime.Instance) void {
-        HTMLScriptElementImpl.setPreparationTimeDocument(instance, document);
+    /// Get parser document
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#parser-document
+    pub fn getParserDocument(instance: *runtime.Instance) ?*runtime.Instance {
+        return HTMLScriptElementImpl.getParserDocument(instance);
+    }
+
+    /// Set parser document
+    pub fn setParserDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) void {
+        HTMLScriptElementImpl.setParserDocument(instance, doc);
     }
 
     /// Get preparation-time document
@@ -601,39 +577,44 @@ pub const HTMLScriptElement = struct {
         return HTMLScriptElementImpl.getPreparationTimeDocument(instance);
     }
 
-    /// Get the script type
+    /// Set preparation-time document
+    pub fn setPreparationTimeDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) void {
+        HTMLScriptElementImpl.setPreparationTimeDocument(instance, doc);
+    }
+
+    /// Get script type
     pub fn getScriptType(instance: *runtime.Instance) HTMLScriptElementImpl.ScriptType {
         return HTMLScriptElementImpl.getScriptType(instance);
     }
 
-    /// Set the script type
+    /// Set script type
     pub fn setScriptType(instance: *runtime.Instance, script_type: HTMLScriptElementImpl.ScriptType) void {
         HTMLScriptElementImpl.setScriptType(instance, script_type);
     }
 
-    /// Set from_external_file flag
-    pub fn setFromExternalFile(instance: *runtime.Instance, value: bool) void {
-        HTMLScriptElementImpl.setFromExternalFile(instance, value);
-    }
-
-    /// Get from_external_file flag
+    /// Check if from external file
     pub fn isFromExternalFile(instance: *runtime.Instance) bool {
         return HTMLScriptElementImpl.isFromExternalFile(instance);
     }
 
-    /// Get the script result
+    /// Set from external file flag
+    pub fn setFromExternalFile(instance: *runtime.Instance, value: bool) void {
+        HTMLScriptElementImpl.setFromExternalFile(instance, value);
+    }
+
+    /// Get script result
     pub fn getResult(instance: *runtime.Instance) HTMLScriptElementImpl.ScriptResult {
         return HTMLScriptElementImpl.getResult(instance);
     }
 
-    /// Set the script result
+    /// Set script result
     pub fn setResult(instance: *runtime.Instance, result: HTMLScriptElementImpl.ScriptResult) void {
         HTMLScriptElementImpl.setResult(instance, result);
     }
 
-    /// Cache the source text for inline scripts
-    pub fn cacheSourceText(instance: *runtime.Instance, text: []const u8) !void {
-        return HTMLScriptElementImpl.cacheSourceText(instance, text);
+    /// Cache source text for execution
+    pub fn cacheSourceText(instance: *runtime.Instance, source: []const u8) !void {
+        return HTMLScriptElementImpl.cacheSourceText(instance, source);
     }
 
     /// Get cached source text
@@ -641,25 +622,32 @@ pub const HTMLScriptElement = struct {
         return HTMLScriptElementImpl.getCachedSourceText(instance);
     }
 
-    /// Check if script is ready to be parser-executed
-    pub fn isReadyToBeParserExecuted(instance: *runtime.Instance) bool {
-        return HTMLScriptElementImpl.isReadyToBeParserExecuted(instance);
+    /// Clear force async flag
+    pub fn clearForceAsync(instance: *runtime.Instance) void {
+        HTMLScriptElementImpl.clearForceAsync(instance);
     }
 
-    /// Set ready_to_be_parser_executed flag
-    pub fn setReadyToBeParserExecuted(instance: *runtime.Instance, value: bool) void {
-        HTMLScriptElementImpl.setReadyToBeParserExecuted(instance, value);
-    }
-
-    /// Get internal state (for handleScriptScheduling which needs force_async)
+    /// Get internal state (for direct field access when needed)
     pub fn getInternal(instance: *runtime.Instance) ?*HTMLScriptElementImpl.InternalState {
         return HTMLScriptElementImpl.getInternal(instance);
     }
 
-    // Re-export types for external use
+    /// Prepare the script element
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
+    pub fn prepareScriptElement(allocator: std.mem.Allocator, instance: *runtime.Instance) !bool {
+        return HTMLScriptElementImpl.prepareScriptElement(allocator, instance);
+    }
+
+    /// Execute the script element
+    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
+    pub fn executeScriptElement(allocator: std.mem.Allocator, instance: *runtime.Instance) !void {
+        return HTMLScriptElementImpl.executeScriptElement(allocator, instance);
+    }
+
+    // Re-export types from impl for external use
     pub const ScriptType = HTMLScriptElementImpl.ScriptType;
     pub const ScriptResult = HTMLScriptElementImpl.ScriptResult;
     pub const ClassicScript = HTMLScriptElementImpl.ClassicScript;
     pub const ModuleScript = HTMLScriptElementImpl.ModuleScript;
-    pub const ScriptExecutionError = HTMLScriptElementImpl.ScriptExecutionError;
+    pub const InternalState = HTMLScriptElementImpl.InternalState;
 };

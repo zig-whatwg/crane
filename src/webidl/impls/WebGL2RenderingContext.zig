@@ -2071,4 +2071,3 @@ pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, 
     _ = location;
     return error.NotImplemented;
 }
-

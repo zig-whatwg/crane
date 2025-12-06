@@ -60,4 +60,3 @@ pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(dictionari
     _ = options;
     return error.NotImplemented;
 }
-

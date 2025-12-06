@@ -1,0 +1,32 @@
+{
+  "run_info": {
+    "product": "whatwg-zig",
+    "browser_version": "0.1.0",
+    "os": "darwin",
+    "os_version": "",
+    "processor": "aarch64",
+    "revision": ""
+  },
+  "time_start": 1765017855551,
+  "time_end": 1765017875594,
+  "results": [
+    {
+      "test": "url/url-constructor.any.js",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Loading data…", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: JSON parse failed\""}
+      ]
+    },
+    {
+      "test": "url/url-setters.any.js",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Loading data…", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: JSON parse failed\""}
+      ]
+    }
+  ]
+}

@@ -65,4 +65,3 @@ pub fn get_userInsertedDevices(instance: *runtime.Instance) anyerror!*const anyo
     _ = instance;
     return error.NotImplemented;
 }
-

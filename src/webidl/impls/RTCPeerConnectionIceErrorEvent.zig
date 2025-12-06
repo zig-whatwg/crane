@@ -82,4 +82,3 @@ pub fn get_errorText(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
-

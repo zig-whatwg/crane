@@ -45,4 +45,3 @@ pub fn call_drawBuffersWEBGL(instance: *runtime.Instance, buffers: *const anyopa
     _ = buffers;
     return error.NotImplemented;
 }
-

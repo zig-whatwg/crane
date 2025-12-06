@@ -282,4 +282,3 @@ pub fn set_target(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

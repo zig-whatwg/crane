@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,27 +30,27 @@ pub const RTCDTMFSender = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ontonechange", "get_ontonechange", "set_ontonechange" },
             .{ "canInsertDTMF", "get_canInsertDTMF", null },
             .{ "toneBuffer", "get_toneBuffer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertDTMF", "call_insertDTMF", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "insertDTMF",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -58,18 +58,17 @@ pub const RTCDTMFSender = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ontonechange", "get_ontonechange", "set_ontonechange" },
             .{ "canInsertDTMF", "get_canInsertDTMF", null },
             .{ "toneBuffer", "get_toneBuffer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -85,7 +84,6 @@ pub const RTCDTMFSender = struct {
     );
 
     const delegates = .{
-
         .get_canInsertDTMF = &get_canInsertDTMF,
         .get_ontonechange = &get_ontonechange,
         .get_toneBuffer = &get_toneBuffer,
@@ -93,6 +91,8 @@ pub const RTCDTMFSender = struct {
         .set_ontonechange = &set_ontonechange,
 
         .call_insertDTMF = &call_insertDTMF,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -123,8 +123,6 @@ pub const RTCDTMFSender = struct {
     }
 
     pub fn call_insertDTMF(instance: *runtime.Instance, tones: DOMString, duration: webidl.Opt(u32), interToneGap: webidl.Opt(u32)) anyerror!void {
-        
         return try RTCDTMFSenderImpl.call_insertDTMF(instance, tones, duration, interToneGap);
     }
-
 };

@@ -50,4 +50,3 @@ pub fn get_animatedPoints(instance: *runtime.Instance) anyerror!*runtime.Instanc
     _ = instance;
     return error.NotImplemented;
 }
-

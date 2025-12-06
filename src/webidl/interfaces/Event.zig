@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,10 +24,10 @@ pub const Event = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -44,7 +44,7 @@ pub const Event = struct {
             .{ "isTrusted", "get_isTrusted", null },
             .{ "timeStamp", "get_timeStamp", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "composedPath", "call_composedPath", 0 },
@@ -53,7 +53,7 @@ pub const Event = struct {
             .{ "preventDefault", "call_preventDefault", 0 },
             .{ "initEvent", "call_initEvent", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "NONE", "get_NONE" },
@@ -61,7 +61,7 @@ pub const Event = struct {
             .{ "AT_TARGET", "get_AT_TARGET" },
             .{ "BUBBLING_PHASE", "get_BUBBLING_PHASE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "composedPath",
@@ -70,11 +70,10 @@ pub const Event = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -91,11 +90,10 @@ pub const Event = struct {
             .{ "isTrusted", "get_isTrusted", null },
             .{ "timeStamp", "get_timeStamp", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -103,7 +101,7 @@ pub const Event = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             target: ?*runtime.Instance = null,
             srcElement: ?*runtime.Instance = null,
             currentTarget: ?*runtime.Instance = null,
@@ -145,7 +143,6 @@ pub const Event = struct {
     }
 
     const delegates = .{
-
         .get_AT_TARGET = &get_AT_TARGET,
         .get_BUBBLING_PHASE = &get_BUBBLING_PHASE,
         .get_CAPTURING_PHASE = &get_CAPTURING_PHASE,
@@ -172,6 +169,8 @@ pub const Event = struct {
         .call_preventDefault = &call_preventDefault,
         .call_stopImmediatePropagation = &call_stopImmediatePropagation,
         .call_stopPropagation = &call_stopPropagation,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -257,7 +256,6 @@ pub const Event = struct {
     }
 
     pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
-        
         return try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
     }
 
@@ -272,5 +270,4 @@ pub const Event = struct {
     pub fn call_preventDefault(instance: *runtime.Instance) anyerror!void {
         return try EventImpl.call_preventDefault(instance);
     }
-
 };

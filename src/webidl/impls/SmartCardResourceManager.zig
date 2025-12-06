@@ -44,4 +44,3 @@ pub fn call_establishContext(instance: *runtime.Instance) anyerror!*const anyopa
     _ = instance;
     return error.NotImplemented;
 }
-

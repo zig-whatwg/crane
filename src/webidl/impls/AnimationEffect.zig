@@ -103,4 +103,3 @@ pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries
     _ = instance;
     return error.NotImplemented;
 }
-

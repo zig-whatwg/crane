@@ -64,4 +64,3 @@ pub fn call_getDetails(instance: *runtime.Instance, itemIds: *const anyopaque) a
     _ = itemIds;
     return error.NotImplemented;
 }
-

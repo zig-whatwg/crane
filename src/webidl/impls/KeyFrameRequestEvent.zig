@@ -59,4 +59,3 @@ pub fn get_rid(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     _ = instance;
     return null;
 }
-

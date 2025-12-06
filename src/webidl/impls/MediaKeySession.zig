@@ -122,4 +122,3 @@ pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.D
     _ = initData;
     return error.NotImplemented;
 }
-

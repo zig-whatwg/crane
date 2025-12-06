@@ -103,4 +103,3 @@ pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, 
     _ = r1;
     return error.NotImplemented;
 }
-

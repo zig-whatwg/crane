@@ -86,4 +86,3 @@ pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

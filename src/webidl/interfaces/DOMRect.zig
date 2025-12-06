@@ -1,5 +1,5 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,13 +25,13 @@ pub const DOMRect = struct {
             .{ .name = "Serializable" },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "SVGRect" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -39,26 +39,25 @@ pub const DOMRect = struct {
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "fromRect", "call_fromRect", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fromRect",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "toJSON",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -66,11 +65,10 @@ pub const DOMRect = struct {
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -87,11 +85,12 @@ pub const DOMRect = struct {
     );
 
     const delegates = .{
-
         .get_height = &get_height,
         .get_width = &get_width,
         .get_x = &get_x,
         .get_y = &get_y,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -130,8 +129,7 @@ pub const DOMRect = struct {
     /// Extended attributes: [NewObject]
     pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DOMRectImpl.call_fromRect(instance, other);
     }
-
 };

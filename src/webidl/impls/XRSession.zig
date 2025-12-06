@@ -365,4 +365,3 @@ pub fn call_resumeDepthSensing(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

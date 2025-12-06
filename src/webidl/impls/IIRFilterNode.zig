@@ -61,4 +61,3 @@ pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *cons
     _ = phaseResponse;
     return error.NotImplemented;
 }
-

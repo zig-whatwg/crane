@@ -44,4 +44,3 @@ pub fn get_transitionProperty(instance: *runtime.Instance) anyerror!typedefs.CSS
     _ = instance;
     return error.NotImplemented;
 }
-

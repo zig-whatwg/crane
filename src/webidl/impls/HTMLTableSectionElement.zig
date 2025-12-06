@@ -123,4 +123,3 @@ pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyer
     _ = index;
     return error.NotImplemented;
 }
-

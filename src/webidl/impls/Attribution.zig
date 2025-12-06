@@ -58,4 +58,3 @@ pub fn call_saveImpression(instance: *runtime.Instance, options: dictionaries.At
     _ = options;
     return error.NotImplemented;
 }
-

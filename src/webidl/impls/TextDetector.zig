@@ -57,4 +57,3 @@ pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSourc
     _ = image;
     return error.NotImplemented;
 }
-

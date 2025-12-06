@@ -211,4 +211,3 @@ pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32) 
     _ = z;
     return error.NotImplemented;
 }
-

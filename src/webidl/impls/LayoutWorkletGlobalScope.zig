@@ -46,4 +46,3 @@ pub fn call_registerLayout(instance: *runtime.Instance, name: runtime.DOMString,
     _ = layoutCtor;
     return error.NotImplemented;
 }
-

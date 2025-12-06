@@ -65,4 +65,3 @@ pub fn get_oldSubscription(instance: *runtime.Instance) anyerror!?*runtime.Insta
     _ = instance;
     return null;
 }
-

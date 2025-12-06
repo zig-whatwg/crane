@@ -110,4 +110,3 @@ pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dict
     _ = options;
     return error.NotImplemented;
 }
-

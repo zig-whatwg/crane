@@ -44,4 +44,3 @@ pub fn call_getChildren(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -89,4 +89,3 @@ pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!?i32 {
     _ = instance;
     return null;
 }
-

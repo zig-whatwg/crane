@@ -1,5 +1,5 @@
 //! Generated from: css-conditional.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -28,10 +28,10 @@ pub const CSSMediaRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "media", "get_media", null },
@@ -39,23 +39,22 @@ pub const CSSMediaRule = struct {
             .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertRule", "call_insertRule", 2 },
             .{ "deleteRule", "call_deleteRule", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "insertRule",
             "deleteRule",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "media", "get_media", null },
@@ -63,11 +62,10 @@ pub const CSSMediaRule = struct {
             .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -84,13 +82,14 @@ pub const CSSMediaRule = struct {
     );
 
     const delegates = .{
-
         .get_cssRules = &get_cssRules,
         .get_matches = &get_matches,
         .get_media = &get_media,
 
         .call_deleteRule = &call_deleteRule,
         .call_insertRule = &call_insertRule,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -125,13 +124,10 @@ pub const CSSMediaRule = struct {
     }
 
     pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
-        
         return try CSSMediaRuleImpl.call_deleteRule(instance, index);
     }
 
     pub fn call_insertRule(instance: *runtime.Instance, rule: DOMString, index: u32) anyerror!u32 {
-        
         return try CSSMediaRuleImpl.call_insertRule(instance, rule, index);
     }
-
 };

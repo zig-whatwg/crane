@@ -57,4 +57,3 @@ pub fn set_cssText(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     _ = value;
     return error.NotImplemented;
 }
-

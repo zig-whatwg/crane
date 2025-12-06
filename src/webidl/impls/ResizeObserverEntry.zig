@@ -68,4 +68,3 @@ pub fn get_devicePixelContentBoxSize(instance: *runtime.Instance) anyerror!*cons
     _ = instance;
     return error.NotImplemented;
 }
-

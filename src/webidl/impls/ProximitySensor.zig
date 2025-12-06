@@ -70,4 +70,3 @@ pub fn get_near(instance: *runtime.Instance) anyerror!?bool {
     _ = instance;
     return null;
 }
-

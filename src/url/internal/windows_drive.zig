@@ -99,7 +99,3 @@ pub fn startsWithWindowsDriveLetter(s: []const u8) bool {
     const third = s[2];
     return third == '/' or third == '\\' or third == '?' or third == '#';
 }
-
-
-
-

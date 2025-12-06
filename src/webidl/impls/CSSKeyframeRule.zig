@@ -57,4 +57,3 @@ pub fn set_keyText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
     _ = value;
     return error.NotImplemented;
 }
-

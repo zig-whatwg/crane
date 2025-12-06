@@ -902,4 +902,3 @@ pub fn call_div(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.I
     _ = options;
     return error.NotImplemented;
 }
-

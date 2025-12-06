@@ -1,5 +1,5 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -28,10 +28,10 @@ pub const SpeechSynthesisEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "utterance", "get_utterance", null },
@@ -40,15 +40,13 @@ pub const SpeechSynthesisEvent = struct {
             .{ "elapsedTime", "get_elapsedTime", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -57,7 +55,7 @@ pub const SpeechSynthesisEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "utterance", "get_utterance", null },
@@ -66,11 +64,10 @@ pub const SpeechSynthesisEvent = struct {
             .{ "elapsedTime", "get_elapsedTime", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -88,12 +85,13 @@ pub const SpeechSynthesisEvent = struct {
     );
 
     const delegates = .{
-
         .get_charIndex = &get_charIndex,
         .get_charLength = &get_charLength,
         .get_elapsedTime = &get_elapsedTime,
         .get_name = &get_name,
         .get_utterance = &get_utterance,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -132,5 +130,4 @@ pub const SpeechSynthesisEvent = struct {
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try SpeechSynthesisEventImpl.get_name(instance);
     }
-
 };

@@ -72,4 +72,3 @@ pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) a
     _ = event;
     return error.NotImplemented;
 }
-

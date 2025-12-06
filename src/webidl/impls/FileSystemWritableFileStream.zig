@@ -59,4 +59,3 @@ pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!*const any
     _ = position;
     return error.NotImplemented;
 }
-

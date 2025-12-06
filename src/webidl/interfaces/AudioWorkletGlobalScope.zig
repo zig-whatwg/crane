@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,10 +26,10 @@ pub const AudioWorkletGlobalScope = struct {
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worklet", "AudioWorklet" } } },
             .{ .name = "Exposed", .value = .{ .identifier = "AudioWorklet" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .AudioWorklet = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "currentFrame", "get_currentFrame", null },
@@ -38,21 +38,20 @@ pub const AudioWorkletGlobalScope = struct {
             .{ "renderQuantumSize", "get_renderQuantumSize", null },
             .{ "port", "get_port", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "registerProcessor", "call_registerProcessor", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "registerProcessor",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "currentFrame", "get_currentFrame", null },
@@ -61,11 +60,10 @@ pub const AudioWorkletGlobalScope = struct {
             .{ "renderQuantumSize", "get_renderQuantumSize", null },
             .{ "port", "get_port", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -83,7 +81,6 @@ pub const AudioWorkletGlobalScope = struct {
     );
 
     const delegates = .{
-
         .get_currentFrame = &get_currentFrame,
         .get_currentTime = &get_currentTime,
         .get_port = &get_port,
@@ -91,6 +88,8 @@ pub const AudioWorkletGlobalScope = struct {
         .get_sampleRate = &get_sampleRate,
 
         .call_registerProcessor = &call_registerProcessor,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -125,8 +124,6 @@ pub const AudioWorkletGlobalScope = struct {
     }
 
     pub fn call_registerProcessor(instance: *runtime.Instance, name: DOMString, processorCtor: AudioWorkletProcessorConstructor) anyerror!void {
-        
         return try AudioWorkletGlobalScopeImpl.call_registerProcessor(instance, name, processorCtor);
     }
-
 };

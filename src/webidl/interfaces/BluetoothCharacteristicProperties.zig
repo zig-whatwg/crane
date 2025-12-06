@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,10 +21,10 @@ pub const BluetoothCharacteristicProperties = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "broadcast", "get_broadcast", null },
@@ -37,19 +37,16 @@ pub const BluetoothCharacteristicProperties = struct {
             .{ "reliableWrite", "get_reliableWrite", null },
             .{ "writableAuxiliaries", "get_writableAuxiliaries", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "broadcast", "get_broadcast", null },
@@ -62,11 +59,10 @@ pub const BluetoothCharacteristicProperties = struct {
             .{ "reliableWrite", "get_reliableWrite", null },
             .{ "writableAuxiliaries", "get_writableAuxiliaries", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -88,7 +84,6 @@ pub const BluetoothCharacteristicProperties = struct {
     );
 
     const delegates = .{
-
         .get_authenticatedSignedWrites = &get_authenticatedSignedWrites,
         .get_broadcast = &get_broadcast,
         .get_indicate = &get_indicate,
@@ -98,6 +93,8 @@ pub const BluetoothCharacteristicProperties = struct {
         .get_writableAuxiliaries = &get_writableAuxiliaries,
         .get_write = &get_write,
         .get_writeWithoutResponse = &get_writeWithoutResponse,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -146,5 +143,4 @@ pub const BluetoothCharacteristicProperties = struct {
     pub fn get_writableAuxiliaries(instance: *runtime.Instance) anyerror!bool {
         return try BluetoothCharacteristicPropertiesImpl.get_writableAuxiliaries(instance);
     }
-
 };

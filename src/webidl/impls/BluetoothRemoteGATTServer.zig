@@ -77,4 +77,3 @@ pub fn call_getPrimaryService(instance: *runtime.Instance, service: typedefs.Blu
     _ = service;
     return error.NotImplemented;
 }
-

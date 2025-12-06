@@ -52,4 +52,3 @@ pub fn call_getDepthInMeters(instance: *runtime.Instance, x: f32, y: f32) anyerr
     _ = y;
     return error.NotImplemented;
 }
-

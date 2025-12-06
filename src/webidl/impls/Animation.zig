@@ -294,4 +294,3 @@ pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) a
     _ = playbackRate;
     return error.NotImplemented;
 }
-

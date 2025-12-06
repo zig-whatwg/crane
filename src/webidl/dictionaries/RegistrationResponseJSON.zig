@@ -10,5 +10,5 @@ pub const RegistrationResponseJSON = struct {
     response: *const anyopaque,
     authenticatorAttachment: ?runtime.DOMString = null,
     clientExtensionResults: *const anyopaque,
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
 };

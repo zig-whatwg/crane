@@ -89,4 +89,3 @@ pub fn get_release(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

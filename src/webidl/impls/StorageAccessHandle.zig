@@ -110,4 +110,3 @@ pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString)
     _ = url;
     return error.NotImplemented;
 }
-

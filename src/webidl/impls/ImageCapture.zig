@@ -83,4 +83,3 @@ pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(dic
     _ = photoSettings;
     return error.NotImplemented;
 }
-

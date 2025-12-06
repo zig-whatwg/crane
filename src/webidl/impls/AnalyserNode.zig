@@ -139,4 +139,3 @@ pub fn call_getByteTimeDomainData(instance: *runtime.Instance, array: *const any
     _ = array;
     return error.NotImplemented;
 }
-

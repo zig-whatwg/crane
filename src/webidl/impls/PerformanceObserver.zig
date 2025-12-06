@@ -77,4 +77,3 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!typedefs.Performan
     _ = instance;
     return error.NotImplemented;
 }
-

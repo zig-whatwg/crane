@@ -429,4 +429,3 @@ pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind,
     _ = language;
     return error.NotImplemented;
 }
-

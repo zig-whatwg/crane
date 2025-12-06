@@ -50,4 +50,3 @@ pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.In
     _ = instance;
     return error.NotImplemented;
 }
-

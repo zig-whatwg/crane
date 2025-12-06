@@ -58,4 +58,3 @@ pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

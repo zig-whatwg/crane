@@ -79,4 +79,3 @@ pub fn set_normalize(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

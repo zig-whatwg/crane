@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const MessageEventSource = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
-    variant_3: *const anyopaque,
-    variant_4: *const anyopaque,
+    window_proxy: typedefs.WindowProxy,
+    message_port: *runtime.Instance,
+    service_worker: *runtime.Instance,
+    htmlportal_element: *runtime.Instance,
+    portal_host: *runtime.Instance,
 };

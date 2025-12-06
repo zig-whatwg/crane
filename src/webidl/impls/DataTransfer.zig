@@ -126,4 +126,3 @@ pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data
     _ = data;
     return error.NotImplemented;
 }
-

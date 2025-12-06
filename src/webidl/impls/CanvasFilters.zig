@@ -51,4 +51,3 @@ pub fn set_filter(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

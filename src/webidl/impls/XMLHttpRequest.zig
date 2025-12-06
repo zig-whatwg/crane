@@ -409,7 +409,7 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
         // Cast to V8-specific callback wrapper
         // This works because the conversion code in interface.zig casts the
         // v8.CallbackWrapper* to runtime.CallbackWrapper* for storage
-        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper_ptr));
+        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(@constCast(callback_wrapper_ptr)));
 
         // engine_ctx is the V8 Context
         const context: *v8.Context = @ptrCast(@alignCast(engine_ctx));

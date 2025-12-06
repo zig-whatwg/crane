@@ -316,4 +316,3 @@ pub fn call_install(instance: *runtime.Instance, options: dictionaries.SpeechRec
     _ = options;
     return error.NotImplemented;
 }
-

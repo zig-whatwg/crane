@@ -59,4 +59,3 @@ pub fn get_responseCode(instance: *runtime.Instance) anyerror!enums.SmartCardRes
     _ = instance;
     return error.NotImplemented;
 }
-

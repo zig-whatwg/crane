@@ -1,5 +1,5 @@
 //! Generated from: svg-paths.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,35 +21,31 @@ pub const SVGPathSegment = struct {
         pub const extended_attributes = .{
             .{ .name = "NoInterfaceObject" },
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", "set_type" },
             .{ "values", "get_values", "set_values" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", "set_type" },
             .{ "values", "get_values", "set_values" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -57,19 +53,20 @@ pub const SVGPathSegment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             values: runtime.sequence(f32) = undefined,
             _internal: ?*SVGPathSegmentImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_type = &get_type,
         .get_values = &get_values,
 
         .set_type = &set_type,
         .set_values = &set_values,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -98,5 +95,4 @@ pub const SVGPathSegment = struct {
     pub fn set_values(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
         try SVGPathSegmentImpl.set_values(instance, value);
     }
-
 };

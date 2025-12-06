@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const CryptoKeyID = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    small_crypto_key_id: typedefs.SmallCryptoKeyID,
+    bigint: *const anyopaque,
 };

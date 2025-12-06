@@ -281,5 +281,3 @@ pub const ValidationErrorCollector = struct {
         return self.errors.toSlice();
     }
 };
-
-

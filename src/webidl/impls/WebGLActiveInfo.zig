@@ -56,4 +56,3 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

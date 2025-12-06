@@ -87,6 +87,13 @@ pub fn clear() void {
     template_count = 0;
     // Increment generation to invalidate all per-interface static caches
     cache_generation +%= 1;
+    // Clear the async iterator template cache in C++ layer
+    // This cache is also isolate-specific and must be cleared
+    v8.v8_ClearAsyncIteratorTemplateCache();
+    // Clear module callbacks - their user_data pointers become invalid
+    // when the Zig runtime is deinitialized
+    v8.v8_ClearModuleResolveCallback();
+    v8.v8_ClearDynamicImportCallback();
     // Don't reset initialized - the registry can be reused
 }
 

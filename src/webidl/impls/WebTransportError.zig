@@ -65,4 +65,3 @@ pub fn get_streamErrorCode(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
-

@@ -77,4 +77,3 @@ pub fn get_inverse(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

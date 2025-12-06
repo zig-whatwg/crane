@@ -91,4 +91,3 @@ pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: typedef
     _ = data;
     return error.NotImplemented;
 }
-

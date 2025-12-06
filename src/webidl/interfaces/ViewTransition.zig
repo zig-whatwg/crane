@@ -1,5 +1,5 @@
 //! Generated from: css-view-transitions.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,10 +22,10 @@ pub const ViewTransition = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "updateCallbackDone", "get_updateCallbackDone", null },
@@ -34,23 +34,22 @@ pub const ViewTransition = struct {
             .{ "types", "get_types", "set_types" },
             .{ "transitionRoot", "get_transitionRoot", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "skipTransition", "call_skipTransition", 0 },
             .{ "waitUntil", "call_waitUntil", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "skipTransition",
             "waitUntil",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "updateCallbackDone", "get_updateCallbackDone", null },
@@ -59,11 +58,10 @@ pub const ViewTransition = struct {
             .{ "types", "get_types", "set_types" },
             .{ "transitionRoot", "get_transitionRoot", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -81,7 +79,6 @@ pub const ViewTransition = struct {
     );
 
     const delegates = .{
-
         .get_finished = &get_finished,
         .get_ready = &get_ready,
         .get_transitionRoot = &get_transitionRoot,
@@ -92,6 +89,8 @@ pub const ViewTransition = struct {
 
         .call_skipTransition = &call_skipTransition,
         .call_waitUntil = &call_waitUntil,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -130,12 +129,10 @@ pub const ViewTransition = struct {
     }
 
     pub fn call_waitUntil(instance: *runtime.Instance, promise: *const anyopaque) anyerror!void {
-        
         return try ViewTransitionImpl.call_waitUntil(instance, promise);
     }
 
     pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {
         return try ViewTransitionImpl.call_skipTransition(instance);
     }
-
 };

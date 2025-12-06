@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -34,25 +34,23 @@ pub const XRCubeLayer = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "space", "get_space", "set_space" },
             .{ "orientation", "get_orientation", "set_orientation" },
             .{ "onredraw", "get_onredraw", "set_onredraw" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -61,18 +59,17 @@ pub const XRCubeLayer = struct {
             "when",
             "destroy",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "space", "get_space", "set_space" },
             .{ "orientation", "get_orientation", "set_orientation" },
             .{ "onredraw", "get_onredraw", "set_onredraw" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -88,7 +85,6 @@ pub const XRCubeLayer = struct {
     );
 
     const delegates = .{
-
         .get_onredraw = &get_onredraw,
         .get_orientation = &get_orientation,
         .get_space = &get_space,
@@ -96,6 +92,8 @@ pub const XRCubeLayer = struct {
         .set_onredraw = &set_onredraw,
         .set_orientation = &set_orientation,
         .set_space = &set_space,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -132,5 +130,4 @@ pub const XRCubeLayer = struct {
     pub fn set_onredraw(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try XRCubeLayerImpl.set_onredraw(instance, value);
     }
-
 };

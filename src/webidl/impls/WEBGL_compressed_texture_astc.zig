@@ -44,4 +44,3 @@ pub fn call_getSupportedProfiles(instance: *runtime.Instance) anyerror!*const an
     _ = instance;
     return error.NotImplemented;
 }
-

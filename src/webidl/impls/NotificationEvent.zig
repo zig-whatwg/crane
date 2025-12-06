@@ -64,4 +64,3 @@ pub fn get_action(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

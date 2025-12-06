@@ -69,4 +69,3 @@ pub fn call_release(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

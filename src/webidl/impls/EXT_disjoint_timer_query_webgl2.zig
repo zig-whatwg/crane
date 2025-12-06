@@ -46,4 +46,3 @@ pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instanc
     _ = target;
     return error.NotImplemented;
 }
-

@@ -62,4 +62,3 @@ pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerro
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,10 +90,10 @@ pub const HTMLSelectElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "autocomplete", "get_autocomplete", "set_autocomplete" },
@@ -114,7 +114,7 @@ pub const HTMLSelectElement = struct {
             .{ "validationMessage", "get_validationMessage", null },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
@@ -127,7 +127,7 @@ pub const HTMLSelectElement = struct {
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
             .{ "showPicker", "call_showPicker", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
@@ -140,7 +140,7 @@ pub const HTMLSelectElement = struct {
             "setCustomValidity",
             "showPicker",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -235,7 +235,7 @@ pub const HTMLSelectElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "autocomplete", "get_autocomplete", "set_autocomplete" },
@@ -256,11 +256,10 @@ pub const HTMLSelectElement = struct {
             .{ "validationMessage", "get_validationMessage", null },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -275,7 +274,7 @@ pub const HTMLSelectElement = struct {
             name: runtime.DOMString = undefined,
             required: bool = undefined,
             size: u32 = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             options: *runtime.Instance = undefined,
             length: u32 = undefined,
             selectedOptions: *runtime.Instance = undefined,
@@ -292,7 +291,6 @@ pub const HTMLSelectElement = struct {
     );
 
     const delegates = .{
-
         .get_autocomplete = &get_autocomplete,
         .get_disabled = &get_disabled,
         .get_form = &get_form,
@@ -329,6 +327,8 @@ pub const HTMLSelectElement = struct {
         .call_reportValidity = &call_reportValidity,
         .call_setCustomValidity = &call_setCustomValidity,
         .call_showPicker = &call_showPicker,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -358,7 +358,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_autocomplete(instance, value);
     }
 
@@ -372,7 +372,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_disabled(instance, value);
     }
 
@@ -390,7 +390,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_multiple(instance, value);
     }
 
@@ -404,7 +404,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_name(instance, value);
     }
 
@@ -418,7 +418,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_required(instance, value);
     }
 
@@ -432,7 +432,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_size(instance, value);
     }
 
@@ -462,7 +462,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSelectElementImpl.set_length(instance, value);
     }
 
@@ -511,17 +511,14 @@ pub const HTMLSelectElement = struct {
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
         return try HTMLSelectElementImpl.call_item(instance, index);
     }
 
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
-        
         return try HTMLSelectElementImpl.call_namedItem(instance, name);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLSelectElementImpl.call_setCustomValidity(instance, @"error");
     }
 
@@ -530,8 +527,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try HTMLSelectElementImpl.call_add(instance, element, before);
     }
 
@@ -540,7 +536,7 @@ pub const HTMLSelectElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         return try HTMLSelectElementImpl.call_remove(instance);
     }
 
@@ -555,5 +551,4 @@ pub const HTMLSelectElement = struct {
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLSelectElementImpl.call_reportValidity(instance);
     }
-
 };

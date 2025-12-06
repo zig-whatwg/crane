@@ -58,4 +58,3 @@ pub fn get_error(instance: *runtime.Instance) anyerror!enums.SpeechSynthesisErro
     _ = instance;
     return error.NotImplemented;
 }
-

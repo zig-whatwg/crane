@@ -46,4 +46,3 @@ pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: runtime.DOMS
     _ = media;
     return error.NotImplemented;
 }
-

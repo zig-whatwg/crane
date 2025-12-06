@@ -82,4 +82,3 @@ pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowShare
     _ = destination;
     return error.NotImplemented;
 }
-

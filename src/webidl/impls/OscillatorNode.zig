@@ -85,4 +85,3 @@ pub fn call_setPeriodicWave(instance: *runtime.Instance, periodicWave: *runtime.
     _ = periodicWave;
     return error.NotImplemented;
 }
-

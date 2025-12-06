@@ -52,4 +52,3 @@ pub fn call_encodeUtf8(instance: *runtime.Instance, input: runtime.USVString) an
     _ = input;
     return error.NotImplemented;
 }
-

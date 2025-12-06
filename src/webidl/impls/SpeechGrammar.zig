@@ -64,4 +64,3 @@ pub fn set_weight(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

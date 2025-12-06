@@ -81,4 +81,3 @@ pub fn set_enabled(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

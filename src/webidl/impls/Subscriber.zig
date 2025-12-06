@@ -77,4 +77,3 @@ pub fn call_next(instance: *runtime.Instance, value: *const anyopaque) anyerror!
     _ = value;
     return error.NotImplemented;
 }
-

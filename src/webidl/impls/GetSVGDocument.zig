@@ -44,4 +44,3 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instan
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: background-fetch.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,13 +35,13 @@ pub const BackgroundFetchRegistration = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -54,21 +54,21 @@ pub const BackgroundFetchRegistration = struct {
             .{ "recordsAvailable", "get_recordsAvailable", null },
             .{ "onprogress", "get_onprogress", "set_onprogress" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "abort", "call_abort", 0 },
             .{ "match", "call_match", 1 },
             .{ "matchAll", "call_matchAll", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
             "match",
             "matchAll",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -76,7 +76,7 @@ pub const BackgroundFetchRegistration = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -89,11 +89,10 @@ pub const BackgroundFetchRegistration = struct {
             .{ "recordsAvailable", "get_recordsAvailable", null },
             .{ "onprogress", "get_onprogress", "set_onprogress" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -115,7 +114,6 @@ pub const BackgroundFetchRegistration = struct {
     );
 
     const delegates = .{
-
         .get_downloadTotal = &get_downloadTotal,
         .get_downloaded = &get_downloaded,
         .get_failureReason = &get_failureReason,
@@ -131,6 +129,8 @@ pub const BackgroundFetchRegistration = struct {
         .call_abort = &call_abort,
         .call_match = &call_match,
         .call_matchAll = &call_matchAll,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -185,7 +185,6 @@ pub const BackgroundFetchRegistration = struct {
     }
 
     pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
 
@@ -194,8 +193,6 @@ pub const BackgroundFetchRegistration = struct {
     }
 
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        
         return try BackgroundFetchRegistrationImpl.call_match(instance, request, options);
     }
-
 };

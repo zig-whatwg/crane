@@ -64,4 +64,3 @@ pub fn get_message(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

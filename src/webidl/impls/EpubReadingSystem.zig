@@ -47,4 +47,3 @@ pub fn call_hasFeature(instance: *runtime.Instance, feature: runtime.DOMString, 
     _ = version;
     return error.NotImplemented;
 }
-

@@ -280,7 +280,3 @@ fn normalizeCodePoint(cp: u21) u21 {
         else => cp,
     };
 }
-
-
-
-

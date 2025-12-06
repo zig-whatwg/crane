@@ -11,10 +11,11 @@
 //!
 //! Example usage:
 //!   const delegates = .{
+//!       .deinit = &Node.deinit,  // Optional: auto-extracted if present
 //!       .call_appendChild = &Node.call_appendChild,
 //!       .get_nodeType = &Node.get_nodeType,
 //!   };
-//!   const vtable = buildVTable(&delegates, &Node.deinit);
+//!   const vtable = buildVTable(&delegates);
 
 const std = @import("std");
 const Method = @import("instance.zig").Method;
@@ -23,25 +24,54 @@ const VTable = @import("instance.zig").VTable;
 
 /// Build a VTable from delegate functions using compile-time reflection
 ///
-/// Takes a pointer to a const delegates struct and optional deinit function.
+/// Takes a pointer to a const delegates struct. If the struct has a `.deinit` field,
+/// it will be automatically extracted and used for cleanup when V8 GC collects the wrapper.
 /// Uses compile-time reflection - NO Method enum required!
 ///
 /// Example:
 ///   const delegates = .{
+///       .deinit = &deinit,  // Auto-extracted for VTable.deinit
 ///       .call_appendChild = &impl.appendChild,
 ///       .get_nodeType = &impl.getNodeType,
 ///       .set_textContent = &impl.setTextContent,
 ///   };
-///   const vtable = buildVTable(&delegates, &Node.deinit);
+///   const vtable = buildVTable(&delegates);
 ///
 /// The delegates must be const and have a stable address (global or static).
 /// The deinit function is called when the GC collects the JS wrapper object.
-/// If not provided, defaults to null (no cleanup).
+/// If delegates doesn't have .deinit, defaults to null (no cleanup).
 pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
-    return buildVTableWithDeinit(delegates_ptr, null);
+    @setEvalBranchQuota(20000);
+
+    const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
+    if (PtrInfo != .pointer) {
+        @compileError("buildVTable expects a pointer to delegates struct");
+    }
+
+    const DelegatesType = PtrInfo.pointer.child;
+    const delegates_info = @typeInfo(DelegatesType);
+
+    if (delegates_info != .@"struct") {
+        @compileError("delegates must be a struct");
+    }
+
+    // Auto-extract .deinit from delegates if it exists
+    const deinit_fn: ?*const fn (*Instance) void = if (@hasField(DelegatesType, "deinit"))
+        delegates_ptr.deinit
+    else
+        null;
+
+    return VTable{
+        .deinit = deinit_fn,
+        .methods_ptr = @ptrCast(delegates_ptr),
+    };
 }
 
 /// Build a VTable with explicit deinit function
+///
+/// NOTE: Prefer using buildVTable() with .deinit in delegates struct instead.
+/// This function is kept for backward compatibility but is no longer needed
+/// since buildVTable() now auto-extracts .deinit from the delegates.
 pub fn buildVTableWithDeinit(comptime delegates_ptr: anytype, comptime deinit_fn: ?*const fn (*Instance) void) VTable {
     @setEvalBranchQuota(20000);
 

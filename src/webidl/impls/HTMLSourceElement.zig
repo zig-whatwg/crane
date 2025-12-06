@@ -141,4 +141,3 @@ pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

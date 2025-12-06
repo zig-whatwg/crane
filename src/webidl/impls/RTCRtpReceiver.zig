@@ -107,4 +107,3 @@ pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!*con
     _ = instance;
     return error.NotImplemented;
 }
-

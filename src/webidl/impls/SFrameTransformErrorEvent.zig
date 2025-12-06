@@ -70,4 +70,3 @@ pub fn get_frame(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

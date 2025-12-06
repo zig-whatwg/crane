@@ -1,5 +1,5 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,13 +35,13 @@ pub const WebTransport = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ready", "get_ready", null },
@@ -57,7 +57,7 @@ pub const WebTransport = struct {
             .{ "incomingUnidirectionalStreams", "get_incomingUnidirectionalStreams", null },
             .{ "supportsReliableOnly", "get_supportsReliableOnly", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getStats", "call_getStats", 0 },
@@ -67,7 +67,7 @@ pub const WebTransport = struct {
             .{ "createUnidirectionalStream", "call_createUnidirectionalStream", 0 },
             .{ "createSendGroup", "call_createSendGroup", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getStats",
@@ -77,11 +77,10 @@ pub const WebTransport = struct {
             "createUnidirectionalStream",
             "createSendGroup",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ready", "get_ready", null },
@@ -97,11 +96,10 @@ pub const WebTransport = struct {
             .{ "incomingUnidirectionalStreams", "get_incomingUnidirectionalStreams", null },
             .{ "supportsReliableOnly", "get_supportsReliableOnly", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -125,7 +123,6 @@ pub const WebTransport = struct {
     );
 
     const delegates = .{
-
         .get_anticipatedConcurrentIncomingBidirectionalStreams = &get_anticipatedConcurrentIncomingBidirectionalStreams,
         .get_anticipatedConcurrentIncomingUnidirectionalStreams = &get_anticipatedConcurrentIncomingUnidirectionalStreams,
         .get_closed = &get_closed,
@@ -148,6 +145,8 @@ pub const WebTransport = struct {
         .call_createUnidirectionalStream = &call_createUnidirectionalStream,
         .call_exportKeyingMaterial = &call_exportKeyingMaterial,
         .call_getStats = &call_getStats,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -238,23 +237,19 @@ pub const WebTransport = struct {
     /// Extended attributes: [NewObject]
     pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: BufferSource, context: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context);
     }
 
     pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(WebTransportCloseInfo)) anyerror!void {
-        
         return try WebTransportImpl.call_close(instance, closeInfo);
     }
 
     pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
-        
         return try WebTransportImpl.call_createBidirectionalStream(instance, options);
     }
 
     pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
-        
         return try WebTransportImpl.call_createUnidirectionalStream(instance, options);
     }
-
 };

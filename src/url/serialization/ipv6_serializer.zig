@@ -131,11 +131,3 @@ pub fn serializeIPv6(allocator: std.mem.Allocator, address: [8]u16) ![]u8 {
     // Step 5: Return output
     return output.toOwnedSlice();
 }
-
-
-
-
-
-
-
-

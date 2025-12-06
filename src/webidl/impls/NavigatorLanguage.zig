@@ -50,4 +50,3 @@ pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -65,4 +65,3 @@ pub fn get_requested(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
-

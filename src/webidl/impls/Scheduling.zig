@@ -46,4 +46,3 @@ pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: w
     _ = isInputPendingOptions;
     return error.NotImplemented;
 }
-

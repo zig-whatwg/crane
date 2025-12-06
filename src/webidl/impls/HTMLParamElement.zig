@@ -102,4 +102,3 @@ pub fn set_valueType(instance: *runtime.Instance, value: runtime.DOMString) anye
     _ = value;
     return error.NotImplemented;
 }
-

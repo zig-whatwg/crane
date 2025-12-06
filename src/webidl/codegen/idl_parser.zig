@@ -1158,32 +1158,51 @@ pub const Parser = struct {
             try self.advance();
             try self.expect(.left_angle);
 
-            // Skip to closing angle bracket
+            // Capture the generic type arguments
+            var generic_content = std.ArrayList(u8).empty;
+            defer generic_content.deinit(self.allocator);
+
             // Need to track depth for nested generics like record<K, sequence<V>>
             var depth: usize = 1;
             while (depth > 0 and self.current_token.type != .eof) {
                 if (self.current_token.type == .left_angle) {
                     depth += 1;
+                    try generic_content.appendSlice(self.allocator, self.current_token.lexeme);
                     try self.advance();
                 } else if (self.current_token.type == .right_angle) {
                     depth -= 1;
                     if (depth > 0) {
+                        try generic_content.appendSlice(self.allocator, self.current_token.lexeme);
                         try self.advance();
                     }
                 } else {
+                    try generic_content.appendSlice(self.allocator, self.current_token.lexeme);
+                    // Add space after commas for readability
+                    if (self.current_token.type == .comma) {
+                        try generic_content.append(self.allocator, ' ');
+                    }
                     try self.advance();
                 }
             }
 
             try self.expect(.right_angle); // Consume final '>'
 
+            const generic_str = try self.allocator.dupe(u8, generic_content.items);
+
             // Handle nullable record<K,V>?
             if (self.current_token.type == .question) {
                 try self.advance();
-                return types.IDLType{ .type = try self.allocator.dupe(u8, "record?") };
+                return types.IDLType{
+                    .type = try self.allocator.dupe(u8, "record"),
+                    .generic = generic_str,
+                    .nullable = true,
+                };
             }
 
-            return types.IDLType{ .type = try self.allocator.dupe(u8, "record") };
+            return types.IDLType{
+                .type = try self.allocator.dupe(u8, "record"),
+                .generic = generic_str,
+            };
         }
 
         // Parse identifier (possibly multi-word like "unsigned long")

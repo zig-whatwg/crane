@@ -65,4 +65,3 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

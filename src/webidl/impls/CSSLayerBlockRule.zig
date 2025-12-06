@@ -44,4 +44,3 @@ pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

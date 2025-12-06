@@ -86,4 +86,3 @@ pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionarie
     _ = other;
     return error.NotImplemented;
 }
-

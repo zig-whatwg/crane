@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -141,6 +141,8 @@ pub const Text = struct {
         .call_convertRectFromNode = &call_convertRectFromNode,
         .call_getBoxQuads = &call_getBoxQuads,
         .call_splitText = &call_splitText,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -189,14 +191,5 @@ pub const Text = struct {
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try TextImpl.call_convertRectFromNode(instance, rect, from, options);
-    }
-
-    // =============================================================================
-    // Internal State Access (for script execution algorithms)
-    // =============================================================================
-
-    /// Get internal state (for text data access)
-    pub fn getInternal(instance: *runtime.Instance) ?*TextImpl.InternalState {
-        return TextImpl.getInternal(instance);
     }
 };

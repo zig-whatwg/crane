@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,20 +25,20 @@ pub const TrustedTypePolicyFactory = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "emptyHTML", "get_emptyHTML", null },
             .{ "emptyScript", "get_emptyScript", null },
             .{ "defaultPolicy", "get_defaultPolicy", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createPolicy", "call_createPolicy", 1 },
@@ -48,7 +48,7 @@ pub const TrustedTypePolicyFactory = struct {
             .{ "getAttributeType", "call_getAttributeType", 2 },
             .{ "getPropertyType", "call_getPropertyType", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createPolicy",
@@ -58,22 +58,20 @@ pub const TrustedTypePolicyFactory = struct {
             "getAttributeType",
             "getPropertyType",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "emptyHTML", "get_emptyHTML", null },
             .{ "emptyScript", "get_emptyScript", null },
             .{ "defaultPolicy", "get_defaultPolicy", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,7 +87,6 @@ pub const TrustedTypePolicyFactory = struct {
     );
 
     const delegates = .{
-
         .get_defaultPolicy = &get_defaultPolicy,
         .get_emptyHTML = &get_emptyHTML,
         .get_emptyScript = &get_emptyScript,
@@ -100,6 +97,8 @@ pub const TrustedTypePolicyFactory = struct {
         .call_isHTML = &call_isHTML,
         .call_isScript = &call_isScript,
         .call_isScriptURL = &call_isScriptURL,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -126,33 +125,26 @@ pub const TrustedTypePolicyFactory = struct {
     }
 
     pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: webidl.Opt(TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
-        
         return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }
 
     pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
-        
         return try TrustedTypePolicyFactoryImpl.call_isScript(instance, value);
     }
 
     pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
-        
         return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
 
     pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
-        
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
 
     pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
-        
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }
 
     pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: webidl.Opt(?DOMString), attrNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
-        
         return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
     }
-
 };

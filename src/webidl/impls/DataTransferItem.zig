@@ -75,4 +75,3 @@ pub fn call_getAsFile(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
-

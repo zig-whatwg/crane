@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,7 +26,7 @@ pub const CSSRotate = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -34,7 +34,7 @@ pub const CSSRotate = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", "set_x" },
@@ -42,20 +42,18 @@ pub const CSSRotate = struct {
             .{ "z", "get_z", "set_z" },
             .{ "angle", "get_angle", "set_angle" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "toMatrix",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", "set_x" },
@@ -63,11 +61,10 @@ pub const CSSRotate = struct {
             .{ "z", "get_z", "set_z" },
             .{ "angle", "get_angle", "set_angle" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -84,7 +81,6 @@ pub const CSSRotate = struct {
     );
 
     const delegates = .{
-
         .get_angle = &get_angle,
         .get_x = &get_x,
         .get_y = &get_y,
@@ -94,6 +90,8 @@ pub const CSSRotate = struct {
         .set_x = &set_x,
         .set_y = &set_y,
         .set_z = &set_z,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -157,5 +155,4 @@ pub const CSSRotate = struct {
     pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
         try CSSRotateImpl.set_angle(instance, value);
     }
-
 };

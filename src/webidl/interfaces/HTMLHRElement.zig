@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,10 +85,10 @@ pub const HTMLHRElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "align", "get_align", "set_align" },
@@ -97,15 +97,13 @@ pub const HTMLHRElement = struct {
             .{ "size", "get_size", "set_size" },
             .{ "width", "get_width", "set_width" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -201,7 +199,7 @@ pub const HTMLHRElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "align", "get_align", "set_align" },
@@ -210,11 +208,10 @@ pub const HTMLHRElement = struct {
             .{ "size", "get_size", "set_size" },
             .{ "width", "get_width", "set_width" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -232,7 +229,6 @@ pub const HTMLHRElement = struct {
     );
 
     const delegates = .{
-
         .get_align = &get_align,
         .get_color = &get_color,
         .get_noShade = &get_noShade,
@@ -244,6 +240,8 @@ pub const HTMLHRElement = struct {
         .set_noShade = &set_noShade,
         .set_size = &set_size,
         .set_width = &set_width,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -273,7 +271,7 @@ pub const HTMLHRElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLHRElementImpl.set_align(instance, value);
     }
 
@@ -287,7 +285,7 @@ pub const HTMLHRElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLHRElementImpl.set_color(instance, value);
     }
 
@@ -301,7 +299,7 @@ pub const HTMLHRElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLHRElementImpl.set_noShade(instance, value);
     }
 
@@ -315,7 +313,7 @@ pub const HTMLHRElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLHRElementImpl.set_size(instance, value);
     }
 
@@ -329,8 +327,7 @@ pub const HTMLHRElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLHRElementImpl.set_width(instance, value);
     }
-
 };

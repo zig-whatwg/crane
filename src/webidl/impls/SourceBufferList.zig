@@ -70,4 +70,3 @@ pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: typedefs.Eve
     _ = value;
     return error.NotImplemented;
 }
-

@@ -50,4 +50,3 @@ pub fn get_realTimeReporting(instance: *runtime.Instance) anyerror!*runtime.Inst
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const ImageDecoderInit = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     data: *const anyopaque,
     colorSpaceConversion: ?*const anyopaque = null,
     desiredWidth: ?u32 = null,

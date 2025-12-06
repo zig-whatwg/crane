@@ -54,4 +54,3 @@ pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssT
     _ = cssText;
     return error.NotImplemented;
 }
-

@@ -97,4 +97,3 @@ pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
     _ = options;
     return error.NotImplemented;
 }
-

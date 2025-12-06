@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:49Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -27,42 +27,40 @@ pub const ReadableStreamBYOBReader = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "read", "call_read", 1 },
             .{ "releaseLock", "call_releaseLock", 0 },
             .{ "cancel", "call_cancel", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "read",
             "releaseLock",
             "cancel",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -76,12 +74,13 @@ pub const ReadableStreamBYOBReader = struct {
     );
 
     const delegates = .{
-
         .get_closed = &get_closed,
 
         .call_cancel = &call_cancel,
         .call_read = &call_read,
         .call_releaseLock = &call_releaseLock,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -106,7 +105,6 @@ pub const ReadableStreamBYOBReader = struct {
     }
 
     pub fn call_read(instance: *runtime.Instance, view: ArrayBufferView, options: webidl.Opt(ReadableStreamBYOBReaderReadOptions)) anyerror!*const anyopaque {
-        
         return try ReadableStreamBYOBReaderImpl.call_read(instance, view, options);
     }
 
@@ -115,8 +113,6 @@ pub const ReadableStreamBYOBReader = struct {
     }
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-        
         return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason);
     }
-
 };

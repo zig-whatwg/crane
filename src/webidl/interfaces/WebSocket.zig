@@ -1,5 +1,5 @@
 //! Generated from: websockets.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,13 +35,13 @@ pub const WebSocket = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "url", "get_url", null },
@@ -55,13 +55,13 @@ pub const WebSocket = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "binaryType", "get_binaryType", "set_binaryType" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
             .{ "send", "call_send", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "CONNECTING", "get_CONNECTING" },
@@ -69,13 +69,13 @@ pub const WebSocket = struct {
             .{ "CLOSING", "get_CLOSING" },
             .{ "CLOSED", "get_CLOSED" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
             "send",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -83,7 +83,7 @@ pub const WebSocket = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "url", "get_url", null },
@@ -97,11 +97,10 @@ pub const WebSocket = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "binaryType", "get_binaryType", "set_binaryType" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -148,7 +147,6 @@ pub const WebSocket = struct {
     }
 
     const delegates = .{
-
         .get_CLOSED = &get_CLOSED,
         .get_CLOSING = &get_CLOSING,
         .get_CONNECTING = &get_CONNECTING,
@@ -172,6 +170,8 @@ pub const WebSocket = struct {
 
         .call_close = &call_close,
         .call_send = &call_send,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -254,13 +254,11 @@ pub const WebSocket = struct {
     pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) anyerror!void {
         // [Clamp] on code
         const clamped_code = if (code.wasPassed()) webidl.Opt(u16).passed(runtime.clamp(u16, code.value)) else webidl.Opt(u16).notPassed();
-        
+
         return try WebSocketImpl.call_close(instance, clamped_code, reason);
     }
 
     pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
-        
         return try WebSocketImpl.call_send(instance, data);
     }
-
 };

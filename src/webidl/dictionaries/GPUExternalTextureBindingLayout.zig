@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const GPUExternalTextureBindingLayout = struct {
-};
+pub const GPUExternalTextureBindingLayout = struct {};

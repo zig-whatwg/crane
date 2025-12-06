@@ -1415,4 +1415,3 @@ pub fn set_onsnapchanging(instance: *runtime.Instance, value: typedefs.EventHand
     _ = value;
     return error.NotImplemented;
 }
-

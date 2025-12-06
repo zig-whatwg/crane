@@ -47,4 +47,3 @@ pub fn call_drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSo
     _ = dy;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,10 +87,10 @@ pub const HTMLFieldSetElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
@@ -102,21 +102,21 @@ pub const HTMLFieldSetElement = struct {
             .{ "validity", "get_validity", null },
             .{ "validationMessage", "get_validationMessage", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "checkValidity", "call_checkValidity", 0 },
             .{ "reportValidity", "call_reportValidity", 0 },
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "checkValidity",
             "reportValidity",
             "setCustomValidity",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -212,7 +212,7 @@ pub const HTMLFieldSetElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
@@ -224,11 +224,10 @@ pub const HTMLFieldSetElement = struct {
             .{ "validity", "get_validity", null },
             .{ "validationMessage", "get_validationMessage", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -239,7 +238,7 @@ pub const HTMLFieldSetElement = struct {
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
             name: runtime.DOMString = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             elements: *runtime.Instance = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
@@ -251,7 +250,6 @@ pub const HTMLFieldSetElement = struct {
     );
 
     const delegates = .{
-
         .get_disabled = &get_disabled,
         .get_elements = &get_elements,
         .get_form = &get_form,
@@ -267,6 +265,8 @@ pub const HTMLFieldSetElement = struct {
         .call_checkValidity = &call_checkValidity,
         .call_reportValidity = &call_reportValidity,
         .call_setCustomValidity = &call_setCustomValidity,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -296,7 +296,7 @@ pub const HTMLFieldSetElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFieldSetElementImpl.set_disabled(instance, value);
     }
 
@@ -314,7 +314,7 @@ pub const HTMLFieldSetElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFieldSetElementImpl.set_name(instance, value);
     }
 
@@ -363,8 +363,6 @@ pub const HTMLFieldSetElement = struct {
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
         return try HTMLFieldSetElementImpl.call_setCustomValidity(instance, @"error");
     }
-
 };

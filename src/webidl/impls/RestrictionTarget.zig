@@ -45,4 +45,3 @@ pub fn call_fromElement(instance: *runtime.Instance, element: *runtime.Instance)
     _ = element;
     return error.NotImplemented;
 }
-

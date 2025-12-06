@@ -48,4 +48,3 @@ pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance
     _ = result;
     return error.NotImplemented;
 }
-

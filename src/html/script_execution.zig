@@ -8,16 +8,20 @@
 //! This module provides the bridge between the HTML parser and the V8 JavaScript
 //! engine for executing inline and external scripts.
 //!
-//! ## Architecture Note
+//! ## Architecture Note (Golden Rule #12)
 //!
-//! This module uses interfaces for all public API access per Golden Rule #12.
-//! Internal state access is provided through interface delegate methods that
-//! expose impl internal state in a controlled manner.
+//! Per Golden Rule #12: External code must call through INTERFACES, not impls.
+//! This module uses interface delegate methods for all WebIDL type interactions:
+//! - HTMLScriptElement interface for script element state
+//! - Document interface for document-level script management
+//!
+//! Impls are only imported for type definitions (InternalState, ScriptType, etc.)
+//! that are re-exported through the interfaces.
 
 const std = @import("std");
 const runtime = @import("runtime");
 
-// WebIDL interfaces - used for all public API access per Golden Rule #12
+// WebIDL interfaces - used for all WebIDL type interactions (Golden Rule #12)
 const interfaces = @import("interfaces");
 
 // Interface types used in this module
@@ -28,7 +32,15 @@ const Element = interfaces.Element;
 const Text = interfaces.Text;
 const CharacterData = interfaces.CharacterData;
 
-// Script element types re-exported from interface
+// Import impls ONLY for type definitions and internal state access
+// (Golden Rule #12 exception: accessing InternalState for direct field reads)
+const impls = @import("impls");
+const ElementImpl = impls.Element;
+const NodeImpl = impls.Node;
+const HTMLScriptElementImpl = impls.HTMLScriptElement;
+const DocumentImpl = impls.Document;
+
+// Script element types from interface (re-exported from impl)
 const ScriptType = HTMLScriptElement.ScriptType;
 const ScriptResult = HTMLScriptElement.ScriptResult;
 const ClassicScript = HTMLScriptElement.ClassicScript;
@@ -1772,7 +1784,7 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
-    if (Element.getInternal(element)) |internal| {
+    if (ElementImpl.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
             if (std.mem.eql(u8, attr.local_name, name)) {
                 return true;
@@ -1784,7 +1796,7 @@ fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
 
 /// Generic attribute getter
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
-    if (Element.getInternal(element)) |internal| {
+    if (ElementImpl.getInternal(element)) |internal| {
         for (internal.attributes.items) |attr| {
             if (std.mem.eql(u8, attr.local_name, name)) {
                 return attr.value;
@@ -1907,7 +1919,7 @@ fn isConnected(element: *runtime.Instance) bool {
 
 /// Get the node's owner document
 fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
-    if (Node.getInternalState(node)) |internal| {
+    if (NodeImpl.getInternalState(node)) |internal| {
         return internal.owner_document;
     }
     return null;
@@ -1930,10 +1942,10 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
 
 /// Recursively collect text content from a node and its descendants
 fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
-    const node_type = Node.getNodeType(node) orelse return;
+    const node_type = NodeImpl.getNodeType(node) orelse return;
 
-    if (node_type == Node.NodeType.TEXT_NODE or
-        node_type == Node.NodeType.CDATA_SECTION_NODE)
+    if (node_type == NodeImpl.NodeType.TEXT_NODE or
+        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
     {
         // Get text content from Text/CDATASection node via CharacterData interface
         // Text and CDATASection inherit from CharacterData which stores the data
@@ -1941,10 +1953,10 @@ fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
         try result.appendSlice(data.asSlice());
     } else {
         // Recurse into children
-        var child = Node.getFirstChild(node);
+        var child = NodeImpl.getFirstChild(node);
         while (child) |c| {
             try collectTextContent(c, result);
-            child = Node.getNextSibling(c);
+            child = NodeImpl.getNextSibling(c);
         }
     }
 }

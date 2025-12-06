@@ -142,4 +142,3 @@ pub fn call_securePaymentConfirmationAvailability(instance: *runtime.Instance) a
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -56,4 +56,3 @@ pub fn get_gamma(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
-

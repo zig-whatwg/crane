@@ -1,5 +1,5 @@
 //! Generated from: login-status.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,36 +22,32 @@ pub const NavigatorLogin = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setStatus", "call_setStatus", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setStatus",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -64,8 +60,9 @@ pub const NavigatorLogin = struct {
     );
 
     const delegates = .{
-
         .call_setStatus = &call_setStatus,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -80,8 +77,6 @@ pub const NavigatorLogin = struct {
     }
 
     pub fn call_setStatus(instance: *runtime.Instance, status: LoginStatus) anyerror!*const anyopaque {
-        
         return try NavigatorLoginImpl.call_setStatus(instance, status);
     }
-
 };

@@ -56,4 +56,3 @@ pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

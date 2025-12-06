@@ -87,4 +87,3 @@ pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries
     _ = options;
     return error.NotImplemented;
 }
-

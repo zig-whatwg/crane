@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -73,8 +73,10 @@ pub const IDBFactory = struct {
         .call_databases = &call_databases,
         .call_deleteDatabase = &call_deleteDatabase,
         .call_open = &call_open,
+
+        .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &deinit);
+    pub const vtable = runtime.buildVTable(&delegates);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {

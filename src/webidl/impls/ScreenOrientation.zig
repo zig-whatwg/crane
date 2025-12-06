@@ -76,4 +76,3 @@ pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLock
     _ = orientation;
     return error.NotImplemented;
 }
-

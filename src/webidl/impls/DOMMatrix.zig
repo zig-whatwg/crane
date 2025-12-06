@@ -304,4 +304,3 @@ pub fn call_preMultiplySelf(instance: *runtime.Instance, other: webidl.Opt(dicti
     _ = other;
     return error.NotImplemented;
 }
-

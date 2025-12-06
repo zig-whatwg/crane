@@ -1,5 +1,5 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -33,13 +33,13 @@ pub const FontFaceSet = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onloading", "get_onloading", "set_onloading" },
@@ -48,7 +48,7 @@ pub const FontFaceSet = struct {
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 1 },
@@ -57,7 +57,7 @@ pub const FontFaceSet = struct {
             .{ "load", "call_load", 1 },
             .{ "check", "call_check", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
@@ -66,7 +66,7 @@ pub const FontFaceSet = struct {
             "load",
             "check",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -74,7 +74,7 @@ pub const FontFaceSet = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onloading", "get_onloading", "set_onloading" },
@@ -83,11 +83,10 @@ pub const FontFaceSet = struct {
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -109,7 +108,6 @@ pub const FontFaceSet = struct {
     // ========================================
 
     const delegates = .{
-
         .get_onloading = &get_onloading,
         .get_onloadingdone = &get_onloadingdone,
         .get_onloadingerror = &get_onloadingerror,
@@ -125,6 +123,8 @@ pub const FontFaceSet = struct {
         .call_clear = &call_clear,
         .call_delete = &call_delete,
         .call_load = &call_load,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -171,12 +171,10 @@ pub const FontFaceSet = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) anyerror!bool {
-        
         return try FontFaceSetImpl.call_delete(instance, font);
     }
 
     pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try FontFaceSetImpl.call_add(instance, font);
     }
 
@@ -185,13 +183,10 @@ pub const FontFaceSet = struct {
     }
 
     pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!*const anyopaque {
-        
         return try FontFaceSetImpl.call_load(instance, font, text);
     }
 
     pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!bool {
-        
         return try FontFaceSetImpl.call_check(instance, font, text);
     }
-
 };

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,10 +90,10 @@ pub const HTMLAnchorElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "target", "get_target", "set_target" },
@@ -125,15 +125,13 @@ pub const HTMLAnchorElement = struct {
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -229,7 +227,7 @@ pub const HTMLAnchorElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "target", "get_target", "set_target" },
@@ -261,11 +259,10 @@ pub const HTMLAnchorElement = struct {
             .{ "search", "get_search", "set_search" },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -279,7 +276,7 @@ pub const HTMLAnchorElement = struct {
             rel: runtime.DOMString = undefined,
             relList: *runtime.Instance = undefined,
             hreflang: runtime.DOMString = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             text: runtime.DOMString = undefined,
             referrerPolicy: runtime.DOMString = undefined,
             attributionSourceId: u32 = undefined,
@@ -307,7 +304,6 @@ pub const HTMLAnchorElement = struct {
     );
 
     const delegates = .{
-
         .get_attributionDestination = &get_attributionDestination,
         .get_attributionSourceId = &get_attributionSourceId,
         .get_attributionSrc = &get_attributionSrc,
@@ -363,6 +359,8 @@ pub const HTMLAnchorElement = struct {
         .set_text = &set_text,
         .set_type = &set_type,
         .set_username = &set_username,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -392,7 +390,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_target(instance, value);
     }
 
@@ -406,7 +404,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_download(instance, value);
     }
 
@@ -420,7 +418,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_ping(instance, value);
     }
 
@@ -434,7 +432,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_rel(instance, value);
     }
 
@@ -460,7 +458,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_hreflang(instance, value);
     }
 
@@ -474,7 +472,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_type(instance, value);
     }
 
@@ -488,7 +486,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_text(instance, value);
     }
 
@@ -502,7 +500,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -516,7 +514,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_attributionSourceId(instance, value);
     }
 
@@ -530,7 +528,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_attributionDestination(instance, value);
     }
 
@@ -544,7 +542,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_coords(instance, value);
     }
 
@@ -558,7 +556,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_charset(instance, value);
     }
 
@@ -572,7 +570,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_name(instance, value);
     }
 
@@ -586,7 +584,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_rev(instance, value);
     }
 
@@ -600,7 +598,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_shape(instance, value);
     }
 
@@ -614,7 +612,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_attributionSrc(instance, value);
     }
 
@@ -628,7 +626,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_href(instance, value);
     }
 
@@ -646,7 +644,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_protocol(instance, value);
     }
 
@@ -660,7 +658,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_username(instance, value);
     }
 
@@ -674,7 +672,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_password(instance, value);
     }
 
@@ -688,7 +686,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_host(instance, value);
     }
 
@@ -702,7 +700,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_hostname(instance, value);
     }
 
@@ -716,7 +714,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_port(instance, value);
     }
 
@@ -730,7 +728,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_pathname(instance, value);
     }
 
@@ -744,7 +742,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_search(instance, value);
     }
 
@@ -758,8 +756,7 @@ pub const HTMLAnchorElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLAnchorElementImpl.set_hash(instance, value);
     }
-
 };

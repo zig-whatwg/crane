@@ -79,4 +79,3 @@ pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) a
     _ = distance;
     return null;
 }
-

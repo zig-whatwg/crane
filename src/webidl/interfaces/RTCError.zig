@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,10 +25,10 @@ pub const RTCError = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "errorDetail", "get_errorDetail", null },
@@ -38,19 +38,16 @@ pub const RTCError = struct {
             .{ "sentAlert", "get_sentAlert", null },
             .{ "httpRequestStatusCode", "get_httpRequestStatusCode", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "errorDetail", "get_errorDetail", null },
@@ -60,11 +57,10 @@ pub const RTCError = struct {
             .{ "sentAlert", "get_sentAlert", null },
             .{ "httpRequestStatusCode", "get_httpRequestStatusCode", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -83,13 +79,14 @@ pub const RTCError = struct {
     );
 
     const delegates = .{
-
         .get_errorDetail = &get_errorDetail,
         .get_httpRequestStatusCode = &get_httpRequestStatusCode,
         .get_receivedAlert = &get_receivedAlert,
         .get_sctpCauseCode = &get_sctpCauseCode,
         .get_sdpLineNumber = &get_sdpLineNumber,
         .get_sentAlert = &get_sentAlert,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -132,5 +129,4 @@ pub const RTCError = struct {
     pub fn get_httpRequestStatusCode(instance: *runtime.Instance) anyerror!?i32 {
         return try RTCErrorImpl.get_httpRequestStatusCode(instance);
     }
-
 };

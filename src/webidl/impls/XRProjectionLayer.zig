@@ -88,4 +88,3 @@ pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) anye
     _ = value;
     return error.NotImplemented;
 }
-

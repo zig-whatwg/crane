@@ -1,5 +1,5 @@
 //! Generated from: hr-time.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -152,8 +152,10 @@ pub const Performance = struct {
         .call_now = &call_now,
         .call_setResourceTimingBufferSize = &call_setResourceTimingBufferSize,
         .call_toJSON = &call_toJSON,
+
+        .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &deinit);
+    pub const vtable = runtime.buildVTable(&delegates);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {

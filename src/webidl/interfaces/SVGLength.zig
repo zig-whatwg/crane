@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,10 +21,10 @@ pub const SVGLength = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "unitType", "get_unitType", null },
@@ -32,13 +32,13 @@ pub const SVGLength = struct {
             .{ "valueInSpecifiedUnits", "get_valueInSpecifiedUnits", "set_valueInSpecifiedUnits" },
             .{ "valueAsString", "get_valueAsString", "set_valueAsString" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "newValueSpecifiedUnits", "call_newValueSpecifiedUnits", 2 },
             .{ "convertToSpecifiedUnits", "call_convertToSpecifiedUnits", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_LENGTHTYPE_UNKNOWN", "get_SVG_LENGTHTYPE_UNKNOWN" },
@@ -53,17 +53,16 @@ pub const SVGLength = struct {
             .{ "SVG_LENGTHTYPE_PT", "get_SVG_LENGTHTYPE_PT" },
             .{ "SVG_LENGTHTYPE_PC", "get_SVG_LENGTHTYPE_PC" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "newValueSpecifiedUnits",
             "convertToSpecifiedUnits",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "unitType", "get_unitType", null },
@@ -71,11 +70,10 @@ pub const SVGLength = struct {
             .{ "valueInSpecifiedUnits", "get_valueInSpecifiedUnits", "set_valueInSpecifiedUnits" },
             .{ "valueAsString", "get_valueAsString", "set_valueAsString" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -151,7 +149,6 @@ pub const SVGLength = struct {
     }
 
     const delegates = .{
-
         .get_SVG_LENGTHTYPE_CM = &get_SVG_LENGTHTYPE_CM,
         .get_SVG_LENGTHTYPE_EMS = &get_SVG_LENGTHTYPE_EMS,
         .get_SVG_LENGTHTYPE_EXS = &get_SVG_LENGTHTYPE_EXS,
@@ -174,6 +171,8 @@ pub const SVGLength = struct {
 
         .call_convertToSpecifiedUnits = &call_convertToSpecifiedUnits,
         .call_newValueSpecifiedUnits = &call_newValueSpecifiedUnits,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -216,13 +215,10 @@ pub const SVGLength = struct {
     }
 
     pub fn call_convertToSpecifiedUnits(instance: *runtime.Instance, unitType: u16) anyerror!void {
-        
         return try SVGLengthImpl.call_convertToSpecifiedUnits(instance, unitType);
     }
 
     pub fn call_newValueSpecifiedUnits(instance: *runtime.Instance, unitType: u16, valueInSpecifiedUnits: f32) anyerror!void {
-        
         return try SVGLengthImpl.call_newValueSpecifiedUnits(instance, unitType, valueInSpecifiedUnits);
     }
-
 };

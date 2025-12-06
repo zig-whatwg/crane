@@ -154,4 +154,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.RTCIceCand
     _ = instance;
     return error.NotImplemented;
 }
-

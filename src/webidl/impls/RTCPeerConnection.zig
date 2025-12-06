@@ -396,4 +396,3 @@ pub fn call_getTransceivers(instance: *runtime.Instance) anyerror!*const anyopaq
     _ = instance;
     return error.NotImplemented;
 }
-

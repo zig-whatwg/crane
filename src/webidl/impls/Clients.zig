@@ -66,4 +66,3 @@ pub fn call_claim(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

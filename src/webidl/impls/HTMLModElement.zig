@@ -76,4 +76,3 @@ pub fn set_dateTime(instance: *runtime.Instance, value: runtime.DOMString) anyer
     _ = value;
     return error.NotImplemented;
 }
-

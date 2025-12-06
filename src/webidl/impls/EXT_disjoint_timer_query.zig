@@ -97,4 +97,3 @@ pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instanc
     _ = query;
     return error.NotImplemented;
 }
-

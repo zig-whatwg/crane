@@ -95,4 +95,3 @@ pub fn call_respondWith(instance: *runtime.Instance, r: *const anyopaque) anyerr
     _ = r;
     return error.NotImplemented;
 }
-

@@ -137,4 +137,3 @@ pub fn call_getIncludedService(instance: *runtime.Instance, service: typedefs.Bl
     _ = service;
     return error.NotImplemented;
 }
-

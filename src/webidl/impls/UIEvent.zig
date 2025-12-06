@@ -88,4 +88,3 @@ pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString,
     _ = detailArg;
     return error.NotImplemented;
 }
-

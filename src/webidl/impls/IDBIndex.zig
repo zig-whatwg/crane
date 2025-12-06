@@ -136,4 +136,3 @@ pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const any
     _ = direction;
     return error.NotImplemented;
 }
-

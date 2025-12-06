@@ -80,4 +80,3 @@ pub fn call_flush(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

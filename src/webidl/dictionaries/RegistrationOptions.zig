@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const RegistrationOptions = struct {
     scope: ?runtime.USVString = null,
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
     updateViaCache: ?*const anyopaque = null,
 };

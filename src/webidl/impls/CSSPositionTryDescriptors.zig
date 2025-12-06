@@ -948,4 +948,3 @@ pub fn set_position_area(instance: *runtime.Instance, value: typedefs.CSSOMStrin
     _ = value;
     return error.NotImplemented;
 }
-

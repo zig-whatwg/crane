@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,10 +30,10 @@ pub const RTCRtpSender = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "track", "get_track", null },
@@ -41,7 +41,7 @@ pub const RTCRtpSender = struct {
             .{ "dtmf", "get_dtmf", null },
             .{ "transform", "get_transform", "set_transform" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setParameters", "call_setParameters", 1 },
@@ -50,12 +50,12 @@ pub const RTCRtpSender = struct {
             .{ "setStreams", "call_setStreams", 1 },
             .{ "getStats", "call_getStats", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "getCapabilities", "call_getCapabilities", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCapabilities",
@@ -65,11 +65,10 @@ pub const RTCRtpSender = struct {
             "setStreams",
             "getStats",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "track", "get_track", null },
@@ -77,11 +76,10 @@ pub const RTCRtpSender = struct {
             .{ "dtmf", "get_dtmf", null },
             .{ "transform", "get_transform", "set_transform" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -98,7 +96,6 @@ pub const RTCRtpSender = struct {
     );
 
     const delegates = .{
-
         .get_dtmf = &get_dtmf,
         .get_track = &get_track,
         .get_transform = &get_transform,
@@ -111,6 +108,8 @@ pub const RTCRtpSender = struct {
         .call_replaceTrack = &call_replaceTrack,
         .call_setParameters = &call_setParameters,
         .call_setStreams = &call_setStreams,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -145,12 +144,10 @@ pub const RTCRtpSender = struct {
     }
 
     pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
-        
         return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
-        
         return try RTCRtpSenderImpl.call_getCapabilities(instance, kind);
     }
 
@@ -163,13 +160,10 @@ pub const RTCRtpSender = struct {
     }
 
     pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.Instance) anyerror!void {
-        
         return try RTCRtpSenderImpl.call_setStreams(instance, streams);
     }
 
     pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: webidl.Opt(RTCSetParameterOptions)) anyerror!*const anyopaque {
-        
         return try RTCRtpSenderImpl.call_setParameters(instance, parameters, setParameterOptions);
     }
-
 };

@@ -59,4 +59,3 @@ pub fn call_query(instance: *runtime.Instance, permissionDesc: *const anyopaque)
     _ = permissionDesc;
     return error.NotImplemented;
 }
-

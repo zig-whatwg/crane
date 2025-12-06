@@ -82,4 +82,3 @@ pub fn call_requestOverride(instance: *runtime.Instance, value: ?runtime.DOMStri
     _ = value;
     return error.NotImplemented;
 }
-

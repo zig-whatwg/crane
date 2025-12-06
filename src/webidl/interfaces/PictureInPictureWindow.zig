@@ -1,5 +1,5 @@
 //! Generated from: picture-in-picture.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,25 +30,23 @@ pub const PictureInPictureWindow = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
             .{ "onresize", "get_onresize", "set_onresize" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -56,18 +54,17 @@ pub const PictureInPictureWindow = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
             .{ "onresize", "get_onresize", "set_onresize" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -83,12 +80,13 @@ pub const PictureInPictureWindow = struct {
     );
 
     const delegates = .{
-
         .get_height = &get_height,
         .get_onresize = &get_onresize,
         .get_width = &get_width,
 
         .set_onresize = &set_onresize,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -117,5 +115,4 @@ pub const PictureInPictureWindow = struct {
     pub fn set_onresize(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try PictureInPictureWindowImpl.set_onresize(instance, value);
     }
-
 };

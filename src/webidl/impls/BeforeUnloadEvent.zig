@@ -51,4 +51,3 @@ pub fn set_returnValue(instance: *runtime.Instance, value: runtime.DOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

@@ -77,4 +77,3 @@ pub fn call_getParent(instance: *runtime.Instance, successCallback: webidl.Opt(c
     _ = errorCallback;
     return error.NotImplemented;
 }
-

@@ -194,4 +194,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

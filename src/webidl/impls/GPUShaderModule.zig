@@ -57,4 +57,3 @@ pub fn call_getCompilationInfo(instance: *runtime.Instance) anyerror!*const anyo
     _ = instance;
     return error.NotImplemented;
 }
-

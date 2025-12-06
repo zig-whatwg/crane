@@ -58,4 +58,3 @@ pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) anyerror!enums
     _ = instance;
     return error.NotImplemented;
 }
-

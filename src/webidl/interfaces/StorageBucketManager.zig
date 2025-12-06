@@ -1,5 +1,5 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,43 +24,39 @@ pub const StorageBucketManager = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 1 },
             .{ "keys", "call_keys", 0 },
             .{ "delete", "call_delete", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
             "keys",
             "delete",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -73,10 +69,11 @@ pub const StorageBucketManager = struct {
     );
 
     const delegates = .{
-
         .call_delete = &call_delete,
         .call_keys = &call_keys,
         .call_open = &call_open,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -91,7 +88,6 @@ pub const StorageBucketManager = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
-        
         return try StorageBucketManagerImpl.call_delete(instance, name);
     }
 
@@ -100,8 +96,6 @@ pub const StorageBucketManager = struct {
     }
 
     pub fn call_open(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(StorageBucketOptions)) anyerror!*const anyopaque {
-        
         return try StorageBucketManagerImpl.call_open(instance, name, options);
     }
-
 };

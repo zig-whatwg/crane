@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,10 +30,10 @@ pub const VisualViewport = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "offsetLeft", "get_offsetLeft", null },
@@ -47,15 +47,13 @@ pub const VisualViewport = struct {
             .{ "onscroll", "get_onscroll", "set_onscroll" },
             .{ "onscrollend", "get_onscrollend", "set_onscrollend" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -63,7 +61,7 @@ pub const VisualViewport = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "pageLeft", "get_pageLeft", null },
@@ -75,13 +73,13 @@ pub const VisualViewport = struct {
             .{ "onscroll", "get_onscroll", "set_onscroll" },
             .{ "onscrollend", "get_onscrollend", "set_onscrollend" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "offsetLeft", "get_offsetLeft", null },
             .{ "offsetTop", "get_offsetTop", null },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -104,7 +102,6 @@ pub const VisualViewport = struct {
     );
 
     const delegates = .{
-
         .get_height = &get_height,
         .get_offsetLeft = &get_offsetLeft,
         .get_offsetTop = &get_offsetTop,
@@ -119,6 +116,8 @@ pub const VisualViewport = struct {
         .set_onresize = &set_onresize,
         .set_onscroll = &set_onscroll,
         .set_onscrollend = &set_onscrollend,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -183,5 +182,4 @@ pub const VisualViewport = struct {
     pub fn set_onscrollend(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try VisualViewportImpl.set_onscrollend(instance, value);
     }
-
 };

@@ -69,4 +69,3 @@ pub fn set_align(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

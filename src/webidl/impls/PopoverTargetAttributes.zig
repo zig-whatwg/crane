@@ -64,4 +64,3 @@ pub fn set_popoverTargetAction(instance: *runtime.Instance, value: runtime.DOMSt
     _ = value;
     return error.NotImplemented;
 }
-

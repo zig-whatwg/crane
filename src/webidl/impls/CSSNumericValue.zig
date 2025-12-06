@@ -114,4 +114,3 @@ pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyer
     _ = cssText;
     return error.NotImplemented;
 }
-

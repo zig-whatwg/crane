@@ -50,4 +50,3 @@ pub fn get_end(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
     _ = instance;
     return null;
 }
-

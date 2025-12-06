@@ -181,4 +181,3 @@ pub fn set_wordSpacing(instance: *runtime.Instance, value: runtime.DOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

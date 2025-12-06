@@ -57,4 +57,3 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Inst
     _ = index;
     return error.NotImplemented;
 }
-

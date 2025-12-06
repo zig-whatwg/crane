@@ -61,4 +61,3 @@ pub fn get_animatorName(instance: *runtime.Instance) anyerror!runtime.DOMString 
     _ = instance;
     return error.NotImplemented;
 }
-

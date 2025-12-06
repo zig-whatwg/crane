@@ -65,14 +65,3 @@ pub fn serializeHost(allocator: std.mem.Allocator, h: host.Host) ![]u8 {
         .empty => try allocator.dupe(u8, ""),
     };
 }
-
-
-
-
-
-
-
-
-
-
-

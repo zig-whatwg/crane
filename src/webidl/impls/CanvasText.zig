@@ -66,4 +66,3 @@ pub fn call_measureText(instance: *runtime.Instance, text: runtime.DOMString) an
     _ = text;
     return error.NotImplemented;
 }
-

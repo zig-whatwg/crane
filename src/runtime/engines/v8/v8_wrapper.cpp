@@ -2886,16 +2886,56 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
 ///   await iterator.return(); // Cleanup
 
 // Cached async iterator template - ensures all iterators share the same constructor
+// This cache is isolate-specific and MUST be cleared before disposing an isolate.
 static Global<FunctionTemplate>* g_async_iterator_template = nullptr;
+static Isolate* g_async_iterator_isolate = nullptr;
+
+/// Clear the async iterator template cache
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+void v8_ClearAsyncIteratorTemplateCache() {
+    if (g_async_iterator_template != nullptr) {
+        g_async_iterator_template->Reset();
+        delete g_async_iterator_template;
+        g_async_iterator_template = nullptr;
+    }
+    g_async_iterator_isolate = nullptr;
+}
+
+/// Clear the module resolve callback
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
+void v8_ClearModuleResolveCallback() {
+    if (g_module_resolve_callback != nullptr) {
+        delete g_module_resolve_callback;
+        g_module_resolve_callback = nullptr;
+    }
+}
+
+/// Clear the dynamic import callback
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
+void v8_ClearDynamicImportCallback() {
+    if (g_dynamic_import_callback != nullptr) {
+        delete g_dynamic_import_callback;
+        g_dynamic_import_callback = nullptr;
+    }
+}
 
 /// Get or create the cached async iterator template
 static Local<FunctionTemplate> getAsyncIteratorTemplate(Isolate* isolate) {
+    // Check if we have a cached template from a DIFFERENT isolate (stale cache)
+    if (g_async_iterator_template != nullptr && g_async_iterator_isolate != isolate) {
+        // Clear the stale cache - the old isolate was disposed
+        v8_ClearAsyncIteratorTemplateCache();
+    }
+    
     if (g_async_iterator_template == nullptr) {
         // Create the template once and cache it
         Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate);
         tpl->SetClassName(String::NewFromUtf8Literal(isolate, "ReadableStreamAsyncIterator"));
         tpl->InstanceTemplate()->SetInternalFieldCount(1);
         g_async_iterator_template = new Global<FunctionTemplate>(isolate, tpl);
+        g_async_iterator_isolate = isolate;
     }
     return g_async_iterator_template->Get(isolate);
 }

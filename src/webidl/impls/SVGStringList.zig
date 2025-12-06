@@ -100,4 +100,3 @@ pub fn call_appendItem(instance: *runtime.Instance, newItem: runtime.DOMString) 
     _ = newItem;
     return error.NotImplemented;
 }
-

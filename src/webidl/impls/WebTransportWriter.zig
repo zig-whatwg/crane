@@ -52,4 +52,3 @@ pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const an
     _ = chunk;
     return error.NotImplemented;
 }
-

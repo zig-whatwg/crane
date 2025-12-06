@@ -64,4 +64,3 @@ pub fn get_pointerMovementScrolls(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

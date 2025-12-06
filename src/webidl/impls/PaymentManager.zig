@@ -58,4 +58,3 @@ pub fn call_enableDelegations(instance: *runtime.Instance, delegations: *const a
     _ = delegations;
     return error.NotImplemented;
 }
-

@@ -102,4 +102,3 @@ pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMStr
     _ = keyArg;
     return error.NotImplemented;
 }
-

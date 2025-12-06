@@ -57,4 +57,3 @@ pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance)
     _ = value;
     return error.NotImplemented;
 }
-

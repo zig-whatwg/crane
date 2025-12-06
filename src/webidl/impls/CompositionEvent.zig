@@ -70,4 +70,3 @@ pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.D
     _ = dataArg;
     return error.NotImplemented;
 }
-

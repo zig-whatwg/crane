@@ -12,15 +12,13 @@ pub const GPUBufferUsage = struct {
         pub const is_namespace = true;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name)
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         pub const has_constructor = false;
         pub const properties = .{};
     };
 
     pub const State = struct {};
-
 };

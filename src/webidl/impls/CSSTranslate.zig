@@ -93,4 +93,3 @@ pub fn set_z(instance: *runtime.Instance, value: *runtime.Instance) anyerror!voi
     _ = value;
     return error.NotImplemented;
 }
-

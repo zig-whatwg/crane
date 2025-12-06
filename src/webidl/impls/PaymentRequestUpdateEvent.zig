@@ -60,4 +60,3 @@ pub fn call_updateWith(instance: *runtime.Instance, detailsPromise: *const anyop
     _ = detailsPromise;
     return error.NotImplemented;
 }
-

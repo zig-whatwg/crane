@@ -44,4 +44,3 @@ pub fn get_code(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

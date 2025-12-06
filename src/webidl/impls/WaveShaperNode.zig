@@ -79,4 +79,3 @@ pub fn set_oversample(instance: *runtime.Instance, value: enums.OverSampleType) 
     _ = value;
     return error.NotImplemented;
 }
-

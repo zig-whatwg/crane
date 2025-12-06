@@ -67,4 +67,3 @@ pub fn call_playEffect(instance: *runtime.Instance, @"type": enums.GamepadHaptic
     _ = params;
     return error.NotImplemented;
 }
-

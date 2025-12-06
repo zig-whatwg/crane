@@ -63,4 +63,3 @@ pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

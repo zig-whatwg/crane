@@ -59,4 +59,3 @@ pub fn call_setPriority(instance: *runtime.Instance, priority: enums.TaskPriorit
     _ = priority;
     return error.NotImplemented;
 }
-

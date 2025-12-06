@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const GPUBufferBindingLayout = struct {
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
     hasDynamicOffset: ?bool = null,
     minBindingSize: ?*const anyopaque = null,
 };

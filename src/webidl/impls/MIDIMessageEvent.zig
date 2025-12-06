@@ -59,4 +59,3 @@ pub fn get_data(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
-

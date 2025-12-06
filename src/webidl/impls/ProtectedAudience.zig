@@ -45,4 +45,3 @@ pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: runtime.DO
     _ = feature;
     return error.NotImplemented;
 }
-

@@ -61,4 +61,3 @@ pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: runtime
     _ = priority;
     return error.NotImplemented;
 }
-

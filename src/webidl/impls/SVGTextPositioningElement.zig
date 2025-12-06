@@ -68,4 +68,3 @@ pub fn get_rotate(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -202,6 +202,3 @@ pub const ErrorType = enum {
         };
     }
 };
-
-
-

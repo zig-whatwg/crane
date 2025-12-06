@@ -65,4 +65,3 @@ pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime
     _ = arrayObject;
     return error.NotImplemented;
 }
-

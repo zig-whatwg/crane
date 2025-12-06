@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:49Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,13 +35,13 @@ pub const TextTrack = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "kind", "get_kind", null },
@@ -55,19 +55,19 @@ pub const TextTrack = struct {
             .{ "oncuechange", "get_oncuechange", "set_oncuechange" },
             .{ "sourceBuffer", "get_sourceBuffer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addCue", "call_addCue", 1 },
             .{ "removeCue", "call_removeCue", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addCue",
             "removeCue",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,7 +75,7 @@ pub const TextTrack = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "kind", "get_kind", null },
@@ -89,11 +89,10 @@ pub const TextTrack = struct {
             .{ "oncuechange", "get_oncuechange", "set_oncuechange" },
             .{ "sourceBuffer", "get_sourceBuffer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -116,7 +115,6 @@ pub const TextTrack = struct {
     );
 
     const delegates = .{
-
         .get_activeCues = &get_activeCues,
         .get_cues = &get_cues,
         .get_id = &get_id,
@@ -133,6 +131,8 @@ pub const TextTrack = struct {
 
         .call_addCue = &call_addCue,
         .call_removeCue = &call_removeCue,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -195,13 +195,10 @@ pub const TextTrack = struct {
     }
 
     pub fn call_addCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
-        
         return try TextTrackImpl.call_addCue(instance, cue);
     }
 
     pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) anyerror!void {
-        
         return try TextTrackImpl.call_removeCue(instance, cue);
     }
-
 };

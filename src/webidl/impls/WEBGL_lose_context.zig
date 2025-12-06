@@ -50,4 +50,3 @@ pub fn call_restoreContext(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

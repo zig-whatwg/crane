@@ -88,4 +88,3 @@ pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!*const anyopaq
     _ = instance;
     return error.NotImplemented;
 }
-

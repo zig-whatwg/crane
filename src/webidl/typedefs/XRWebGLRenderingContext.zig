@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const XRWebGLRenderingContext = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    web_glrendering_context: *runtime.Instance,
+    web_gl2rendering_context: *runtime.Instance,
 };

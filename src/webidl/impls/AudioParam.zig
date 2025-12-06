@@ -138,4 +138,3 @@ pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime:
     _ = timeConstant;
     return error.NotImplemented;
 }
-

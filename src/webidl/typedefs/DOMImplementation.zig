@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const DOMImplementation = *const anyopaque;
+pub const DOMImplementation = *runtime.Instance;

@@ -45,4 +45,3 @@ pub fn call_provokingVertexWEBGL(instance: *runtime.Instance, provokeMode: typed
     _ = provokeMode;
     return error.NotImplemented;
 }
-

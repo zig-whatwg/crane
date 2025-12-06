@@ -9,7 +9,7 @@ pub const BiquadFilterOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
     Q: ?f32 = null,
     detune: ?f32 = null,
     frequency: ?f32 = null,

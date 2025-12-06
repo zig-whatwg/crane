@@ -46,4 +46,3 @@ pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: runtim
     _ = color;
     return error.NotImplemented;
 }
-

@@ -65,4 +65,3 @@ pub fn get_boost(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
-

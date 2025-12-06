@@ -64,4 +64,3 @@ pub fn set_values(instance: *runtime.Instance, value: *const anyopaque) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

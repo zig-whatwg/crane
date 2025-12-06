@@ -65,4 +65,3 @@ pub fn get_timelineTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumbe
     _ = instance;
     return null;
 }
-

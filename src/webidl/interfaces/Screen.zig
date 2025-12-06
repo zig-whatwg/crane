@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:49Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,10 +22,10 @@ pub const Screen = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "availWidth", "get_availWidth", null },
@@ -38,19 +38,16 @@ pub const Screen = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "orientation", "get_orientation", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "availWidth", "get_availWidth", null },
@@ -63,11 +60,10 @@ pub const Screen = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "orientation", "get_orientation", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -90,7 +86,6 @@ pub const Screen = struct {
     );
 
     const delegates = .{
-
         .get_availHeight = &get_availHeight,
         .get_availWidth = &get_availWidth,
         .get_colorDepth = &get_colorDepth,
@@ -102,6 +97,8 @@ pub const Screen = struct {
         .get_width = &get_width,
 
         .set_onchange = &set_onchange,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -165,5 +162,4 @@ pub const Screen = struct {
         state.own.cached_orientation = value;
         return value;
     }
-
 };

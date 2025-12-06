@@ -1170,3 +1170,22 @@ pub extern fn v8_AsyncIterator_New(
 /// Arguments:
 ///   iterator: The async iterator object to dispose (Global handle)
 pub extern fn v8_AsyncIterator_Dispose(iterator: *Object) void;
+
+/// Clear the async iterator template cache
+///
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// V8 FunctionTemplates are bound to specific isolates and cannot be reused
+/// across isolate boundaries. Failure to clear this cache before disposing
+/// an isolate and creating a new one will cause crashes when the stale
+/// template pointer is dereferenced.
+pub extern fn v8_ClearAsyncIteratorTemplateCache() void;
+
+/// Clear the module resolve callback
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
+pub extern fn v8_ClearModuleResolveCallback() void;
+
+/// Clear the dynamic import callback
+/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
+pub extern fn v8_ClearDynamicImportCallback() void;

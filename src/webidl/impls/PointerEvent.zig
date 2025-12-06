@@ -143,4 +143,3 @@ pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!*const anyo
     _ = instance;
     return error.NotImplemented;
 }
-

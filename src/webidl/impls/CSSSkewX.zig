@@ -64,4 +64,3 @@ pub fn set_ax(instance: *runtime.Instance, value: *runtime.Instance) anyerror!vo
     _ = value;
     return error.NotImplemented;
 }
-

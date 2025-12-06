@@ -149,4 +149,3 @@ pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, 
     _ = size;
     return error.NotImplemented;
 }
-

@@ -64,4 +64,3 @@ pub fn get_mask(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

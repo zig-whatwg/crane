@@ -58,4 +58,3 @@ pub fn get_pictureInPictureWindow(instance: *runtime.Instance) anyerror!*runtime
     _ = instance;
     return error.NotImplemented;
 }
-

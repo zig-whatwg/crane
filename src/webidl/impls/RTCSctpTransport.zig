@@ -75,4 +75,3 @@ pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandl
     _ = value;
     return error.NotImplemented;
 }
-

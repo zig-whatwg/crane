@@ -101,4 +101,3 @@ pub fn call_create(instance: *runtime.Instance, options: dictionaries.Translator
     _ = options;
     return error.NotImplemented;
 }
-

@@ -70,4 +70,3 @@ pub fn get_outputBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance 
     _ = instance;
     return error.NotImplemented;
 }
-

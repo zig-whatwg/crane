@@ -68,4 +68,3 @@ pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instan
     _ = dy;
     return error.NotImplemented;
 }
-

@@ -44,4 +44,3 @@ pub fn get_sourceAnimation(instance: *runtime.Instance) anyerror!*runtime.Instan
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -322,4 +322,3 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     _ = value;
     return error.NotImplemented;
 }
-

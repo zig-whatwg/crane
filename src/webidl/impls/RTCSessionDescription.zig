@@ -69,4 +69,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.RTCSession
     _ = instance;
     return error.NotImplemented;
 }
-

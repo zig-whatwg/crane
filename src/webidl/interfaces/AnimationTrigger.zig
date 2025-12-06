@@ -1,5 +1,5 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:49Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,10 +23,10 @@ pub const AnimationTrigger = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
@@ -36,19 +36,16 @@ pub const AnimationTrigger = struct {
             .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
             .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
@@ -58,11 +55,10 @@ pub const AnimationTrigger = struct {
             .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
             .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -81,7 +77,6 @@ pub const AnimationTrigger = struct {
     );
 
     const delegates = .{
-
         .get_behavior = &get_behavior,
         .get_exitRangeEnd = &get_exitRangeEnd,
         .get_exitRangeStart = &get_exitRangeStart,
@@ -95,6 +90,8 @@ pub const AnimationTrigger = struct {
         .set_rangeEnd = &set_rangeEnd,
         .set_rangeStart = &set_rangeStart,
         .set_timeline = &set_timeline,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -161,5 +158,4 @@ pub const AnimationTrigger = struct {
     pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
         try AnimationTriggerImpl.set_exitRangeEnd(instance, value);
     }
-
 };

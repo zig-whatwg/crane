@@ -104,4 +104,3 @@ pub fn set_angle(instance: *runtime.Instance, value: *runtime.Instance) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

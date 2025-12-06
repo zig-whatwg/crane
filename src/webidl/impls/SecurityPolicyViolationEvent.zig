@@ -125,4 +125,3 @@ pub fn get_columnNumber(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
-

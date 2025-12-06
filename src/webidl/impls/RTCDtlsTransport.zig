@@ -82,4 +82,3 @@ pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!*const a
     _ = instance;
     return error.NotImplemented;
 }
-

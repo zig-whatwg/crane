@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,35 +20,31 @@ pub const PopoverTargetAttributes = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
             .{ "popoverTargetAction", "get_popoverTargetAction", "set_popoverTargetAction" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -63,12 +59,13 @@ pub const PopoverTargetAttributes = struct {
     );
 
     const delegates = .{
-
         .get_popoverTargetAction = &get_popoverTargetAction,
         .get_popoverTargetElement = &get_popoverTargetElement,
 
         .set_popoverTargetAction = &set_popoverTargetAction,
         .set_popoverTargetElement = &set_popoverTargetElement,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -92,7 +89,7 @@ pub const PopoverTargetAttributes = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try PopoverTargetAttributesImpl.set_popoverTargetElement(instance, value);
     }
 
@@ -106,8 +103,7 @@ pub const PopoverTargetAttributes = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try PopoverTargetAttributesImpl.set_popoverTargetAction(instance, value);
     }
-
 };

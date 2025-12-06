@@ -77,4 +77,3 @@ pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.HID
     _ = options;
     return error.NotImplemented;
 }
-

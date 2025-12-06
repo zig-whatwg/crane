@@ -70,4 +70,3 @@ pub fn call_register(instance: *runtime.Instance, name: runtime.DOMString, opera
     _ = operationCtor;
     return error.NotImplemented;
 }
-

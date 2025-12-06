@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -33,10 +33,10 @@ pub const InputEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", null },
@@ -44,17 +44,17 @@ pub const InputEvent = struct {
             .{ "inputType", "get_inputType", null },
             .{ "dataTransfer", "get_dataTransfer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTargetRanges", "call_getTargetRanges", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getTargetRanges",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -64,7 +64,7 @@ pub const InputEvent = struct {
             "initEvent",
             "initUIEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", null },
@@ -72,11 +72,10 @@ pub const InputEvent = struct {
             .{ "inputType", "get_inputType", null },
             .{ "dataTransfer", "get_dataTransfer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -93,13 +92,14 @@ pub const InputEvent = struct {
     );
 
     const delegates = .{
-
         .get_data = &get_data,
         .get_dataTransfer = &get_dataTransfer,
         .get_inputType = &get_inputType,
         .get_isComposing = &get_isComposing,
 
         .call_getTargetRanges = &call_getTargetRanges,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -138,5 +138,4 @@ pub const InputEvent = struct {
     pub fn call_getTargetRanges(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try InputEventImpl.call_getTargetRanges(instance);
     }
-
 };

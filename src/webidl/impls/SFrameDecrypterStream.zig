@@ -85,4 +85,3 @@ pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance
     _ = keyID;
     return error.NotImplemented;
 }
-

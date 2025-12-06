@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,7 +20,7 @@ pub const CanvasPathDrawingStyles = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "lineWidth", "get_lineWidth", "set_lineWidth" },
@@ -29,23 +29,22 @@ pub const CanvasPathDrawingStyles = struct {
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setLineDash", "call_setLineDash", 1 },
             .{ "getLineDash", "call_getLineDash", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setLineDash",
             "getLineDash",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "lineWidth", "get_lineWidth", "set_lineWidth" },
@@ -54,11 +53,10 @@ pub const CanvasPathDrawingStyles = struct {
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -76,7 +74,6 @@ pub const CanvasPathDrawingStyles = struct {
     );
 
     const delegates = .{
-
         .get_lineCap = &get_lineCap,
         .get_lineDashOffset = &get_lineDashOffset,
         .get_lineJoin = &get_lineJoin,
@@ -91,6 +88,8 @@ pub const CanvasPathDrawingStyles = struct {
 
         .call_getLineDash = &call_getLineDash,
         .call_setLineDash = &call_setLineDash,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -149,8 +148,6 @@ pub const CanvasPathDrawingStyles = struct {
     }
 
     pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
-        
         return try CanvasPathDrawingStylesImpl.call_setLineDash(instance, segments);
     }
-
 };

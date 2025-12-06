@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,37 +23,33 @@ pub const XPathEvaluatorBase = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createExpression", "call_createExpression", 1 },
             .{ "createNSResolver", "call_createNSResolver", 1 },
             .{ "evaluate", "call_evaluate", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createExpression",
             "createNSResolver",
             "evaluate",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -66,10 +62,11 @@ pub const XPathEvaluatorBase = struct {
     );
 
     const delegates = .{
-
         .call_createExpression = &call_createExpression,
         .call_createNSResolver = &call_createNSResolver,
         .call_evaluate = &call_evaluate,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -84,20 +81,17 @@ pub const XPathEvaluatorBase = struct {
     }
 
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
-        
         return try XPathEvaluatorBaseImpl.call_createNSResolver(instance, nodeResolver);
     }
 
     pub fn call_evaluate(instance: *runtime.Instance, expression: DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
-        
         return try XPathEvaluatorBaseImpl.call_evaluate(instance, expression, contextNode, resolver, @"type", result);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createExpression(instance: *runtime.Instance, expression: DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try XPathEvaluatorBaseImpl.call_createExpression(instance, expression, resolver);
     }
-
 };

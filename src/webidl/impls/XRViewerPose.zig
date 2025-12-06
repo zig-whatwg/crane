@@ -44,4 +44,3 @@ pub fn get_views(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

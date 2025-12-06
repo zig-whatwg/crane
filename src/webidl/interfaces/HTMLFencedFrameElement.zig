@@ -1,5 +1,5 @@
 //! Generated from: fenced-frame.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,10 +86,10 @@ pub const HTMLFencedFrameElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "config", "get_config", "set_config" },
@@ -98,15 +98,13 @@ pub const HTMLFencedFrameElement = struct {
             .{ "sandbox", "get_sandbox", null },
             .{ "allow", "get_allow", "set_allow" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -202,7 +200,7 @@ pub const HTMLFencedFrameElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "config", "get_config", "set_config" },
@@ -211,11 +209,10 @@ pub const HTMLFencedFrameElement = struct {
             .{ "sandbox", "get_sandbox", null },
             .{ "allow", "get_allow", "set_allow" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -234,7 +231,6 @@ pub const HTMLFencedFrameElement = struct {
     );
 
     const delegates = .{
-
         .get_allow = &get_allow,
         .get_config = &get_config,
         .get_height = &get_height,
@@ -245,6 +241,8 @@ pub const HTMLFencedFrameElement = struct {
         .set_config = &set_config,
         .set_height = &set_height,
         .set_width = &set_width,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -274,7 +272,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_config(instance, value);
     }
 
@@ -288,7 +286,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_width(instance, value);
     }
 
@@ -302,7 +300,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_height(instance, value);
     }
 
@@ -328,8 +326,7 @@ pub const HTMLFencedFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLFencedFrameElementImpl.set_allow(instance, value);
     }
-
 };

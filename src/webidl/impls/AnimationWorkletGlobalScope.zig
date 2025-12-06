@@ -46,4 +46,3 @@ pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMStrin
     _ = animatorCtor;
     return error.NotImplemented;
 }
-

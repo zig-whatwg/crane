@@ -179,4 +179,3 @@ pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runti
     _ = instance;
     return error.NotImplemented;
 }
-

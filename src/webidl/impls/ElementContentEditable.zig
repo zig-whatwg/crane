@@ -96,4 +96,3 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
     _ = value;
     return error.NotImplemented;
 }
-

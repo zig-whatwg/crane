@@ -76,4 +76,3 @@ pub fn get_claimed(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

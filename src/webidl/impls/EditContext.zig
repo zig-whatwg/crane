@@ -192,4 +192,3 @@ pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u
     _ = text;
     return error.NotImplemented;
 }
-

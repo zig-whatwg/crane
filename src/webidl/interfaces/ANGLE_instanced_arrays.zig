@@ -1,5 +1,5 @@
 //! Generated from: ANGLE_instanced_arrays.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,48 +26,44 @@ pub const ANGLE_instanced_arrays = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "drawArraysInstancedANGLE", "call_drawArraysInstancedANGLE", 4 },
             .{ "drawElementsInstancedANGLE", "call_drawElementsInstancedANGLE", 5 },
             .{ "vertexAttribDivisorANGLE", "call_vertexAttribDivisorANGLE", 2 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE", "get_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "drawArraysInstancedANGLE",
             "drawElementsInstancedANGLE",
             "vertexAttribDivisorANGLE",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,12 +85,13 @@ pub const ANGLE_instanced_arrays = struct {
     }
 
     const delegates = .{
-
         .get_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE = &get_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE,
 
         .call_drawArraysInstancedANGLE = &call_drawArraysInstancedANGLE,
         .call_drawElementsInstancedANGLE = &call_drawElementsInstancedANGLE,
         .call_vertexAttribDivisorANGLE = &call_vertexAttribDivisorANGLE,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -109,18 +106,14 @@ pub const ANGLE_instanced_arrays = struct {
     }
 
     pub fn call_drawArraysInstancedANGLE(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei, primcount: GLsizei) anyerror!void {
-        
         return try ANGLE_instanced_arraysImpl.call_drawArraysInstancedANGLE(instance, mode, first, count, primcount);
     }
 
     pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: GLuint, divisor: GLuint) anyerror!void {
-        
         return try ANGLE_instanced_arraysImpl.call_vertexAttribDivisorANGLE(instance, index, divisor);
     }
 
     pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, primcount: GLsizei) anyerror!void {
-        
         return try ANGLE_instanced_arraysImpl.call_drawElementsInstancedANGLE(instance, mode, count, @"type", offset, primcount);
     }
-
 };

@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -47,13 +47,13 @@ pub const ServiceWorkerRegistration = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "installing", "get_installing", null },
@@ -71,7 +71,7 @@ pub const ServiceWorkerRegistration = struct {
             .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "update", "call_update", 0 },
@@ -79,7 +79,7 @@ pub const ServiceWorkerRegistration = struct {
             .{ "showNotification", "call_showNotification", 1 },
             .{ "getNotifications", "call_getNotifications", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "update",
@@ -87,7 +87,7 @@ pub const ServiceWorkerRegistration = struct {
             "showNotification",
             "getNotifications",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -95,7 +95,7 @@ pub const ServiceWorkerRegistration = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "installing", "get_installing", null },
@@ -113,11 +113,10 @@ pub const ServiceWorkerRegistration = struct {
             .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -148,7 +147,6 @@ pub const ServiceWorkerRegistration = struct {
     );
 
     const delegates = .{
-
         .get_active = &get_active,
         .get_backgroundFetch = &get_backgroundFetch,
         .get_cookies = &get_cookies,
@@ -170,6 +168,8 @@ pub const ServiceWorkerRegistration = struct {
         .call_showNotification = &call_showNotification,
         .call_unregister = &call_unregister,
         .call_update = &call_update,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -288,13 +288,10 @@ pub const ServiceWorkerRegistration = struct {
     }
 
     pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!*const anyopaque {
-        
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
 
     pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
-        
         return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }
-
 };

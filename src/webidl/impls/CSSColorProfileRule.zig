@@ -62,4 +62,3 @@ pub fn get_components(instance: *runtime.Instance) anyerror!typedefs.CSSOMString
     _ = instance;
     return error.NotImplemented;
 }
-

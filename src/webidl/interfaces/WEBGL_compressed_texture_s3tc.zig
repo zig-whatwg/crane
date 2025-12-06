@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_compressed_texture_s3tc.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,21 +22,19 @@ pub const WEBGL_compressed_texture_s3tc = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "COMPRESSED_RGB_S3TC_DXT1_EXT", "get_COMPRESSED_RGB_S3TC_DXT1_EXT" },
@@ -44,23 +42,19 @@ pub const WEBGL_compressed_texture_s3tc = struct {
             .{ "COMPRESSED_RGBA_S3TC_DXT3_EXT", "get_COMPRESSED_RGBA_S3TC_DXT3_EXT" },
             .{ "COMPRESSED_RGBA_S3TC_DXT5_EXT", "get_COMPRESSED_RGBA_S3TC_DXT5_EXT" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -97,11 +91,12 @@ pub const WEBGL_compressed_texture_s3tc = struct {
     }
 
     const delegates = .{
-
         .get_COMPRESSED_RGBA_S3TC_DXT1_EXT = &get_COMPRESSED_RGBA_S3TC_DXT1_EXT,
         .get_COMPRESSED_RGBA_S3TC_DXT3_EXT = &get_COMPRESSED_RGBA_S3TC_DXT3_EXT,
         .get_COMPRESSED_RGBA_S3TC_DXT5_EXT = &get_COMPRESSED_RGBA_S3TC_DXT5_EXT,
         .get_COMPRESSED_RGB_S3TC_DXT1_EXT = &get_COMPRESSED_RGB_S3TC_DXT1_EXT,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -114,5 +109,4 @@ pub const WEBGL_compressed_texture_s3tc = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_compressed_texture_s3tcImpl.deinit(instance);
     }
-
 };

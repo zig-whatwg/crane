@@ -56,4 +56,3 @@ pub fn get_artwork(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

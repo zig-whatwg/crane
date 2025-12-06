@@ -1498,6 +1498,7 @@ pub fn writeConstants(
 /// Example output:
 /// ```zig
 /// pub const vtable = runtime.buildVTable(.{
+///     .deinit = &deinit,
 ///     .get_ELEMENT_NODE = &Node.get_ELEMENT_NODE,
 ///     .get_id = &get_id,
 ///     .get_title = &get_title,
@@ -1507,21 +1508,15 @@ pub fn writeConstants(
 ///
 ///     .call_addEventListener = &call_addEventListener,
 ///     .call_remove = &call_remove,
-/// }, &deinit);
+/// });
 /// ```
 pub fn writeVTable(
     writer: anytype,
-    interface_name: []const u8,
-    base_type: ?[]const u8,
     all_constants: []const types.Constant,
     own_constants: []const types.Constant,
     own_attributes: []const types.Attribute,
     own_operations: []const types.Operation,
 ) !void {
-    // Debug output
-    // Removed noisy debug output - slows down codegen with excessive IO
-    // interface_name is used for generating impl deinit references
-    _ = base_type; // Unused
     const allocator = std.heap.page_allocator;
 
     // Generate delegates struct first, then create vtable from it
@@ -1575,7 +1570,6 @@ pub fn writeVTable(
     }
 
     _ = all_constants; // Suppress unused warning (own_constants is used above)
-    _ = base_type; // Suppress unused warning
 
     // Sort getters alphabetically by name
     std.mem.sort(VTableEntry, getters.items, {}, vtableEntryLessThan);
@@ -1687,21 +1681,12 @@ pub fn writeVTable(
         }
     }
 
+    // Add deinit for cleanup when V8 GC collects the wrapper object
+    try writer.writeAll("\n        .deinit = &deinit,\n");
+
     try writer.writeAll("    };\n");
-    // Use buildVTableWithDeinit to pass the impl's deinit function for proper cleanup
-    // The impl's deinit is called when V8 GC collects the JS wrapper object
-    try writer.writeAll("    pub const vtable = runtime.buildVTableWithDeinit(&delegates, getImplDeinit());\n\n");
-    // Helper to get impl's deinit function if it exists
-    // Uses the interface-specific impl name (e.g., NavigatorImpl for Navigator)
-    try writer.writeAll("    fn getImplDeinit() ?*const fn (*runtime.Instance) void {\n");
-    try writer.print("        const impl_info = @typeInfo(@TypeOf({s}Impl));\n", .{interface_name});
-    try writer.writeAll("        if (impl_info == .@\"struct\") {\n");
-    try writer.print("            if (@hasDecl({s}Impl, \"deinit\")) {{\n", .{interface_name});
-    try writer.print("                return &{s}Impl.deinit;\n", .{interface_name});
-    try writer.writeAll("            }\n");
-    try writer.writeAll("        }\n");
-    try writer.writeAll("        return null;\n");
-    try writer.writeAll("    }\n\n");
+    // buildVTable auto-extracts .deinit from delegates struct
+    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates);\n\n");
 }
 
 /// VTable entry for sorting
@@ -3345,11 +3330,12 @@ test "writeVTable generates vtable constant" {
     const ops: []const types.Operation = &.{};
     const all_consts: []const types.Constant = &.{};
     const own_consts: []const types.Constant = &.{};
-    try writeVTable(writer.any(), "EventTarget", null, all_consts, own_consts, attrs, ops);
+    try writeVTable(writer.any(), all_consts, own_consts, attrs, ops);
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "const delegates = .{") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTableWithDeinit(&delegates, getImplDeinit());") != null);
+    try testing.expect(std.mem.indexOf(u8, output, ".deinit = &deinit,") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates);") != null);
 }
 
 test "writeLifecycleFunctions generates init and deinit" {

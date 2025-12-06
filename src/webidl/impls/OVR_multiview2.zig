@@ -50,4 +50,3 @@ pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: 
     _ = numViews;
     return error.NotImplemented;
 }
-

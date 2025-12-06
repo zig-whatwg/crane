@@ -44,4 +44,3 @@ pub fn get_type(instance: *runtime.Instance) anyerror!enums.AudioSinkType {
     _ = instance;
     return error.NotImplemented;
 }
-

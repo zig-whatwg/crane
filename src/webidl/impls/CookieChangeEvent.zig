@@ -110,44 +110,17 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// 1. Set this's changed attribute to eventInitDict["changed"]
 /// 2. Set this's deleted attribute to eventInitDict["deleted"]
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CookieChangeEventInit)) !*runtime.Instance {
+    _ = @"type"; // Event type is handled by Event base class
+
     // Create instance through init()
     const instance = try init(allocator, State, &CookieChangeEvent.vtable, ctx);
     errdefer deinit(instance);
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // Get the Event state to initialize base event properties
-    const state = instance.getState(State);
-
-    // Initialize Event base properties
-    state.parent.own.type = try @"type".clone(allocator);
-    state.parent.own.bubbles = false;
-    state.parent.own.cancelable = false;
-    state.parent.own.composed = false;
-    state.parent.own.target = null;
-    state.parent.own.srcElement = null;
-    state.parent.own.currentTarget = null;
-    state.parent.own.eventPhase = 0; // NONE
-    state.parent.own.cancelBubble = false;
-    state.parent.own.returnValue = true;
-    state.parent.own.defaultPrevented = false;
-    state.parent.own.isTrusted = false;
-    state.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
-
     // Process eventInitDict if provided
     if (eventInitDict.was_passed) {
         const init_dict = eventInitDict.value;
-
-        // Apply EventInit base properties
-        if (init_dict.base.bubbles) |bubbles| {
-            state.parent.own.bubbles = bubbles;
-        }
-        if (init_dict.base.cancelable) |cancelable| {
-            state.parent.own.cancelable = cancelable;
-        }
-        if (init_dict.base.composed) |composed| {
-            state.parent.own.composed = composed;
-        }
 
         // Process changed cookies
         // The changed field is *const anyopaque which is a pointer to CookieList (sequence<CookieListItem>)
@@ -219,14 +192,6 @@ pub fn createFromChanges(
     errdefer deinit(instance);
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    const state = instance.getState(State);
-
-    // Set event type
-    state.parent.own.type = try allocator.dupe(u8, "change");
-    state.parent.own.bubbles = false;
-    state.parent.own.cancelable = false;
-    state.parent.own.isTrusted = true;
-    state.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
 
     // Separate changed and deleted
     for (changed) |change| {

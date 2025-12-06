@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,13 +20,13 @@ pub const IDBKeyRange = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "lower", "get_lower", null },
@@ -34,12 +34,12 @@ pub const IDBKeyRange = struct {
             .{ "lowerOpen", "get_lowerOpen", null },
             .{ "upperOpen", "get_upperOpen", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "includes", "call_includes", 1 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "only", "call_only", 1 },
@@ -47,7 +47,7 @@ pub const IDBKeyRange = struct {
             .{ "upperBound", "call_upperBound", 1 },
             .{ "bound", "call_bound", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "only",
@@ -56,11 +56,10 @@ pub const IDBKeyRange = struct {
             "bound",
             "includes",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "lower", "get_lower", null },
@@ -68,11 +67,10 @@ pub const IDBKeyRange = struct {
             .{ "lowerOpen", "get_lowerOpen", null },
             .{ "upperOpen", "get_upperOpen", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,13 +87,14 @@ pub const IDBKeyRange = struct {
     );
 
     const delegates = .{
-
         .get_lower = &get_lower,
         .get_lowerOpen = &get_lowerOpen,
         .get_upper = &get_upper,
         .get_upperOpen = &get_upperOpen,
 
         .call_includes = &call_includes,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -128,34 +127,32 @@ pub const IDBKeyRange = struct {
     /// Extended attributes: [NewObject]
     pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_only(instance, value);
     }
 
     pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) anyerror!bool {
-        
         return try IDBKeyRangeImpl.call_includes(instance, key);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);
     }
-
 };

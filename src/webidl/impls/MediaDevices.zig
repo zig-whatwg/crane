@@ -119,4 +119,3 @@ pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.O
     _ = config;
     return error.NotImplemented;
 }
-

@@ -65,4 +65,3 @@ pub fn get_notification(instance: *runtime.Instance) anyerror!?*runtime.Instance
     _ = instance;
     return null;
 }
-

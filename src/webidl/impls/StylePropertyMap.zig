@@ -67,4 +67,3 @@ pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values
     _ = values;
     return error.NotImplemented;
 }
-

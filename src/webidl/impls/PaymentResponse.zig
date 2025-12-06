@@ -121,4 +121,3 @@ pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(dictionar
     _ = errorFields;
     return error.NotImplemented;
 }
-

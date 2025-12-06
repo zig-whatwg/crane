@@ -60,4 +60,3 @@ pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMStrin
     _ = @"type";
     return error.NotImplemented;
 }
-

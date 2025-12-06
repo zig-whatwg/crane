@@ -213,4 +213,3 @@ pub fn call_changeType(instance: *runtime.Instance, @"type": runtime.DOMString) 
     _ = @"type";
     return error.NotImplemented;
 }
-

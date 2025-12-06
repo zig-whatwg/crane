@@ -51,4 +51,3 @@ pub fn set_granted(instance: *runtime.Instance, value: *const anyopaque) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

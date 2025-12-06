@@ -68,4 +68,3 @@ pub fn get_language(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
-

@@ -74,7 +74,7 @@ pub const Parser = struct {
 
         while (!self.check(.eof)) {
             if (self.parseDefinition()) |def| {
-                try definitions.append( def);
+                try definitions.append(def);
             } else |err| {
                 if (self.panic_mode) {
                     self.synchronize();
@@ -123,7 +123,7 @@ pub const Parser = struct {
 
             while (!self.check(.rbrace) and !self.check(.eof)) {
                 const def = try self.parseDefinition();
-                try definitions.append( def);
+                try definitions.append(def);
             }
 
             _ = try self.consume(.rbrace, "Expected '}'");
@@ -282,7 +282,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append( member);
+            try members.append(member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -314,7 +314,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append( member);
+            try members.append(member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -742,7 +742,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseDictionaryMember();
-            try members.append( member);
+            try members.append(member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -793,7 +793,7 @@ pub const Parser = struct {
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const value = try self.consume(.string_literal, "Expected string literal");
             const unquoted = value.lexeme[1 .. value.lexeme.len - 1];
-            try values.append( unquoted);
+            try values.append(unquoted);
 
             if (!self.match(.comma)) {
                 break;
@@ -859,7 +859,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append( member);
+            try members.append(member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -888,7 +888,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseNamespaceMember();
-            try members.append( member);
+            try members.append(member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -937,7 +937,7 @@ pub const Parser = struct {
 
         while (!self.check(.rbracket) and !self.check(.eof)) {
             const attr = try self.parseExtendedAttribute();
-            try attrs.append( attr);
+            try attrs.append(attr);
 
             if (!self.match(.comma)) {
                 break;
@@ -999,7 +999,7 @@ pub const Parser = struct {
                         else
                             return self.fail("Expected identifier or literal value");
 
-                        try idents.append( value.lexeme);
+                        try idents.append(value.lexeme);
 
                         if (!self.match(.comma)) {
                             break;
@@ -1092,7 +1092,7 @@ pub const Parser = struct {
 
                 while (!self.check(.rparen) and !self.check(.eof)) {
                     const ident = try self.consume(.identifier, "Expected identifier");
-                    try idents.append( ident.lexeme);
+                    try idents.append(ident.lexeme);
 
                     if (!self.match(.comma)) {
                         break;
@@ -1138,7 +1138,7 @@ pub const Parser = struct {
 
             while (!self.check(.rparen) and !self.check(.eof)) {
                 const type_val = try self.parseSingleType();
-                try types.append( type_val);
+                try types.append(type_val);
 
                 if (self.match(.or_kw)) {
                     continue;
@@ -1348,7 +1348,7 @@ pub const Parser = struct {
 
         while (!self.check(.rparen) and !self.check(.eof)) {
             const arg = try self.parseArgument();
-            try args.append( arg);
+            try args.append(arg);
 
             if (!self.match(.comma)) {
                 break;
@@ -1588,4 +1588,3 @@ pub const Parser = struct {
         return ParseError.UnexpectedToken;
     }
 };
-

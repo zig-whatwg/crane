@@ -114,4 +114,3 @@ pub fn set_onlevelchange(instance: *runtime.Instance, value: typedefs.EventHandl
     _ = value;
     return error.NotImplemented;
 }
-

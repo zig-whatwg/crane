@@ -46,4 +46,3 @@ pub fn call_set(instance: *runtime.Instance, featureValueName: typedefs.CSSOMStr
     _ = values;
     return error.NotImplemented;
 }
-

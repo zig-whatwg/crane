@@ -59,4 +59,3 @@ pub fn get_clipboardData(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     _ = instance;
     return null;
 }
-

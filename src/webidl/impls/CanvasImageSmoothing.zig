@@ -64,4 +64,3 @@ pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.Image
     _ = value;
     return error.NotImplemented;
 }
-

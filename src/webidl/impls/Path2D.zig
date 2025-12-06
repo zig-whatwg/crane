@@ -162,4 +162,3 @@ pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) an
     _ = h;
     return error.NotImplemented;
 }
-

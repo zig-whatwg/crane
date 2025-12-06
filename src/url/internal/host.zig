@@ -85,9 +85,3 @@ pub fn isForbiddenHostCodePoint(cp: u21) bool {
         else => false,
     };
 }
-
-
-
-
-
-

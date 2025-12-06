@@ -51,4 +51,3 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

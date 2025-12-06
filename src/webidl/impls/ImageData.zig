@@ -82,4 +82,3 @@ pub fn get_colorSpace(instance: *runtime.Instance) anyerror!enums.PredefinedColo
     _ = instance;
     return error.NotImplemented;
 }
-

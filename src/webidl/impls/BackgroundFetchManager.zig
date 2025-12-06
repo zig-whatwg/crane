@@ -61,4 +61,3 @@ pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

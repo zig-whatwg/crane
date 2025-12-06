@@ -50,4 +50,3 @@ pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?*const an
     _ = instance;
     return null;
 }
-

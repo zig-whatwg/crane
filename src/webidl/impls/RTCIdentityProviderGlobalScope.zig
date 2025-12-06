@@ -44,4 +44,3 @@ pub fn get_rtcIdentityProvider(instance: *runtime.Instance) anyerror!*runtime.In
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -856,4 +856,3 @@ pub fn call_bindBufferRange(instance: *runtime.Instance, target: typedefs.GLenum
     _ = size;
     return error.NotImplemented;
 }
-

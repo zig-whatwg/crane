@@ -1,5 +1,5 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,17 +30,16 @@ pub const SubtleCrypto = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "encrypt", "call_encrypt", 3 },
@@ -61,13 +60,13 @@ pub const SubtleCrypto = struct {
             .{ "decapsulateBits", "call_decapsulateBits", 3 },
             .{ "getPublicKey", "call_getPublicKey", 2 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_supports", 2 },
             .{ "supports", "call_supports", 3 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "encrypt",
@@ -90,19 +89,16 @@ pub const SubtleCrypto = struct {
             "supports",
             "supports",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -115,7 +111,6 @@ pub const SubtleCrypto = struct {
     );
 
     const delegates = .{
-
         .call_decapsulateBits = &call_decapsulateBits,
         .call_decapsulateKey = &call_decapsulateKey,
         .call_decrypt = &call_decrypt,
@@ -133,6 +128,8 @@ pub const SubtleCrypto = struct {
         .call_unwrapKey = &call_unwrapKey,
         .call_verify = &call_verify,
         .call_wrapKey = &call_wrapKey,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -147,93 +144,74 @@ pub const SubtleCrypto = struct {
     }
 
     pub fn call_generateKey(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_generateKey(instance, algorithm, extractable, keyUsages);
     }
 
     pub fn call_exportKey(instance: *runtime.Instance, format: KeyFormat, key: *runtime.Instance) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_exportKey(instance, format, key);
     }
 
     pub fn call_sign(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, key: *runtime.Instance, data: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_sign(instance, algorithm, key, data);
     }
 
     pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: AlgorithmIdentifier, encapsulationKey: *runtime.Instance) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_encapsulateBits(instance, encapsulationAlgorithm, encapsulationKey);
     }
 
     pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: BufferSource, sharedKeyAlgorithm: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_decapsulateKey(instance, decapsulationAlgorithm, decapsulationKey, ciphertext, sharedKeyAlgorithm, extractable, keyUsages);
     }
 
     pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length);
     }
 
     pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_getPublicKey(instance, key, keyUsages);
     }
 
     pub fn call_deriveKey(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, derivedKeyType: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_deriveKey(instance, algorithm, baseKey, derivedKeyType, extractable, keyUsages);
     }
 
     pub fn call_verify(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, key: *runtime.Instance, signature: BufferSource, data: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_verify(instance, algorithm, key, signature, data);
     }
 
     pub fn call_supports(instance: *runtime.Instance, operation: DOMString, algorithm: AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
-        
         return try SubtleCryptoImpl.call_supports(instance, operation, algorithm, length);
     }
 
     pub fn call_digest(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, data: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_digest(instance, algorithm, data);
     }
 
     pub fn call_importKey(instance: *runtime.Instance, format: KeyFormat, keyData: *const anyopaque, algorithm: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_importKey(instance, format, keyData, algorithm, extractable, keyUsages);
     }
 
     pub fn call_wrapKey(instance: *runtime.Instance, format: KeyFormat, key: *runtime.Instance, wrappingKey: *runtime.Instance, wrapAlgorithm: AlgorithmIdentifier) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_wrapKey(instance, format, key, wrappingKey, wrapAlgorithm);
     }
 
     pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_decapsulateBits(instance, decapsulationAlgorithm, decapsulationKey, ciphertext);
     }
 
     pub fn call_unwrapKey(instance: *runtime.Instance, format: KeyFormat, wrappedKey: BufferSource, unwrappingKey: *runtime.Instance, unwrapAlgorithm: AlgorithmIdentifier, unwrappedKeyAlgorithm: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_unwrapKey(instance, format, wrappedKey, unwrappingKey, unwrapAlgorithm, unwrappedKeyAlgorithm, extractable, keyUsages);
     }
 
     pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: AlgorithmIdentifier, encapsulationKey: *runtime.Instance, sharedKeyAlgorithm: AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_encapsulateKey(instance, encapsulationAlgorithm, encapsulationKey, sharedKeyAlgorithm, extractable, keyUsages);
     }
 
     pub fn call_decrypt(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, key: *runtime.Instance, data: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_decrypt(instance, algorithm, key, data);
     }
 
     pub fn call_encrypt(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, key: *runtime.Instance, data: BufferSource) anyerror!*const anyopaque {
-        
         return try SubtleCryptoImpl.call_encrypt(instance, algorithm, key, data);
     }
-
 };

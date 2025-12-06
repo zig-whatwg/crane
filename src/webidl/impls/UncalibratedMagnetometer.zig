@@ -88,4 +88,3 @@ pub fn get_zBias(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -41,10 +41,10 @@ pub const BluetoothRemoteGATTService = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "device", "get_device", null },
@@ -55,7 +55,7 @@ pub const BluetoothRemoteGATTService = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getCharacteristic", "call_getCharacteristic", 1 },
@@ -63,7 +63,7 @@ pub const BluetoothRemoteGATTService = struct {
             .{ "getIncludedService", "call_getIncludedService", 1 },
             .{ "getIncludedServices", "call_getIncludedServices", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCharacteristic",
@@ -71,7 +71,7 @@ pub const BluetoothRemoteGATTService = struct {
             "getIncludedService",
             "getIncludedServices",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -79,7 +79,7 @@ pub const BluetoothRemoteGATTService = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "device", "get_device", null },
@@ -90,11 +90,10 @@ pub const BluetoothRemoteGATTService = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -115,7 +114,6 @@ pub const BluetoothRemoteGATTService = struct {
     );
 
     const delegates = .{
-
         .get_device = &get_device,
         .get_isPrimary = &get_isPrimary,
         .get_oncharacteristicvaluechanged = &get_oncharacteristicvaluechanged,
@@ -133,6 +131,8 @@ pub const BluetoothRemoteGATTService = struct {
         .call_getCharacteristics = &call_getCharacteristics,
         .call_getIncludedService = &call_getIncludedService,
         .call_getIncludedServices = &call_getIncludedServices,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -199,23 +199,18 @@ pub const BluetoothRemoteGATTService = struct {
     }
 
     pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristic(instance, characteristic);
     }
 
     pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service);
     }
 
     pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }
 
     pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedService(instance, service);
     }
-
 };

@@ -126,4 +126,3 @@ pub fn call_removeCue(instance: *runtime.Instance, cue: *runtime.Instance) anyer
     _ = cue;
     return error.NotImplemented;
 }
-

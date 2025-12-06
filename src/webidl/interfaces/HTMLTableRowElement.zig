@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,10 +86,10 @@ pub const HTMLTableRowElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "rowIndex", "get_rowIndex", null },
@@ -101,19 +101,19 @@ pub const HTMLTableRowElement = struct {
             .{ "vAlign", "get_vAlign", "set_vAlign" },
             .{ "bgColor", "get_bgColor", "set_bgColor" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertCell", "call_insertCell", 0 },
             .{ "deleteCell", "call_deleteCell", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "insertCell",
             "deleteCell",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -209,7 +209,7 @@ pub const HTMLTableRowElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "rowIndex", "get_rowIndex", null },
@@ -221,11 +221,10 @@ pub const HTMLTableRowElement = struct {
             .{ "vAlign", "get_vAlign", "set_vAlign" },
             .{ "bgColor", "get_bgColor", "set_bgColor" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -247,7 +246,6 @@ pub const HTMLTableRowElement = struct {
     );
 
     const delegates = .{
-
         .get_align = &get_align,
         .get_bgColor = &get_bgColor,
         .get_cells = &get_cells,
@@ -265,6 +263,8 @@ pub const HTMLTableRowElement = struct {
 
         .call_deleteCell = &call_deleteCell,
         .call_insertCell = &call_insertCell,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -314,7 +314,7 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableRowElementImpl.set_align(instance, value);
     }
 
@@ -328,7 +328,7 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableRowElementImpl.set_ch(instance, value);
     }
 
@@ -342,7 +342,7 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableRowElementImpl.set_chOff(instance, value);
     }
 
@@ -356,7 +356,7 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableRowElementImpl.set_vAlign(instance, value);
     }
 
@@ -370,12 +370,11 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTableRowElementImpl.set_bgColor(instance, value);
     }
 
     pub fn call_insertCell(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
-        
         return try HTMLTableRowElementImpl.call_insertCell(instance, index);
     }
 
@@ -384,9 +383,7 @@ pub const HTMLTableRowElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try HTMLTableRowElementImpl.call_deleteCell(instance, index);
     }
-
 };

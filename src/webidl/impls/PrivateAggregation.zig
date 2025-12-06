@@ -61,4 +61,3 @@ pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(dic
     _ = options;
     return error.NotImplemented;
 }
-

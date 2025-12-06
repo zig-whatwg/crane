@@ -115,4 +115,3 @@ pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*ru
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -119,4 +119,3 @@ pub fn set_onscrollend(instance: *runtime.Instance, value: typedefs.EventHandler
     _ = value;
     return error.NotImplemented;
 }
-

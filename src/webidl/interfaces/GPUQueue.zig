@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -34,18 +34,18 @@ pub const GPUQueue = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "submit", "call_submit", 1 },
@@ -54,7 +54,7 @@ pub const GPUQueue = struct {
             .{ "writeTexture", "call_writeTexture", 4 },
             .{ "copyExternalImageToTexture", "call_copyExternalImageToTexture", 3 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "submit",
@@ -63,20 +63,18 @@ pub const GPUQueue = struct {
             "writeTexture",
             "copyExternalImageToTexture",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -90,7 +88,6 @@ pub const GPUQueue = struct {
     );
 
     const delegates = .{
-
         .get_label = &get_label,
 
         .set_label = &set_label,
@@ -100,6 +97,8 @@ pub const GPUQueue = struct {
         .call_submit = &call_submit,
         .call_writeBuffer = &call_writeBuffer,
         .call_writeTexture = &call_writeTexture,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -126,23 +125,18 @@ pub const GPUQueue = struct {
     }
 
     pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
-        
         return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset, size);
     }
 
     pub fn call_writeTexture(instance: *runtime.Instance, destination: GPUTexelCopyTextureInfo, data: AllowSharedBufferSource, dataLayout: GPUTexelCopyBufferLayout, size: GPUExtent3D) anyerror!void {
-        
         return try GPUQueueImpl.call_writeTexture(instance, destination, data, dataLayout, size);
     }
 
     pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
-        
         return try GPUQueueImpl.call_submit(instance, commandBuffers);
     }
 
     pub fn call_copyExternalImageToTexture(instance: *runtime.Instance, source: GPUCopyExternalImageSourceInfo, destination: GPUCopyExternalImageDestInfo, copySize: GPUExtent3D) anyerror!void {
-        
         return try GPUQueueImpl.call_copyExternalImageToTexture(instance, source, destination, copySize);
     }
-
 };

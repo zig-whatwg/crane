@@ -482,7 +482,3 @@ pub const Lexer = struct {
         return self.current >= self.source.len;
     }
 };
-
-
-
-

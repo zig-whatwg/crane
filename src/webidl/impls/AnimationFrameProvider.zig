@@ -52,4 +52,3 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyer
     _ = handle;
     return error.NotImplemented;
 }
-

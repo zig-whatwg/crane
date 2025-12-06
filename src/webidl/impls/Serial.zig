@@ -78,4 +78,3 @@ pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(diction
     _ = options;
     return error.NotImplemented;
 }
-

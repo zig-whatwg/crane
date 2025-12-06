@@ -58,4 +58,3 @@ pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: ?*runtime
     _ = RestrictionTarget;
     return error.NotImplemented;
 }
-

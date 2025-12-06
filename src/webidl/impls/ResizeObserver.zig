@@ -73,4 +73,3 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

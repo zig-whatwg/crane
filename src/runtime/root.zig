@@ -107,6 +107,14 @@ pub const onObjectFreed = gc.onObjectFreed;
 pub const onGCSweep = gc.onGCSweep;
 pub const GCStats = gc.GCStats;
 
+// Internal state registry and accessors
+// Provides type-safe access to impl internal state from external code
+pub const internal_state = @import("internal_state.zig");
+pub const getInternal = internal_state.getInternal;
+pub const setInternal = internal_state.setInternal;
+pub const removeInternal = internal_state.removeInternal;
+pub const hasInternal = internal_state.hasInternal;
+
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
 pub const EngineInterface = @import("engine_interface.zig").EngineInterface;

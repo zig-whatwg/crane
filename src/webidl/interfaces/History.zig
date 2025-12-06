@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,17 +23,17 @@ pub const History = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
             .{ "scrollRestoration", "get_scrollRestoration", "set_scrollRestoration" },
             .{ "state", "get_state", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "go", "call_go", 0 },
@@ -42,7 +42,7 @@ pub const History = struct {
             .{ "pushState", "call_pushState", 2 },
             .{ "replaceState", "call_replaceState", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "go",
@@ -51,22 +51,20 @@ pub const History = struct {
             "pushState",
             "replaceState",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
             .{ "scrollRestoration", "get_scrollRestoration", "set_scrollRestoration" },
             .{ "state", "get_state", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -82,7 +80,6 @@ pub const History = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
         .get_scrollRestoration = &get_scrollRestoration,
         .get_state = &get_state,
@@ -94,9 +91,10 @@ pub const History = struct {
         .call_go = &call_go,
         .call_pushState = &call_pushState,
         .call_replaceState = &call_replaceState,
+
+        .deinit = &deinit,
     };
-    // Use buildVTableWithDeinit to ensure GC calls impl's deinit for proper cleanup
-    pub const vtable = runtime.buildVTableWithDeinit(&delegates, &HistoryImpl.deinit);
+    pub const vtable = runtime.buildVTable(&delegates);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -129,12 +127,10 @@ pub const History = struct {
     }
 
     pub fn call_pushState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
-        
         return try HistoryImpl.call_pushState(instance, data, unused, url);
     }
 
     pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!void {
-        
         return try HistoryImpl.call_go(instance, delta);
     }
 
@@ -143,8 +139,6 @@ pub const History = struct {
     }
 
     pub fn call_replaceState(instance: *runtime.Instance, data: *const anyopaque, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
-        
         return try HistoryImpl.call_replaceState(instance, data, unused, url);
     }
-
 };

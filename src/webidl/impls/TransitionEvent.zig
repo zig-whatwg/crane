@@ -71,4 +71,3 @@ pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
     _ = instance;
     return error.NotImplemented;
 }
-

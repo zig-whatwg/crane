@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -81,10 +81,10 @@ pub const CanvasRenderingContext2D = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "canvas", "get_canvas", null },
@@ -116,7 +116,7 @@ pub const CanvasRenderingContext2D = struct {
             .{ "textRendering", "get_textRendering", "set_textRendering" },
             .{ "wordSpacing", "get_wordSpacing", "set_wordSpacing" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getContextAttributes", "call_getContextAttributes", 0 },
@@ -176,7 +176,7 @@ pub const CanvasRenderingContext2D = struct {
             .{ "arc", "call_arc", 5 },
             .{ "ellipse", "call_ellipse", 7 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getContextAttributes",
@@ -236,11 +236,10 @@ pub const CanvasRenderingContext2D = struct {
             "arc",
             "ellipse",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "canvas", "get_canvas", null },
@@ -271,12 +270,12 @@ pub const CanvasRenderingContext2D = struct {
             .{ "textRendering", "get_textRendering", "set_textRendering" },
             .{ "wordSpacing", "get_wordSpacing", "set_wordSpacing" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "lang", "get_lang", "set_lang" },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -325,7 +324,6 @@ pub const CanvasRenderingContext2D = struct {
     );
 
     const delegates = .{
-
         .get_canvas = &get_canvas,
         .get_direction = &get_direction,
         .get_fillStyle = &get_fillStyle,
@@ -428,6 +426,8 @@ pub const CanvasRenderingContext2D = struct {
         .call_strokeText = &call_strokeText,
         .call_transform = &call_transform,
         .call_translate = &call_translate,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -662,12 +662,10 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
     pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
-        
         return try CanvasRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
     }
 
@@ -676,22 +674,18 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
     }
 
     pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-        
         return try CanvasRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
     }
 
     pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_transform(instance, a, b, c, d, e, f);
     }
 
@@ -700,7 +694,6 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_clip(instance, fillRule);
     }
 
@@ -709,7 +702,6 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_strokeText(instance, text, x, y, maxWidth);
     }
 
@@ -718,7 +710,6 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
     }
 
@@ -731,12 +722,11 @@ pub const CanvasRenderingContext2D = struct {
         if (!runtime.isInRange(i32, sw)) return error.TypeError;
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
-        
+
         return try CanvasRenderingContext2DImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
     }
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
@@ -747,12 +737,10 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-        
         return try CanvasRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
     pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_drawFocusIfNeeded(instance, element);
     }
 
@@ -761,17 +749,14 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
-        
         return try CanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
     }
 
     pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_lineTo(instance, x, y);
     }
 
@@ -780,7 +765,6 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
     }
 
@@ -789,7 +773,6 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_setLineDash(instance, segments);
     }
 
@@ -798,12 +781,10 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_moveTo(instance, x, y);
     }
 
     pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_quadraticCurveTo(instance, cpx, cpy, x, y);
     }
 
@@ -812,17 +793,14 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
-        
         return try CanvasRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
     }
 
     pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
     pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_rotate(instance, angle);
     }
 
@@ -831,37 +809,31 @@ pub const CanvasRenderingContext2D = struct {
         if (!runtime.isInRange(i32, sw)) return error.TypeError;
         // [EnforceRange] on sh
         if (!runtime.isInRange(i32, sh)) return error.TypeError;
-        
+
         return try CanvasRenderingContext2DImpl.call_createImageData(instance, sw, sh, settings);
     }
 
     pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_scale(instance, x, y);
     }
 
     pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_translate(instance, x, y);
     }
 
     pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-        
         return try CanvasRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
     }
 
     pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
     }
 
     pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
 
     pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_fillRect(instance, x, y, w, h);
     }
 
@@ -870,17 +842,14 @@ pub const CanvasRenderingContext2D = struct {
     }
 
     pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_fillText(instance, text, x, y, maxWidth);
     }
 
     pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
-        
         return try CanvasRenderingContext2DImpl.call_measureText(instance, text);
     }
 
     pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        
         return try CanvasRenderingContext2DImpl.call_fill(instance, fillRule);
     }
 
@@ -889,8 +858,7 @@ pub const CanvasRenderingContext2D = struct {
         if (!runtime.isInRange(i32, dx)) return error.TypeError;
         // [EnforceRange] on dy
         if (!runtime.isInRange(i32, dy)) return error.TypeError;
-        
+
         return try CanvasRenderingContext2DImpl.call_putImageData(instance, imageData, dx, dy);
     }
-
 };

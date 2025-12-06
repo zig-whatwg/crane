@@ -786,4 +786,3 @@ pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, 
     _ = state;
     return error.NotImplemented;
 }
-

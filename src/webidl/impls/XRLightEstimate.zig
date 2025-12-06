@@ -56,4 +56,3 @@ pub fn get_primaryLightIntensity(instance: *runtime.Instance) anyerror!*runtime.
     _ = instance;
     return error.NotImplemented;
 }
-

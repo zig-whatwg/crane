@@ -1,5 +1,5 @@
 //! Generated from: font-metrics-api.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,10 +22,10 @@ pub const FontMetrics = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", null },
@@ -43,19 +43,16 @@ pub const FontMetrics = struct {
             .{ "baselines", "get_baselines", null },
             .{ "fonts", "get_fonts", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", null },
@@ -73,11 +70,10 @@ pub const FontMetrics = struct {
             .{ "baselines", "get_baselines", null },
             .{ "fonts", "get_fonts", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -104,7 +100,6 @@ pub const FontMetrics = struct {
     );
 
     const delegates = .{
-
         .get_advances = &get_advances,
         .get_baselines = &get_baselines,
         .get_boundingBoxAscent = &get_boundingBoxAscent,
@@ -119,6 +114,8 @@ pub const FontMetrics = struct {
         .get_fonts = &get_fonts,
         .get_height = &get_height,
         .get_width = &get_width,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -187,5 +184,4 @@ pub const FontMetrics = struct {
     pub fn get_fonts(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try FontMetricsImpl.get_fonts(instance);
     }
-
 };

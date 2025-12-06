@@ -111,4 +111,3 @@ pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) an
     _ = view;
     return null;
 }
-

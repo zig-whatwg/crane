@@ -56,4 +56,3 @@ pub fn get_blue(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

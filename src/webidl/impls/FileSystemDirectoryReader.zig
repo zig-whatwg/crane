@@ -47,4 +47,3 @@ pub fn call_readEntries(instance: *runtime.Instance, successCallback: callbacks.
     _ = errorCallback;
     return error.NotImplemented;
 }
-

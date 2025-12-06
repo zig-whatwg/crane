@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const PasswordCredentialInit = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    password_credential_data: dictionaries.PasswordCredentialData,
+    htmlform_element: *runtime.Instance,
 };

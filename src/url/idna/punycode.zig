@@ -309,13 +309,3 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     output.deinit();
     return final_result;
 }
-
-
-
-
-
-
-
-
-
-

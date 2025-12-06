@@ -66,4 +66,3 @@ pub fn call_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) a
     _ = name;
     return error.NotImplemented;
 }
-

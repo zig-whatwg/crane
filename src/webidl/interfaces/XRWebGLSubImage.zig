@@ -1,5 +1,5 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,10 +24,10 @@ pub const XRWebGLSubImage = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "colorTexture", "get_colorTexture", null },
@@ -41,19 +41,16 @@ pub const XRWebGLSubImage = struct {
             .{ "motionVectorTextureWidth", "get_motionVectorTextureWidth", null },
             .{ "motionVectorTextureHeight", "get_motionVectorTextureHeight", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "colorTexture", "get_colorTexture", null },
@@ -67,11 +64,10 @@ pub const XRWebGLSubImage = struct {
             .{ "motionVectorTextureWidth", "get_motionVectorTextureWidth", null },
             .{ "motionVectorTextureHeight", "get_motionVectorTextureHeight", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -97,7 +93,6 @@ pub const XRWebGLSubImage = struct {
     );
 
     const delegates = .{
-
         .get_colorTexture = &get_colorTexture,
         .get_colorTextureHeight = &get_colorTextureHeight,
         .get_colorTextureWidth = &get_colorTextureWidth,
@@ -108,6 +103,8 @@ pub const XRWebGLSubImage = struct {
         .get_motionVectorTexture = &get_motionVectorTexture,
         .get_motionVectorTextureHeight = &get_motionVectorTextureHeight,
         .get_motionVectorTextureWidth = &get_motionVectorTextureWidth,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -184,5 +181,4 @@ pub const XRWebGLSubImage = struct {
     pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLSubImageImpl.get_motionVectorTextureHeight(instance);
     }
-
 };

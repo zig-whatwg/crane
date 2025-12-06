@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -1221,6 +1221,8 @@ pub const Document = struct {
         .call_startViewTransition = &call_startViewTransition,
         .call_write = &call_write,
         .call_writeln = &call_writeln,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -3005,33 +3007,87 @@ pub const Document = struct {
         return try DocumentImpl.call_measureText(instance, text, styleMap);
     }
 
-    // =============================================================================
-    // Script Execution State (HTML Standard §4.12.1.1)
-    // =============================================================================
+    // =========================================================================
+    // Custom internal functions for script execution (not from WebIDL)
+    // Per Golden Rule #12: External code calls interfaces, not impls
+    // =========================================================================
 
     /// Check if scripting is enabled for this document
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-script
     pub fn isScriptingEnabled(instance: *runtime.Instance) bool {
         return DocumentImpl.isScriptingEnabled(instance);
     }
 
-    /// Get the pending parsing-blocking script
-    pub fn getPendingParsingBlockingScript(instance: *runtime.Instance) ?*runtime.Instance {
-        return DocumentImpl.getPendingParsingBlockingScript(instance);
+    /// Check if inline script is allowed by CSP
+    pub fn isInlineScriptAllowedByCSP(
+        instance: *runtime.Instance,
+        nonce: ?[]const u8,
+        hash_algorithm: ?[]const u8,
+        hash_value: ?[]const u8,
+    ) bool {
+        return DocumentImpl.isInlineScriptAllowedByCSP(instance, nonce, hash_algorithm, hash_value);
     }
 
-    /// Set the pending parsing-blocking script
+    /// Check if external script URL is allowed by CSP
+    pub fn isExternalScriptAllowedByCSP(
+        instance: *runtime.Instance,
+        scheme: []const u8,
+        host: []const u8,
+        port: ?u16,
+        path: []const u8,
+        nonce: ?[]const u8,
+    ) bool {
+        return DocumentImpl.isExternalScriptAllowedByCSP(instance, scheme, host, port, path, nonce);
+    }
+
+    /// Get internal state (for direct field access when needed)
+    pub fn getInternal(instance: *runtime.Instance) ?*DocumentImpl.InternalState {
+        return DocumentImpl.getInternal(instance);
+    }
+
+    /// Check if document has a style sheet blocking scripts
+    pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
+        return DocumentImpl.hasStyleSheetBlockingScripts(instance);
+    }
+
+    /// Set pending parsing-blocking script
     pub fn setPendingParsingBlockingScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
         DocumentImpl.setPendingParsingBlockingScript(instance, script);
     }
 
-    /// Add script to "execute ASAP" set
-    pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
-        return DocumentImpl.addScriptToExecuteAsap(instance, script);
+    /// Get pending parsing-blocking script
+    pub fn getPendingParsingBlockingScript(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.getPendingParsingBlockingScript(instance);
     }
 
-    /// Remove script from "execute ASAP" set
-    pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) void {
-        DocumentImpl.removeScriptFromExecuteAsap(instance, script);
+    /// Add script to execute when parsing finishes
+    pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteWhenParsingFinished(instance, script);
+    }
+
+    /// Get scripts to execute when parsing finishes
+    pub fn getScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) []*runtime.Instance {
+        return DocumentImpl.getScriptsToExecuteWhenParsingFinished(instance);
+    }
+
+    /// Clear scripts to execute when parsing finishes
+    pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) void {
+        DocumentImpl.clearScriptsToExecuteWhenParsingFinished(instance);
+    }
+
+    /// Add script to execute in order ASAP
+    pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteInOrderAsap(instance, script);
+    }
+
+    /// Pop first script to execute in order ASAP
+    pub fn popFirstScriptToExecuteInOrderAsap(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.popFirstScriptToExecuteInOrderAsap(instance);
+    }
+
+    /// Add script to execute ASAP (unordered)
+    pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
+        return DocumentImpl.addScriptToExecuteAsap(instance, script);
     }
 
     /// Get scripts to execute ASAP
@@ -3039,39 +3095,9 @@ pub const Document = struct {
         return DocumentImpl.getScriptsToExecuteAsap(instance);
     }
 
-    /// Add script to "execute in order ASAP" list
-    pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
-        return DocumentImpl.addScriptToExecuteInOrderAsap(instance, script);
-    }
-
-    /// Pop first script from "execute in order ASAP" list
-    pub fn popFirstScriptToExecuteInOrderAsap(instance: *runtime.Instance) ?*runtime.Instance {
-        return DocumentImpl.popFirstScriptToExecuteInOrderAsap(instance);
-    }
-
-    /// Add script to "execute when parsing finished" list
-    pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
-        return DocumentImpl.addScriptToExecuteWhenParsingFinished(instance, script);
-    }
-
-    /// Get scripts to execute when parsing finished
-    pub fn getScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) []const *runtime.Instance {
-        return DocumentImpl.getScriptsToExecuteWhenParsingFinished(instance);
-    }
-
-    /// Clear scripts to execute when parsing finished
-    pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) void {
-        DocumentImpl.clearScriptsToExecuteWhenParsingFinished(instance);
-    }
-
-    /// Get current script
-    pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {
-        return DocumentImpl.getCurrentScript(instance);
-    }
-
-    /// Set current script
-    pub fn setCurrentScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
-        DocumentImpl.setCurrentScript(instance, script);
+    /// Remove script from execute ASAP set
+    pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) bool {
+        return DocumentImpl.removeScriptFromExecuteAsap(instance, script);
     }
 
     /// Increment ignore-destructive-writes counter
@@ -3084,54 +3110,15 @@ pub const Document = struct {
         DocumentImpl.decrementIgnoreDestructiveWritesCounter(instance);
     }
 
-    // =============================================================================
-    // Stylesheet Blocking (HTML Standard §14.3.3)
-    // =============================================================================
-
-    /// Check if document has a style sheet that is blocking scripts
-    /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
-    ///
-    /// This should be called before executing parser-inserted scripts.
-    pub fn hasStyleSheetBlockingScripts(instance: *runtime.Instance) bool {
-        return DocumentImpl.hasStyleSheetBlockingScripts(instance);
+    /// Get current script
+    pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {
+        return DocumentImpl.getCurrentScript(instance);
     }
 
-    /// Add a stylesheet to the blocking tracker
-    /// Call this when a parser-inserted stylesheet link element starts loading.
-    pub fn addBlockingStylesheet(
-        instance: *runtime.Instance,
-        id: []const u8,
-        url: []const u8,
-        is_blocking: bool,
-    ) !void {
-        return DocumentImpl.addBlockingStylesheet(instance, id, url, is_blocking);
+    /// Set current script
+    pub fn setCurrentScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
+        DocumentImpl.setCurrentScript(instance, script);
     }
-
-    /// Mark a stylesheet as loaded
-    /// Call this when a stylesheet finishes loading successfully.
-    pub fn markStylesheetLoaded(instance: *runtime.Instance, id: []const u8) void {
-        DocumentImpl.markStylesheetLoaded(instance, id);
-    }
-
-    /// Mark a stylesheet as failed
-    /// Call this when a stylesheet fails to load.
-    pub fn markStylesheetFailed(instance: *runtime.Instance, id: []const u8) void {
-        DocumentImpl.markStylesheetFailed(instance, id);
-    }
-
-    /// Remove a stylesheet from tracking
-    pub fn removeBlockingStylesheet(instance: *runtime.Instance, id: []const u8) void {
-        DocumentImpl.removeBlockingStylesheet(instance, id);
-    }
-
-    /// Get the count of blocking stylesheets
-    pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
-        return DocumentImpl.getBlockingStylesheetCount(instance);
-    }
-
-    // =============================================================================
-    // Module Map and Import Map (HTML Standard §8.1.3.10, §8.1.6)
-    // =============================================================================
 
     /// Check if module is in module map
     pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
@@ -3158,65 +3145,27 @@ pub const Document = struct {
         DocumentImpl.setImportMapAcquired(instance);
     }
 
-    /// Resolve import specifier using import map
+    /// Resolve import specifier using import maps
     pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8, base_url: []const u8) ?[]const u8 {
         return DocumentImpl.resolveImportSpecifier(instance, specifier, base_url);
     }
 
     /// Add import mapping
-    pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) !void {
-        return DocumentImpl.addImportMapping(instance, specifier, resolved_url);
+    pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, url: []const u8) !void {
+        return DocumentImpl.addImportMapping(instance, specifier, url);
     }
 
     /// Add scoped import mapping
-    pub fn addScopedImportMapping(instance: *runtime.Instance, scope: []const u8, specifier: []const u8, resolved_url: []const u8) !void {
-        return DocumentImpl.addScopedImportMapping(instance, scope, specifier, resolved_url);
+    pub fn addScopedImportMapping(instance: *runtime.Instance, scope: []const u8, specifier: []const u8, url: []const u8) !void {
+        return DocumentImpl.addScopedImportMapping(instance, scope, specifier, url);
     }
-
-    // =============================================================================
-    // Content Security Policy (CSP Level 3)
-    // =============================================================================
-
-    /// Check if inline script is allowed by CSP
-    pub fn isInlineScriptAllowedByCSP(
-        instance: *runtime.Instance,
-        nonce: ?[]const u8,
-        hash_algorithm: ?[]const u8,
-        hash_value: ?[]const u8,
-    ) bool {
-        return DocumentImpl.isInlineScriptAllowedByCSP(instance, nonce, hash_algorithm, hash_value);
-    }
-
-    /// Check if external script is allowed by CSP
-    pub fn isExternalScriptAllowedByCSP(
-        instance: *runtime.Instance,
-        scheme: []const u8,
-        host: []const u8,
-        port: ?u16,
-        path: []const u8,
-        nonce: ?[]const u8,
-    ) bool {
-        return DocumentImpl.isExternalScriptAllowedByCSP(instance, scheme, host, port, path, nonce);
-    }
-
-    // =============================================================================
-    // Speculation Rules (HTML Standard §7.6.1)
-    // =============================================================================
 
     /// Add prefetch hint
-    pub fn addPrefetchHint(instance: *runtime.Instance, url: []const u8, eagerness: DocumentImpl.SpeculationEagerness) !void {
+    pub fn addPrefetchHint(instance: *runtime.Instance, url: []const u8, eagerness: SpeculationEagerness) !void {
         return DocumentImpl.addPrefetchHint(instance, url, eagerness);
     }
 
-    // =============================================================================
-    // Internal State Access
-    // =============================================================================
-
-    /// Get internal state (for base_uri access)
-    pub fn getInternal(instance: *runtime.Instance) ?*DocumentImpl.InternalState {
-        return DocumentImpl.getInternal(instance);
-    }
-
-    // Re-export types for external use
+    // Re-export types from impl for external use
+    pub const InternalState = DocumentImpl.InternalState;
     pub const SpeculationEagerness = DocumentImpl.SpeculationEagerness;
 };

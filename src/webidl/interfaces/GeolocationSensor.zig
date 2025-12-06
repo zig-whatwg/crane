@@ -1,5 +1,5 @@
 //! Generated from: geolocation-sensor.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,13 +35,13 @@ pub const GeolocationSensor = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "Window" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "latitude", "get_latitude", null },
@@ -52,21 +52,20 @@ pub const GeolocationSensor = struct {
             .{ "heading", "get_heading", null },
             .{ "speed", "get_speed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "read", "call_read", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "read",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -76,7 +75,7 @@ pub const GeolocationSensor = struct {
             "start",
             "stop",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "latitude", "get_latitude", null },
@@ -87,11 +86,10 @@ pub const GeolocationSensor = struct {
             .{ "heading", "get_heading", null },
             .{ "speed", "get_speed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -111,7 +109,6 @@ pub const GeolocationSensor = struct {
     );
 
     const delegates = .{
-
         .get_accuracy = &get_accuracy,
         .get_altitude = &get_altitude,
         .get_altitudeAccuracy = &get_altitudeAccuracy,
@@ -119,6 +116,8 @@ pub const GeolocationSensor = struct {
         .get_latitude = &get_latitude,
         .get_longitude = &get_longitude,
         .get_speed = &get_speed,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -167,8 +166,6 @@ pub const GeolocationSensor = struct {
     }
 
     pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
-        
         return try GeolocationSensorImpl.call_read(instance, readOptions);
     }
-
 };

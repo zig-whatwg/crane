@@ -51,4 +51,3 @@ pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyer
     _ = value;
     return error.NotImplemented;
 }
-

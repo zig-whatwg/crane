@@ -44,4 +44,3 @@ pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
-

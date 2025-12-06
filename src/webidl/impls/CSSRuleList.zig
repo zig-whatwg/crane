@@ -51,4 +51,3 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     _ = index;
     return null;
 }
-

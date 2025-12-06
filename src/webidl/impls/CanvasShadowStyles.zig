@@ -90,4 +90,3 @@ pub fn set_shadowColor(instance: *runtime.Instance, value: runtime.DOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

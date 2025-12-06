@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,14 +30,13 @@ pub const Observable = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "subscribe", "call_subscribe", 0 },
@@ -60,12 +59,12 @@ pub const Observable = struct {
             .{ "some", "call_some", 1 },
             .{ "reduce", "call_reduce", 1 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "from", "call_from", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "subscribe",
@@ -89,19 +88,16 @@ pub const Observable = struct {
             "some",
             "reduce",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -114,7 +110,6 @@ pub const Observable = struct {
     );
 
     const delegates = .{
-
         .call_catch = &call_catch,
         .call_drop = &call_drop,
         .call_every = &call_every,
@@ -134,6 +129,8 @@ pub const Observable = struct {
         .call_take = &call_take,
         .call_takeUntil = &call_takeUntil,
         .call_toArray = &call_toArray,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -154,103 +151,82 @@ pub const Observable = struct {
     }
 
     pub fn call_map(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_map(instance, mapper);
     }
 
     pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(ObservableInspectorUnion)) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_inspect(instance, inspectorUnion);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: Visitor, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_forEach(instance, callback, options);
     }
 
     pub fn call_every(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_every(instance, predicate, options);
     }
 
     pub fn call_some(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_some(instance, predicate, options);
     }
 
     pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_first(instance, options);
     }
 
     pub fn call_takeUntil(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_takeUntil(instance, value);
     }
 
     pub fn call_find(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_find(instance, predicate, options);
     }
 
     pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_last(instance, options);
     }
 
     pub fn call_filter(instance: *runtime.Instance, predicate: Predicate) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_filter(instance, predicate);
     }
 
     pub fn call_switchMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_switchMap(instance, mapper);
     }
 
     pub fn call_finally(instance: *runtime.Instance, callback: VoidFunction) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_finally(instance, callback);
     }
 
     pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_take(instance, amount);
     }
 
     pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_toArray(instance, options);
     }
 
     pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(*const anyopaque), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
         return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
     }
 
     pub fn call_drop(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_drop(instance, amount);
     }
 
     pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_flatMap(instance, mapper);
     }
 
     pub fn call_from(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_from(instance, value);
     }
 
     pub fn call_catch(instance: *runtime.Instance, callback: CatchCallback) anyerror!*runtime.Instance {
-        
         return try ObservableImpl.call_catch(instance, callback);
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(ObserverUnion), options: webidl.Opt(SubscribeOptions)) anyerror!void {
-        
         return try ObservableImpl.call_subscribe(instance, observer, options);
     }
-
 };

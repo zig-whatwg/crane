@@ -123,4 +123,3 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     _ = baseURL;
     return null;
 }
-

@@ -133,4 +133,3 @@ pub const ParserState = enum {
     /// - Last state in parsing
     fragment,
 };
-

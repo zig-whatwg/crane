@@ -8,5 +8,4 @@ const EventInit = @import("EventInit.zig").EventInit;
 pub const ExtendableEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
-
 };

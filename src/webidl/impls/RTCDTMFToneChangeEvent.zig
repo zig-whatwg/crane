@@ -59,4 +59,3 @@ pub fn get_tone(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

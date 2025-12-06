@@ -44,4 +44,3 @@ pub fn get_segments(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
-

@@ -64,4 +64,3 @@ pub fn set_ongattserverdisconnected(instance: *runtime.Instance, value: typedefs
     _ = value;
     return error.NotImplemented;
 }
-

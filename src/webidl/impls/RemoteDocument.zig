@@ -87,4 +87,3 @@ pub fn set_document(instance: *runtime.Instance, value: *const anyopaque) anyerr
     _ = value;
     return error.NotImplemented;
 }
-

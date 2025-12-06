@@ -50,4 +50,3 @@ pub fn call_IsSearchProviderInstalled(instance: *runtime.Instance) anyerror!void
     _ = instance;
     return error.NotImplemented;
 }
-

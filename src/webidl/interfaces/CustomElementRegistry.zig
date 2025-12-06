@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,14 +24,13 @@ pub const CustomElementRegistry = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "define", "call_define", 2 },
@@ -41,7 +40,7 @@ pub const CustomElementRegistry = struct {
             .{ "upgrade", "call_upgrade", 1 },
             .{ "initialize", "call_initialize", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "define",
@@ -51,19 +50,16 @@ pub const CustomElementRegistry = struct {
             "upgrade",
             "initialize",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -76,13 +72,14 @@ pub const CustomElementRegistry = struct {
     );
 
     const delegates = .{
-
         .call_define = &call_define,
         .call_get = &call_get,
         .call_getName = &call_getName,
         .call_initialize = &call_initialize,
         .call_upgrade = &call_upgrade,
         .call_whenDefined = &call_whenDefined,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -107,18 +104,15 @@ pub const CustomElementRegistry = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
-        
         return try CustomElementRegistryImpl.call_get(instance, name);
     }
 
     pub fn call_getName(instance: *runtime.Instance, constructor: CustomElementConstructor) anyerror!?DOMString {
-        
         return try CustomElementRegistryImpl.call_getName(instance, constructor);
     }
 
@@ -127,19 +121,15 @@ pub const CustomElementRegistry = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try CustomElementRegistryImpl.call_upgrade(instance, root);
     }
 
     pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
-        
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }
 
     pub fn call_whenDefined(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
-        
         return try CustomElementRegistryImpl.call_whenDefined(instance, name);
     }
-
 };

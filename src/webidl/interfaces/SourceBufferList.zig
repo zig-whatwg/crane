@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,28 +31,26 @@ pub const SourceBufferList = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
             .{ "onaddsourcebuffer", "get_onaddsourcebuffer", "set_onaddsourcebuffer" },
             .{ "onremovesourcebuffer", "get_onremovesourcebuffer", "set_onremovesourcebuffer" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -60,18 +58,17 @@ pub const SourceBufferList = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
             .{ "onaddsourcebuffer", "get_onaddsourcebuffer", "set_onaddsourcebuffer" },
             .{ "onremovesourcebuffer", "get_onremovesourcebuffer", "set_onremovesourcebuffer" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -87,13 +84,14 @@ pub const SourceBufferList = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
         .get_onaddsourcebuffer = &get_onaddsourcebuffer,
         .get_onremovesourcebuffer = &get_onremovesourcebuffer,
 
         .set_onaddsourcebuffer = &set_onaddsourcebuffer,
         .set_onremovesourcebuffer = &set_onremovesourcebuffer,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -126,5 +124,4 @@ pub const SourceBufferList = struct {
     pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try SourceBufferListImpl.set_onremovesourcebuffer(instance, value);
     }
-
 };

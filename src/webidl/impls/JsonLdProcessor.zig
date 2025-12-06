@@ -102,4 +102,3 @@ pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, fram
     _ = options;
     return error.NotImplemented;
 }
-

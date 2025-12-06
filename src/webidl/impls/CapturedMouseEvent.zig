@@ -65,4 +65,3 @@ pub fn get_surfaceY(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -212,4 +212,3 @@ pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmId
     _ = data;
     return error.NotImplemented;
 }
-

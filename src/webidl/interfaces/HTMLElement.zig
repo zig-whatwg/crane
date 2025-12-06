@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -93,10 +93,10 @@ pub const HTMLElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "title", "get_title", "set_title" },
@@ -242,7 +242,7 @@ pub const HTMLElement = struct {
             .{ "autofocus", "get_autofocus", "set_autofocus" },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "click", "call_click", 0 },
@@ -253,7 +253,7 @@ pub const HTMLElement = struct {
             .{ "focus", "call_focus", 0 },
             .{ "blur", "call_blur", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "click",
@@ -264,7 +264,7 @@ pub const HTMLElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -353,7 +353,7 @@ pub const HTMLElement = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "title", "get_title", "set_title" },
@@ -481,7 +481,7 @@ pub const HTMLElement = struct {
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "lang", "get_lang", "set_lang" },
@@ -503,7 +503,7 @@ pub const HTMLElement = struct {
             .{ "dataset", "get_dataset", null },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -664,7 +664,6 @@ pub const HTMLElement = struct {
     );
 
     const delegates = .{
-
         .get_accessKey = &get_accessKey,
         .get_accessKeyLabel = &get_accessKeyLabel,
         .get_attributeStyleMap = &get_attributeStyleMap,
@@ -945,6 +944,8 @@ pub const HTMLElement = struct {
         .call_hidePopover = &call_hidePopover,
         .call_showPopover = &call_showPopover,
         .call_togglePopover = &call_togglePopover,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -974,7 +975,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_title(instance, value);
     }
 
@@ -988,7 +989,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_lang(instance, value);
     }
 
@@ -1002,7 +1003,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_translate(instance, value);
     }
 
@@ -1016,7 +1017,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_dir(instance, value);
     }
 
@@ -1030,7 +1031,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_hidden(instance, value);
     }
 
@@ -1044,7 +1045,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_inert(instance, value);
     }
 
@@ -1058,7 +1059,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_accessKey(instance, value);
     }
 
@@ -1076,7 +1077,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_draggable(instance, value);
     }
 
@@ -1090,7 +1091,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_spellcheck(instance, value);
     }
 
@@ -1104,7 +1105,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_writingSuggestions(instance, value);
     }
 
@@ -1118,7 +1119,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_autocapitalize(instance, value);
     }
 
@@ -1132,7 +1133,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_autocorrect(instance, value);
     }
 
@@ -1146,7 +1147,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_innerText(instance, value);
     }
 
@@ -1160,7 +1161,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_outerText(instance, value);
     }
 
@@ -1174,7 +1175,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_popover(instance, value);
     }
 
@@ -1188,7 +1189,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_headingOffset(instance, value);
     }
 
@@ -1202,7 +1203,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_headingReset(instance, value);
     }
 
@@ -2118,7 +2119,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_contentEditable(instance, value);
     }
 
@@ -2132,7 +2133,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_enterKeyHint(instance, value);
     }
 
@@ -2150,7 +2151,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_inputMode(instance, value);
     }
 
@@ -2164,7 +2165,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_virtualKeyboardPolicy(instance, value);
     }
 
@@ -2198,7 +2199,7 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_autofocus(instance, value);
     }
 
@@ -2212,12 +2213,11 @@ pub const HTMLElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLElementImpl.set_tabIndex(instance, value);
     }
 
     pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
-        
         return try HTMLElementImpl.call_togglePopover(instance, options);
     }
 
@@ -2230,7 +2230,6 @@ pub const HTMLElement = struct {
     }
 
     pub fn call_showPopover(instance: *runtime.Instance, options: webidl.Opt(ShowPopoverOptions)) anyerror!void {
-        
         return try HTMLElementImpl.call_showPopover(instance, options);
     }
 
@@ -2239,12 +2238,10 @@ pub const HTMLElement = struct {
     }
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
-        
         return try HTMLElementImpl.call_focus(instance, options);
     }
 
     pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.call_attachInternals(instance);
     }
-
 };

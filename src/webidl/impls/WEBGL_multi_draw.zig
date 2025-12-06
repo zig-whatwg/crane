@@ -92,4 +92,3 @@ pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: t
     _ = drawcount;
     return error.NotImplemented;
 }
-

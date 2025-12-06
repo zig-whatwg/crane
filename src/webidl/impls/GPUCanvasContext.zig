@@ -69,4 +69,3 @@ pub fn call_getCurrentTexture(instance: *runtime.Instance) anyerror!*runtime.Ins
     _ = instance;
     return error.NotImplemented;
 }
-

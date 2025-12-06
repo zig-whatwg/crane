@@ -57,4 +57,3 @@ pub fn set_baseVal(instance: *runtime.Instance, value: f32) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

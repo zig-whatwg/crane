@@ -122,4 +122,3 @@ pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: typedefs
     _ = data;
     return error.NotImplemented;
 }
-

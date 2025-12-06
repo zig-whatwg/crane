@@ -120,4 +120,3 @@ pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!*const 
     _ = instance;
     return error.NotImplemented;
 }
-

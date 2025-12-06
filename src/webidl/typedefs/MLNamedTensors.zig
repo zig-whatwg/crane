@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const MLNamedTensors = *const anyopaque;
+pub const MLNamedTensors = []const struct { key: runtime.USVString, value: *runtime.Instance };

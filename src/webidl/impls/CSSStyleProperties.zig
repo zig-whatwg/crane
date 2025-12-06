@@ -51,4 +51,3 @@ pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

@@ -172,12 +172,3 @@ pub inline fn shouldEncode(cp: u21, encode_set: EncodeSet) bool {
     // Code points > 0xFF (non-ASCII) are always encoded (spec line 156)
     return true;
 }
-
-
-
-
-
-
-
-
-

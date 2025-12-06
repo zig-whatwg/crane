@@ -51,4 +51,3 @@ pub fn set_onbufferedchange(instance: *runtime.Instance, value: typedefs.EventHa
     _ = value;
     return error.NotImplemented;
 }
-

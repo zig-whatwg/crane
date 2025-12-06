@@ -101,4 +101,3 @@ pub fn call_setActionHandler(instance: *runtime.Instance, action: enums.MediaSes
     _ = handler;
     return error.NotImplemented;
 }
-

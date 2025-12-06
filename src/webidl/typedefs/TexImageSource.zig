@@ -5,11 +5,11 @@
 const runtime = @import("runtime");
 
 pub const TexImageSource = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
-    variant_3: *const anyopaque,
-    variant_4: *const anyopaque,
-    variant_5: *const anyopaque,
-    variant_6: *const anyopaque,
+    image_bitmap: *runtime.Instance,
+    image_data: *runtime.Instance,
+    htmlimage_element: *runtime.Instance,
+    htmlcanvas_element: *runtime.Instance,
+    htmlvideo_element: *runtime.Instance,
+    offscreen_canvas: *runtime.Instance,
+    video_frame: *runtime.Instance,
 };

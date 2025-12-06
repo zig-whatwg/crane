@@ -64,4 +64,3 @@ pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(di
     _ = descriptor;
     return error.NotImplemented;
 }
-

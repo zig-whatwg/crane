@@ -1,5 +1,5 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,47 +26,45 @@ pub const FileSystemHandle = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "kind", "get_kind", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "isSameEntry", "call_isSameEntry", 1 },
             .{ "queryPermission", "call_queryPermission", 0 },
             .{ "requestPermission", "call_requestPermission", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "isSameEntry",
             "queryPermission",
             "requestPermission",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "kind", "get_kind", null },
             .{ "name", "get_name", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -81,13 +79,14 @@ pub const FileSystemHandle = struct {
     );
 
     const delegates = .{
-
         .get_kind = &get_kind,
         .get_name = &get_name,
 
         .call_isSameEntry = &call_isSameEntry,
         .call_queryPermission = &call_queryPermission,
         .call_requestPermission = &call_requestPermission,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -110,18 +109,14 @@ pub const FileSystemHandle = struct {
     }
 
     pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
-        
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
     pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
-        
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
 
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
-        
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }
-
 };

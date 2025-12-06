@@ -56,4 +56,3 @@ pub fn call_getClientRect(instance: *runtime.Instance) anyerror!?*runtime.Instan
     _ = instance;
     return null;
 }
-

@@ -217,4 +217,3 @@ pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance
     _ = v;
     return error.NotImplemented;
 }
-

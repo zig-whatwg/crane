@@ -103,4 +103,3 @@ pub fn call_setScale(instance: *runtime.Instance, sx: f32, sy: f32) anyerror!voi
     _ = sy;
     return error.NotImplemented;
 }
-

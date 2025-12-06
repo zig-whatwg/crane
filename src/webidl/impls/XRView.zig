@@ -87,4 +87,3 @@ pub fn call_requestViewportScale(instance: *runtime.Instance, scale: ?f64) anyer
     _ = scale;
     return error.NotImplemented;
 }
-

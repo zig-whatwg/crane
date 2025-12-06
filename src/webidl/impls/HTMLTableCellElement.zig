@@ -238,4 +238,3 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     _ = value;
     return error.NotImplemented;
 }
-

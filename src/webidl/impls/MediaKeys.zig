@@ -60,4 +60,3 @@ pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(d
     _ = policy;
     return error.NotImplemented;
 }
-

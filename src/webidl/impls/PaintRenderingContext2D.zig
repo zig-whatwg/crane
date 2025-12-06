@@ -553,4 +553,3 @@ pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(enums.CanvasF
     _ = fillRule;
     return error.NotImplemented;
 }
-

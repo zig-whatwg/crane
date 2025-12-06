@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const AlgorithmIdentifier = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: runtime.DOMString,
+    object: *const anyopaque,
+    domstring: runtime.DOMString,
 };

@@ -50,4 +50,3 @@ pub fn get_iconURL(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return error.NotImplemented;
 }
-

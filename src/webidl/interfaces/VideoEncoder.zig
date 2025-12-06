@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -37,20 +37,20 @@ pub const VideoEncoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "state", "get_state", null },
             .{ "encodeQueueSize", "get_encodeQueueSize", null },
             .{ "ondequeue", "get_ondequeue", "set_ondequeue" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "configure", "call_configure", 1 },
@@ -59,12 +59,12 @@ pub const VideoEncoder = struct {
             .{ "reset", "call_reset", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConfigSupported", "call_isConfigSupported", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "configure",
@@ -74,7 +74,7 @@ pub const VideoEncoder = struct {
             "close",
             "isConfigSupported",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -82,18 +82,17 @@ pub const VideoEncoder = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "state", "get_state", null },
             .{ "encodeQueueSize", "get_encodeQueueSize", null },
             .{ "ondequeue", "get_ondequeue", "set_ondequeue" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -109,7 +108,6 @@ pub const VideoEncoder = struct {
     );
 
     const delegates = .{
-
         .get_encodeQueueSize = &get_encodeQueueSize,
         .get_ondequeue = &get_ondequeue,
         .get_state = &get_state,
@@ -121,6 +119,8 @@ pub const VideoEncoder = struct {
         .call_encode = &call_encode,
         .call_flush = &call_flush,
         .call_reset = &call_reset,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -157,12 +157,10 @@ pub const VideoEncoder = struct {
     }
 
     pub fn call_isConfigSupported(instance: *runtime.Instance, config: VideoEncoderConfig) anyerror!*const anyopaque {
-        
         return try VideoEncoderImpl.call_isConfigSupported(instance, config);
     }
 
     pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(VideoEncoderEncodeOptions)) anyerror!void {
-        
         return try VideoEncoderImpl.call_encode(instance, frame, options);
     }
 
@@ -171,7 +169,6 @@ pub const VideoEncoder = struct {
     }
 
     pub fn call_configure(instance: *runtime.Instance, config: VideoEncoderConfig) anyerror!void {
-        
         return try VideoEncoderImpl.call_configure(instance, config);
     }
 
@@ -182,5 +179,4 @@ pub const VideoEncoder = struct {
     pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try VideoEncoderImpl.call_flush(instance);
     }
-
 };

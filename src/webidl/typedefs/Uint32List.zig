@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const Uint32List = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    uint32array: *const anyopaque,
+    gluint_sequence: []const typedefs.GLuint,
 };

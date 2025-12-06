@@ -91,4 +91,3 @@ pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Insta
     _ = instance;
     return error.NotImplemented;
 }
-

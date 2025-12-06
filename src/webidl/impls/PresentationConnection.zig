@@ -140,4 +140,3 @@ pub fn call_send(instance: *runtime.Instance, message: runtime.DOMString) anyerr
     _ = message;
     return error.NotImplemented;
 }
-

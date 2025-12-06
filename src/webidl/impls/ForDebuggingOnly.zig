@@ -52,4 +52,3 @@ pub fn call_reportAdAuctionWin(instance: *runtime.Instance, url: runtime.USVStri
     _ = url;
     return error.NotImplemented;
 }
-

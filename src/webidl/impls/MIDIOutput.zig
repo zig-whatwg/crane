@@ -53,4 +53,3 @@ pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp:
     _ = timestamp;
     return error.NotImplemented;
 }
-

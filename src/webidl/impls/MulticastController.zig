@@ -58,4 +58,3 @@ pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString
     _ = ipAddress;
     return error.NotImplemented;
 }
-

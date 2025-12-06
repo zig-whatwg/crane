@@ -56,4 +56,3 @@ pub fn get_separator(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -68,4 +68,3 @@ pub fn get_defaultValue(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

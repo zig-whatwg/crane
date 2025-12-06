@@ -47,4 +47,3 @@ pub fn call_file(instance: *runtime.Instance, successCallback: callbacks.FileCal
     _ = errorCallback;
     return error.NotImplemented;
 }
-

@@ -58,4 +58,3 @@ pub fn get_action(instance: *runtime.Instance) anyerror!enums.CaptureAction {
     _ = instance;
     return error.NotImplemented;
 }
-

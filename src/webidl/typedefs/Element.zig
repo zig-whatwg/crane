@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const Element = *const anyopaque;
+pub const Element = *runtime.Instance;

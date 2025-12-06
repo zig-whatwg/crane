@@ -1,5 +1,5 @@
 //! Generated from: css-fonts-5.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,10 +26,10 @@ pub const CSSFontFaceDescriptors = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "src", "get_src", "set_src" },
@@ -74,15 +74,13 @@ pub const CSSFontFaceDescriptors = struct {
             .{ "subscriptSizeOverride", "get_subscriptSizeOverride", "set_subscriptSizeOverride" },
             .{ "subscript-size-override", "get_subscript_size_override", "set_subscript_size_override" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "item",
@@ -97,7 +95,7 @@ pub const CSSFontFaceDescriptors = struct {
             "setProperty",
             "item",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "src", "get_src", "set_src" },
@@ -142,11 +140,10 @@ pub const CSSFontFaceDescriptors = struct {
             .{ "subscriptSizeOverride", "get_subscriptSizeOverride", "set_subscriptSizeOverride" },
             .{ "subscript-size-override", "get_subscript_size_override", "set_subscript_size_override" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -200,7 +197,6 @@ pub const CSSFontFaceDescriptors = struct {
     );
 
     const delegates = .{
-
         .get_ascentOverride = &get_ascentOverride,
         .get_ascent_override = &get_ascent_override,
         .get_descentOverride = &get_descentOverride,
@@ -284,6 +280,8 @@ pub const CSSFontFaceDescriptors = struct {
         .set_superscript_size_override = &set_superscript_size_override,
         .set_unicodeRange = &set_unicodeRange,
         .set_unicode_range = &set_unicode_range,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -706,5 +704,4 @@ pub const CSSFontFaceDescriptors = struct {
     pub fn set_subscript_size_override(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSFontFaceDescriptorsImpl.set_subscript_size_override(instance, value);
     }
-
 };

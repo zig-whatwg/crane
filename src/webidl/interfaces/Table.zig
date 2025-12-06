@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,42 +23,40 @@ pub const Table = struct {
             .{ .name = "LegacyNamespace", .value = .{ .identifier = "WebAssembly" } },
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "grow", "call_grow", 1 },
             .{ "get", "call_get", 1 },
             .{ "set", "call_set", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "grow",
             "get",
             "set",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -72,12 +70,13 @@ pub const Table = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
 
         .call_get = &call_get,
         .call_grow = &call_grow,
         .call_set = &call_set,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -102,18 +101,14 @@ pub const Table = struct {
     }
 
     pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!*const anyopaque {
-        
         return try TableImpl.call_get(instance, index);
     }
 
     pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!AddressValue {
-        
         return try TableImpl.call_grow(instance, delta, value);
     }
 
     pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try TableImpl.call_set(instance, index, value);
     }
-
 };

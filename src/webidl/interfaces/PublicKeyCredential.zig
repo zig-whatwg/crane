@@ -1,5 +1,5 @@
 //! Generated from: webauthn.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,23 +36,23 @@ pub const PublicKeyCredential = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "rawId", "get_rawId", null },
             .{ "response", "get_response", null },
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getClientExtensionResults", "call_getClientExtensionResults", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
@@ -64,7 +64,7 @@ pub const PublicKeyCredential = struct {
             .{ "signalAllAcceptedCredentials", "call_signalAllAcceptedCredentials", 1 },
             .{ "signalCurrentUserDetails", "call_signalCurrentUserDetails", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getClientExtensionResults",
@@ -78,23 +78,22 @@ pub const PublicKeyCredential = struct {
             "signalAllAcceptedCredentials",
             "signalCurrentUserDetails",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "willRequestConditionalCreation",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "rawId", "get_rawId", null },
             .{ "response", "get_response", null },
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -112,13 +111,14 @@ pub const PublicKeyCredential = struct {
     );
 
     const delegates = .{
-
         .get_authenticatorAttachment = &get_authenticatorAttachment,
         .get_rawId = &get_rawId,
         .get_response = &get_response,
 
         .call_getClientExtensionResults = &call_getClientExtensionResults,
         .call_toJSON = &call_toJSON,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -169,17 +169,14 @@ pub const PublicKeyCredential = struct {
     }
 
     pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!*const anyopaque {
-        
         return try PublicKeyCredentialImpl.call_signalUnknownCredential(instance, options);
     }
 
     pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!*const anyopaque {
-        
         return try PublicKeyCredentialImpl.call_signalCurrentUserDetails(instance, options);
     }
 
     pub fn call_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialRequestOptionsJSON) anyerror!PublicKeyCredentialRequestOptions {
-        
         return try PublicKeyCredentialImpl.call_parseRequestOptionsFromJSON(instance, options);
     }
 
@@ -196,13 +193,10 @@ pub const PublicKeyCredential = struct {
     }
 
     pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
-        
         return try PublicKeyCredentialImpl.call_signalAllAcceptedCredentials(instance, options);
     }
 
     pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialCreationOptionsJSON) anyerror!PublicKeyCredentialCreationOptions {
-        
         return try PublicKeyCredentialImpl.call_parseCreationOptionsFromJSON(instance, options);
     }
-
 };

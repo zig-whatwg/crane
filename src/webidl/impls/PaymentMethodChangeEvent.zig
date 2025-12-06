@@ -65,4 +65,3 @@ pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?*const anyopaque
     _ = instance;
     return null;
 }
-

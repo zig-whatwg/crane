@@ -64,4 +64,3 @@ pub fn get_axis(instance: *runtime.Instance) anyerror!enums.ScrollAxis {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: navigation-timing.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,21 +20,21 @@ pub const PerformanceNavigation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
             .{ "redirectCount", "get_redirectCount", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "TYPE_NAVIGATE", "get_TYPE_NAVIGATE" },
@@ -42,26 +42,24 @@ pub const PerformanceNavigation = struct {
             .{ "TYPE_BACK_FORWARD", "get_TYPE_BACK_FORWARD" },
             .{ "TYPE_RESERVED", "get_TYPE_RESERVED" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "redirectCount", "get_redirectCount", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -69,7 +67,7 @@ pub const PerformanceNavigation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": u16 = undefined,
+            type: u16 = undefined,
             redirectCount: u16 = undefined,
             _internal: ?*PerformanceNavigationImpl.InternalState = null,
         },
@@ -100,7 +98,6 @@ pub const PerformanceNavigation = struct {
     }
 
     const delegates = .{
-
         .get_TYPE_BACK_FORWARD = &get_TYPE_BACK_FORWARD,
         .get_TYPE_NAVIGATE = &get_TYPE_NAVIGATE,
         .get_TYPE_RELOAD = &get_TYPE_RELOAD,
@@ -109,6 +106,8 @@ pub const PerformanceNavigation = struct {
         .get_type = &get_type,
 
         .call_toJSON = &call_toJSON,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -134,5 +133,4 @@ pub const PerformanceNavigation = struct {
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PerformanceNavigationImpl.call_toJSON(instance);
     }
-
 };

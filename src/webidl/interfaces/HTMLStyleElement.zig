@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -90,10 +90,10 @@ pub const HTMLStyleElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
@@ -103,15 +103,13 @@ pub const HTMLStyleElement = struct {
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -207,7 +205,7 @@ pub const HTMLStyleElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
@@ -217,11 +215,10 @@ pub const HTMLStyleElement = struct {
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -232,7 +229,7 @@ pub const HTMLStyleElement = struct {
             disabled: bool = undefined,
             media: runtime.DOMString = undefined,
             blocking: *runtime.Instance = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             sheet: ?*runtime.Instance = null,
             cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLStyleElementImpl.InternalState = null,
@@ -240,7 +237,6 @@ pub const HTMLStyleElement = struct {
     );
 
     const delegates = .{
-
         .get_blocking = &get_blocking,
         .get_disabled = &get_disabled,
         .get_media = &get_media,
@@ -250,6 +246,8 @@ pub const HTMLStyleElement = struct {
         .set_disabled = &set_disabled,
         .set_media = &set_media,
         .set_type = &set_type,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -287,7 +285,7 @@ pub const HTMLStyleElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLStyleElementImpl.set_media(instance, value);
     }
 
@@ -313,12 +311,11 @@ pub const HTMLStyleElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLStyleElementImpl.set_type(instance, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLStyleElementImpl.get_sheet(instance);
     }
-
 };

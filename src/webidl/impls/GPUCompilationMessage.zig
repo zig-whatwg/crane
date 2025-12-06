@@ -74,4 +74,3 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u64 {
     _ = instance;
     return error.NotImplemented;
 }
-

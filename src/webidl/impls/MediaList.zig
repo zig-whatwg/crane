@@ -78,4 +78,3 @@ pub fn call_appendMedium(instance: *runtime.Instance, medium: typedefs.CSSOMStri
     _ = medium;
     return error.NotImplemented;
 }
-

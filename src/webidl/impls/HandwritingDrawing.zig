@@ -70,4 +70,3 @@ pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance)
     _ = stroke;
     return error.NotImplemented;
 }
-

@@ -99,4 +99,3 @@ pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(dictio
     _ = options;
     return error.NotImplemented;
 }
-

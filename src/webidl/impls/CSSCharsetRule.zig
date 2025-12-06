@@ -51,4 +51,3 @@ pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyer
     _ = value;
     return error.NotImplemented;
 }
-

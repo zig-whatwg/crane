@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const ClipboardItems = *const anyopaque;
+pub const ClipboardItems = []const *runtime.Instance;

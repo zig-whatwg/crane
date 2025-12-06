@@ -63,4 +63,3 @@ pub fn set_onresize(instance: *runtime.Instance, value: typedefs.EventHandler) a
     _ = value;
     return error.NotImplemented;
 }
-

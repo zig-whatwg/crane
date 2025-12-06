@@ -180,4 +180,3 @@ pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: web
     _ = options;
     return error.NotImplemented;
 }
-

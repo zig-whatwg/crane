@@ -58,4 +58,3 @@ pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!*const 
     _ = instance;
     return error.NotImplemented;
 }
-

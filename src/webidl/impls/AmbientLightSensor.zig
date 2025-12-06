@@ -58,4 +58,3 @@ pub fn get_illuminance(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
-

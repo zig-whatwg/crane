@@ -63,4 +63,3 @@ pub fn call_disconnect(instance: *runtime.Instance, options: dictionaries.Identi
     _ = options;
     return error.NotImplemented;
 }
-

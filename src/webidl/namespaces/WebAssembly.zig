@@ -12,7 +12,7 @@ pub const WebAssembly = struct {
         pub const is_namespace = true;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
             .{ "compile", "call_compile" },
@@ -20,7 +20,7 @@ pub const WebAssembly = struct {
             .{ "instantiate_Module_object", "call_instantiate_Module_object" },
             .{ "validate", "call_validate" },
         };
-        
+
         pub const has_constructor = false;
         pub const properties = .{};
     };
@@ -44,5 +44,4 @@ pub const WebAssembly = struct {
     }
 
     pub const JSTag: *const anyopaque = undefined;
-
 };

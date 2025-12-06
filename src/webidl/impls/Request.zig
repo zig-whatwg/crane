@@ -174,7 +174,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
 
     // Step 5: If input is a string
     switch (input) {
-        .variant_1 => |url_string| {
+        .usvstring => |url_string| {
             // Step 5.1: Parse URL
             const api_parser = @import("api_parser");
 
@@ -202,10 +202,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
             // Step 5.5: Set fallbackMode to "cors"
             fallback_mode = enums.RequestMode._cors_;
         },
-        .variant_0 => |input_request_opaque| {
+        .request => |input_request| {
             // Step 6: Otherwise (input is a Request object)
             // Step 6.1: Assert input is a Request object
-            const input_request = @as(*runtime.Instance, @ptrFromInt(@intFromPtr(input_request_opaque)));
             const input_state = input_request.getState(State);
             const input_internal = input_state.own._internal.?;
 
@@ -315,31 +314,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
     if (init_opts.headers) |headers_init| {
         // Fill the request's headers with headers_init
         switch (headers_init) {
-            .pairs => |pairs| {
-                // Array of [name, value] pairs
-                for (pairs) |pair| {
-                    try base_request.header_list.append(pair[0], pair[1]);
-                }
-            },
-            .record => |entries| {
-                // Object with header entries
-                for (entries) |entry| {
-                    try base_request.header_list.append(entry.name, entry.value);
-                }
-            },
-            .headers_ptr => |ptr| {
-                // Existing Headers object - copy its entries
-                const Headers = @import("Headers.zig");
-                const other_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(ptr)));
-                if (Headers.getEntriesInternal(other_instance)) |entries| {
-                    for (entries) |entry| {
-                        try base_request.header_list.append(entry.name, entry.value);
+            .sequence_byte_string_sequence => |outer_seq| {
+                // Array of [name, value] pairs: sequence<sequence<ByteString>>
+                for (outer_seq) |inner_seq| {
+                    if (inner_seq.len >= 2) {
+                        try base_request.header_list.append(inner_seq[0], inner_seq[1]);
                     }
                 }
             },
-            .v8_value => {
-                // V8 value fallback - should be handled by V8 layer before reaching here
-                // If we get here, we can't parse it
+            .byte_string_byte_string_record => |entries| {
+                // Object with header entries: record<ByteString, ByteString>
+                for (entries) |entry| {
+                    try base_request.header_list.append(entry.key, entry.value);
+                }
             },
         }
     }

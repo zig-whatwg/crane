@@ -44,4 +44,3 @@ pub fn get_boundsGeometry(instance: *runtime.Instance) anyerror!*const anyopaque
     _ = instance;
     return error.NotImplemented;
 }
-

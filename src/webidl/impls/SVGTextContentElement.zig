@@ -114,4 +114,3 @@ pub fn call_getSubStringLength(instance: *runtime.Instance, charnum: u32, nchars
     _ = nchars;
     return error.NotImplemented;
 }
-

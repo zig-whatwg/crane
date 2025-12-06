@@ -8,5 +8,4 @@ const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObject
 pub const GPURenderBundleDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
-
 };

@@ -59,4 +59,3 @@ pub fn call_getTextFormats(instance: *runtime.Instance) anyerror!*const anyopaqu
     _ = instance;
     return error.NotImplemented;
 }
-

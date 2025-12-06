@@ -44,4 +44,3 @@ pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!dictionaries.M
     _ = instance;
     return error.NotImplemented;
 }
-

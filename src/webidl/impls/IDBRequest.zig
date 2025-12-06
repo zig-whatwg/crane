@@ -94,4 +94,3 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
     _ = value;
     return error.NotImplemented;
 }
-

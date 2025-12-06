@@ -111,4 +111,3 @@ pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Insta
     _ = input;
     return error.NotImplemented;
 }
-

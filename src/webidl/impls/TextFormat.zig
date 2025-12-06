@@ -76,4 +76,3 @@ pub fn get_underlineThickness(instance: *runtime.Instance) anyerror!enums.Underl
     _ = instance;
     return error.NotImplemented;
 }
-

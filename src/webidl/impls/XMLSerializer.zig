@@ -57,4 +57,3 @@ pub fn call_serializeToString(instance: *runtime.Instance, root: *runtime.Instan
     _ = root;
     return error.NotImplemented;
 }
-

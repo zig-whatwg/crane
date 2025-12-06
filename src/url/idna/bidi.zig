@@ -47,7 +47,3 @@ pub fn validateBidi(label: []const u8) !void {
         return BidiError.InvalidBidi;
     }
 }
-
-
-
-

@@ -74,4 +74,3 @@ pub fn get_block(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

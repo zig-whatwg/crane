@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,11 +20,10 @@ pub const CanvasPath = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "closePath", "call_closePath", 0 },
@@ -38,7 +37,7 @@ pub const CanvasPath = struct {
             .{ "arc", "call_arc", 5 },
             .{ "ellipse", "call_ellipse", 7 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "closePath",
@@ -52,19 +51,16 @@ pub const CanvasPath = struct {
             "arc",
             "ellipse",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -77,7 +73,6 @@ pub const CanvasPath = struct {
     );
 
     const delegates = .{
-
         .call_arc = &call_arc,
         .call_arcTo = &call_arcTo,
         .call_bezierCurveTo = &call_bezierCurveTo,
@@ -88,6 +83,8 @@ pub const CanvasPath = struct {
         .call_quadraticCurveTo = &call_quadraticCurveTo,
         .call_rect = &call_rect,
         .call_roundRect = &call_roundRect,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -102,37 +99,30 @@ pub const CanvasPath = struct {
     }
 
     pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_lineTo(instance, x, y);
     }
 
     pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
     }
 
     pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
-        
         return try CanvasPathImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_moveTo(instance, x, y);
     }
 
     pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_quadraticCurveTo(instance, cpx, cpy, x, y);
     }
 
     pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
     pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
-        
         return try CanvasPathImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
@@ -141,13 +131,10 @@ pub const CanvasPath = struct {
     }
 
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try CanvasPathImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
         return try CanvasPathImpl.call_rect(instance, x, y, w, h);
     }
-
 };

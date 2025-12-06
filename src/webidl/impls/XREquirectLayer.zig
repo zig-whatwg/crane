@@ -129,4 +129,3 @@ pub fn set_onredraw(instance: *runtime.Instance, value: typedefs.EventHandler) a
     _ = value;
     return error.NotImplemented;
 }
-

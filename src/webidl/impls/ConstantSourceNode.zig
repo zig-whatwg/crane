@@ -59,4 +59,3 @@ pub fn get_offset(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

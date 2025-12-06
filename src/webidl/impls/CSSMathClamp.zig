@@ -71,4 +71,3 @@ pub fn get_upper(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

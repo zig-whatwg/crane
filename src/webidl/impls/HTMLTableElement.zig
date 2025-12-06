@@ -275,4 +275,3 @@ pub fn call_deleteTFoot(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

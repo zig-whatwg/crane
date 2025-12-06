@@ -71,4 +71,3 @@ pub fn call_insertRule(instance: *runtime.Instance, rule: runtime.DOMString, ind
     _ = index;
     return error.NotImplemented;
 }
-

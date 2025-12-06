@@ -108,4 +108,3 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
     _ = property;
     return error.NotImplemented;
 }
-

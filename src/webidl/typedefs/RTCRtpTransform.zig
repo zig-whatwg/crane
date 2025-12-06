@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const RTCRtpTransform = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    sframe_transform: *runtime.Instance,
+    rtcrtp_script_transform: *runtime.Instance,
 };

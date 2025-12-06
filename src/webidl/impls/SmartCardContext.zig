@@ -62,4 +62,3 @@ pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, 
     _ = options;
     return error.NotImplemented;
 }
-

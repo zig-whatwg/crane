@@ -1,5 +1,5 @@
 //! Generated from: media-source.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,13 +36,13 @@ pub const SourceBuffer = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mode", "get_mode", "set_mode" },
@@ -60,7 +60,7 @@ pub const SourceBuffer = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "appendBuffer", "call_appendBuffer", 1 },
@@ -68,7 +68,7 @@ pub const SourceBuffer = struct {
             .{ "changeType", "call_changeType", 1 },
             .{ "remove", "call_remove", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "appendBuffer",
@@ -76,7 +76,7 @@ pub const SourceBuffer = struct {
             "changeType",
             "remove",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -84,7 +84,7 @@ pub const SourceBuffer = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mode", "get_mode", "set_mode" },
@@ -102,11 +102,10 @@ pub const SourceBuffer = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -133,7 +132,6 @@ pub const SourceBuffer = struct {
     );
 
     const delegates = .{
-
         .get_appendWindowEnd = &get_appendWindowEnd,
         .get_appendWindowStart = &get_appendWindowStart,
         .get_audioTracks = &get_audioTracks,
@@ -163,6 +161,8 @@ pub const SourceBuffer = struct {
         .call_appendBuffer = &call_appendBuffer,
         .call_changeType = &call_changeType,
         .call_remove = &call_remove,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -269,7 +269,6 @@ pub const SourceBuffer = struct {
     }
 
     pub fn call_appendBuffer(instance: *runtime.Instance, data: BufferSource) anyerror!void {
-        
         return try SourceBufferImpl.call_appendBuffer(instance, data);
     }
 
@@ -278,13 +277,10 @@ pub const SourceBuffer = struct {
     }
 
     pub fn call_remove(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
-        
         return try SourceBufferImpl.call_remove(instance, start, end);
     }
 
     pub fn call_changeType(instance: *runtime.Instance, @"type": DOMString) anyerror!void {
-        
         return try SourceBufferImpl.call_changeType(instance, @"type");
     }
-
 };

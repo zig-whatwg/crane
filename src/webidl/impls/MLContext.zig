@@ -101,4 +101,3 @@ pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: dictio
     _ = inputData;
     return error.NotImplemented;
 }
-

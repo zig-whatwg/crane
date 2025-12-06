@@ -68,4 +68,3 @@ pub fn get_semanticLabel(instance: *runtime.Instance) anyerror!?runtime.DOMStrin
     _ = instance;
     return null;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,14 +23,13 @@ pub const PushMessageData = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "arrayBuffer", "call_arrayBuffer", 0 },
@@ -39,7 +38,7 @@ pub const PushMessageData = struct {
             .{ "json", "call_json", 0 },
             .{ "text", "call_text", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "arrayBuffer",
@@ -48,19 +47,16 @@ pub const PushMessageData = struct {
             "json",
             "text",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -73,12 +69,13 @@ pub const PushMessageData = struct {
     );
 
     const delegates = .{
-
         .call_arrayBuffer = &call_arrayBuffer,
         .call_blob = &call_blob,
         .call_bytes = &call_bytes,
         .call_json = &call_json,
         .call_text = &call_text,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -111,5 +108,4 @@ pub const PushMessageData = struct {
     pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PushMessageDataImpl.call_arrayBuffer(instance);
     }
-
 };

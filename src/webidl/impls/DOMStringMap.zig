@@ -38,4 +38,3 @@ pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
-

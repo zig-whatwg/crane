@@ -52,4 +52,3 @@ pub fn call_registerPaint(instance: *runtime.Instance, name: runtime.DOMString, 
     _ = paintCtor;
     return error.NotImplemented;
 }
-

@@ -126,4 +126,3 @@ pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime
     _ = instance;
     return error.NotImplemented;
 }
-

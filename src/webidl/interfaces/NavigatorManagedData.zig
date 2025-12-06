@@ -1,5 +1,5 @@
 //! Generated from: managed-configuration.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,15 +31,15 @@ pub const NavigatorManagedData = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onmanagedconfigurationchange", "get_onmanagedconfigurationchange", "set_onmanagedconfigurationchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getManagedConfiguration", "call_getManagedConfiguration", 1 },
@@ -49,7 +49,7 @@ pub const NavigatorManagedData = struct {
             .{ "getHostname", "call_getHostname", 0 },
             .{ "getSerialNumber", "call_getSerialNumber", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getManagedConfiguration",
@@ -59,7 +59,7 @@ pub const NavigatorManagedData = struct {
             "getHostname",
             "getSerialNumber",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -67,16 +67,15 @@ pub const NavigatorManagedData = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onmanagedconfigurationchange", "get_onmanagedconfigurationchange", "set_onmanagedconfigurationchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -90,7 +89,6 @@ pub const NavigatorManagedData = struct {
     );
 
     const delegates = .{
-
         .get_onmanagedconfigurationchange = &get_onmanagedconfigurationchange,
 
         .set_onmanagedconfigurationchange = &set_onmanagedconfigurationchange,
@@ -101,6 +99,8 @@ pub const NavigatorManagedData = struct {
         .call_getHostname = &call_getHostname,
         .call_getManagedConfiguration = &call_getManagedConfiguration,
         .call_getSerialNumber = &call_getSerialNumber,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -123,7 +123,6 @@ pub const NavigatorManagedData = struct {
     }
 
     pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: *const anyopaque) anyerror!*const anyopaque {
-        
         return try NavigatorManagedDataImpl.call_getManagedConfiguration(instance, keys);
     }
 
@@ -146,5 +145,4 @@ pub const NavigatorManagedData = struct {
     pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try NavigatorManagedDataImpl.call_getSerialNumber(instance);
     }
-
 };

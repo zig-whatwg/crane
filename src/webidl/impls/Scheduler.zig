@@ -53,4 +53,3 @@ pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

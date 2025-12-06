@@ -226,4 +226,3 @@ pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: w
     _ = deprecatedCallback;
     return error.NotImplemented;
 }
-

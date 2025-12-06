@@ -52,4 +52,3 @@ pub fn call_startDrawing(instance: *runtime.Instance, hints: webidl.Opt(dictiona
     _ = hints;
     return error.NotImplemented;
 }
-

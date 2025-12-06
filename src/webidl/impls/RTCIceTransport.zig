@@ -198,4 +198,3 @@ pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(dict
     _ = role;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,13 +36,13 @@ pub const IDBTransaction = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "objectStoreNames", "get_objectStoreNames", null },
@@ -54,21 +54,21 @@ pub const IDBTransaction = struct {
             .{ "oncomplete", "get_oncomplete", "set_oncomplete" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "objectStore", "call_objectStore", 1 },
             .{ "commit", "call_commit", 0 },
             .{ "abort", "call_abort", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "objectStore",
             "commit",
             "abort",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -76,7 +76,7 @@ pub const IDBTransaction = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "objectStoreNames", "get_objectStoreNames", null },
@@ -88,11 +88,10 @@ pub const IDBTransaction = struct {
             .{ "oncomplete", "get_oncomplete", "set_oncomplete" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -114,7 +113,6 @@ pub const IDBTransaction = struct {
     );
 
     const delegates = .{
-
         .get_db = &get_db,
         .get_durability = &get_durability,
         .get_error = &get_error,
@@ -131,6 +129,8 @@ pub const IDBTransaction = struct {
         .call_abort = &call_abort,
         .call_commit = &call_commit,
         .call_objectStore = &call_objectStore,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -197,7 +197,6 @@ pub const IDBTransaction = struct {
     }
 
     pub fn call_objectStore(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
-        
         return try IDBTransactionImpl.call_objectStore(instance, name);
     }
 
@@ -208,5 +207,4 @@ pub const IDBTransaction = struct {
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {
         return try IDBTransactionImpl.call_abort(instance);
     }
-
 };

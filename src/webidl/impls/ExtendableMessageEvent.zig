@@ -83,4 +83,3 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

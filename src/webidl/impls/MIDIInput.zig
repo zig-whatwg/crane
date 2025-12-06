@@ -51,4 +51,3 @@ pub fn set_onmidimessage(instance: *runtime.Instance, value: typedefs.EventHandl
     _ = value;
     return error.NotImplemented;
 }
-

@@ -44,4 +44,3 @@ pub fn get_jointName(instance: *runtime.Instance) anyerror!enums.XRBodyJoint {
     _ = instance;
     return error.NotImplemented;
 }
-

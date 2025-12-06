@@ -44,4 +44,3 @@ pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -28,7 +28,7 @@ pub const CSSNumericValue = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -36,11 +36,10 @@ pub const CSSNumericValue = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 1 },
@@ -54,12 +53,12 @@ pub const CSSNumericValue = struct {
             .{ "toSum", "call_toSum", 1 },
             .{ "type", "call_type", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parse", "call_parse", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
@@ -74,20 +73,18 @@ pub const CSSNumericValue = struct {
             "type",
             "parse",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "parseAll",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -100,7 +97,6 @@ pub const CSSNumericValue = struct {
     );
 
     const delegates = .{
-
         .call_add = &call_add,
         .call_div = &call_div,
         .call_equals = &call_equals,
@@ -111,6 +107,8 @@ pub const CSSNumericValue = struct {
         .call_to = &call_to,
         .call_toSum = &call_toSum,
         .call_type = &call_type,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -125,47 +123,38 @@ pub const CSSNumericValue = struct {
     }
 
     pub fn call_equals(instance: *runtime.Instance, value: []const CSSNumberish) anyerror!bool {
-        
         return try CSSNumericValueImpl.call_equals(instance, value);
     }
 
     pub fn call_max(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_max(instance, values);
     }
 
     pub fn call_sub(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_sub(instance, values);
     }
 
     pub fn call_min(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_min(instance, values);
     }
 
     pub fn call_mul(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_mul(instance, values);
     }
 
     pub fn call_add(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_add(instance, values);
     }
 
     pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_to(instance, unit);
     }
 
     pub fn call_toSum(instance: *runtime.Instance, units: []const runtime.USVString) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_toSum(instance, units);
     }
 
     pub fn call_div(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_div(instance, values);
     }
 
@@ -175,8 +164,6 @@ pub const CSSNumericValue = struct {
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
-        
         return try CSSNumericValueImpl.call_parse(instance, cssText);
     }
-
 };

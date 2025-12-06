@@ -57,4 +57,3 @@ pub fn set_onconnectionavailable(instance: *runtime.Instance, value: typedefs.Ev
     _ = value;
     return error.NotImplemented;
 }
-

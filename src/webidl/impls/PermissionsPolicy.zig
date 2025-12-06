@@ -66,4 +66,3 @@ pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: runtime
     _ = feature;
     return error.NotImplemented;
 }
-

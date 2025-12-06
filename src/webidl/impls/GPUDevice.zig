@@ -219,4 +219,3 @@ pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!*const anyopaque
     _ = instance;
     return error.NotImplemented;
 }
-

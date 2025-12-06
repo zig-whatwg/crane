@@ -76,4 +76,3 @@ pub fn set_open(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

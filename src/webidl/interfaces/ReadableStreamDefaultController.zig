@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -20,42 +20,40 @@ pub const ReadableStreamDefaultController = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "desiredSize", "get_desiredSize", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
             .{ "enqueue", "call_enqueue", 0 },
             .{ "error", "call_error", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
             "enqueue",
             "error",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "desiredSize", "get_desiredSize", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -69,12 +67,13 @@ pub const ReadableStreamDefaultController = struct {
     );
 
     const delegates = .{
-
         .get_desiredSize = &get_desiredSize,
 
         .call_close = &call_close,
         .call_enqueue = &call_enqueue,
         .call_error = &call_error,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -93,7 +92,6 @@ pub const ReadableStreamDefaultController = struct {
     }
 
     pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try ReadableStreamDefaultControllerImpl.call_error(instance, e);
     }
 
@@ -102,8 +100,6 @@ pub const ReadableStreamDefaultController = struct {
     }
 
     pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
-
 };

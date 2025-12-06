@@ -128,4 +128,3 @@ pub fn set_width(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

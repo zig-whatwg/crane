@@ -48,4 +48,3 @@ pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, opt
     _ = options;
     return error.NotImplemented;
 }
-

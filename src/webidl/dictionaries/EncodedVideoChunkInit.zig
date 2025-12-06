@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const EncodedVideoChunkInit = struct {
-    @"type": *const anyopaque,
+    type: *const anyopaque,
     timestamp: i64,
     duration: ?u64 = null,
     data: *const anyopaque,

@@ -60,4 +60,3 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: 
     _ = options;
     return error.NotImplemented;
 }
-

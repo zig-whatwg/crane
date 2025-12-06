@@ -1,5 +1,5 @@
 //! Generated from: edit-context.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -33,10 +33,10 @@ pub const EditContext = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "text", "get_text", null },
@@ -49,7 +49,7 @@ pub const EditContext = struct {
             .{ "oncompositionstart", "get_oncompositionstart", "set_oncompositionstart" },
             .{ "oncompositionend", "get_oncompositionend", "set_oncompositionend" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateText", "call_updateText", 3 },
@@ -60,7 +60,7 @@ pub const EditContext = struct {
             .{ "attachedElements", "call_attachedElements", 0 },
             .{ "characterBounds", "call_characterBounds", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "updateText",
@@ -71,7 +71,7 @@ pub const EditContext = struct {
             "attachedElements",
             "characterBounds",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -79,7 +79,7 @@ pub const EditContext = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "text", "get_text", null },
@@ -92,11 +92,10 @@ pub const EditContext = struct {
             .{ "oncompositionstart", "get_oncompositionstart", "set_oncompositionstart" },
             .{ "oncompositionend", "get_oncompositionend", "set_oncompositionend" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -118,7 +117,6 @@ pub const EditContext = struct {
     );
 
     const delegates = .{
-
         .get_characterBoundsRangeStart = &get_characterBoundsRangeStart,
         .get_oncharacterboundsupdate = &get_oncharacterboundsupdate,
         .get_oncompositionend = &get_oncompositionend,
@@ -142,6 +140,8 @@ pub const EditContext = struct {
         .call_updateSelection = &call_updateSelection,
         .call_updateSelectionBounds = &call_updateSelectionBounds,
         .call_updateText = &call_updateText,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -218,7 +218,6 @@ pub const EditContext = struct {
     }
 
     pub fn call_updateSelection(instance: *runtime.Instance, start: u32, end: u32) anyerror!void {
-        
         return try EditContextImpl.call_updateSelection(instance, start, end);
     }
 
@@ -227,7 +226,6 @@ pub const EditContext = struct {
     }
 
     pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: *runtime.Instance) anyerror!void {
-        
         return try EditContextImpl.call_updateSelectionBounds(instance, selectionBounds);
     }
 
@@ -236,18 +234,14 @@ pub const EditContext = struct {
     }
 
     pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: *runtime.Instance) anyerror!void {
-        
         return try EditContextImpl.call_updateControlBounds(instance, controlBounds);
     }
 
     pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: *const anyopaque) anyerror!void {
-        
         return try EditContextImpl.call_updateCharacterBounds(instance, rangeStart, characterBounds);
     }
 
     pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: DOMString) anyerror!void {
-        
         return try EditContextImpl.call_updateText(instance, rangeStart, rangeEnd, text);
     }
-
 };

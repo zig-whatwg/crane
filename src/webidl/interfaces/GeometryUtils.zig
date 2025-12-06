@@ -1,5 +1,5 @@
 //! Generated from: cssom-view.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,11 +26,10 @@ pub const GeometryUtils = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
@@ -38,7 +37,7 @@ pub const GeometryUtils = struct {
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getBoxQuads",
@@ -46,19 +45,16 @@ pub const GeometryUtils = struct {
             "convertRectFromNode",
             "convertPointFromNode",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -71,11 +67,12 @@ pub const GeometryUtils = struct {
     );
 
     const delegates = .{
-
         .call_convertPointFromNode = &call_convertPointFromNode,
         .call_convertQuadFromNode = &call_convertQuadFromNode,
         .call_convertRectFromNode = &call_convertRectFromNode,
         .call_getBoxQuads = &call_getBoxQuads,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -90,23 +87,18 @@ pub const GeometryUtils = struct {
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try GeometryUtilsImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
     pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
-        
         return try GeometryUtilsImpl.call_getBoxQuads(instance, options);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
         return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
     }
-
 };

@@ -117,4 +117,3 @@ pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, 
     _ = options;
     return error.NotImplemented;
 }
-

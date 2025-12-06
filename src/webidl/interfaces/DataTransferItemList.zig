@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,15 +23,15 @@ pub const DataTransferItemList = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 2 },
@@ -39,7 +39,7 @@ pub const DataTransferItemList = struct {
             .{ "remove", "call_remove", 1 },
             .{ "clear", "call_clear", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
@@ -47,20 +47,18 @@ pub const DataTransferItemList = struct {
             "remove",
             "clear",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,12 +72,13 @@ pub const DataTransferItemList = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
 
         .call_add = &call_add,
         .call_clear = &call_clear,
         .call_remove = &call_remove,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -98,17 +97,14 @@ pub const DataTransferItemList = struct {
     }
 
     pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!?*runtime.Instance {
-        
         return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }
 
     pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {
-        
         return try DataTransferItemListImpl.call_remove(instance, index);
     }
 
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try DataTransferItemListImpl.call_clear(instance);
     }
-
 };

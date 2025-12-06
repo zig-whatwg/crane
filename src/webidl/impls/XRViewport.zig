@@ -62,4 +62,3 @@ pub fn get_height(instance: *runtime.Instance) anyerror!i32 {
     _ = instance;
     return error.NotImplemented;
 }
-

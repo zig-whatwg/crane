@@ -739,4 +739,3 @@ pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!v
     _ = n;
     return error.NotImplemented;
 }
-

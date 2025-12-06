@@ -87,4 +87,3 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

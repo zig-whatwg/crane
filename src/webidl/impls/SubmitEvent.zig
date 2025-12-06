@@ -59,4 +59,3 @@ pub fn get_submitter(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
-

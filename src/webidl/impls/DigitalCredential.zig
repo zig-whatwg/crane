@@ -63,4 +63,3 @@ pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runti
     _ = protocol;
     return error.NotImplemented;
 }
-

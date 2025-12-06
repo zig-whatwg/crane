@@ -1,5 +1,5 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,10 +31,10 @@ pub const WheelEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "deltaX", "get_deltaX", null },
@@ -42,22 +42,20 @@ pub const WheelEvent = struct {
             .{ "deltaZ", "get_deltaZ", null },
             .{ "deltaMode", "get_deltaMode", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "DOM_DELTA_PIXEL", "get_DOM_DELTA_PIXEL" },
             .{ "DOM_DELTA_LINE", "get_DOM_DELTA_LINE" },
             .{ "DOM_DELTA_PAGE", "get_DOM_DELTA_PAGE" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -69,7 +67,7 @@ pub const WheelEvent = struct {
             "getModifierState",
             "initMouseEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "deltaX", "get_deltaX", null },
@@ -77,11 +75,10 @@ pub const WheelEvent = struct {
             .{ "deltaZ", "get_deltaZ", null },
             .{ "deltaMode", "get_deltaMode", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -117,7 +114,6 @@ pub const WheelEvent = struct {
     }
 
     const delegates = .{
-
         .get_DOM_DELTA_LINE = &get_DOM_DELTA_LINE,
         .get_DOM_DELTA_PAGE = &get_DOM_DELTA_PAGE,
         .get_DOM_DELTA_PIXEL = &get_DOM_DELTA_PIXEL,
@@ -125,6 +121,8 @@ pub const WheelEvent = struct {
         .get_deltaX = &get_deltaX,
         .get_deltaY = &get_deltaY,
         .get_deltaZ = &get_deltaZ,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -159,5 +157,4 @@ pub const WheelEvent = struct {
     pub fn get_deltaMode(instance: *runtime.Instance) anyerror!u32 {
         return try WheelEventImpl.get_deltaMode(instance);
     }
-
 };

@@ -122,5 +122,3 @@ pub fn createLegacyPlatformObject(config: LegacyPlatformObjectConfig) !void {
 }
 
 const testing = std.testing;
-
-

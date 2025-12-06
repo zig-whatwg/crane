@@ -58,4 +58,3 @@ pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror
     _ = index;
     return error.NotImplemented;
 }
-

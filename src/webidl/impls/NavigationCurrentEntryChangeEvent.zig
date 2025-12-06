@@ -64,4 +64,3 @@ pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

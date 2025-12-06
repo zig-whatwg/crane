@@ -73,4 +73,3 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
     _ = options;
     return error.NotImplemented;
 }
-

@@ -46,4 +46,3 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
     _ = pseudoElt;
     return error.NotImplemented;
 }
-

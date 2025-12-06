@@ -224,4 +224,3 @@ pub fn get_maxComputeWorkgroupsPerDimension(instance: *runtime.Instance) anyerro
     _ = instance;
     return error.NotImplemented;
 }
-

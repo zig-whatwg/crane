@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -94,10 +94,10 @@ pub const SVGImageElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -108,15 +108,13 @@ pub const SVGImageElement = struct {
             .{ "crossOrigin", "get_crossOrigin", "set_crossOrigin" },
             .{ "href", "get_href", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -210,7 +208,7 @@ pub const SVGImageElement = struct {
             "getCTM",
             "getScreenCTM",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -221,11 +219,10 @@ pub const SVGImageElement = struct {
             .{ "crossOrigin", "get_crossOrigin", "set_crossOrigin" },
             .{ "href", "get_href", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -251,7 +248,6 @@ pub const SVGImageElement = struct {
     );
 
     const delegates = .{
-
         .get_crossOrigin = &get_crossOrigin,
         .get_height = &get_height,
         .get_href = &get_href,
@@ -261,6 +257,8 @@ pub const SVGImageElement = struct {
         .get_y = &get_y,
 
         .set_crossOrigin = &set_crossOrigin,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -353,5 +351,4 @@ pub const SVGImageElement = struct {
         state.own.cached_href = value;
         return value;
     }
-
 };

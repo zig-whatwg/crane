@@ -81,4 +81,3 @@ pub fn set_selected(instance: *runtime.Instance, value: bool) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

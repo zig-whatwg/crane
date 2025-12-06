@@ -280,13 +280,3 @@ fn lookupRegistrableDomain(domain: []const u8) ?[]const u8 {
 }
 
 // Tests
-
-
-
-
-
-
-
-
-
-

@@ -56,4 +56,3 @@ pub fn get_ignoreBOM(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

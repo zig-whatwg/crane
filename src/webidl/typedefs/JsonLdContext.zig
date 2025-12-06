@@ -3,9 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const JsonLdContext = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: runtime.USVString,
+    json_ld_record: typedefs.JsonLdRecord,
+    json_ld_record_or_usvstring_sequence: []const *const anyopaque,
+    usvstring: runtime.USVString,
 };

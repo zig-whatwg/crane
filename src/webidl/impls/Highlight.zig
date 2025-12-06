@@ -77,4 +77,3 @@ pub fn set_type(instance: *runtime.Instance, value: enums.HighlightType) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

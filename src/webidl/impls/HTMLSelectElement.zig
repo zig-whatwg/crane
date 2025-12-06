@@ -269,4 +269,3 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

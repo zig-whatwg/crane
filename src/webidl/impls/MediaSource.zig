@@ -175,4 +175,3 @@ pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMStr
     _ = @"type";
     return error.NotImplemented;
 }
-

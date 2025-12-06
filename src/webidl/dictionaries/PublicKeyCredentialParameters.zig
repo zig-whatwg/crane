@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const PublicKeyCredentialParameters = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     alg: *const anyopaque,
 };

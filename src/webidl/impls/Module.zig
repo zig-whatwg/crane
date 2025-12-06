@@ -75,4 +75,3 @@ pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.I
     _ = sectionName;
     return error.NotImplemented;
 }
-

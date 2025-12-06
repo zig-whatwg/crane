@@ -72,4 +72,3 @@ pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(diction
     _ = point;
     return error.NotImplemented;
 }
-

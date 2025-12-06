@@ -83,4 +83,3 @@ pub fn get_selectionEnd(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
-

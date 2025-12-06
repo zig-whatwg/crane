@@ -44,4 +44,3 @@ pub fn get_maxChannelCount(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -115,4 +115,3 @@ pub fn set_scheme(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

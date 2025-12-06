@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const ImageBufferSource = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    allow_shared_buffer_source: typedefs.AllowSharedBufferSource,
+    readable_stream: *runtime.Instance,
 };

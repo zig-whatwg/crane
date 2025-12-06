@@ -51,4 +51,3 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
     _ = value;
     return error.NotImplemented;
 }
-

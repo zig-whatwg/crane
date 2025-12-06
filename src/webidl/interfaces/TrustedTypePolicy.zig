@@ -1,5 +1,5 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,45 +24,43 @@ pub const TrustedTypePolicy = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createHTML", "call_createHTML", 2 },
             .{ "createScript", "call_createScript", 2 },
             .{ "createScriptURL", "call_createScriptURL", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createHTML",
             "createScript",
             "createScriptURL",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -76,12 +74,13 @@ pub const TrustedTypePolicy = struct {
     );
 
     const delegates = .{
-
         .get_name = &get_name,
 
         .call_createHTML = &call_createHTML,
         .call_createScript = &call_createScript,
         .call_createScriptURL = &call_createScriptURL,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -100,18 +99,14 @@ pub const TrustedTypePolicy = struct {
     }
 
     pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
-        
         return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
     }
 
     pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
-        
         return try TrustedTypePolicyImpl.call_createHTML(instance, input, arguments);
     }
 
     pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: []const *const anyopaque) anyerror!*runtime.Instance {
-        
         return try TrustedTypePolicyImpl.call_createScript(instance, input, arguments);
     }
-
 };

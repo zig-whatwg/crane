@@ -79,4 +79,3 @@ pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) an
     _ = @"type";
     return error.NotImplemented;
 }
-

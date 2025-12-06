@@ -88,4 +88,3 @@ pub fn set_max(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

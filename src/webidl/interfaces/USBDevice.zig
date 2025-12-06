@@ -1,5 +1,5 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,13 +30,13 @@ pub const USBDevice = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Worker = true,
             .Window = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "usbVersionMajor", "get_usbVersionMajor", null },
@@ -57,7 +57,7 @@ pub const USBDevice = struct {
             .{ "configurations", "get_configurations", null },
             .{ "opened", "get_opened", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 0 },
@@ -76,7 +76,7 @@ pub const USBDevice = struct {
             .{ "isochronousTransferOut", "call_isochronousTransferOut", 3 },
             .{ "reset", "call_reset", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -95,11 +95,10 @@ pub const USBDevice = struct {
             "isochronousTransferOut",
             "reset",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "usbVersionMajor", "get_usbVersionMajor", null },
@@ -120,11 +119,10 @@ pub const USBDevice = struct {
             .{ "configurations", "get_configurations", null },
             .{ "opened", "get_opened", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -154,7 +152,6 @@ pub const USBDevice = struct {
     );
 
     const delegates = .{
-
         .get_configuration = &get_configuration,
         .get_configurations = &get_configurations,
         .get_deviceClass = &get_deviceClass,
@@ -188,6 +185,8 @@ pub const USBDevice = struct {
         .call_selectConfiguration = &call_selectConfiguration,
         .call_transferIn = &call_transferIn,
         .call_transferOut = &call_transferOut,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -270,7 +269,6 @@ pub const USBDevice = struct {
     }
 
     pub fn call_releaseInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_releaseInterface(instance, interfaceNumber);
     }
 
@@ -279,17 +277,14 @@ pub const USBDevice = struct {
     }
 
     pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue: u8) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_selectConfiguration(instance, configurationValue);
     }
 
     pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_controlTransferOut(instance, setup, data);
     }
 
     pub fn call_controlTransferIn(instance: *runtime.Instance, setup: USBControlTransferParameters, length: u16) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_controlTransferIn(instance, setup, length);
     }
 
@@ -302,32 +297,26 @@ pub const USBDevice = struct {
     }
 
     pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_transferOut(instance, endpointNumber, data);
     }
 
     pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u8, packetLengths: *const anyopaque) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_isochronousTransferIn(instance, endpointNumber, packetLengths);
     }
 
     pub fn call_clearHalt(instance: *runtime.Instance, direction: USBDirection, endpointNumber: u8) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_clearHalt(instance, direction, endpointNumber);
     }
 
     pub fn call_claimInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_claimInterface(instance, interfaceNumber);
     }
 
     pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumber: u8, alternateSetting: u8) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_selectAlternateInterface(instance, interfaceNumber, alternateSetting);
     }
 
     pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource, packetLengths: *const anyopaque) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_isochronousTransferOut(instance, endpointNumber, data, packetLengths);
     }
 
@@ -336,8 +325,6 @@ pub const USBDevice = struct {
     }
 
     pub fn call_transferIn(instance: *runtime.Instance, endpointNumber: u8, length: u32) anyerror!*const anyopaque {
-        
         return try USBDeviceImpl.call_transferIn(instance, endpointNumber, length);
     }
-
 };

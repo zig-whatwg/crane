@@ -66,4 +66,3 @@ pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque, init_da
     _ = init_data;
     return error.NotImplemented;
 }
-

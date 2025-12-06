@@ -77,4 +77,3 @@ pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.Callba
     _ = callback;
     return error.NotImplemented;
 }
-

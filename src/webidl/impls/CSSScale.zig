@@ -93,4 +93,3 @@ pub fn set_z(instance: *runtime.Instance, value: typedefs.CSSNumberish) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

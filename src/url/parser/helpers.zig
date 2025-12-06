@@ -166,9 +166,3 @@ pub inline fn remainingStartsWith(input: []const u8, pointer: usize, prefix: []c
     const rem = remaining(input, pointer);
     return std.mem.startsWith(u8, rem, prefix);
 }
-
-
-
-
-
-

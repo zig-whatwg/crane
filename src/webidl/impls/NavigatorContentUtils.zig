@@ -54,4 +54,3 @@ pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: runtime
     _ = url;
     return error.NotImplemented;
 }
-

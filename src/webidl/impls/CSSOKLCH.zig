@@ -107,4 +107,3 @@ pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSColorPercent) a
     _ = value;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -68,13 +68,13 @@ pub const GPUDevice = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "features", "get_features", null },
@@ -85,7 +85,7 @@ pub const GPUDevice = struct {
             .{ "onuncapturederror", "get_onuncapturederror", "set_onuncapturederror" },
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "destroy", "call_destroy", 0 },
@@ -107,7 +107,7 @@ pub const GPUDevice = struct {
             .{ "pushErrorScope", "call_pushErrorScope", 1 },
             .{ "popErrorScope", "call_popErrorScope", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "destroy",
@@ -129,7 +129,7 @@ pub const GPUDevice = struct {
             "pushErrorScope",
             "popErrorScope",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -137,7 +137,7 @@ pub const GPUDevice = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "features", "get_features", null },
@@ -148,11 +148,10 @@ pub const GPUDevice = struct {
             .{ "onuncapturederror", "get_onuncapturederror", "set_onuncapturederror" },
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -176,7 +175,6 @@ pub const GPUDevice = struct {
     );
 
     const delegates = .{
-
         .get_adapterInfo = &get_adapterInfo,
         .get_features = &get_features,
         .get_label = &get_label,
@@ -206,6 +204,8 @@ pub const GPUDevice = struct {
         .call_importExternalTexture = &call_importExternalTexture,
         .call_popErrorScope = &call_popErrorScope,
         .call_pushErrorScope = &call_pushErrorScope,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -288,62 +288,50 @@ pub const GPUDevice = struct {
     }
 
     pub fn call_createQuerySet(instance: *runtime.Instance, descriptor: GPUQuerySetDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createQuerySet(instance, descriptor);
     }
 
     pub fn call_createTexture(instance: *runtime.Instance, descriptor: GPUTextureDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createTexture(instance, descriptor);
     }
 
     pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createRenderPipeline(instance, descriptor);
     }
 
     pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!*const anyopaque {
-        
         return try GPUDeviceImpl.call_createRenderPipelineAsync(instance, descriptor);
     }
 
     pub fn call_createPipelineLayout(instance: *runtime.Instance, descriptor: GPUPipelineLayoutDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createPipelineLayout(instance, descriptor);
     }
 
     pub fn call_createShaderModule(instance: *runtime.Instance, descriptor: GPUShaderModuleDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createShaderModule(instance, descriptor);
     }
 
     pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandEncoderDescriptor)) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createCommandEncoder(instance, descriptor);
     }
 
     pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!*const anyopaque {
-        
         return try GPUDeviceImpl.call_createComputePipelineAsync(instance, descriptor);
     }
 
     pub fn call_createBindGroupLayout(instance: *runtime.Instance, descriptor: GPUBindGroupLayoutDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createBindGroupLayout(instance, descriptor);
     }
 
     pub fn call_createSampler(instance: *runtime.Instance, descriptor: webidl.Opt(GPUSamplerDescriptor)) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createSampler(instance, descriptor);
     }
 
     pub fn call_importExternalTexture(instance: *runtime.Instance, descriptor: GPUExternalTextureDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_importExternalTexture(instance, descriptor);
     }
 
     pub fn call_createComputePipeline(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createComputePipeline(instance, descriptor);
     }
 
@@ -352,27 +340,22 @@ pub const GPUDevice = struct {
     }
 
     pub fn call_createRenderBundleEncoder(instance: *runtime.Instance, descriptor: GPURenderBundleEncoderDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createRenderBundleEncoder(instance, descriptor);
     }
 
     pub fn call_pushErrorScope(instance: *runtime.Instance, filter: GPUErrorFilter) anyerror!void {
-        
         return try GPUDeviceImpl.call_pushErrorScope(instance, filter);
     }
 
     pub fn call_createBuffer(instance: *runtime.Instance, descriptor: GPUBufferDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createBuffer(instance, descriptor);
     }
 
     pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: GPUBindGroupDescriptor) anyerror!*runtime.Instance {
-        
         return try GPUDeviceImpl.call_createBindGroup(instance, descriptor);
     }
 
     pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try GPUDeviceImpl.call_popErrorScope(instance);
     }
-
 };

@@ -110,4 +110,3 @@ pub fn get_ideographicBaseline(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

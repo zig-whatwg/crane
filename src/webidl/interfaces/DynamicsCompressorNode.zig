@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -34,10 +34,10 @@ pub const DynamicsCompressorNode = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "threshold", "get_threshold", null },
@@ -47,15 +47,13 @@ pub const DynamicsCompressorNode = struct {
             .{ "attack", "get_attack", null },
             .{ "release", "get_release", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -72,7 +70,7 @@ pub const DynamicsCompressorNode = struct {
             "disconnect",
             "disconnect",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "threshold", "get_threshold", null },
@@ -82,11 +80,10 @@ pub const DynamicsCompressorNode = struct {
             .{ "attack", "get_attack", null },
             .{ "release", "get_release", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -105,13 +102,14 @@ pub const DynamicsCompressorNode = struct {
     );
 
     const delegates = .{
-
         .get_attack = &get_attack,
         .get_knee = &get_knee,
         .get_ratio = &get_ratio,
         .get_reduction = &get_reduction,
         .get_release = &get_release,
         .get_threshold = &get_threshold,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -154,5 +152,4 @@ pub const DynamicsCompressorNode = struct {
     pub fn get_release(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DynamicsCompressorNodeImpl.get_release(instance);
     }
-
 };

@@ -45,4 +45,3 @@ pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runt
     _ = shader;
     return error.NotImplemented;
 }
-

@@ -90,4 +90,3 @@ pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

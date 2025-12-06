@@ -59,4 +59,3 @@ pub fn get_reason(instance: *runtime.Instance) anyerror!enums.GPUPipelineErrorRe
     _ = instance;
     return error.NotImplemented;
 }
-

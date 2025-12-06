@@ -46,4 +46,3 @@ pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(enums.WakeL
     _ = @"type";
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,10 +36,10 @@ pub const PannerNode = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "panningModel", "get_panningModel", "set_panningModel" },
@@ -57,19 +57,19 @@ pub const PannerNode = struct {
             .{ "coneOuterAngle", "get_coneOuterAngle", "set_coneOuterAngle" },
             .{ "coneOuterGain", "get_coneOuterGain", "set_coneOuterGain" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setPosition", "call_setPosition", 3 },
             .{ "setOrientation", "call_setOrientation", 3 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setPosition",
             "setOrientation",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -86,7 +86,7 @@ pub const PannerNode = struct {
             "disconnect",
             "disconnect",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "panningModel", "get_panningModel", "set_panningModel" },
@@ -104,11 +104,10 @@ pub const PannerNode = struct {
             .{ "coneOuterAngle", "get_coneOuterAngle", "set_coneOuterAngle" },
             .{ "coneOuterGain", "get_coneOuterGain", "set_coneOuterGain" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -135,7 +134,6 @@ pub const PannerNode = struct {
     );
 
     const delegates = .{
-
         .get_coneInnerAngle = &get_coneInnerAngle,
         .get_coneOuterAngle = &get_coneOuterAngle,
         .get_coneOuterGain = &get_coneOuterGain,
@@ -162,6 +160,8 @@ pub const PannerNode = struct {
 
         .call_setOrientation = &call_setOrientation,
         .call_setPosition = &call_setPosition,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -270,13 +270,10 @@ pub const PannerNode = struct {
     }
 
     pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
-        
         return try PannerNodeImpl.call_setPosition(instance, x, y, z);
     }
 
     pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
-        
         return try PannerNodeImpl.call_setOrientation(instance, x, y, z);
     }
-
 };

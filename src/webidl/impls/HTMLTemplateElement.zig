@@ -121,4 +121,3 @@ pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: r
     _ = value;
     return error.NotImplemented;
 }
-

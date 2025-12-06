@@ -50,4 +50,3 @@ pub fn get_protectedAudience(instance: *runtime.Instance) anyerror!*runtime.Inst
     _ = instance;
     return error.NotImplemented;
 }
-

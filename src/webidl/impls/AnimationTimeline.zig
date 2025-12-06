@@ -58,4 +58,3 @@ pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Insta
     _ = effect;
     return error.NotImplemented;
 }
-

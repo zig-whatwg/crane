@@ -82,4 +82,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.VideoColor
     _ = instance;
     return error.NotImplemented;
 }
-

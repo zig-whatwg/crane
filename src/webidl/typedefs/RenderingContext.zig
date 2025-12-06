@@ -5,9 +5,9 @@
 const runtime = @import("runtime");
 
 pub const RenderingContext = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
-    variant_3: *const anyopaque,
-    variant_4: *const anyopaque,
+    canvas_rendering_context2d: *runtime.Instance,
+    image_bitmap_rendering_context: *runtime.Instance,
+    web_glrendering_context: *runtime.Instance,
+    web_gl2rendering_context: *runtime.Instance,
+    gpucanvas_context: *runtime.Instance,
 };

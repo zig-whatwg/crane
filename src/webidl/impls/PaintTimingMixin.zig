@@ -50,4 +50,3 @@ pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMH
     _ = instance;
     return null;
 }
-

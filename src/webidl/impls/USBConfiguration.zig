@@ -70,4 +70,3 @@ pub fn get_interfaces(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -59,4 +59,3 @@ pub fn get_fontfaces(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

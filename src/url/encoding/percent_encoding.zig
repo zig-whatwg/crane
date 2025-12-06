@@ -248,9 +248,3 @@ pub fn utf8PercentEncode(
 
     return output.toOwnedSlice();
 }
-
-
-
-
-
-

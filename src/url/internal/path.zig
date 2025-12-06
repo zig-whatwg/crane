@@ -53,7 +53,3 @@ pub fn isDoubleDotPathSegment(segment: []const u8) bool {
     if (std.ascii.eqlIgnoreCase(segment, "%2e%2e")) return true;
     return false;
 }
-
-
-
-

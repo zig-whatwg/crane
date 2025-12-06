@@ -64,4 +64,3 @@ pub fn get_transform(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
-

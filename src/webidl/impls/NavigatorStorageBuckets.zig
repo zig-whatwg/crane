@@ -44,4 +44,3 @@ pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instanc
     _ = instance;
     return error.NotImplemented;
 }
-

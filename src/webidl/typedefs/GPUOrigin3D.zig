@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
+const dictionaries = @import("dictionaries");
 
 pub const GPUOrigin3D = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    gpuinteger_coordinate_sequence: []const typedefs.GPUIntegerCoordinate,
+    gpuorigin3ddict: dictionaries.GPUOrigin3DDict,
 };

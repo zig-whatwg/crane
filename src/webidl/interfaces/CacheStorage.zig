@@ -1,5 +1,5 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,17 +25,16 @@ pub const CacheStorage = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "match", "call_match", 1 },
@@ -44,7 +43,7 @@ pub const CacheStorage = struct {
             .{ "delete", "call_delete", 1 },
             .{ "keys", "call_keys", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "match",
@@ -53,19 +52,16 @@ pub const CacheStorage = struct {
             "delete",
             "keys",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -78,12 +74,13 @@ pub const CacheStorage = struct {
     );
 
     const delegates = .{
-
         .call_delete = &call_delete,
         .call_has = &call_has,
         .call_keys = &call_keys,
         .call_match = &call_match,
         .call_open = &call_open,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -100,7 +97,7 @@ pub const CacheStorage = struct {
     /// Extended attributes: [NewObject]
     pub fn call_delete(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try CacheStorageImpl.call_delete(instance, cacheName);
     }
 
@@ -113,22 +110,21 @@ pub const CacheStorage = struct {
     /// Extended attributes: [NewObject]
     pub fn call_has(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try CacheStorageImpl.call_has(instance, cacheName);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_open(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try CacheStorageImpl.call_open(instance, cacheName);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(MultiCacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try CacheStorageImpl.call_match(instance, request, options);
     }
-
 };

@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,10 +36,10 @@ pub const MediaStreamTrack = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "kind", "get_kind", null },
@@ -56,7 +56,7 @@ pub const MediaStreamTrack = struct {
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -69,7 +69,7 @@ pub const MediaStreamTrack = struct {
             .{ "sendCaptureAction", "call_sendCaptureAction", 1 },
             .{ "getCaptureHandle", "call_getCaptureHandle", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "clone",
@@ -82,7 +82,7 @@ pub const MediaStreamTrack = struct {
             "sendCaptureAction",
             "getCaptureHandle",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -90,7 +90,7 @@ pub const MediaStreamTrack = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "kind", "get_kind", null },
@@ -107,11 +107,10 @@ pub const MediaStreamTrack = struct {
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -137,7 +136,6 @@ pub const MediaStreamTrack = struct {
     );
 
     const delegates = .{
-
         .get_contentHint = &get_contentHint,
         .get_enabled = &get_enabled,
         .get_id = &get_id,
@@ -169,6 +167,8 @@ pub const MediaStreamTrack = struct {
         .call_getSupportedCaptureActions = &call_getSupportedCaptureActions,
         .call_sendCaptureAction = &call_sendCaptureAction,
         .call_stop = &call_stop,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -291,13 +291,10 @@ pub const MediaStreamTrack = struct {
     }
 
     pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!*const anyopaque {
-        
         return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
     pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
-        
         return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
-
 };

@@ -60,4 +60,3 @@ pub fn call_waitUntil(instance: *runtime.Instance, f: *const anyopaque) anyerror
     _ = f;
     return error.NotImplemented;
 }
-

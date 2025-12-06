@@ -93,4 +93,3 @@ pub fn set_alpha(instance: *runtime.Instance, value: typedefs.CSSNumberish) anye
     _ = value;
     return error.NotImplemented;
 }
-

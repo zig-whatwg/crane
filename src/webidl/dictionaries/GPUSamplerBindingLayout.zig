@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const GPUSamplerBindingLayout = struct {
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
 };

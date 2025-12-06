@@ -50,4 +50,3 @@ pub fn get_prefix(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

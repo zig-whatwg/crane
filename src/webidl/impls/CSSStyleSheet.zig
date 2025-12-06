@@ -115,4 +115,3 @@ pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) anye
     _ = index;
     return error.NotImplemented;
 }
-

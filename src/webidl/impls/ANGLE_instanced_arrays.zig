@@ -67,4 +67,3 @@ pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: typede
     _ = primcount;
     return error.NotImplemented;
 }
-

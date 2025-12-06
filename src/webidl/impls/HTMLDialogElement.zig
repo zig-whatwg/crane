@@ -116,4 +116,3 @@ pub fn call_close(instance: *runtime.Instance, returnValue: webidl.Opt(runtime.D
     _ = returnValue;
     return error.NotImplemented;
 }
-

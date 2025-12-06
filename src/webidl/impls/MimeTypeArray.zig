@@ -58,4 +58,3 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     _ = name;
     return null;
 }
-

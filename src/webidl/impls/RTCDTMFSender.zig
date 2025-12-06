@@ -73,4 +73,3 @@ pub fn call_insertDTMF(instance: *runtime.Instance, tones: runtime.DOMString, du
     _ = interToneGap;
     return error.NotImplemented;
 }
-

@@ -57,4 +57,3 @@ pub fn set_onaudioprocess(instance: *runtime.Instance, value: typedefs.EventHand
     _ = value;
     return error.NotImplemented;
 }
-

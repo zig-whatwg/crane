@@ -89,4 +89,3 @@ pub fn set_size(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     _ = value;
     return error.NotImplemented;
 }
-

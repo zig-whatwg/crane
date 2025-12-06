@@ -45,4 +45,3 @@ pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dic
     _ = contribution;
     return error.NotImplemented;
 }
-

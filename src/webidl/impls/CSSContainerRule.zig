@@ -50,4 +50,3 @@ pub fn get_containerQuery(instance: *runtime.Instance) anyerror!typedefs.CSSOMSt
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -134,4 +134,3 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
     _ = instance;
     return null;
 }
-

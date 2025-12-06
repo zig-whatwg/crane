@@ -50,4 +50,3 @@ pub fn get_query(instance: *runtime.Instance) anyerror!typedefs.CustomMediaQuery
     _ = instance;
     return error.NotImplemented;
 }
-

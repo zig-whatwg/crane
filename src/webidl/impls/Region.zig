@@ -50,4 +50,3 @@ pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const an
     _ = instance;
     return null;
 }
-

@@ -77,4 +77,3 @@ pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.USB
     _ = options;
     return error.NotImplemented;
 }
-

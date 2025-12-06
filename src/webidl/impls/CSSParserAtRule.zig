@@ -72,4 +72,3 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
     return null;
 }
-

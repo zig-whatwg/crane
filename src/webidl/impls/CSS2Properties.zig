@@ -1624,4 +1624,3 @@ pub fn set_zIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

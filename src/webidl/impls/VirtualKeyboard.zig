@@ -82,4 +82,3 @@ pub fn call_show(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

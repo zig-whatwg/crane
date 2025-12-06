@@ -101,4 +101,3 @@ pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionari
     _ = readOptions;
     return error.NotImplemented;
 }
-

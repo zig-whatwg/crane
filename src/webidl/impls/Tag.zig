@@ -51,4 +51,3 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
     return instance;
 }
-

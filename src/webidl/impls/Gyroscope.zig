@@ -70,4 +70,3 @@ pub fn get_z(instance: *runtime.Instance) anyerror!?f64 {
     _ = instance;
     return null;
 }
-

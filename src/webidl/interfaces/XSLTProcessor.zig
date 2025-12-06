@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -24,14 +24,13 @@ pub const XSLTProcessor = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "importStylesheet", "call_importStylesheet", 1 },
@@ -43,7 +42,7 @@ pub const XSLTProcessor = struct {
             .{ "clearParameters", "call_clearParameters", 0 },
             .{ "reset", "call_reset", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "importStylesheet",
@@ -55,19 +54,16 @@ pub const XSLTProcessor = struct {
             "clearParameters",
             "reset",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -80,7 +76,6 @@ pub const XSLTProcessor = struct {
     );
 
     const delegates = .{
-
         .call_clearParameters = &call_clearParameters,
         .call_getParameter = &call_getParameter,
         .call_importStylesheet = &call_importStylesheet,
@@ -89,6 +84,8 @@ pub const XSLTProcessor = struct {
         .call_setParameter = &call_setParameter,
         .call_transformToDocument = &call_transformToDocument,
         .call_transformToFragment = &call_transformToFragment,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -113,28 +110,23 @@ pub const XSLTProcessor = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try XSLTProcessorImpl.call_transformToDocument(instance, source);
     }
 
     pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!*const anyopaque {
-        
         return try XSLTProcessorImpl.call_getParameter(instance, namespaceURI, localName);
     }
 
     pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!void {
-        
         return try XSLTProcessorImpl.call_removeParameter(instance, namespaceURI, localName);
     }
 
     pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: *const anyopaque) anyerror!void {
-        
         return try XSLTProcessorImpl.call_setParameter(instance, namespaceURI, localName, value);
     }
 
     pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
-        
         return try XSLTProcessorImpl.call_importStylesheet(instance, style);
     }
 
@@ -151,9 +143,7 @@ pub const XSLTProcessor = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try XSLTProcessorImpl.call_transformToFragment(instance, source, output);
     }
-
 };

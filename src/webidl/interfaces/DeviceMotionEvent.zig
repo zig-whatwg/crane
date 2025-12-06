@@ -1,5 +1,5 @@
 //! Generated from: orientation-event.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,10 +31,10 @@ pub const DeviceMotionEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "acceleration", "get_acceleration", null },
@@ -42,21 +42,20 @@ pub const DeviceMotionEvent = struct {
             .{ "rotationRate", "get_rotationRate", null },
             .{ "interval", "get_interval", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_requestPermission", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -65,7 +64,7 @@ pub const DeviceMotionEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "acceleration", "get_acceleration", null },
@@ -73,11 +72,10 @@ pub const DeviceMotionEvent = struct {
             .{ "rotationRate", "get_rotationRate", null },
             .{ "interval", "get_interval", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -94,11 +92,12 @@ pub const DeviceMotionEvent = struct {
     );
 
     const delegates = .{
-
         .get_acceleration = &get_acceleration,
         .get_accelerationIncludingGravity = &get_accelerationIncludingGravity,
         .get_interval = &get_interval,
         .get_rotationRate = &get_rotationRate,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -137,5 +136,4 @@ pub const DeviceMotionEvent = struct {
     pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try DeviceMotionEventImpl.call_requestPermission(instance);
     }
-
 };

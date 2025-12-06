@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-transform.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,40 +22,36 @@ pub const VideoTrackGenerator = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "DedicatedWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .DedicatedWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "writable", "get_writable", null },
             .{ "muted", "get_muted", "set_muted" },
             .{ "track", "get_track", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "writable", "get_writable", null },
             .{ "muted", "get_muted", "set_muted" },
             .{ "track", "get_track", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -71,12 +67,13 @@ pub const VideoTrackGenerator = struct {
     );
 
     const delegates = .{
-
         .get_muted = &get_muted,
         .get_track = &get_track,
         .get_writable = &get_writable,
 
         .set_muted = &set_muted,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -111,5 +108,4 @@ pub const VideoTrackGenerator = struct {
     pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoTrackGeneratorImpl.get_track(instance);
     }
-
 };

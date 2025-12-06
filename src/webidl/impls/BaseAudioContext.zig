@@ -225,4 +225,3 @@ pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyop
     _ = errorCallback;
     return error.NotImplemented;
 }
-

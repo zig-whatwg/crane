@@ -51,4 +51,3 @@ pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: type
     _ = value;
     return error.NotImplemented;
 }
-

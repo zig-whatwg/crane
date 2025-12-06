@@ -98,4 +98,3 @@ pub fn call_newValueSpecifiedUnits(instance: *runtime.Instance, unitType: u16, v
     _ = valueInSpecifiedUnits;
     return error.NotImplemented;
 }
-

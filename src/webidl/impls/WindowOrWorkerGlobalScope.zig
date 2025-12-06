@@ -177,4 +177,3 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     _ = init_data;
     return error.NotImplemented;
 }
-

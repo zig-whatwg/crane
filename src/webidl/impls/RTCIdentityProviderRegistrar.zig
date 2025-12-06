@@ -45,4 +45,3 @@ pub fn call_register(instance: *runtime.Instance, idp: dictionaries.RTCIdentityP
     _ = idp;
     return error.NotImplemented;
 }
-

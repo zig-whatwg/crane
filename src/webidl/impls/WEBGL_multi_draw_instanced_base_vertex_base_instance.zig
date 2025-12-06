@@ -73,4 +73,3 @@ pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *run
     _ = drawcount;
     return error.NotImplemented;
 }
-

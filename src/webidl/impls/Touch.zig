@@ -141,4 +141,3 @@ pub fn get_touchType(instance: *runtime.Instance) anyerror!enums.TouchType {
     _ = instance;
     return error.NotImplemented;
 }
-

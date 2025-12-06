@@ -122,4 +122,3 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
     _ = options;
     return error.NotImplemented;
 }
-

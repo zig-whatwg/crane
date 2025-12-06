@@ -110,4 +110,3 @@ pub fn get_pose(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     _ = instance;
     return null;
 }
-

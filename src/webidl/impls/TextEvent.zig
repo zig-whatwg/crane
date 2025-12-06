@@ -56,4 +56,3 @@ pub fn call_initTextEvent(instance: *runtime.Instance, @"type": runtime.DOMStrin
     _ = data;
     return error.NotImplemented;
 }
-

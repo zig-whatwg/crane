@@ -99,4 +99,3 @@ pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

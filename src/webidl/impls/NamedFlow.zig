@@ -75,4 +75,3 @@ pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Inst
     _ = node;
     return error.NotImplemented;
 }
-

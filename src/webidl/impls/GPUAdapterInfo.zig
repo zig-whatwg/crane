@@ -80,4 +80,3 @@ pub fn get_isFallbackAdapter(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

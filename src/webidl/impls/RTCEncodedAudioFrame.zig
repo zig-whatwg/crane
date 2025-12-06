@@ -72,4 +72,3 @@ pub fn call_getMetadata(instance: *runtime.Instance) anyerror!dictionaries.RTCEn
     _ = instance;
     return error.NotImplemented;
 }
-

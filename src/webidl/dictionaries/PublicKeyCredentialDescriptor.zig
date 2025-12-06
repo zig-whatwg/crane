@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const PublicKeyCredentialDescriptor = struct {
-    @"type": runtime.DOMString,
+    type: runtime.DOMString,
     id: *const anyopaque,
     transports: ?*const anyopaque = null,
 };

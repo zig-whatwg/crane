@@ -62,4 +62,3 @@ pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.
     _ = baseInstance;
     return error.NotImplemented;
 }
-

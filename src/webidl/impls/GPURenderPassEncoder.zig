@@ -207,4 +207,3 @@ pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance
     _ = pipeline;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -36,27 +36,25 @@ pub const IDBOpenDBRequest = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onblocked", "get_onblocked", "set_onblocked" },
             .{ "onupgradeneeded", "get_onupgradeneeded", "set_onupgradeneeded" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -64,17 +62,16 @@ pub const IDBOpenDBRequest = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onblocked", "get_onblocked", "set_onblocked" },
             .{ "onupgradeneeded", "get_onupgradeneeded", "set_onupgradeneeded" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,12 +86,13 @@ pub const IDBOpenDBRequest = struct {
     );
 
     const delegates = .{
-
         .get_onblocked = &get_onblocked,
         .get_onupgradeneeded = &get_onupgradeneeded,
 
         .set_onblocked = &set_onblocked,
         .set_onupgradeneeded = &set_onupgradeneeded,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -123,5 +121,4 @@ pub const IDBOpenDBRequest = struct {
     pub fn set_onupgradeneeded(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try IDBOpenDBRequestImpl.set_onupgradeneeded(instance, value);
     }
-
 };

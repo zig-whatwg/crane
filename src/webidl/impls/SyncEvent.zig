@@ -64,4 +64,3 @@ pub fn get_lastChance(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

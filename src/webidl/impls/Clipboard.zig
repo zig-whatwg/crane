@@ -66,4 +66,3 @@ pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) anye
     _ = data;
     return error.NotImplemented;
 }
-

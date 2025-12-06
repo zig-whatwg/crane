@@ -255,7 +255,7 @@ pub const XMLHttpRequestState = struct {
         if (self.fetch_controller) |fc| fc.deinit();
 
         // Free override MIME type
-        if (self.override_mime_type) |*m| m.deinit(self.allocator);
+        if (self.override_mime_type) |*m| m.deinit();
     }
 
     /// Change ready state

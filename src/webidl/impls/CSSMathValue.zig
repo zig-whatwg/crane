@@ -44,4 +44,3 @@ pub fn get_operator(instance: *runtime.Instance) anyerror!enums.CSSMathOperator 
     _ = instance;
     return error.NotImplemented;
 }
-

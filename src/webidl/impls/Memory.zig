@@ -76,4 +76,3 @@ pub fn call_toResizableBuffer(instance: *runtime.Instance) anyerror!*const anyop
     _ = instance;
     return error.NotImplemented;
 }
-

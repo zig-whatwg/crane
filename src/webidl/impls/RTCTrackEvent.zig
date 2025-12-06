@@ -76,4 +76,3 @@ pub fn get_transceiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

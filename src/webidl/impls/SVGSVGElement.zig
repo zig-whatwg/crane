@@ -518,4 +518,3 @@ pub fn call_deselectAll(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

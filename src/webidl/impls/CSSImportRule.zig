@@ -68,4 +68,3 @@ pub fn get_supportsText(instance: *runtime.Instance) anyerror!?typedefs.CSSOMStr
     _ = instance;
     return null;
 }
-

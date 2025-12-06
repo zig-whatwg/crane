@@ -54,4 +54,3 @@ pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dicti
     _ = options;
     return error.NotImplemented;
 }
-

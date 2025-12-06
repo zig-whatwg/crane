@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,10 +86,10 @@ pub const HTMLTrackElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "kind", "get_kind", "set_kind" },
@@ -100,11 +100,10 @@ pub const HTMLTrackElement = struct {
             .{ "readyState", "get_readyState", null },
             .{ "track", "get_track", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "NONE", "get_NONE" },
@@ -112,11 +111,10 @@ pub const HTMLTrackElement = struct {
             .{ "LOADED", "get_LOADED" },
             .{ "ERROR", "get_ERROR" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -212,7 +210,7 @@ pub const HTMLTrackElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "kind", "get_kind", "set_kind" },
@@ -223,11 +221,10 @@ pub const HTMLTrackElement = struct {
             .{ "readyState", "get_readyState", null },
             .{ "track", "get_track", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -271,7 +268,6 @@ pub const HTMLTrackElement = struct {
     }
 
     const delegates = .{
-
         .get_ERROR = &get_ERROR,
         .get_LOADED = &get_LOADED,
         .get_LOADING = &get_LOADING,
@@ -289,6 +285,8 @@ pub const HTMLTrackElement = struct {
         .set_label = &set_label,
         .set_src = &set_src,
         .set_srclang = &set_srclang,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -318,7 +316,7 @@ pub const HTMLTrackElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTrackElementImpl.set_kind(instance, value);
     }
 
@@ -332,7 +330,7 @@ pub const HTMLTrackElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTrackElementImpl.set_src(instance, value);
     }
 
@@ -346,7 +344,7 @@ pub const HTMLTrackElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTrackElementImpl.set_srclang(instance, value);
     }
 
@@ -360,7 +358,7 @@ pub const HTMLTrackElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTrackElementImpl.set_label(instance, value);
     }
 
@@ -374,7 +372,7 @@ pub const HTMLTrackElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLTrackElementImpl.set_default(instance, value);
     }
 
@@ -385,5 +383,4 @@ pub const HTMLTrackElement = struct {
     pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTrackElementImpl.get_track(instance);
     }
-
 };

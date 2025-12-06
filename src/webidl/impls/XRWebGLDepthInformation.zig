@@ -56,4 +56,3 @@ pub fn get_imageIndex(instance: *runtime.Instance) anyerror!?u32 {
     _ = instance;
     return null;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: saa-non-cookie-storage.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -33,10 +33,10 @@ pub const StorageAccessHandle = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sessionStorage", "get_sessionStorage", null },
@@ -45,7 +45,7 @@ pub const StorageAccessHandle = struct {
             .{ "locks", "get_locks", null },
             .{ "caches", "get_caches", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getDirectory", "call_getDirectory", 0 },
@@ -55,7 +55,7 @@ pub const StorageAccessHandle = struct {
             .{ "BroadcastChannel", "call_BroadcastChannel", 1 },
             .{ "SharedWorker", "call_SharedWorker", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getDirectory",
@@ -65,11 +65,10 @@ pub const StorageAccessHandle = struct {
             "BroadcastChannel",
             "SharedWorker",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sessionStorage", "get_sessionStorage", null },
@@ -78,11 +77,10 @@ pub const StorageAccessHandle = struct {
             .{ "locks", "get_locks", null },
             .{ "caches", "get_caches", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -100,7 +98,6 @@ pub const StorageAccessHandle = struct {
     );
 
     const delegates = .{
-
         .get_caches = &get_caches,
         .get_indexedDB = &get_indexedDB,
         .get_localStorage = &get_localStorage,
@@ -113,6 +110,8 @@ pub const StorageAccessHandle = struct {
         .call_estimate = &call_estimate,
         .call_getDirectory = &call_getDirectory,
         .call_revokeObjectURL = &call_revokeObjectURL,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -151,7 +150,6 @@ pub const StorageAccessHandle = struct {
     }
 
     pub fn call_BroadcastChannel(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
-        
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
 
@@ -160,18 +158,14 @@ pub const StorageAccessHandle = struct {
     }
 
     pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
-        
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
     pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }
 
     pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
-        
         return try StorageAccessHandleImpl.call_revokeObjectURL(instance, url);
     }
-
 };

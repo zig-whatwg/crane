@@ -65,4 +65,3 @@ pub fn get_viewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instan
     _ = instance;
     return null;
 }
-

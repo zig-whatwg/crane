@@ -44,4 +44,3 @@ pub fn get_radius(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
-

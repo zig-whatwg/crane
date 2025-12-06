@@ -72,4 +72,3 @@ pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Op
     _ = descriptor;
     return error.NotImplemented;
 }
-

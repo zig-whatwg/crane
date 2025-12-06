@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const dictionaries = @import("dictionaries");
 
 pub const ConstrainPoint2D = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    point2d_sequence: []const dictionaries.Point2D,
+    constrain_point2dparameters: dictionaries.ConstrainPoint2DParameters,
 };

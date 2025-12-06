@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const ImageDataArray = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    uint8clamped_array: *const anyopaque,
+    float16array: *const anyopaque,
 };

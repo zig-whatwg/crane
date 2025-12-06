@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const enums = @import("enums");
 
 pub const StartInDirectory = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    well_known_directory: enums.WellKnownDirectory,
+    file_system_handle: *runtime.Instance,
 };

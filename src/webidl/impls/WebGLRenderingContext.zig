@@ -1229,4 +1229,3 @@ pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.In
     _ = program;
     return null;
 }
-

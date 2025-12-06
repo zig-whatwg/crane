@@ -65,4 +65,3 @@ pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaq
     _ = instance;
     return error.NotImplemented;
 }
-

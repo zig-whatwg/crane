@@ -1,5 +1,5 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -52,10 +52,10 @@ pub const XRSession = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "visibilityState", "get_visibilityState", null },
@@ -86,7 +86,7 @@ pub const XRSession = struct {
             .{ "environmentBlendMode", "get_environmentBlendMode", null },
             .{ "interactionMode", "get_interactionMode", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateRenderState", "call_updateRenderState", 0 },
@@ -104,7 +104,7 @@ pub const XRSession = struct {
             .{ "requestLightProbe", "call_requestLightProbe", 0 },
             .{ "initiateRoomCapture", "call_initiateRoomCapture", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "updateRenderState",
@@ -122,7 +122,7 @@ pub const XRSession = struct {
             "requestLightProbe",
             "initiateRoomCapture",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -130,7 +130,7 @@ pub const XRSession = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "visibilityState", "get_visibilityState", null },
@@ -161,11 +161,10 @@ pub const XRSession = struct {
             .{ "environmentBlendMode", "get_environmentBlendMode", null },
             .{ "interactionMode", "get_interactionMode", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -208,7 +207,6 @@ pub const XRSession = struct {
     );
 
     const delegates = .{
-
         .get_depthActive = &get_depthActive,
         .get_depthDataFormat = &get_depthDataFormat,
         .get_depthType = &get_depthType,
@@ -262,6 +260,8 @@ pub const XRSession = struct {
         .call_resumeDepthSensing = &call_resumeDepthSensing,
         .call_updateRenderState = &call_updateRenderState,
         .call_updateTargetFrameRate = &call_updateTargetFrameRate,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -448,29 +448,25 @@ pub const XRSession = struct {
     }
 
     pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_deletePersistentAnchor(instance, uuid);
     }
 
     pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: XRTransientInputHitTestOptionsInit) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_requestHitTestSourceForTransientInput(instance, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": XRReferenceSpaceType) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try XRSessionImpl.call_requestReferenceSpace(instance, @"type");
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try XRSessionImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_requestLightProbe(instance, options);
     }
 
@@ -483,27 +479,22 @@ pub const XRSession = struct {
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: XRFrameRequestCallback) anyerror!u32 {
-        
         return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
     }
 
     pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
     }
 
     pub fn call_requestHitTestSource(instance: *runtime.Instance, options: XRHitTestOptionsInit) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_requestHitTestSource(instance, options);
     }
 
     pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
-        
         return try XRSessionImpl.call_updateRenderState(instance, state);
     }
 
     pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
-        
         return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
     }
 
@@ -514,5 +505,4 @@ pub const XRSession = struct {
     pub fn call_resumeDepthSensing(instance: *runtime.Instance) anyerror!void {
         return try XRSessionImpl.call_resumeDepthSensing(instance);
     }
-
 };

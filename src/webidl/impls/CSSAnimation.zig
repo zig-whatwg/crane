@@ -44,4 +44,3 @@ pub fn get_animationName(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
     _ = instance;
     return error.NotImplemented;
 }
-

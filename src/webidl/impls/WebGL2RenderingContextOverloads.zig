@@ -242,4 +242,3 @@ pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance
     _ = srcLength;
     return error.NotImplemented;
 }
-

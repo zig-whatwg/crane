@@ -34,4 +34,3 @@ pub fn call_validate(ctx: runtime.Context, bytes: *const anyopaque, options: web
     _ = options;
     return error.NotImplemented;
 }
-

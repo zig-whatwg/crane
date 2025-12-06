@@ -101,4 +101,3 @@ pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque,
     _ = bufferOffset;
     return error.NotImplemented;
 }
-

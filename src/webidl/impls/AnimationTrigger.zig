@@ -130,4 +130,3 @@ pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) an
     _ = value;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,30 +31,30 @@ pub const CloseWatcher = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "oncancel", "get_oncancel", "set_oncancel" },
             .{ "onclose", "get_onclose", "set_onclose" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestClose", "call_requestClose", 0 },
             .{ "close", "call_close", 0 },
             .{ "destroy", "call_destroy", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestClose",
             "close",
             "destroy",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,17 +62,16 @@ pub const CloseWatcher = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "oncancel", "get_oncancel", "set_oncancel" },
             .{ "onclose", "get_onclose", "set_onclose" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -87,7 +86,6 @@ pub const CloseWatcher = struct {
     );
 
     const delegates = .{
-
         .get_oncancel = &get_oncancel,
         .get_onclose = &get_onclose,
 
@@ -97,6 +95,8 @@ pub const CloseWatcher = struct {
         .call_close = &call_close,
         .call_destroy = &call_destroy,
         .call_requestClose = &call_requestClose,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -143,5 +143,4 @@ pub const CloseWatcher = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try CloseWatcherImpl.call_close(instance);
     }
-
 };

@@ -65,4 +65,3 @@ pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
     _ = instance;
     return null;
 }
-

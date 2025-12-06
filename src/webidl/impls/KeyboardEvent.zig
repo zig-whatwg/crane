@@ -142,4 +142,3 @@ pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: runtime.DOMS
     _ = metaKey;
     return error.NotImplemented;
 }
-

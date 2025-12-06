@@ -58,4 +58,3 @@ pub fn call_setSharedStorageContext(instance: *runtime.Instance, contextString: 
     _ = contextString;
     return error.NotImplemented;
 }
-

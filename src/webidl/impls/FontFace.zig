@@ -233,4 +233,3 @@ pub fn call_load(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

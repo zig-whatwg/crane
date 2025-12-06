@@ -51,4 +51,3 @@ pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) a
     _ = baseSpace;
     return null;
 }
-

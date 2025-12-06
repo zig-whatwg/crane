@@ -71,4 +71,3 @@ pub fn get_code(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
     return error.NotImplemented;
 }
-

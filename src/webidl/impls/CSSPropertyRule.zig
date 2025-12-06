@@ -62,4 +62,3 @@ pub fn get_initialValue(instance: *runtime.Instance) anyerror!?typedefs.CSSOMStr
     _ = instance;
     return null;
 }
-

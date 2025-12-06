@@ -571,4 +571,3 @@ pub fn set_subscript_size_override(instance: *runtime.Instance, value: typedefs.
     _ = value;
     return error.NotImplemented;
 }
-

@@ -60,4 +60,3 @@ pub fn call_addRoutes(instance: *runtime.Instance, rules: *const anyopaque) anye
     _ = rules;
     return error.NotImplemented;
 }
-

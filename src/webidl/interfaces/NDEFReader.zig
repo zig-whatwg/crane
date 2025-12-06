@@ -1,5 +1,5 @@
 //! Generated from: web-nfc.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -35,30 +35,30 @@ pub const NDEFReader = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onreading", "get_onreading", "set_onreading" },
             .{ "onreadingerror", "get_onreadingerror", "set_onreadingerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "scan", "call_scan", 0 },
             .{ "write", "call_write", 1 },
             .{ "makeReadOnly", "call_makeReadOnly", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "scan",
             "write",
             "makeReadOnly",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -66,17 +66,16 @@ pub const NDEFReader = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onreading", "get_onreading", "set_onreading" },
             .{ "onreadingerror", "get_onreadingerror", "set_onreadingerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -91,7 +90,6 @@ pub const NDEFReader = struct {
     );
 
     const delegates = .{
-
         .get_onreading = &get_onreading,
         .get_onreadingerror = &get_onreadingerror,
 
@@ -101,6 +99,8 @@ pub const NDEFReader = struct {
         .call_makeReadOnly = &call_makeReadOnly,
         .call_scan = &call_scan,
         .call_write = &call_write,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -137,18 +137,14 @@ pub const NDEFReader = struct {
     }
 
     pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
-        
         return try NDEFReaderImpl.call_scan(instance, options);
     }
 
     pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!*const anyopaque {
-        
         return try NDEFReaderImpl.call_write(instance, message, options);
     }
 
     pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
-        
         return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }
-
 };

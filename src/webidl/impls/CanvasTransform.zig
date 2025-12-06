@@ -97,4 +97,3 @@ pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void
     _ = y;
     return error.NotImplemented;
 }
-

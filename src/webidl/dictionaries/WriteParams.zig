@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const WriteParams = struct {
-    @"type": *const anyopaque,
+    type: *const anyopaque,
     size: ?u64 = null,
     position: ?u64 = null,
     data: ?*const anyopaque = null,

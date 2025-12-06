@@ -66,4 +66,3 @@ pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!v
     _ = when;
     return error.NotImplemented;
 }
-

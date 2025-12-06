@@ -83,4 +83,3 @@ pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaq
     _ = instance;
     return error.NotImplemented;
 }
-

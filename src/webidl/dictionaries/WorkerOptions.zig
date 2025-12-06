@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const WorkerOptions = struct {
     name: ?runtime.DOMString = null,
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
     credentials: ?*const anyopaque = null,
 };

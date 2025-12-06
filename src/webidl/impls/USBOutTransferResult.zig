@@ -65,4 +65,3 @@ pub fn get_status(instance: *runtime.Instance) anyerror!enums.USBTransferStatus 
     _ = instance;
     return error.NotImplemented;
 }
-

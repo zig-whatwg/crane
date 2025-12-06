@@ -83,4 +83,3 @@ pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtim
     _ = rid;
     return error.NotImplemented;
 }
-

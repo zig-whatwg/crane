@@ -74,4 +74,3 @@ pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!*const anyo
     _ = index;
     return error.NotImplemented;
 }
-

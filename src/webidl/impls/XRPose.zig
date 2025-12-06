@@ -62,4 +62,3 @@ pub fn get_emulatedPosition(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

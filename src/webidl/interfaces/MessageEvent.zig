@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -30,14 +30,14 @@ pub const MessageEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "AudioWorklet" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
             .AudioWorklet = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", null },
@@ -46,17 +46,17 @@ pub const MessageEvent = struct {
             .{ "source", "get_source", null },
             .{ "ports", "get_ports", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "initMessageEvent", "call_initMessageEvent", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "initMessageEvent",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -65,7 +65,7 @@ pub const MessageEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", null },
@@ -74,11 +74,10 @@ pub const MessageEvent = struct {
             .{ "source", "get_source", null },
             .{ "ports", "get_ports", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -96,7 +95,6 @@ pub const MessageEvent = struct {
     );
 
     const delegates = .{
-
         .get_data = &get_data,
         .get_lastEventId = &get_lastEventId,
         .get_origin = &get_origin,
@@ -104,6 +102,8 @@ pub const MessageEvent = struct {
         .get_source = &get_source,
 
         .call_initMessageEvent = &call_initMessageEvent,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -144,8 +144,6 @@ pub const MessageEvent = struct {
     }
 
     pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(*const anyopaque), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try MessageEventImpl.call_initMessageEvent(instance, @"type", bubbles, cancelable, data, origin, lastEventId, source, ports);
     }
-
 };

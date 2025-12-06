@@ -252,9 +252,9 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!
     const entry = internal.form_data.get(name) orelse return null;
 
     return switch (entry) {
-        .string => |s| .{ .variant_1 = s }, // USVString is []const u8
-        .file => |f| .{ .variant_0 = @ptrCast(f) }, // Cast File to anyopaque
-        .blob_instance => |ptr| .{ .variant_0 = ptr }, // Return the stored Blob/File instance
+        .string => |s| .{ .usvstring = s }, // USVString is []const u8
+        .file => |f| .{ .file = @ptrCast(f) }, // Cast File to Instance
+        .blob_instance => |ptr| .{ .file = @ptrCast(@alignCast(ptr)) }, // Return the stored Blob/File instance
     };
 }
 

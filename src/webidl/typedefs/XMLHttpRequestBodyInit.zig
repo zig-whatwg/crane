@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const typedefs = @import("root.zig");
 
 pub const XMLHttpRequestBodyInit = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
-    variant_2: *const anyopaque,
-    variant_3: *const anyopaque,
-    variant_4: runtime.USVString,
+    blob: *runtime.Instance,
+    buffer_source: typedefs.BufferSource,
+    form_data: *runtime.Instance,
+    urlsearch_params: *runtime.Instance,
+    usvstring: runtime.USVString,
 };

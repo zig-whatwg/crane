@@ -82,4 +82,3 @@ pub fn set_onendstreaming(instance: *runtime.Instance, value: typedefs.EventHand
     _ = value;
     return error.NotImplemented;
 }
-

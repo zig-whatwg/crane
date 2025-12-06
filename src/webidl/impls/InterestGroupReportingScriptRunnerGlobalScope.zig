@@ -60,4 +60,3 @@ pub fn call_sendReportTo(instance: *runtime.Instance, url: runtime.DOMString) an
     _ = url;
     return error.NotImplemented;
 }
-

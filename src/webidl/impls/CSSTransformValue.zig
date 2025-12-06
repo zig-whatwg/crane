@@ -76,4 +76,3 @@ pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) any
     _ = callback;
     return error.NotImplemented;
 }
-

@@ -79,4 +79,3 @@ pub fn set_onprocessorerror(instance: *runtime.Instance, value: typedefs.EventHa
     _ = value;
     return error.NotImplemented;
 }
-

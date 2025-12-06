@@ -1,5 +1,5 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,13 +22,13 @@ pub const ImageTrackList = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ready", "get_ready", null },
@@ -36,19 +36,16 @@ pub const ImageTrackList = struct {
             .{ "selectedIndex", "get_selectedIndex", null },
             .{ "selectedTrack", "get_selectedTrack", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ready", "get_ready", null },
@@ -56,11 +53,10 @@ pub const ImageTrackList = struct {
             .{ "selectedIndex", "get_selectedIndex", null },
             .{ "selectedTrack", "get_selectedTrack", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -77,11 +73,12 @@ pub const ImageTrackList = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
         .get_ready = &get_ready,
         .get_selectedIndex = &get_selectedIndex,
         .get_selectedTrack = &get_selectedTrack,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -110,5 +107,4 @@ pub const ImageTrackList = struct {
     pub fn get_selectedTrack(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ImageTrackListImpl.get_selectedTrack(instance);
     }
-
 };

@@ -76,4 +76,3 @@ pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(dictionarie
     _ = options;
     return error.NotImplemented;
 }
-

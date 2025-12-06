@@ -134,4 +134,3 @@ pub fn set_optimum(instance: *runtime.Instance, value: f64) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

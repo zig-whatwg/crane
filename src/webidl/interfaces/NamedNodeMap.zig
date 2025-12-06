@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,15 +23,15 @@ pub const NamedNodeMap = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyUnenumerableNamedProperties" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
@@ -42,7 +42,7 @@ pub const NamedNodeMap = struct {
             .{ "removeNamedItem", "call_removeNamedItem", 1 },
             .{ "removeNamedItemNS", "call_removeNamedItemNS", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
@@ -53,20 +53,18 @@ pub const NamedNodeMap = struct {
             "removeNamedItem",
             "removeNamedItemNS",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -80,7 +78,6 @@ pub const NamedNodeMap = struct {
     );
 
     const delegates = .{
-
         .get_length = &get_length,
 
         .call_getNamedItem = &call_getNamedItem,
@@ -90,6 +87,8 @@ pub const NamedNodeMap = struct {
         .call_removeNamedItemNS = &call_removeNamedItemNS,
         .call_setNamedItem = &call_setNamedItem,
         .call_setNamedItemNS = &call_setNamedItemNS,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -108,17 +107,14 @@ pub const NamedNodeMap = struct {
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
     pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
-        
         return try NamedNodeMapImpl.call_getNamedItemNS(instance, namespace, localName);
     }
 
     pub fn call_getNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
-        
         return try NamedNodeMapImpl.call_getNamedItem(instance, qualifiedName);
     }
 
@@ -127,8 +123,7 @@ pub const NamedNodeMap = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NamedNodeMapImpl.call_setNamedItemNS(instance, attr);
     }
 
@@ -137,8 +132,7 @@ pub const NamedNodeMap = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NamedNodeMapImpl.call_removeNamedItem(instance, qualifiedName);
     }
 
@@ -147,8 +141,7 @@ pub const NamedNodeMap = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NamedNodeMapImpl.call_removeNamedItemNS(instance, namespace, localName);
     }
 
@@ -157,9 +150,7 @@ pub const NamedNodeMap = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try NamedNodeMapImpl.call_setNamedItem(instance, attr);
     }
-
 };

@@ -65,4 +65,3 @@ pub fn get_snapTargetInline(instance: *runtime.Instance) anyerror!?*runtime.Inst
     _ = instance;
     return null;
 }
-

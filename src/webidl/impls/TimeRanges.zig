@@ -58,4 +58,3 @@ pub fn call_end(instance: *runtime.Instance, index: u32) anyerror!f64 {
     _ = index;
     return error.NotImplemented;
 }
-

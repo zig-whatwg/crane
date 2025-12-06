@@ -91,7 +91,6 @@ pub const HTMLOrSVGImageElement = @import("HTMLOrSVGImageElement.zig").HTMLOrSVG
 pub const HTMLOrSVGScriptElement = @import("HTMLOrSVGScriptElement.zig").HTMLOrSVGScriptElement;
 pub const HashAlgorithmIdentifier = @import("HashAlgorithmIdentifier.zig").HashAlgorithmIdentifier;
 pub const HeadersInit = @import("HeadersInit.zig").HeadersInit;
-pub const HeaderEntry = @import("HeadersInit.zig").HeaderEntry;
 pub const ImageBitmapSource = @import("ImageBitmapSource.zig").ImageBitmapSource;
 pub const ImageBufferSource = @import("ImageBufferSource.zig").ImageBufferSource;
 pub const ImageDataArray = @import("ImageDataArray.zig").ImageDataArray;

@@ -1,5 +1,5 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -23,42 +23,40 @@ pub const Memory = struct {
             .{ .name = "LegacyNamespace", .value = .{ .identifier = "WebAssembly" } },
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "buffer", "get_buffer", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "grow", "call_grow", 1 },
             .{ "toFixedLengthBuffer", "call_toFixedLengthBuffer", 0 },
             .{ "toResizableBuffer", "call_toResizableBuffer", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "grow",
             "toFixedLengthBuffer",
             "toResizableBuffer",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "buffer", "get_buffer", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -72,12 +70,13 @@ pub const Memory = struct {
     );
 
     const delegates = .{
-
         .get_buffer = &get_buffer,
 
         .call_grow = &call_grow,
         .call_toFixedLengthBuffer = &call_toFixedLengthBuffer,
         .call_toResizableBuffer = &call_toResizableBuffer,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -102,7 +101,6 @@ pub const Memory = struct {
     }
 
     pub fn call_grow(instance: *runtime.Instance, delta: AddressValue) anyerror!AddressValue {
-        
         return try MemoryImpl.call_grow(instance, delta);
     }
 
@@ -113,5 +111,4 @@ pub const Memory = struct {
     pub fn call_toResizableBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MemoryImpl.call_toResizableBuffer(instance);
     }
-
 };

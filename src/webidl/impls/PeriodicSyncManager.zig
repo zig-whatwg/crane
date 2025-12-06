@@ -60,4 +60,3 @@ pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, option
     _ = options;
     return error.NotImplemented;
 }
-

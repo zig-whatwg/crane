@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -766,6 +766,8 @@ pub const Element = struct {
         .call_startViewTransition = &call_startViewTransition,
         .call_toggleAttribute = &call_toggleAttribute,
         .call_webkitMatchesSelector = &call_webkitMatchesSelector,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -2106,14 +2108,5 @@ pub const Element = struct {
 
     pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
         return try ElementImpl.call_setPointerCapture(instance, pointerId);
-    }
-
-    // =============================================================================
-    // Internal State Access (for script execution algorithms)
-    // =============================================================================
-
-    /// Get internal state (for attribute access)
-    pub fn getInternal(instance: *runtime.Instance) ?*ElementImpl.InternalState {
-        return ElementImpl.getInternal(instance);
     }
 };

@@ -215,4 +215,3 @@ pub fn call_send(instance: *runtime.Instance, data: runtime.USVString) anyerror!
     _ = data;
     return error.NotImplemented;
 }
-

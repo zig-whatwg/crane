@@ -46,4 +46,3 @@ pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(dict
     _ = param;
     return error.NotImplemented;
 }
-

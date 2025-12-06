@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,10 +85,10 @@ pub const HTMLParamElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
@@ -96,15 +96,13 @@ pub const HTMLParamElement = struct {
             .{ "type", "get_type", "set_type" },
             .{ "valueType", "get_valueType", "set_valueType" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -200,7 +198,7 @@ pub const HTMLParamElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
@@ -208,11 +206,10 @@ pub const HTMLParamElement = struct {
             .{ "type", "get_type", "set_type" },
             .{ "valueType", "get_valueType", "set_valueType" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -222,14 +219,13 @@ pub const HTMLParamElement = struct {
         struct {
             name: runtime.DOMString = undefined,
             value: runtime.DOMString = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             valueType: runtime.DOMString = undefined,
             _internal: ?*HTMLParamElementImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_name = &get_name,
         .get_type = &get_type,
         .get_value = &get_value,
@@ -239,6 +235,8 @@ pub const HTMLParamElement = struct {
         .set_type = &set_type,
         .set_value = &set_value,
         .set_valueType = &set_valueType,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -268,7 +266,7 @@ pub const HTMLParamElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLParamElementImpl.set_name(instance, value);
     }
 
@@ -282,7 +280,7 @@ pub const HTMLParamElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLParamElementImpl.set_value(instance, value);
     }
 
@@ -296,7 +294,7 @@ pub const HTMLParamElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLParamElementImpl.set_type(instance, value);
     }
 
@@ -310,8 +308,7 @@ pub const HTMLParamElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLParamElementImpl.set_valueType(instance, value);
     }
-
 };

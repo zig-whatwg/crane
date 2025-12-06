@@ -45,4 +45,3 @@ pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Ins
     _ = element;
     return error.NotImplemented;
 }
-

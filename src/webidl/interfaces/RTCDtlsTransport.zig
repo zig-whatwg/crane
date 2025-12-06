@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -32,10 +32,10 @@ pub const RTCDtlsTransport = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "iceTransport", "get_iceTransport", null },
@@ -43,17 +43,17 @@ pub const RTCDtlsTransport = struct {
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRemoteCertificates", "call_getRemoteCertificates", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRemoteCertificates",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -61,7 +61,7 @@ pub const RTCDtlsTransport = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "iceTransport", "get_iceTransport", null },
@@ -69,11 +69,10 @@ pub const RTCDtlsTransport = struct {
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -91,7 +90,6 @@ pub const RTCDtlsTransport = struct {
     );
 
     const delegates = .{
-
         .get_iceTransport = &get_iceTransport,
         .get_onerror = &get_onerror,
         .get_onstatechange = &get_onstatechange,
@@ -101,6 +99,8 @@ pub const RTCDtlsTransport = struct {
         .set_onstatechange = &set_onstatechange,
 
         .call_getRemoteCertificates = &call_getRemoteCertificates,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -149,5 +149,4 @@ pub const RTCDtlsTransport = struct {
     pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCDtlsTransportImpl.call_getRemoteCertificates(instance);
     }
-
 };

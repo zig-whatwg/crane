@@ -121,4 +121,3 @@ pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: d
     _ = options;
     return error.NotImplemented;
 }
-

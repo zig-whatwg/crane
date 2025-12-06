@@ -439,8 +439,9 @@ pub const InternalState = struct {
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser, DOMParser, and other modules that need
 /// access to document internals for DOM construction.
+/// Now uses centralized runtime.internal_state registry
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return runtime.internal_state.getInternal(InternalState, instance);
 }
 
 /// Get the Node internal state from a Document instance
@@ -467,49 +468,28 @@ pub fn init(
     // Set node type to DOCUMENT_NODE
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
 
-    // Initialize Document's own internal state in registry
+    // Initialize Document's own internal state using centralized registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try runtime.internal_state.setInternal(instance, internal);
 
     return instance;
 }
 
-/// Global registry for Document internal state
-var doc_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var doc_registry_initialized: bool = false;
-
-fn ensureDocRegistry() void {
-    if (!doc_registry_initialized) {
-        doc_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        doc_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureDocRegistry();
-    try doc_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureDocRegistry();
-    return doc_registry.get(@intFromPtr(instance));
-}
-
 /// Get Document's internal state from the registry
+/// Alias for getInternal for backward compatibility
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return runtime.internal_state.getInternal(InternalState, instance);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up from registry
-    ensureDocRegistry();
-    if (doc_registry.get(@intFromPtr(instance))) |internal| {
+    // Clean up internal state using centralized registry
+    if (runtime.internal_state.getInternal(InternalState, instance)) |internal| {
         internal.deinit();
     }
-    _ = doc_registry.remove(@intFromPtr(instance));
+    runtime.internal_state.removeInternal(instance);
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);
 }

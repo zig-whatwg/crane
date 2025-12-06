@@ -68,4 +68,3 @@ pub fn get_default(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

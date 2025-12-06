@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -109,10 +109,10 @@ pub const Window = struct {
             .{ .name = "Global", .value = .{ .identifier = "Window" } },
             .{ .name = "LegacyUnenumerableNamedProperties" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "window", "get_window", null },
@@ -312,7 +312,7 @@ pub const Window = struct {
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
@@ -367,7 +367,7 @@ pub const Window = struct {
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
             .{ "cancelAnimationFrame", "call_cancelAnimationFrame", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
@@ -422,7 +422,7 @@ pub const Window = struct {
             "requestAnimationFrame",
             "cancelAnimationFrame",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -430,7 +430,7 @@ pub const Window = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "window", "get_window", null },
@@ -630,11 +630,10 @@ pub const Window = struct {
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -678,7 +677,7 @@ pub const Window = struct {
             documentPictureInPicture: *runtime.Instance = undefined,
             event: union(enum) {
                 Event: Event,
-                @"undefined": void,
+                undefined: void,
             } = undefined,
             orientation: i16 = undefined,
             onorientationchange: EventHandler = undefined,
@@ -856,7 +855,6 @@ pub const Window = struct {
     );
 
     const delegates = .{
-
         .get_caches = &get_caches,
         .get_clientInformation = &get_clientInformation,
         .get_closed = &get_closed,
@@ -1235,6 +1233,8 @@ pub const Window = struct {
         .call_showSaveFilePicker = &call_showSaveFilePicker,
         .call_stop = &call_stop,
         .call_structuredClone = &call_structuredClone,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -2703,56 +2703,48 @@ pub const Window = struct {
     }
 
     pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(DOMString)) anyerror!bool {
-        
         return try WindowImpl.call_confirm(instance, message);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
 
     pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_showDirectoryPicker(instance, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_matchMedia(instance: *runtime.Instance, query: CSSOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_matchMedia(instance, query);
     }
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_scroll(instance, options);
     }
 
     pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
-        
         return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
 
     pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
-        
         return try WindowImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowImpl.call_clearInterval(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_fetch(instance, input, init_data);
     }
 
@@ -2761,12 +2753,10 @@ pub const Window = struct {
     }
 
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_showOpenFilePicker(instance, options);
     }
 
     pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_scrollBy(instance, options);
     }
 
@@ -2775,7 +2765,6 @@ pub const Window = struct {
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        
         return try WindowImpl.call_atob(instance, data);
     }
 
@@ -2784,7 +2773,6 @@ pub const Window = struct {
     }
 
     pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        
         return try WindowImpl.call_btoa(instance, data);
     }
 
@@ -2793,17 +2781,14 @@ pub const Window = struct {
     }
 
     pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: IdleRequestCallback, options: webidl.Opt(IdleRequestOptions)) anyerror!u32 {
-        
         return try WindowImpl.call_requestIdleCallback(instance, callback, options);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        
         return try WindowImpl.call_queueMicrotask(instance, callback);
     }
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(StructuredSerializeOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_structuredClone(instance, value, options);
     }
 
@@ -2813,12 +2798,10 @@ pub const Window = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: DOMString) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
     }
 
     pub fn call_moveBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
@@ -2831,76 +2814,64 @@ pub const Window = struct {
     }
 
     pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_resizeBy(instance, x, y);
     }
 
     pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(DOMString), features: webidl.Opt(DOMString)) anyerror!?WindowProxy {
-        
         return try WindowImpl.call_open(instance, url, target, features);
     }
 
     pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
         return try WindowImpl.call_moveTo(instance, x, y);
     }
 
     pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_scrollTo(instance, options);
     }
 
     pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(DOMString), default: webidl.Opt(DOMString)) anyerror!?DOMString {
-        
         return try WindowImpl.call_prompt(instance, message, default);
     }
 
     pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
-        
         return try WindowImpl.call_reportError(instance, e);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
         return try WindowImpl.call_clearTimeout(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?CSSOMString)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);
     }
 
     pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
-        
         return try WindowImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try WindowImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
     pub fn call_fetchLater(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(DeferredRequestInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try WindowImpl.call_fetchLater(instance, input, init_data);
     }
 
     pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        
         return try WindowImpl.call_requestAnimationFrame(instance, callback);
     }
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
     }
 
@@ -2909,12 +2880,10 @@ pub const Window = struct {
     }
 
     pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!*const anyopaque {
-        
         return try WindowImpl.call_queryLocalFonts(instance, options);
     }
 
     pub fn call_navigate(instance: *runtime.Instance, dir: SpatialNavigationDirection) anyerror!void {
-        
         return try WindowImpl.call_navigate(instance, dir);
     }
 
@@ -2922,5 +2891,4 @@ pub const Window = struct {
     pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WindowImpl.call_getScreenDetails(instance);
     }
-
 };

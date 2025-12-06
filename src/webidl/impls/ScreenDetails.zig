@@ -76,4 +76,3 @@ pub fn set_oncurrentscreenchange(instance: *runtime.Instance, value: typedefs.Ev
     _ = value;
     return error.NotImplemented;
 }
-

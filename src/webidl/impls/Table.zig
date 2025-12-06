@@ -82,4 +82,3 @@ pub fn call_set(instance: *runtime.Instance, index: typedefs.AddressValue, value
     _ = value;
     return error.NotImplemented;
 }
-

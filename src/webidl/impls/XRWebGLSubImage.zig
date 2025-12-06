@@ -98,4 +98,3 @@ pub fn get_motionVectorTextureHeight(instance: *runtime.Instance) anyerror!?u32 
     _ = instance;
     return null;
 }
-

@@ -222,4 +222,3 @@ pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Op
     _ = constraints;
     return error.NotImplemented;
 }
-

@@ -199,4 +199,3 @@ pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(typedefs
     _ = options;
     return error.NotImplemented;
 }
-

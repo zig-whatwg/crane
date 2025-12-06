@@ -148,6 +148,13 @@ pub const InternalState = struct {
     cache_storage: ?*runtime.Instance = null,
     // cache_storage_backend: ?*CacheStorageBackend = null,
 
+    /// CookieStore instance (lazily created)
+    /// Cookie Store spec: window.cookieStore getter
+    cookie_store: ?*runtime.Instance = null,
+
+    /// Whether this is a secure context (for SecureContext checks)
+    is_secure_context: bool = true,
+
     /// The window's origin string for storage access
     /// Derived from the document's URL
     origin: []const u8 = "null",
@@ -566,9 +573,41 @@ pub fn get_viewport(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for cookieStore
+/// Cookie Store spec: Returns the CookieStore object for this window.
+/// https://cookiestore.spec.whatwg.org/#dom-window-cookiestore
+///
+/// The cookieStore attribute is only available in secure contexts (HTTPS, localhost).
 pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available (SameObject behavior)
+    if (internal.cookie_store) |cookie_store_instance| {
+        return cookie_store_instance;
+    }
+
+    // Check SecureContext requirement
+    if (!internal.is_secure_context) {
+        return error.SecurityError;
+    }
+
+    // Create the CookieStore WebIDL instance
+    const CookieStoreImpl = @import("CookieStore.zig");
+    const CookieStore = interfaces.CookieStore;
+
+    const cookie_store_instance = CookieStoreImpl.createForOrigin(
+        internal.allocator,
+        CookieStore.State,
+        &CookieStore.vtable,
+        instance.ctx,
+        internal.origin,
+        internal.is_secure_context,
+    ) catch {
+        return error.OutOfMemory;
+    };
+
+    // Cache and return the instance
+    internal.cookie_store = cookie_store_instance;
+    return cookie_store_instance;
 }
 
 /// Getter for credentialless

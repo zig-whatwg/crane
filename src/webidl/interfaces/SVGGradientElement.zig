@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -89,10 +89,10 @@ pub const SVGGradientElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "gradientUnits", "get_gradientUnits", null },
@@ -100,11 +100,10 @@ pub const SVGGradientElement = struct {
             .{ "spreadMethod", "get_spreadMethod", null },
             .{ "href", "get_href", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_SPREADMETHOD_UNKNOWN", "get_SVG_SPREADMETHOD_UNKNOWN" },
@@ -112,11 +111,10 @@ pub const SVGGradientElement = struct {
             .{ "SVG_SPREADMETHOD_REFLECT", "get_SVG_SPREADMETHOD_REFLECT" },
             .{ "SVG_SPREADMETHOD_REPEAT", "get_SVG_SPREADMETHOD_REPEAT" },
         };
-        
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -207,7 +205,7 @@ pub const SVGGradientElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "gradientUnits", "get_gradientUnits", null },
@@ -215,11 +213,10 @@ pub const SVGGradientElement = struct {
             .{ "spreadMethod", "get_spreadMethod", null },
             .{ "href", "get_href", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -264,7 +261,6 @@ pub const SVGGradientElement = struct {
     }
 
     const delegates = .{
-
         .get_SVG_SPREADMETHOD_PAD = &get_SVG_SPREADMETHOD_PAD,
         .get_SVG_SPREADMETHOD_REFLECT = &get_SVG_SPREADMETHOD_REFLECT,
         .get_SVG_SPREADMETHOD_REPEAT = &get_SVG_SPREADMETHOD_REPEAT,
@@ -273,6 +269,8 @@ pub const SVGGradientElement = struct {
         .get_gradientUnits = &get_gradientUnits,
         .get_href = &get_href,
         .get_spreadMethod = &get_spreadMethod,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -333,5 +331,4 @@ pub const SVGGradientElement = struct {
         state.own.cached_href = value;
         return value;
     }
-
 };

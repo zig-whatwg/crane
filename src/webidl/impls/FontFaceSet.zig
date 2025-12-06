@@ -126,4 +126,3 @@ pub fn call_check(instance: *runtime.Instance, font: typedefs.CSSOMString, text:
     _ = text;
     return error.NotImplemented;
 }
-

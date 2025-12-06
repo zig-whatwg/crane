@@ -68,4 +68,3 @@ pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f
     _ = h;
     return error.NotImplemented;
 }
-

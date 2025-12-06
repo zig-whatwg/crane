@@ -93,4 +93,3 @@ pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

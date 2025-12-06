@@ -69,4 +69,3 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) anyerr
     _ = url;
     return error.NotImplemented;
 }
-

@@ -104,4 +104,3 @@ pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

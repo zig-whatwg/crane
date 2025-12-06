@@ -116,4 +116,3 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

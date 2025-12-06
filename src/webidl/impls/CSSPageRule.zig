@@ -57,4 +57,3 @@ pub fn set_selectorText(instance: *runtime.Instance, value: typedefs.CSSOMString
     _ = value;
     return error.NotImplemented;
 }
-

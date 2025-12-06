@@ -414,4 +414,3 @@ pub fn set_onportalactivate(instance: *runtime.Instance, value: typedefs.EventHa
     _ = value;
     return error.NotImplemented;
 }
-

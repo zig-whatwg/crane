@@ -68,4 +68,3 @@ pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!*const an
     _ = instance;
     return error.NotImplemented;
 }
-

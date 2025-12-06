@@ -104,4 +104,3 @@ pub fn get_valid(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

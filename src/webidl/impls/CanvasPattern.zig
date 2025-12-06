@@ -46,4 +46,3 @@ pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(dict
     _ = transform;
     return error.NotImplemented;
 }
-

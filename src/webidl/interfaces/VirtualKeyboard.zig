@@ -1,5 +1,5 @@
 //! Generated from: virtual-keyboard.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -32,29 +32,29 @@ pub const VirtualKeyboard = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "boundingRect", "get_boundingRect", null },
             .{ "overlaysContent", "get_overlaysContent", "set_overlaysContent" },
             .{ "ongeometrychange", "get_ongeometrychange", "set_ongeometrychange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "show", "call_show", 0 },
             .{ "hide", "call_hide", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "show",
             "hide",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,18 +62,17 @@ pub const VirtualKeyboard = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "boundingRect", "get_boundingRect", null },
             .{ "overlaysContent", "get_overlaysContent", "set_overlaysContent" },
             .{ "ongeometrychange", "get_ongeometrychange", "set_ongeometrychange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -89,7 +88,6 @@ pub const VirtualKeyboard = struct {
     );
 
     const delegates = .{
-
         .get_boundingRect = &get_boundingRect,
         .get_ongeometrychange = &get_ongeometrychange,
         .get_overlaysContent = &get_overlaysContent,
@@ -99,6 +97,8 @@ pub const VirtualKeyboard = struct {
 
         .call_hide = &call_hide,
         .call_show = &call_show,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -139,5 +139,4 @@ pub const VirtualKeyboard = struct {
     pub fn call_show(instance: *runtime.Instance) anyerror!void {
         return try VirtualKeyboardImpl.call_show(instance);
     }
-
 };

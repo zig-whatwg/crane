@@ -50,4 +50,3 @@ pub fn get_isActive(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

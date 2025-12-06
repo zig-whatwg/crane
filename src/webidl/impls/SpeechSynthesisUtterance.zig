@@ -221,4 +221,3 @@ pub fn set_onboundary(instance: *runtime.Instance, value: typedefs.EventHandler)
     _ = value;
     return error.NotImplemented;
 }
-

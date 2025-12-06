@@ -78,4 +78,3 @@ pub fn set_ay(instance: *runtime.Instance, value: *runtime.Instance) anyerror!vo
     _ = value;
     return error.NotImplemented;
 }
-

@@ -7,6 +7,6 @@ const runtime = @import("runtime");
 pub const ImageResource = struct {
     src: runtime.USVString,
     sizes: ?runtime.DOMString = null,
-    @"type": ?runtime.DOMString = null,
+    type: ?runtime.DOMString = null,
     label: ?runtime.DOMString = null,
 };

@@ -44,4 +44,3 @@ pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -150,4 +150,3 @@ pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOM
     _ = @"error";
     return error.NotImplemented;
 }
-

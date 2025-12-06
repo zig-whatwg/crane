@@ -1,5 +1,5 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -31,10 +31,10 @@ pub const MediaStream = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -42,7 +42,7 @@ pub const MediaStream = struct {
             .{ "onaddtrack", "get_onaddtrack", "set_onaddtrack" },
             .{ "onremovetrack", "get_onremovetrack", "set_onremovetrack" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getAudioTracks", "call_getAudioTracks", 0 },
@@ -53,7 +53,7 @@ pub const MediaStream = struct {
             .{ "removeTrack", "call_removeTrack", 1 },
             .{ "clone", "call_clone", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getAudioTracks",
@@ -64,7 +64,7 @@ pub const MediaStream = struct {
             "removeTrack",
             "clone",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -72,7 +72,7 @@ pub const MediaStream = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -80,11 +80,10 @@ pub const MediaStream = struct {
             .{ "onaddtrack", "get_onaddtrack", "set_onaddtrack" },
             .{ "onremovetrack", "get_onremovetrack", "set_onremovetrack" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -101,7 +100,6 @@ pub const MediaStream = struct {
     );
 
     const delegates = .{
-
         .get_active = &get_active,
         .get_id = &get_id,
         .get_onaddtrack = &get_onaddtrack,
@@ -117,6 +115,8 @@ pub const MediaStream = struct {
         .call_getTracks = &call_getTracks,
         .call_getVideoTracks = &call_getVideoTracks,
         .call_removeTrack = &call_removeTrack,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -181,22 +181,18 @@ pub const MediaStream = struct {
     }
 
     pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!?*runtime.Instance {
-        
         return try MediaStreamImpl.call_getTrackById(instance, trackId);
     }
 
     pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance) anyerror!void {
-        
         return try MediaStreamImpl.call_addTrack(instance, track);
     }
 
     pub fn call_removeTrack(instance: *runtime.Instance, track: *runtime.Instance) anyerror!void {
-        
         return try MediaStreamImpl.call_removeTrack(instance, track);
     }
 
     pub fn call_getTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MediaStreamImpl.call_getTracks(instance);
     }
-
 };

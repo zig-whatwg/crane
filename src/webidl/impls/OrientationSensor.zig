@@ -51,4 +51,3 @@ pub fn call_populateMatrix(instance: *runtime.Instance, targetMatrix: typedefs.R
     _ = targetMatrix;
     return error.NotImplemented;
 }
-

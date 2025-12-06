@@ -181,4 +181,3 @@ pub fn set_fallback(instance: *runtime.Instance, value: typedefs.CSSOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

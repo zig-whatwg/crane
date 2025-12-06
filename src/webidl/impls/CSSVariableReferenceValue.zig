@@ -72,4 +72,3 @@ pub fn set_variable(instance: *runtime.Instance, value: runtime.USVString) anyer
     _ = value;
     return error.NotImplemented;
 }
-

@@ -79,14 +79,3 @@ pub fn validateDomain(domain: []const u8, check_hyphens: bool) !void {
         try validateLabel(label, check_hyphens);
     }
 }
-
-
-
-
-
-
-
-
-
-
-

@@ -347,4 +347,3 @@ pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y:
     _ = y;
     return error.NotImplemented;
 }
-

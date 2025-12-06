@@ -50,4 +50,3 @@ pub fn get_maxContentSize(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -50,4 +50,3 @@ pub fn get_confidence(instance: *runtime.Instance) anyerror!f32 {
     _ = instance;
     return error.NotImplemented;
 }
-

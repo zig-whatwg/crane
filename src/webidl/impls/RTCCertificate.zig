@@ -50,4 +50,3 @@ pub fn call_getFingerprints(instance: *runtime.Instance) anyerror!*const anyopaq
     _ = instance;
     return error.NotImplemented;
 }
-

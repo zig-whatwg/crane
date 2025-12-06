@@ -89,4 +89,3 @@ pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyop
     _ = instance;
     return error.NotImplemented;
 }
-

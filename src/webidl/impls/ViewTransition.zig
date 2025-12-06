@@ -88,4 +88,3 @@ pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

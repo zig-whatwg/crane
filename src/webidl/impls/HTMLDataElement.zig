@@ -63,4 +63,3 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

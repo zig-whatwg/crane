@@ -205,4 +205,3 @@ pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

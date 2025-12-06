@@ -58,4 +58,3 @@ pub fn get_previousPriority(instance: *runtime.Instance) anyerror!enums.TaskPrio
     _ = instance;
     return error.NotImplemented;
 }
-

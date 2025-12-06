@@ -84,4 +84,3 @@ pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(
     _ = absolute;
     return error.NotImplemented;
 }
-

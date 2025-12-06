@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const RouterSource = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: *const anyopaque,
+    router_source_dict: dictionaries.RouterSourceDict,
+    router_source_enum: enums.RouterSourceEnum,
 };

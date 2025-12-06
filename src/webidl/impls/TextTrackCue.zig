@@ -122,4 +122,3 @@ pub fn set_onexit(instance: *runtime.Instance, value: typedefs.EventHandler) any
     _ = value;
     return error.NotImplemented;
 }
-

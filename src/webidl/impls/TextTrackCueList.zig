@@ -51,4 +51,3 @@ pub fn call_getCueById(instance: *runtime.Instance, id: runtime.DOMString) anyer
     _ = id;
     return null;
 }
-

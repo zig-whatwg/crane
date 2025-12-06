@@ -1,5 +1,5 @@
 //! Generated from: css-animations.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -27,46 +27,44 @@ pub const CSSKeyframesRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
             .{ "cssRules", "get_cssRules", null },
             .{ "length", "get_length", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "appendRule", "call_appendRule", 1 },
             .{ "deleteRule", "call_deleteRule", 1 },
             .{ "findRule", "call_findRule", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "appendRule",
             "deleteRule",
             "findRule",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
             .{ "cssRules", "get_cssRules", null },
             .{ "length", "get_length", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -82,7 +80,6 @@ pub const CSSKeyframesRule = struct {
     );
 
     const delegates = .{
-
         .get_cssRules = &get_cssRules,
         .get_length = &get_length,
         .get_name = &get_name,
@@ -92,6 +89,8 @@ pub const CSSKeyframesRule = struct {
         .call_appendRule = &call_appendRule,
         .call_deleteRule = &call_deleteRule,
         .call_findRule = &call_findRule,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -122,18 +121,14 @@ pub const CSSKeyframesRule = struct {
     }
 
     pub fn call_deleteRule(instance: *runtime.Instance, select: CSSOMString) anyerror!void {
-        
         return try CSSKeyframesRuleImpl.call_deleteRule(instance, select);
     }
 
     pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!?*runtime.Instance {
-        
         return try CSSKeyframesRuleImpl.call_findRule(instance, select);
     }
 
     pub fn call_appendRule(instance: *runtime.Instance, rule: CSSOMString) anyerror!void {
-        
         return try CSSKeyframesRuleImpl.call_appendRule(instance, rule);
     }
-
 };

@@ -74,4 +74,3 @@ pub fn get_fr(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

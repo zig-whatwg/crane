@@ -51,4 +51,3 @@ pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString) anyerr
     _ = tag;
     return error.NotImplemented;
 }
-

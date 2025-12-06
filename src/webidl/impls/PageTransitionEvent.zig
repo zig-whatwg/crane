@@ -59,4 +59,3 @@ pub fn get_persisted(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

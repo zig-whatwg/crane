@@ -64,4 +64,3 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.USVString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

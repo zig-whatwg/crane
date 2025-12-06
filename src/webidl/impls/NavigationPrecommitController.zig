@@ -47,4 +47,3 @@ pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, option
     _ = options;
     return error.NotImplemented;
 }
-

@@ -52,4 +52,3 @@ pub fn call_query(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

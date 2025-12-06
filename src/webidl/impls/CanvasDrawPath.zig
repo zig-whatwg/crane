@@ -82,4 +82,3 @@ pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

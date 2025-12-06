@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -32,10 +32,10 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "device", "get_device", null },
@@ -47,15 +47,13 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ "manufacturerData", "get_manufacturerData", null },
             .{ "serviceData", "get_serviceData", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -64,7 +62,7 @@ pub const BluetoothAdvertisingEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "device", "get_device", null },
@@ -76,11 +74,10 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ "manufacturerData", "get_manufacturerData", null },
             .{ "serviceData", "get_serviceData", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -104,7 +101,6 @@ pub const BluetoothAdvertisingEvent = struct {
     );
 
     const delegates = .{
-
         .get_appearance = &get_appearance,
         .get_device = &get_device,
         .get_manufacturerData = &get_manufacturerData,
@@ -113,6 +109,8 @@ pub const BluetoothAdvertisingEvent = struct {
         .get_serviceData = &get_serviceData,
         .get_txPower = &get_txPower,
         .get_uuids = &get_uuids,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -187,5 +185,4 @@ pub const BluetoothAdvertisingEvent = struct {
         state.own.cached_serviceData = value;
         return value;
     }
-
 };

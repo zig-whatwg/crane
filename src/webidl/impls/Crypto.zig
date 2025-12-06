@@ -57,4 +57,3 @@ pub fn call_randomUUID(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

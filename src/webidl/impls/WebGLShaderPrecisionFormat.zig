@@ -56,4 +56,3 @@ pub fn get_precision(instance: *runtime.Instance) anyerror!typedefs.GLint {
     _ = instance;
     return error.NotImplemented;
 }
-

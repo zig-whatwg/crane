@@ -51,4 +51,3 @@ pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ?*runti
     _ = bitmap;
     return error.NotImplemented;
 }
-

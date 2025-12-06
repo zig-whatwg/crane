@@ -50,4 +50,3 @@ pub fn get_mode(instance: *runtime.Instance) anyerror!enums.LockMode {
     _ = instance;
     return error.NotImplemented;
 }
-

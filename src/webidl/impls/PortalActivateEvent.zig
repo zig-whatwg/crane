@@ -65,4 +65,3 @@ pub fn call_adoptPredecessor(instance: *runtime.Instance) anyerror!*runtime.Inst
     _ = instance;
     return error.NotImplemented;
 }
-

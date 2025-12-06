@@ -80,4 +80,3 @@ pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
     _ = index;
     return error.NotImplemented;
 }
-

@@ -1,5 +1,5 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -39,10 +39,10 @@ pub const RTCIceTransport = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "role", "get_role", null },
@@ -55,7 +55,7 @@ pub const RTCIceTransport = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onicecandidate", "get_onicecandidate", "set_onicecandidate" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getLocalCandidates", "call_getLocalCandidates", 0 },
@@ -68,7 +68,7 @@ pub const RTCIceTransport = struct {
             .{ "stop", "call_stop", 0 },
             .{ "addRemoteCandidate", "call_addRemoteCandidate", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getLocalCandidates",
@@ -81,7 +81,7 @@ pub const RTCIceTransport = struct {
             "stop",
             "addRemoteCandidate",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -89,7 +89,7 @@ pub const RTCIceTransport = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "role", "get_role", null },
@@ -102,11 +102,10 @@ pub const RTCIceTransport = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onicecandidate", "get_onicecandidate", "set_onicecandidate" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -128,7 +127,6 @@ pub const RTCIceTransport = struct {
     );
 
     const delegates = .{
-
         .get_component = &get_component,
         .get_gatheringState = &get_gatheringState,
         .get_onerror = &get_onerror,
@@ -154,6 +152,8 @@ pub const RTCIceTransport = struct {
         .call_getSelectedCandidatePair = &call_getSelectedCandidatePair,
         .call_start = &call_start,
         .call_stop = &call_stop,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -234,12 +234,10 @@ pub const RTCIceTransport = struct {
     }
 
     pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(RTCIceGatherOptions)) anyerror!void {
-        
         return try RTCIceTransportImpl.call_gather(instance, options);
     }
 
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(RTCIceCandidateInit)) anyerror!void {
-        
         return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
     }
 
@@ -264,8 +262,6 @@ pub const RTCIceTransport = struct {
     }
 
     pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(RTCIceParameters), role: webidl.Opt(RTCIceRole)) anyerror!void {
-        
         return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
     }
-
 };

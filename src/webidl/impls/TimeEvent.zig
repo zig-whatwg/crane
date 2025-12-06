@@ -60,4 +60,3 @@ pub fn call_initTimeEvent(instance: *runtime.Instance, typeArg: runtime.DOMStrin
     _ = detailArg;
     return error.NotImplemented;
 }
-

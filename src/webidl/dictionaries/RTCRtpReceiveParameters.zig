@@ -8,5 +8,4 @@ const RTCRtpParameters = @import("RTCRtpParameters.zig").RTCRtpParameters;
 pub const RTCRtpReceiveParameters = struct {
     // Inherited from RTCRtpParameters
     base: RTCRtpParameters,
-
 };

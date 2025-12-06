@@ -76,4 +76,3 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     _ = value;
     return error.NotImplemented;
 }
-

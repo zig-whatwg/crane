@@ -102,4 +102,3 @@ pub fn call_disableiOES(instance: *runtime.Instance, target: typedefs.GLenum, in
     _ = index;
     return error.NotImplemented;
 }
-

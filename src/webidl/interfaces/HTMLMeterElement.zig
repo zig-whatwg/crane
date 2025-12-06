@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -85,10 +85,10 @@ pub const HTMLMeterElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "value", "get_value", "set_value" },
@@ -99,15 +99,13 @@ pub const HTMLMeterElement = struct {
             .{ "optimum", "get_optimum", "set_optimum" },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -203,7 +201,7 @@ pub const HTMLMeterElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "value", "get_value", "set_value" },
@@ -214,11 +212,10 @@ pub const HTMLMeterElement = struct {
             .{ "optimum", "get_optimum", "set_optimum" },
             .{ "labels", "get_labels", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -238,7 +235,6 @@ pub const HTMLMeterElement = struct {
     );
 
     const delegates = .{
-
         .get_high = &get_high,
         .get_labels = &get_labels,
         .get_low = &get_low,
@@ -253,6 +249,8 @@ pub const HTMLMeterElement = struct {
         .set_min = &set_min,
         .set_optimum = &set_optimum,
         .set_value = &set_value,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -282,7 +280,7 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_value(instance, value);
     }
 
@@ -296,7 +294,7 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_min(instance, value);
     }
 
@@ -310,7 +308,7 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_max(instance, value);
     }
 
@@ -324,7 +322,7 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_low(instance, value);
     }
 
@@ -338,7 +336,7 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_high(instance, value);
     }
 
@@ -352,12 +350,11 @@ pub const HTMLMeterElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMeterElementImpl.set_optimum(instance, value);
     }
 
     pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMeterElementImpl.get_labels(instance);
     }
-
 };

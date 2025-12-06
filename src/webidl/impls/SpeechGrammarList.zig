@@ -80,4 +80,3 @@ pub fn call_addFromString(instance: *runtime.Instance, string: runtime.DOMString
     _ = weight;
     return error.NotImplemented;
 }
-

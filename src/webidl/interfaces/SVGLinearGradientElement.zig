@@ -1,5 +1,5 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -88,10 +88,10 @@ pub const SVGLinearGradientElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x1", "get_x1", null },
@@ -99,15 +99,13 @@ pub const SVGLinearGradientElement = struct {
             .{ "x2", "get_x2", null },
             .{ "y2", "get_y2", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -198,7 +196,7 @@ pub const SVGLinearGradientElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x1", "get_x1", null },
@@ -206,11 +204,10 @@ pub const SVGLinearGradientElement = struct {
             .{ "x2", "get_x2", null },
             .{ "y2", "get_y2", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -231,11 +228,12 @@ pub const SVGLinearGradientElement = struct {
     );
 
     const delegates = .{
-
         .get_x1 = &get_x1,
         .get_x2 = &get_x2,
         .get_y1 = &get_y1,
         .get_y2 = &get_y2,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -296,5 +294,4 @@ pub const SVGLinearGradientElement = struct {
         state.own.cached_y2 = value;
         return value;
     }
-
 };

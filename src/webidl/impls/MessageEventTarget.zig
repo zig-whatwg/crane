@@ -64,4 +64,3 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
     _ = value;
     return error.NotImplemented;
 }
-

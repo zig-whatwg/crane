@@ -45,4 +45,3 @@ pub fn call_setConsumer(instance: *runtime.Instance, consumer: callbacks.LaunchC
     _ = consumer;
     return error.NotImplemented;
 }
-

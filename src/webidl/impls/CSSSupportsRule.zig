@@ -44,4 +44,3 @@ pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -85,4 +85,3 @@ pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque)
     _ = nodes;
     return error.NotImplemented;
 }
-

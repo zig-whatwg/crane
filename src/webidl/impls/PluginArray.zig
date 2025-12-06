@@ -64,4 +64,3 @@ pub fn call_refresh(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

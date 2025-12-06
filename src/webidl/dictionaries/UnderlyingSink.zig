@@ -9,5 +9,5 @@ pub const UnderlyingSink = struct {
     write: ?*const anyopaque = null,
     close: ?*const anyopaque = null,
     abort: ?*const anyopaque = null,
-    @"type": ?*const anyopaque = null,
+    type: ?*const anyopaque = null,
 };

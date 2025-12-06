@@ -113,4 +113,3 @@ pub fn call_setDataAttributes(instance: *runtime.Instance, allow: bool) anyerror
     _ = allow;
     return error.NotImplemented;
 }
-

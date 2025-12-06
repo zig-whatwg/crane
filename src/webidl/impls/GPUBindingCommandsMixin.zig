@@ -48,4 +48,3 @@ pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32
     _ = dynamicOffsets;
     return error.NotImplemented;
 }
-

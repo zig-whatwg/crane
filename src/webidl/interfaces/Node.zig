@@ -1,5 +1,5 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -318,6 +318,8 @@ pub const Node = struct {
         .call_normalize = &call_normalize,
         .call_removeChild = &call_removeChild,
         .call_replaceChild = &call_replaceChild,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -506,31 +508,4 @@ pub const Node = struct {
     pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?DOMString) anyerror!?DOMString {
         return try NodeImpl.call_lookupPrefix(instance, namespace);
     }
-
-    // =============================================================================
-    // Internal State Access (for script execution algorithms)
-    // =============================================================================
-
-    /// Get the node type (returns u16 constant like NodeType.TEXT_NODE)
-    pub fn getNodeType(instance: *runtime.Instance) ?u16 {
-        return NodeImpl.getNodeType(instance);
-    }
-
-    /// Get the first child node
-    pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
-        return NodeImpl.getFirstChild(instance);
-    }
-
-    /// Get the next sibling node
-    pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
-        return NodeImpl.getNextSibling(instance);
-    }
-
-    /// Get internal state
-    pub fn getInternalState(instance: *runtime.Instance) ?*NodeImpl.InternalState {
-        return NodeImpl.getInternalState(instance);
-    }
-
-    // Re-export types for external use
-    pub const NodeType = NodeImpl.NodeType;
 };

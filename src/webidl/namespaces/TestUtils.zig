@@ -12,12 +12,12 @@ pub const TestUtils = struct {
         pub const is_namespace = true;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
             .{ "gc", "call_gc" },
         };
-        
+
         pub const has_constructor = false;
         pub const properties = .{};
     };
@@ -27,5 +27,4 @@ pub const TestUtils = struct {
     pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
         return try TestUtils_impl.call_gc(ctx);
     }
-
 };

@@ -113,4 +113,3 @@ pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(dicti
     _ = descriptor;
     return error.NotImplemented;
 }
-

@@ -1065,7 +1065,7 @@ pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(dictionar
 
     // Step 3: Return reader as union
     // The return type is typedefs.ReadableStreamReader which is a union
-    return typedefs.ReadableStreamReader{ .variant_0 = @ptrCast(reader) };
+    return typedefs.ReadableStreamReader{ .readable_stream_default_reader = reader };
 }
 
 /// Operation: pipeTo

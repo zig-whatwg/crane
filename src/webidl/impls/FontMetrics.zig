@@ -122,4 +122,3 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

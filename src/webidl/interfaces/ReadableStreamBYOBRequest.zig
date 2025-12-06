@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,40 +21,38 @@ pub const ReadableStreamBYOBRequest = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "view", "get_view", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "respond", "call_respond", 1 },
             .{ "respondWithNewView", "call_respondWithNewView", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "respond",
             "respondWithNewView",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "view", "get_view", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -68,11 +66,12 @@ pub const ReadableStreamBYOBRequest = struct {
     );
 
     const delegates = .{
-
         .get_view = &get_view,
 
         .call_respond = &call_respond,
         .call_respondWithNewView = &call_respondWithNewView,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -93,13 +92,11 @@ pub const ReadableStreamBYOBRequest = struct {
     pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!void {
         // [EnforceRange] on bytesWritten
         if (!runtime.isInRange(u64, bytesWritten)) return error.TypeError;
-        
+
         return try ReadableStreamBYOBRequestImpl.call_respond(instance, bytesWritten);
     }
 
     pub fn call_respondWithNewView(instance: *runtime.Instance, view: ArrayBufferView) anyerror!void {
-        
         return try ReadableStreamBYOBRequestImpl.call_respondWithNewView(instance, view);
     }
-
 };

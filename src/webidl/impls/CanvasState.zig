@@ -62,4 +62,3 @@ pub fn call_save(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
-

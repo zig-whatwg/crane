@@ -4,5 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const RTCSetParameterOptions = struct {
-};
+pub const RTCSetParameterOptions = struct {};

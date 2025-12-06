@@ -52,4 +52,3 @@ pub fn call_updateInkTrailStartPoint(instance: *runtime.Instance, event: *runtim
     _ = style;
     return error.NotImplemented;
 }
-

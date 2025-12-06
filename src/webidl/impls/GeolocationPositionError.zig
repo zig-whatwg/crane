@@ -50,4 +50,3 @@ pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

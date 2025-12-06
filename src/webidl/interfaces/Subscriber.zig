@@ -1,5 +1,5 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -22,16 +22,16 @@ pub const Subscriber = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "active", "get_active", null },
             .{ "signal", "get_signal", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "next", "call_next", 1 },
@@ -39,7 +39,7 @@ pub const Subscriber = struct {
             .{ "complete", "call_complete", 0 },
             .{ "addTeardown", "call_addTeardown", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "next",
@@ -47,21 +47,19 @@ pub const Subscriber = struct {
             "complete",
             "addTeardown",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "active", "get_active", null },
             .{ "signal", "get_signal", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -76,7 +74,6 @@ pub const Subscriber = struct {
     );
 
     const delegates = .{
-
         .get_active = &get_active,
         .get_signal = &get_signal,
 
@@ -84,6 +81,8 @@ pub const Subscriber = struct {
         .call_complete = &call_complete,
         .call_error = &call_error,
         .call_next = &call_next,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -106,7 +105,6 @@ pub const Subscriber = struct {
     }
 
     pub fn call_error(instance: *runtime.Instance, @"error": *const anyopaque) anyerror!void {
-        
         return try SubscriberImpl.call_error(instance, @"error");
     }
 
@@ -115,13 +113,10 @@ pub const Subscriber = struct {
     }
 
     pub fn call_addTeardown(instance: *runtime.Instance, teardown: VoidFunction) anyerror!void {
-        
         return try SubscriberImpl.call_addTeardown(instance, teardown);
     }
 
     pub fn call_next(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
-        
         return try SubscriberImpl.call_next(instance, value);
     }
-
 };

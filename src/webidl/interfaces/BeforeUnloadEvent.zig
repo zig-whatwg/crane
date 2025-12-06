@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -26,23 +26,21 @@ pub const BeforeUnloadEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "returnValue", "get_returnValue", "set_returnValue" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -51,16 +49,15 @@ pub const BeforeUnloadEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "returnValue", "get_returnValue", "set_returnValue" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -74,10 +71,11 @@ pub const BeforeUnloadEvent = struct {
     );
 
     const delegates = .{
-
         .get_returnValue = &get_returnValue,
 
         .set_returnValue = &set_returnValue,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -98,5 +96,4 @@ pub const BeforeUnloadEvent = struct {
     pub fn set_returnValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         try BeforeUnloadEventImpl.set_returnValue(instance, value);
     }
-
 };

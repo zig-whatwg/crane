@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const MLNamedOperands = *const anyopaque;
+pub const MLNamedOperands = []const struct { key: runtime.USVString, value: *runtime.Instance };

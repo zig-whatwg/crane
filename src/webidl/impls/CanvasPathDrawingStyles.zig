@@ -116,4 +116,3 @@ pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque)
     _ = segments;
     return error.NotImplemented;
 }
-

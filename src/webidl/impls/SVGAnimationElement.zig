@@ -139,4 +139,3 @@ pub fn call_endElementAt(instance: *runtime.Instance, offset: f32) anyerror!void
     _ = offset;
     return error.NotImplemented;
 }
-

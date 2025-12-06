@@ -63,4 +63,3 @@ pub fn set_width(instance: *runtime.Instance, value: i32) anyerror!void {
     _ = value;
     return error.NotImplemented;
 }
-

@@ -64,4 +64,3 @@ pub fn set_globalCompositeOperation(instance: *runtime.Instance, value: runtime.
     _ = value;
     return error.NotImplemented;
 }
-

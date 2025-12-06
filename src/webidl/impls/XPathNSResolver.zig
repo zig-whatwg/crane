@@ -45,4 +45,3 @@ pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?runtime.DOM
     _ = prefix;
     return null;
 }
-

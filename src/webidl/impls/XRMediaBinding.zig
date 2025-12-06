@@ -76,4 +76,3 @@ pub fn call_createEquirectLayer(instance: *runtime.Instance, video: *runtime.Ins
     _ = init_data;
     return error.NotImplemented;
 }
-

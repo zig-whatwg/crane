@@ -44,4 +44,3 @@ pub fn get_pushManager(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

@@ -56,4 +56,3 @@ pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.Navigation
     _ = instance;
     return error.NotImplemented;
 }
-

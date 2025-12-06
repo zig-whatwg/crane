@@ -64,4 +64,3 @@ pub fn get_timecode(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTim
     _ = instance;
     return error.NotImplemented;
 }
-

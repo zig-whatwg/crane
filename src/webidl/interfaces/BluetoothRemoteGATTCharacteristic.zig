@@ -1,5 +1,5 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -40,10 +40,10 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "service", "get_service", null },
@@ -52,7 +52,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ "value", "get_value", null },
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getDescriptor", "call_getDescriptor", 1 },
@@ -64,7 +64,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ "startNotifications", "call_startNotifications", 0 },
             .{ "stopNotifications", "call_stopNotifications", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getDescriptor",
@@ -76,7 +76,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             "startNotifications",
             "stopNotifications",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -84,7 +84,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "service", "get_service", null },
@@ -93,11 +93,10 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ "value", "get_value", null },
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -116,7 +115,6 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     );
 
     const delegates = .{
-
         .get_oncharacteristicvaluechanged = &get_oncharacteristicvaluechanged,
         .get_properties = &get_properties,
         .get_service = &get_service,
@@ -133,6 +131,8 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         .call_writeValue = &call_writeValue,
         .call_writeValueWithResponse = &call_writeValueWithResponse,
         .call_writeValueWithoutResponse = &call_writeValueWithoutResponse,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -183,27 +183,22 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     }
 
     pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValueWithResponse(instance, value);
     }
 
     pub fn call_writeValue(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValue(instance, value);
     }
 
     pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(BluetoothDescriptorUUID)) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTCharacteristicImpl.call_getDescriptors(instance, descriptor);
     }
 
     pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: BluetoothDescriptorUUID) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTCharacteristicImpl.call_getDescriptor(instance, descriptor);
     }
 
     pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
-        
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValueWithoutResponse(instance, value);
     }
 
@@ -214,5 +209,4 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
     pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try BluetoothRemoteGATTCharacteristicImpl.call_readValue(instance);
     }
-
 };

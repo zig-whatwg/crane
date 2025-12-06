@@ -85,4 +85,3 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }
-

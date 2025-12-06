@@ -58,4 +58,3 @@ pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(dictionaries.C
     _ = options;
     return error.NotImplemented;
 }
-

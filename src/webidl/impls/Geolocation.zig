@@ -64,4 +64,3 @@ pub fn call_watchPosition(instance: *runtime.Instance, successCallback: callback
     _ = options;
     return error.NotImplemented;
 }
-

@@ -45,4 +45,3 @@ pub fn call_acceptNode(instance: *runtime.Instance, node: *runtime.Instance) any
     _ = node;
     return error.NotImplemented;
 }
-

@@ -58,4 +58,3 @@ pub fn get_gamepad(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
-

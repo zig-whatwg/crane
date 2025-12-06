@@ -51,4 +51,3 @@ pub fn set_devices(instance: *runtime.Instance, value: *const anyopaque) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

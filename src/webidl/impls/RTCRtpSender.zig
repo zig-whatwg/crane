@@ -111,4 +111,3 @@ pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.
     _ = setParameterOptions;
     return error.NotImplemented;
 }
-

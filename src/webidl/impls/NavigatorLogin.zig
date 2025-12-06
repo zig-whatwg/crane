@@ -45,4 +45,3 @@ pub fn call_setStatus(instance: *runtime.Instance, status: enums.LoginStatus) an
     _ = status;
     return error.NotImplemented;
 }
-

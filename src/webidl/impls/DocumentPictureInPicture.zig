@@ -65,4 +65,3 @@ pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(dicti
     _ = options;
     return error.NotImplemented;
 }
-

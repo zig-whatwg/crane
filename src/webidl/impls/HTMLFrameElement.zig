@@ -166,4 +166,3 @@ pub fn set_marginWidth(instance: *runtime.Instance, value: runtime.DOMString) an
     _ = value;
     return error.NotImplemented;
 }
-

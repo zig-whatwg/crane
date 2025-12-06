@@ -51,4 +51,3 @@ pub fn set_ondownloadprogress(instance: *runtime.Instance, value: typedefs.Event
     _ = value;
     return error.NotImplemented;
 }
-

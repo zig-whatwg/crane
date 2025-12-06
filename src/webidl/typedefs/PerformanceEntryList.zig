@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const PerformanceEntryList = *const anyopaque;
+pub const PerformanceEntryList = []const *runtime.Instance;

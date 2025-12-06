@@ -1,5 +1,5 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -38,14 +38,14 @@ pub const XMLHttpRequest = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
             .SharedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onreadystatechange", "get_onreadystatechange", "set_onreadystatechange" },
@@ -61,7 +61,7 @@ pub const XMLHttpRequest = struct {
             .{ "responseText", "get_responseText", null },
             .{ "responseXML", "get_responseXML", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 2 },
@@ -75,7 +75,7 @@ pub const XMLHttpRequest = struct {
             .{ "setAttributionReporting", "call_setAttributionReporting", 1 },
             .{ "setPrivateToken", "call_setPrivateToken", 1 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "UNSENT", "get_UNSENT" },
@@ -84,7 +84,7 @@ pub const XMLHttpRequest = struct {
             .{ "LOADING", "get_LOADING" },
             .{ "DONE", "get_DONE" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -98,7 +98,7 @@ pub const XMLHttpRequest = struct {
             "setAttributionReporting",
             "setPrivateToken",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -106,7 +106,7 @@ pub const XMLHttpRequest = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onreadystatechange", "get_onreadystatechange", "set_onreadystatechange" },
@@ -122,11 +122,10 @@ pub const XMLHttpRequest = struct {
             .{ "responseText", "get_responseText", null },
             .{ "responseXML", "get_responseXML", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -181,7 +180,6 @@ pub const XMLHttpRequest = struct {
     }
 
     const delegates = .{
-
         .get_DONE = &get_DONE,
         .get_HEADERS_RECEIVED = &get_HEADERS_RECEIVED,
         .get_LOADING = &get_LOADING,
@@ -214,6 +212,8 @@ pub const XMLHttpRequest = struct {
         .call_setAttributionReporting = &call_setAttributionReporting,
         .call_setPrivateToken = &call_setPrivateToken,
         .call_setRequestHeader = &call_setRequestHeader,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -307,18 +307,15 @@ pub const XMLHttpRequest = struct {
     }
 
     pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: PrivateToken) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_setPrivateToken(instance, privateToken);
     }
 
     /// Extended attributes: [SecureContext]
     pub fn call_setAttributionReporting(instance: *runtime.Instance, options: AttributionReportingRequestOptions) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_setAttributionReporting(instance, options);
     }
 
     pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_open(instance, method, url);
     }
 
@@ -327,27 +324,22 @@ pub const XMLHttpRequest = struct {
     }
 
     pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_send(instance, body);
     }
 
     pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
     }
 
     pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
-        
         return try XMLHttpRequestImpl.call_getResponseHeader(instance, name);
     }
 
     pub fn call_overrideMimeType(instance: *runtime.Instance, mime: DOMString) anyerror!void {
-        
         return try XMLHttpRequestImpl.call_overrideMimeType(instance, mime);
     }
 
     pub fn call_getAllResponseHeaders(instance: *runtime.Instance) anyerror!runtime.ByteString {
         return try XMLHttpRequestImpl.call_getAllResponseHeaders(instance);
     }
-
 };

@@ -75,4 +75,3 @@ pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     _ = value;
     return error.NotImplemented;
 }
-

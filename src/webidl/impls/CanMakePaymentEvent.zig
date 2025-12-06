@@ -58,4 +58,3 @@ pub fn call_respondWith(instance: *runtime.Instance, canMakePaymentResponse: *co
     _ = canMakePaymentResponse;
     return error.NotImplemented;
 }
-

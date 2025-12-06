@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:55Z
+//! Generated at: 2025-12-05T20:30:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -86,25 +86,23 @@ pub const HTMLLabelElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "form", "get_form", null },
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "control", "get_control", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -200,18 +198,17 @@ pub const HTMLLabelElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "form", "get_form", null },
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "control", "get_control", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -227,12 +224,13 @@ pub const HTMLLabelElement = struct {
     );
 
     const delegates = .{
-
         .get_control = &get_control,
         .get_form = &get_form,
         .get_htmlFor = &get_htmlFor,
 
         .set_htmlFor = &set_htmlFor,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -266,12 +264,11 @@ pub const HTMLLabelElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLLabelElementImpl.set_htmlFor(instance, value);
     }
 
     pub fn get_control(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLabelElementImpl.get_control(instance);
     }
-
 };

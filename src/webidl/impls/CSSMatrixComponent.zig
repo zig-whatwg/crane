@@ -66,4 +66,3 @@ pub fn set_matrix(instance: *runtime.Instance, value: *runtime.Instance) anyerro
     _ = value;
     return error.NotImplemented;
 }
-

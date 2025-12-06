@@ -348,18 +348,3 @@ pub fn parseIPv6(
     // Step 9: Return address
     return address;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

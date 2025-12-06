@@ -91,4 +91,3 @@ pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Insta
     _ = effects;
     return error.NotImplemented;
 }
-

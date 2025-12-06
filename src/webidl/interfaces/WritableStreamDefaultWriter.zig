@@ -1,5 +1,5 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -21,17 +21,17 @@ pub const WritableStreamDefaultWriter = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "closed", "get_closed", null },
             .{ "desiredSize", "get_desiredSize", null },
             .{ "ready", "get_ready", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "abort", "call_abort", 0 },
@@ -39,7 +39,7 @@ pub const WritableStreamDefaultWriter = struct {
             .{ "releaseLock", "call_releaseLock", 0 },
             .{ "write", "call_write", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
@@ -47,22 +47,20 @@ pub const WritableStreamDefaultWriter = struct {
             "releaseLock",
             "write",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "closed", "get_closed", null },
             .{ "desiredSize", "get_desiredSize", null },
             .{ "ready", "get_ready", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -78,7 +76,6 @@ pub const WritableStreamDefaultWriter = struct {
     );
 
     const delegates = .{
-
         .get_closed = &get_closed,
         .get_desiredSize = &get_desiredSize,
         .get_ready = &get_ready,
@@ -87,6 +84,8 @@ pub const WritableStreamDefaultWriter = struct {
         .call_close = &call_close,
         .call_releaseLock = &call_releaseLock,
         .call_write = &call_write,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -123,17 +122,14 @@ pub const WritableStreamDefaultWriter = struct {
     }
 
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-        
         return try WritableStreamDefaultWriterImpl.call_abort(instance, reason);
     }
 
     pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-        
         return try WritableStreamDefaultWriterImpl.call_write(instance, chunk);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WritableStreamDefaultWriterImpl.call_close(instance);
     }
-
 };

@@ -1,5 +1,5 @@
 //! Generated from: html.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -97,10 +97,10 @@ pub const HTMLMediaElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "error", "get_error", null },
@@ -138,7 +138,7 @@ pub const HTMLMediaElement = struct {
             .{ "onencrypted", "get_onencrypted", "set_onencrypted" },
             .{ "onwaitingforkey", "get_onwaitingforkey", "set_onwaitingforkey" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "load", "call_load", 0 },
@@ -152,7 +152,7 @@ pub const HTMLMediaElement = struct {
             .{ "setMediaKeys", "call_setMediaKeys", 1 },
             .{ "captureStream", "call_captureStream", 0 },
         };
-        
+
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "NETWORK_EMPTY", "get_NETWORK_EMPTY" },
@@ -165,7 +165,7 @@ pub const HTMLMediaElement = struct {
             .{ "HAVE_FUTURE_DATA", "get_HAVE_FUTURE_DATA" },
             .{ "HAVE_ENOUGH_DATA", "get_HAVE_ENOUGH_DATA" },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "load",
@@ -179,7 +179,7 @@ pub const HTMLMediaElement = struct {
             "setMediaKeys",
             "captureStream",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -275,7 +275,7 @@ pub const HTMLMediaElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "error", "get_error", null },
@@ -313,11 +313,10 @@ pub const HTMLMediaElement = struct {
             .{ "onencrypted", "get_onencrypted", "set_onencrypted" },
             .{ "onwaitingforkey", "get_onwaitingforkey", "set_onwaitingforkey" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -417,7 +416,6 @@ pub const HTMLMediaElement = struct {
     }
 
     const delegates = .{
-
         .get_HAVE_CURRENT_DATA = &get_HAVE_CURRENT_DATA,
         .get_HAVE_ENOUGH_DATA = &get_HAVE_ENOUGH_DATA,
         .get_HAVE_FUTURE_DATA = &get_HAVE_FUTURE_DATA,
@@ -490,6 +488,8 @@ pub const HTMLMediaElement = struct {
         .call_play = &call_play,
         .call_setMediaKeys = &call_setMediaKeys,
         .call_setSinkId = &call_setSinkId,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -517,7 +517,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_src(instance, value);
     }
 
@@ -543,7 +543,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -561,7 +561,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_preload(instance, value);
     }
 
@@ -639,7 +639,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_autoplay(instance, value);
     }
 
@@ -653,7 +653,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_loop(instance, value);
     }
 
@@ -667,7 +667,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_controls(instance, value);
     }
 
@@ -697,7 +697,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_defaultMuted(instance, value);
     }
 
@@ -764,7 +764,7 @@ pub const HTMLMediaElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLMediaElementImpl.set_disableRemotePlayback(instance, value);
     }
 
@@ -791,7 +791,6 @@ pub const HTMLMediaElement = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!*const anyopaque {
-        
         return try HTMLMediaElementImpl.call_setSinkId(instance, sinkId);
     }
 
@@ -801,7 +800,6 @@ pub const HTMLMediaElement = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
-        
         return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
     }
 
@@ -810,12 +808,10 @@ pub const HTMLMediaElement = struct {
     }
 
     pub fn call_canPlayType(instance: *runtime.Instance, @"type": DOMString) anyerror!CanPlayTypeResult {
-        
         return try HTMLMediaElementImpl.call_canPlayType(instance, @"type");
     }
 
     pub fn call_fastSeek(instance: *runtime.Instance, time: f64) anyerror!void {
-        
         return try HTMLMediaElementImpl.call_fastSeek(instance, time);
     }
 
@@ -832,8 +828,6 @@ pub const HTMLMediaElement = struct {
     }
 
     pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
-        
         return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
     }
-
 };

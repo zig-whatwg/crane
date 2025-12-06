@@ -1,5 +1,5 @@
 //! Generated from: window-controls-overlay.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -28,24 +28,22 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "titlebarAreaRect", "get_titlebarAreaRect", null },
             .{ "visible", "get_visible", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -54,17 +52,16 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "titlebarAreaRect", "get_titlebarAreaRect", null },
             .{ "visible", "get_visible", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -80,9 +77,10 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
     );
 
     const delegates = .{
-
         .get_titlebarAreaRect = &get_titlebarAreaRect,
         .get_visible = &get_visible,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -117,5 +115,4 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
     pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
         return try WindowControlsOverlayGeometryChangeEventImpl.get_visible(instance);
     }
-
 };

@@ -76,4 +76,3 @@ pub fn call_registerProcessor(instance: *runtime.Instance, name: runtime.DOMStri
     _ = processorCtor;
     return error.NotImplemented;
 }
-

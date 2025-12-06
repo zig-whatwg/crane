@@ -47,4 +47,3 @@ pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString,
     _ = options;
     return error.NotImplemented;
 }
-

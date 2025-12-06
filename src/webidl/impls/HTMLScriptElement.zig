@@ -195,31 +195,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Global registry for HTMLScriptElement internal state
-var script_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var script_registry_initialized: bool = false;
-
-fn ensureScriptRegistry() void {
-    if (!script_registry_initialized) {
-        script_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        script_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureScriptRegistry();
-    try script_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureScriptRegistry();
-    return script_registry.get(@intFromPtr(instance));
-}
-
 /// Get the internal state from an instance
 /// Made public for use by script execution module
+/// Now uses centralized runtime.internal_state registry
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return runtime.internal_state.getInternal(InternalState, instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -232,23 +212,22 @@ pub fn init(
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
-    // Initialize HTMLScriptElement's internal state in registry
+    // Initialize HTMLScriptElement's internal state using centralized registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try runtime.internal_state.setInternal(instance, internal);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up from registry
-    ensureScriptRegistry();
-    if (script_registry.get(@intFromPtr(instance))) |internal| {
+    // Clean up internal state using centralized registry
+    if (runtime.internal_state.getInternal(InternalState, instance)) |internal| {
         internal.deinit();
     }
-    _ = script_registry.remove(@intFromPtr(instance));
+    runtime.internal_state.removeInternal(instance);
 }
 
 /// Constructor implementation

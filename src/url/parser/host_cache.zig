@@ -41,6 +41,3 @@ pub inline fn getCachedHost(host_str: []const u8) ?Host {
 
     return null;
 }
-
-
-

@@ -56,4 +56,3 @@ pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls
     _ = options;
     return error.NotImplemented;
 }
-

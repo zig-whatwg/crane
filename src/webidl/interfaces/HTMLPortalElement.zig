@@ -1,5 +1,5 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-11-29T11:15:58Z
+//! Generated at: 2025-12-05T20:30:48Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -87,10 +87,10 @@ pub const HTMLPortalElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "src", "get_src", "set_src" },
@@ -98,19 +98,19 @@ pub const HTMLPortalElement = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "activate", "call_activate", 0 },
             .{ "postMessage", "call_postMessage", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "activate",
             "postMessage",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -206,7 +206,7 @@ pub const HTMLPortalElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "src", "get_src", "set_src" },
@@ -214,11 +214,10 @@ pub const HTMLPortalElement = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -235,7 +234,6 @@ pub const HTMLPortalElement = struct {
     );
 
     const delegates = .{
-
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
         .get_referrerPolicy = &get_referrerPolicy,
@@ -248,6 +246,8 @@ pub const HTMLPortalElement = struct {
 
         .call_activate = &call_activate,
         .call_postMessage = &call_postMessage,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -277,7 +277,7 @@ pub const HTMLPortalElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLPortalElementImpl.set_src(instance, value);
     }
 
@@ -291,7 +291,7 @@ pub const HTMLPortalElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLPortalElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -314,13 +314,11 @@ pub const HTMLPortalElement = struct {
     /// Extended attributes: [NewObject]
     pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(PortalActivateOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
+
         return try HTMLPortalElementImpl.call_activate(instance, options);
     }
 
     pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(PostMessageOptions)) anyerror!void {
-        
         return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }
-
 };

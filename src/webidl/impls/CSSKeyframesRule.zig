@@ -84,4 +84,3 @@ pub fn call_appendRule(instance: *runtime.Instance, rule: typedefs.CSSOMString) 
     _ = rule;
     return error.NotImplemented;
 }
-

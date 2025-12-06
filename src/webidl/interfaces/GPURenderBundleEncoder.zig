@@ -1,5 +1,5 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-05T20:30:46Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -44,18 +44,18 @@ pub const GPURenderBundleEncoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "finish", "call_finish", 0 },
@@ -72,7 +72,7 @@ pub const GPURenderBundleEncoder = struct {
             .{ "drawIndirect", "call_drawIndirect", 2 },
             .{ "drawIndexedIndirect", "call_drawIndexedIndirect", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "finish",
@@ -89,20 +89,18 @@ pub const GPURenderBundleEncoder = struct {
             "drawIndirect",
             "drawIndexedIndirect",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "label", "get_label", "set_label" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -116,7 +114,6 @@ pub const GPURenderBundleEncoder = struct {
     );
 
     const delegates = .{
-
         .get_label = &get_label,
 
         .set_label = &set_label,
@@ -133,6 +130,8 @@ pub const GPURenderBundleEncoder = struct {
         .call_setIndexBuffer = &call_setIndexBuffer,
         .call_setPipeline = &call_setPipeline,
         .call_setVertexBuffer = &call_setVertexBuffer,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -155,12 +154,10 @@ pub const GPURenderBundleEncoder = struct {
     }
 
     pub fn call_drawIndexedIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_drawIndexedIndirect(instance, indirectBuffer, indirectOffset);
     }
 
     pub fn call_draw(instance: *runtime.Instance, vertexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstVertex: webidl.Opt(GPUSize32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_draw(instance, vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
@@ -169,48 +166,38 @@ pub const GPURenderBundleEncoder = struct {
     }
 
     pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
     pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }
 
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
     pub fn call_setIndexBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, indexFormat: GPUIndexFormat, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_setIndexBuffer(instance, buffer, indexFormat, offset, size);
     }
 
     pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
     pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPURenderBundleDescriptor)) anyerror!*runtime.Instance {
-        
         return try GPURenderBundleEncoderImpl.call_finish(instance, descriptor);
     }
 
     pub fn call_drawIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_drawIndirect(instance, indirectBuffer, indirectOffset);
     }
 
     pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: GPUSize32, instanceCount: webidl.Opt(GPUSize32), firstIndex: webidl.Opt(GPUSize32), baseVertex: webidl.Opt(GPUSignedOffset32), firstInstance: webidl.Opt(GPUSize32)) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_drawIndexed(instance, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
     }
 
     pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
-        
         return try GPURenderBundleEncoderImpl.call_setPipeline(instance, pipeline);
     }
-
 };

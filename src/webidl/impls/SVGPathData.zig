@@ -53,4 +53,3 @@ pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictio
     _ = settings;
     return error.NotImplemented;
 }
-

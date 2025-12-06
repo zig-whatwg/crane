@@ -154,4 +154,3 @@ pub fn set_scroll(instance: *runtime.Instance, value: enums.ScrollSetting) anyer
     _ = value;
     return error.NotImplemented;
 }
-

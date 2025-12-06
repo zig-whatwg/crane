@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const CustomMediaQuery = union(enum) {
-    variant_0: *const anyopaque,
-    variant_1: bool,
+    media_list: *runtime.Instance,
+    boolean: bool,
 };

@@ -57,4 +57,3 @@ pub fn set_onreflectionchange(instance: *runtime.Instance, value: typedefs.Event
     _ = value;
     return error.NotImplemented;
 }
-

@@ -52,4 +52,3 @@ pub fn call_decodingInfo(instance: *runtime.Instance, configuration: dictionarie
     _ = configuration;
     return error.NotImplemented;
 }
-

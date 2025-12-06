@@ -51,4 +51,3 @@ pub fn set_result(instance: *runtime.Instance, value: typedefs.CSSOMString) anye
     _ = value;
     return error.NotImplemented;
 }
-

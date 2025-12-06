@@ -75,4 +75,3 @@ pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyNam
     _ = name;
     return null;
 }
-

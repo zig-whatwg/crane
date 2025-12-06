@@ -58,4 +58,3 @@ pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
     return error.NotImplemented;
 }
-

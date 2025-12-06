@@ -63,4 +63,3 @@ pub fn call_getTitlebarAreaRect(instance: *runtime.Instance) anyerror!*runtime.I
     _ = instance;
     return error.NotImplemented;
 }
-

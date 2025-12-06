@@ -98,7 +98,3 @@ pub fn shouldExcludePort(scheme: []const u8, port: ?u16) bool {
     const default = defaultPort(scheme);
     return if (default) |d| port.? == d else false;
 }
-
-
-
-

@@ -63,4 +63,3 @@ pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     _ = value;
     return error.NotImplemented;
 }
-

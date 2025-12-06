@@ -44,4 +44,3 @@ pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionar
     _ = instance;
     return error.NotImplemented;
 }
-

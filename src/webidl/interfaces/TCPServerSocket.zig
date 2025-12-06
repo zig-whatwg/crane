@@ -1,5 +1,5 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-05T20:30:47Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
@@ -25,43 +25,41 @@ pub const TCPServerSocket = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "opened", "get_opened", null },
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "opened", "get_opened", null },
             .{ "closed", "get_closed", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -76,11 +74,12 @@ pub const TCPServerSocket = struct {
     );
 
     const delegates = .{
-
         .get_closed = &get_closed,
         .get_opened = &get_opened,
 
         .call_close = &call_close,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -111,5 +110,4 @@ pub const TCPServerSocket = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try TCPServerSocketImpl.call_close(instance);
     }
-
 };
