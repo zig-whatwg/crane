@@ -38,6 +38,10 @@ const context_manager = v8.context_manager;
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
+// DOM and HTML modules for thread-local state cleanup on isolate disposal
+const dom = @import("dom");
+const html_full = @import("html_full");
+
 // V8 Event Loop with timer support (uses libuv under the hood)
 const V8EventLoop = v8.V8EventLoop;
 const TimerInterface = runtime.TimerInterface;
@@ -114,6 +118,16 @@ pub const BrowserContext = struct {
         if (self.context != null) {
             context_manager.deinit();
         }
+
+        // CRITICAL: Clear DOM/HTML thread-local state BEFORE clearing V8 templates
+        // These may hold references to V8 objects that become invalid after isolate disposal.
+        // Order: DOM state → V8 templates → V8 isolate
+        //
+        // Phase 2a: Clear thread-local DOM state on isolate disposal
+        // - Custom element reactions stack and queues
+        // - Mutation observer agent state
+        html_full.custom_elements.deinitThreadLocalState();
+        dom.mutation_observer_algorithms.resetAgent();
 
         // CRITICAL: Clear template registry BEFORE disposing isolate
         // V8 FunctionTemplates are bound to specific isolates and cannot be reused.

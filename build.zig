@@ -2055,8 +2055,12 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "fetch", .module = fetch_mod },
                 // Platform abstraction for timer backend
                 .{ .name = "platform", .module = platform_mod },
-                // HTML event loop and timer manager
+                // HTML event loop and timer manager (core module without interfaces)
                 .{ .name = "html", .module = html_core_mod },
+                // HTML full module with custom_elements for thread-local cleanup
+                .{ .name = "html_full", .module = html_mod },
+                // DOM module for mutation observer thread-local cleanup
+                .{ .name = "dom", .module = dom_mod },
                 // Infra primitives
                 .{ .name = "infra", .module = infra_mod },
                 // Browser module for single-isolate WPT execution
