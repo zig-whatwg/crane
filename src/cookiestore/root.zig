@@ -71,7 +71,17 @@ pub const hasSecurePrefix = validation.hasSecurePrefix;
 pub const MAX_NAME_VALUE_SIZE = validation.MAX_NAME_VALUE_SIZE;
 pub const MAX_ATTRIBUTE_VALUE_SIZE = validation.MAX_ATTRIBUTE_VALUE_SIZE;
 
+// Domain and path matching
+pub const domain_matching = @import("domain_matching.zig");
+pub const domainMatches = domain_matching.domainMatches;
+pub const pathMatches = domain_matching.pathMatches;
+pub const getDefaultPath = domain_matching.getDefaultPath;
+pub const isPublicSuffix = domain_matching.isPublicSuffix;
+pub const isRegistrableDomainSuffixOrEqual = domain_matching.isRegistrableDomainSuffixOrEqual;
+pub const normalizeDomain = domain_matching.normalizeDomain;
+
 test {
     _ = cookie;
     _ = validation;
+    _ = domain_matching;
 }
