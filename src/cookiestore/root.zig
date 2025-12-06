@@ -57,6 +57,21 @@ pub const SameSite = cookie.SameSite;
 pub const PartitionKey = cookie.PartitionKey;
 pub const CookieListItem = cookie.CookieListItem;
 
+// Validation
+pub const validation = @import("validation.zig");
+pub const ValidationError = validation.ValidationError;
+pub const validateName = validation.validateName;
+pub const validateValue = validation.validateValue;
+pub const validateNameValue = validation.validateNameValue;
+pub const validatePrefixes = validation.validatePrefixes;
+pub const validateDomain = validation.validateDomain;
+pub const validatePath = validation.validatePath;
+pub const hasHostPrefix = validation.hasHostPrefix;
+pub const hasSecurePrefix = validation.hasSecurePrefix;
+pub const MAX_NAME_VALUE_SIZE = validation.MAX_NAME_VALUE_SIZE;
+pub const MAX_ATTRIBUTE_VALUE_SIZE = validation.MAX_ATTRIBUTE_VALUE_SIZE;
+
 test {
     _ = cookie;
+    _ = validation;
 }
