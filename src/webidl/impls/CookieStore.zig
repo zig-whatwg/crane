@@ -5,10 +5,6 @@
 //! The CookieStore interface provides an asynchronous API for reading and
 //! writing cookies. It is available in Window and ServiceWorker contexts
 //! as a SecureContext-only feature.
-//!
-//! TODO: Integrate with src/cookiestore/ core domain layer
-//! The core cookie algorithms are implemented in src/cookiestore/*.zig
-//! This impl needs to be wired up via build.zig module dependencies.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -17,8 +13,13 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const cookiestore = @import("cookiestore");
 
 const CookieStore = interfaces.CookieStore;
+const CookieJar = cookiestore.CookieJar;
+const CookieChangeObserver = cookiestore.CookieChangeObserver;
+const CookieListItem = cookiestore.CookieListItem;
+const Cookie = cookiestore.Cookie;
 
 pub const State = CookieStore.State;
 
@@ -30,11 +31,6 @@ pub const ImplError = error{
 };
 
 /// Internal state for CookieStore implementation
-/// TODO: Once cookiestore module is available via build deps, this will hold:
-/// - CookieJar: cookie storage and retrieval
-/// - CookieChangeObserver: change event notification
-/// - origin_host: the origin for this cookie store
-/// - is_secure_context: security context flag
 pub const InternalState = struct {
     /// The origin URL host for this cookie store
     origin_host: []const u8,
@@ -42,6 +38,10 @@ pub const InternalState = struct {
     is_secure_context: bool,
     /// The onchange event handler
     onchange_handler: ?*const anyopaque,
+    /// Cookie jar for storage
+    cookie_jar: CookieJar,
+    /// Change observer for event dispatch
+    change_observer: CookieChangeObserver,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
@@ -50,11 +50,14 @@ pub const InternalState = struct {
         errdefer allocator.destroy(internal);
 
         const host_copy = try allocator.dupe(u8, origin_host);
+        errdefer allocator.free(host_copy);
 
         internal.* = InternalState{
             .origin_host = host_copy,
             .is_secure_context = is_secure_context,
             .onchange_handler = null,
+            .cookie_jar = CookieJar.init(allocator),
+            .change_observer = CookieChangeObserver.init(allocator),
             .allocator = allocator,
         };
 
@@ -62,6 +65,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.cookie_jar.deinit();
+        self.change_observer.deinit();
         self.allocator.free(self.origin_host);
         self.allocator.destroy(self);
     }
@@ -104,7 +109,7 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// Getter for onchange
 pub fn get_onchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     _ = instance;
-    // Return null event handler - not yet implemented
+    // Return null event handler - event dispatch happens via change observer
     return null;
 }
 
@@ -115,20 +120,44 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) a
     }
 }
 
+/// Sentinel value representing "undefined" for Promise resolution
+const undefined_sentinel: u8 = 0;
+
 /// Operation: get(name)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-get
 ///
 /// Returns a Promise that resolves with a CookieListItem for the first
 /// matching cookie, or null if no cookie matches.
 ///
-/// TODO: Integrate with cookiestore.queryCookies() once module is available
+/// Note: The interface expects *const anyopaque for Promise-returning operations.
+/// The V8 bindings handle Promise creation/resolution.
 pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
-    _ = instance;
-    _ = name;
-    // TODO: Implement with cookiestore module integration
-    // For now return null (no cookies found)
-    // Note: Need to return a proper nullable pointer to satisfy promise
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    const allocator = internal.allocator;
+
+    // Query cookies using the algorithms
+    var items = try cookiestore.queryCookies(
+        allocator,
+        &internal.cookie_jar,
+        internal.origin_host,
+        "/",
+        if (name.len > 0) name else null,
+    );
+    defer {
+        for (items.items) |*item| item.deinit();
+        items.deinit(allocator);
+    }
+
+    // Return first item or null (using sentinel for null)
+    if (items.items.len > 0) {
+        // Clone the first item to return
+        const result = try allocator.create(CookieListItem);
+        result.* = try items.items[0].clone(allocator);
+        return @ptrCast(result);
+    }
+
+    // Return sentinel pointer for "no cookie found" (represents null/undefined)
+    return @ptrCast(&undefined_sentinel);
 }
 
 /// Operation: getAll(name)
@@ -136,46 +165,66 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*
 ///
 /// Returns a Promise that resolves with a sequence of CookieListItem
 /// for all matching cookies.
-///
-/// TODO: Integrate with cookiestore.queryCookies() once module is available
 pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
-    _ = instance;
-    _ = name;
-    // TODO: Implement with cookiestore module integration
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    const allocator = internal.allocator;
+
+    // Query cookies using the algorithms
+    var items = try cookiestore.queryCookies(
+        allocator,
+        &internal.cookie_jar,
+        internal.origin_host,
+        "/",
+        if (name.len > 0) name else null,
+    );
+
+    // Create a result array on the heap
+    const result = try allocator.create(std.ArrayListUnmanaged(CookieListItem));
+    result.* = items;
+    // Prevent items from being cleaned up since we transferred ownership
+    items = .{};
+
+    return @ptrCast(result);
 }
 
 /// Operation: set(name, value)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-set
 ///
 /// Returns a Promise that resolves when the cookie has been set.
-///
-/// TODO: Integrate with cookiestore.setCookie() once module is available
 pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    _ = name;
-    _ = value;
+    const allocator = internal.allocator;
 
     // Check secure context requirement
     if (!internal.is_secure_context) {
         return error.SecurityError;
     }
 
-    // TODO: Implement with cookiestore module integration
-    return error.NotImplemented;
+    // Use setCookie algorithm
+    try cookiestore.setCookie(allocator, &internal.cookie_jar, internal.origin_host, .{
+        .name = name,
+        .value = value,
+    });
+
+    // Return sentinel for void Promise resolution (represents undefined)
+    return @ptrCast(&undefined_sentinel);
 }
 
 /// Operation: delete(name)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-delete
 ///
 /// Returns a Promise that resolves when the cookie has been deleted.
-///
-/// TODO: Integrate with cookiestore.deleteCookie() once module is available
 pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
-    _ = instance;
-    _ = name;
-    // TODO: Implement with cookiestore module integration
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    const allocator = internal.allocator;
+
+    // Use deleteCookie algorithm
+    try cookiestore.deleteCookie(allocator, &internal.cookie_jar, internal.origin_host, .{
+        .name = name,
+    });
+
+    // Return sentinel for void Promise resolution (represents undefined)
+    return @ptrCast(&undefined_sentinel);
 }
 
 // ============================================================================
@@ -201,4 +250,20 @@ pub fn createForOrigin(
     state.own._internal = internal;
 
     return instance;
+}
+
+/// Get the cookie jar for direct access (used by Fetch API)
+pub fn getCookieJar(instance: *runtime.Instance) ?*CookieJar {
+    if (getInternalState(instance)) |internal| {
+        return &internal.cookie_jar;
+    }
+    return null;
+}
+
+/// Get the change observer for event registration
+pub fn getChangeObserver(instance: *runtime.Instance) ?*CookieChangeObserver {
+    if (getInternalState(instance)) |internal| {
+        return &internal.change_observer;
+    }
+    return null;
 }

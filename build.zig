@@ -396,6 +396,12 @@ pub fn build(b: *std.Build) void {
     // - Desktop: SQLite + LevelDB static linking (Phase 9.3)
     configureStorageBackends(storage_mod, target);
 
+    // CookieStore module (WHATWG Cookie Store API)
+    const cookiestore_mod = b.addModule("cookiestore", .{
+        .root_source_file = b.path("src/cookiestore/root.zig"),
+        .target = target,
+    });
+
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
         .root_source_file = b.path("src/runtime/root.zig"),
@@ -506,6 +512,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("v8", v8_mod);
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
+    impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
     impls_mod.addOptions("build_options", build_options);
 
     // Cross-imports for WebIDL modules
