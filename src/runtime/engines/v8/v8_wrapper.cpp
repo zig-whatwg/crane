@@ -9,6 +9,7 @@
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
 #include <v8.h>
+#include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
 #include <cstring>
 
@@ -3043,6 +3044,250 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     // as aggressively as possible. Per V8 docs, this is a synchronous
     // call that attempts to reclaim as much memory as possible.
     isolate->LowMemoryNotification();
+}
+
+// ============================================================================
+// V8 Snapshot API - Build-Time Heap Serialization
+// ============================================================================
+//
+// This API enables creating V8 heap snapshots that include pre-registered
+// WebIDL interfaces. At runtime, loading a snapshot is ~100-1000x faster
+// than re-registering all interfaces via FFI calls.
+//
+// Usage Pattern:
+//   Build Time:
+//     1. Create SnapshotCreator with external references
+//     2. Get the isolate, register all WebIDL interfaces
+//     3. Set default context with registered interfaces
+//     4. Create blob - returns StartupData with serialized heap
+//     5. Save blob to file
+//
+//   Runtime:
+//     1. Load blob from file
+//     2. Create isolate from snapshot with same external references
+//     3. Create context from snapshot - interfaces are already registered!
+//
+// CRITICAL: External references (C++ callback pointers) MUST be provided in
+// the SAME ORDER at snapshot creation time and loading time.
+
+/// C-compatible StartupData structure for FFI
+/// Matches v8::StartupData layout
+struct V8StartupData {
+    const char* data;
+    int raw_size;
+};
+
+/// Create a new SnapshotCreator
+///
+/// The SnapshotCreator owns an isolate that is set up for serialization.
+/// The isolate is automatically entered when created.
+///
+/// @param external_references - Null-terminated array of external reference pointers.
+///                              These are C++ callback function pointers that will be
+///                              called from snapshotted code. MUST be in same order
+///                              at snapshot creation and loading time.
+/// @return Opaque pointer to SnapshotCreator (caller owns, must call Dispose)
+void* v8_SnapshotCreator_New(const intptr_t* external_references) {
+    if (!v8_initialized) {
+        v8_Platform_Initialize();
+    }
+    
+    // Create isolate params with external references
+    Isolate::CreateParams params;
+    params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    params.external_references = external_references;
+    
+    // SnapshotCreator creates and enters its own isolate
+    SnapshotCreator* creator = new SnapshotCreator(params);
+    return creator;
+}
+
+/// Get the isolate from a SnapshotCreator
+///
+/// Use this isolate to set up the global object, register interfaces, etc.
+/// The isolate is already entered when returned.
+///
+/// @param creator - SnapshotCreator handle from v8_SnapshotCreator_New
+/// @return The isolate managed by this SnapshotCreator
+Isolate* v8_SnapshotCreator_GetIsolate(void* creator) {
+    if (!creator) return nullptr;
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    return sc->GetIsolate();
+}
+
+/// Set the default context for the snapshot
+///
+/// The snapshot will contain this context's state. When loading the snapshot,
+/// contexts created will start with this state.
+///
+/// IMPORTANT: This must be called outside of any HandleScope!
+/// The context should be fully set up with all interfaces registered.
+///
+/// @param creator - SnapshotCreator handle
+/// @param context - Global handle to the context to snapshot
+void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* context) {
+    if (!creator || !context) return;
+    
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    Isolate* isolate = sc->GetIsolate();
+    
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // SetDefaultContext requires exiting any HandleScope, so we need to
+    // get a local handle and then exit the scope
+    sc->SetDefaultContext(ctx);
+}
+
+/// Create the snapshot blob
+///
+/// Serializes the V8 heap including the default context.
+/// This MUST be called outside of any HandleScope.
+///
+/// @param creator - SnapshotCreator handle
+/// @param function_code_handling - 0 = clear function code, 1 = keep function code
+/// @param out_data - Output: pointer to snapshot data (caller must free with delete[])
+/// @param out_size - Output: size of snapshot data in bytes
+/// @return true on success, false on failure
+bool v8_SnapshotCreator_CreateBlob(
+    void* creator,
+    int function_code_handling,
+    const char** out_data,
+    int* out_size
+) {
+    if (!creator || !out_data || !out_size) return false;
+    
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    
+    SnapshotCreator::FunctionCodeHandling handling = 
+        function_code_handling == 1 
+            ? SnapshotCreator::FunctionCodeHandling::kKeep
+            : SnapshotCreator::FunctionCodeHandling::kClear;
+    
+    StartupData blob = sc->CreateBlob(handling);
+    
+    if (blob.data == nullptr || blob.raw_size <= 0) {
+        *out_data = nullptr;
+        *out_size = 0;
+        return false;
+    }
+    
+    // Copy the data - caller owns this memory
+    char* data_copy = new char[blob.raw_size];
+    memcpy(data_copy, blob.data, blob.raw_size);
+    
+    // Free the original V8-allocated data
+    delete[] blob.data;
+    
+    *out_data = data_copy;
+    *out_size = blob.raw_size;
+    return true;
+}
+
+/// Dispose a SnapshotCreator
+///
+/// This also disposes the isolate owned by the SnapshotCreator.
+/// Must be called after CreateBlob.
+///
+/// @param creator - SnapshotCreator handle to dispose
+void v8_SnapshotCreator_Dispose(void* creator) {
+    if (!creator) return;
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    delete sc;
+}
+
+/// Free snapshot data allocated by v8_SnapshotCreator_CreateBlob
+///
+/// @param data - Pointer returned in out_data from CreateBlob
+void v8_Snapshot_FreeData(const char* data) {
+    if (data) {
+        delete[] data;
+    }
+}
+
+/// Create a new isolate from a snapshot blob
+///
+/// This is the runtime counterpart to SnapshotCreator. The isolate
+/// starts with the heap state from the snapshot, so all interfaces
+/// that were registered at snapshot time are already available.
+///
+/// CRITICAL: external_references MUST be the same array (same order)
+/// as was used when creating the snapshot.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @param external_references - Null-terminated array of external references
+///                              (must match snapshot creation order exactly)
+/// @return New isolate with snapshot state, or nullptr on failure
+Isolate* v8_Isolate_NewFromSnapshot(
+    const char* snapshot_data,
+    int snapshot_size,
+    const intptr_t* external_references
+) {
+    if (!v8_initialized) {
+        v8_Platform_Initialize();
+    }
+    
+    if (!snapshot_data || snapshot_size <= 0) {
+        return nullptr;
+    }
+    
+    // Create StartupData from the provided blob
+    StartupData startup_data;
+    startup_data.data = snapshot_data;
+    startup_data.raw_size = snapshot_size;
+    
+    // Create isolate params with snapshot and external references
+    Isolate::CreateParams create_params;
+    create_params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    create_params.snapshot_blob = &startup_data;
+    create_params.external_references = external_references;
+    
+    return Isolate::New(create_params);
+}
+
+/// Create a context from the snapshot's default context
+///
+/// This creates a new context based on the default context that was
+/// set in the snapshot. The context starts with all the state
+/// (including registered interfaces) from snapshot creation time.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @return New context with snapshot state
+Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
+    if (!isolate) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    
+    // Create context from the snapshot's default context
+    // The snapshot contains the serialized heap state including
+    // all registered FunctionTemplates and their prototypes
+    Local<Context> context = Context::New(isolate);
+    
+    if (context.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return new Global<Context>(isolate, context);
+}
+
+/// Check if a snapshot blob is valid
+///
+/// Validates that the snapshot data can be used with the current V8 version.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return true if valid, false if invalid or corrupted
+bool v8_Snapshot_IsValid(const char* snapshot_data, int snapshot_size) {
+    if (!snapshot_data || snapshot_size <= 0) {
+        return false;
+    }
+    
+    StartupData startup_data;
+    startup_data.data = snapshot_data;
+    startup_data.raw_size = snapshot_size;
+    
+    return startup_data.IsValid();
 }
 
 } // extern "C"

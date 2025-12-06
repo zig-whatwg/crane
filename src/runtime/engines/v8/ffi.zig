@@ -1189,3 +1189,142 @@ pub extern fn v8_ClearModuleResolveCallback() void;
 /// MUST be called before disposing an isolate to prevent use-after-free crashes.
 /// The user_data pointer becomes invalid when the Zig runtime is deinitialized.
 pub extern fn v8_ClearDynamicImportCallback() void;
+
+// ============================================================================
+// V8 Snapshot API - Build-Time Heap Serialization
+// ============================================================================
+//
+// This API enables creating V8 heap snapshots that include pre-registered
+// WebIDL interfaces. At runtime, loading a snapshot is ~100-1000x faster
+// than re-registering all interfaces via FFI calls.
+//
+// Usage Pattern:
+//   Build Time:
+//     1. Create SnapshotCreator with external references
+//     2. Get the isolate, register all WebIDL interfaces
+//     3. Set default context with registered interfaces
+//     4. Create blob - returns snapshot data
+//     5. Save blob to file
+//
+//   Runtime:
+//     1. Load blob from file
+//     2. Create isolate from snapshot with same external references
+//     3. Create context from snapshot - interfaces are already registered!
+//
+// CRITICAL: External references (C++ callback pointers) MUST be provided in
+// the SAME ORDER at snapshot creation time and loading time.
+
+/// V8 SnapshotCreator - Opaque handle for snapshot creation
+/// Created by v8_SnapshotCreator_New, disposed by v8_SnapshotCreator_Dispose
+pub const SnapshotCreator = opaque {};
+
+/// Create a new SnapshotCreator for heap serialization
+///
+/// The SnapshotCreator owns an isolate that is set up for serialization.
+/// The isolate is automatically entered when created.
+///
+/// @param external_references - Null-terminated array of external reference pointers.
+///                              These are C++ callback function pointers that will be
+///                              called from snapshotted code. MUST be in same order
+///                              at snapshot creation and loading time.
+/// @return Opaque pointer to SnapshotCreator (caller owns, must call Dispose)
+pub extern fn v8_SnapshotCreator_New(external_references: ?[*]const isize) ?*SnapshotCreator;
+
+/// Get the isolate from a SnapshotCreator
+///
+/// Use this isolate to set up the global object, register interfaces, etc.
+/// The isolate is already entered when returned.
+///
+/// @param creator - SnapshotCreator handle
+/// @return The isolate managed by this SnapshotCreator
+pub extern fn v8_SnapshotCreator_GetIsolate(creator: *SnapshotCreator) ?*Isolate;
+
+/// Set the default context for the snapshot
+///
+/// The snapshot will contain this context's state. When loading the snapshot,
+/// contexts created will start with this state.
+///
+/// IMPORTANT: The context should be fully set up with all interfaces registered.
+///
+/// @param creator - SnapshotCreator handle
+/// @param context - Global handle to the context to snapshot
+pub extern fn v8_SnapshotCreator_SetDefaultContext(creator: *SnapshotCreator, context: *Context) void;
+
+/// FunctionCodeHandling for snapshot creation
+pub const FunctionCodeHandling = enum(c_int) {
+    /// Clear compiled function code (smaller snapshot, slower first execution)
+    Clear = 0,
+    /// Keep compiled function code (larger snapshot, faster first execution)
+    Keep = 1,
+};
+
+/// Create the snapshot blob
+///
+/// Serializes the V8 heap including the default context.
+///
+/// @param creator - SnapshotCreator handle
+/// @param function_code_handling - 0 = clear function code, 1 = keep function code
+/// @param out_data - Output: pointer to snapshot data (caller must free with v8_Snapshot_FreeData)
+/// @param out_size - Output: size of snapshot data in bytes
+/// @return true on success, false on failure
+pub extern fn v8_SnapshotCreator_CreateBlob(
+    creator: *SnapshotCreator,
+    function_code_handling: c_int,
+    out_data: *?[*]const u8,
+    out_size: *c_int,
+) bool;
+
+/// Dispose a SnapshotCreator
+///
+/// This also disposes the isolate owned by the SnapshotCreator.
+/// Must be called after CreateBlob.
+///
+/// @param creator - SnapshotCreator handle to dispose
+pub extern fn v8_SnapshotCreator_Dispose(creator: *SnapshotCreator) void;
+
+/// Free snapshot data allocated by v8_SnapshotCreator_CreateBlob
+///
+/// @param data - Pointer returned in out_data from CreateBlob
+pub extern fn v8_Snapshot_FreeData(data: ?[*]const u8) void;
+
+/// Create a new isolate from a snapshot blob
+///
+/// This is the runtime counterpart to SnapshotCreator. The isolate
+/// starts with the heap state from the snapshot, so all interfaces
+/// that were registered at snapshot time are already available.
+///
+/// CRITICAL: external_references MUST be the same array (same order)
+/// as was used when creating the snapshot.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @param external_references - Null-terminated array of external references
+///                              (must match snapshot creation order exactly)
+/// @return New isolate with snapshot state, or null on failure
+pub extern fn v8_Isolate_NewFromSnapshot(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+    external_references: ?[*]const isize,
+) ?*Isolate;
+
+/// Create a context from the snapshot's default context
+///
+/// This creates a new context based on the default context that was
+/// set in the snapshot. The context starts with all the state
+/// (including registered interfaces) from snapshot creation time.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @return New context with snapshot state
+pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
+
+/// Check if a snapshot blob is valid
+///
+/// Validates that the snapshot data can be used with the current V8 version.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return true if valid, false if invalid or corrupted
+pub extern fn v8_Snapshot_IsValid(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+) bool;
