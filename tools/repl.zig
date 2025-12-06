@@ -589,16 +589,21 @@ const Repl = struct {
         // Initialize V8 platform
         v8.ffi.v8_Platform_Initialize();
 
-        // Initialize V8 isolate
-        const isolate = v8.ffi.v8_Isolate_New() orelse return error.V8InitFailed;
-        errdefer v8.ffi.v8_Isolate_Dispose(isolate);
+        // Register external references for snapshot loading (must match snapshot creation order)
+        v8.snapshot_loader.registerExternalReferences();
 
-        v8.ffi.v8_Isolate_Enter(isolate);
-        errdefer v8.ffi.v8_Isolate_Exit(isolate);
+        // Try to initialize from snapshot for fast startup
+        // Falls back to fresh isolate creation if no snapshot available
+        const init_result = try v8.snapshot_loader.initializeV8(allocator, .{
+            .snapshot_path = "whatwg_snapshot.bin",
+            .log_performance = true,
+        });
 
-        const context = v8.ffi.v8_Context_New(isolate) orelse return error.ContextCreateFailed;
-        errdefer v8.ffi.v8_Context_Dispose(context);
+        const isolate = init_result.isolate;
+        const context = init_result.context;
+        const used_snapshot = init_result.used_snapshot;
 
+        // Enter context (snapshot loader handles isolate enter)
         v8.ffi.v8_Context_Enter(context);
 
         // Initialize context manager for V8 callbacks
@@ -615,13 +620,19 @@ const Repl = struct {
             // Continue anyway - wrapper caching won't work but basic functionality will
         };
 
-        // Register all WebIDL interfaces using the centralized function
-        // This is the single source of truth for interface binding setup
-        interface_bindings.initializeBindings(isolate, context);
+        // Only register interfaces if we didn't use a snapshot
+        // (snapshot already contains all registered interfaces)
+        if (!used_snapshot) {
+            // Register all WebIDL interfaces using the centralized function
+            // This is the single source of truth for interface binding setup
+            interface_bindings.initializeBindings(isolate, context);
 
-        // Register all namespaces using the generic function
-        const namespaces = @import("namespaces");
-        interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+            // Register all namespaces using the generic function
+            const namespaces = @import("namespaces");
+            interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+        } else {
+            std.debug.print("✓ Using snapshot - interfaces already registered\n", .{});
+        }
 
         // Register singleton instances (e.g., indexedDB)
         // These are WebIDL interfaces that are exposed as pre-created instances on the global scope

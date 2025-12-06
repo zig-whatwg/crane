@@ -167,6 +167,12 @@ pub const IsolateLock = locker.IsolateLock;
 pub const IsolateUnlock = locker.IsolateUnlock;
 pub const ThreadCheck = locker.ThreadCheck;
 
+/// Snapshot-based V8 initialization for fast startup
+pub const snapshot_loader = @import("snapshot_loader.zig");
+pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
+pub const SnapshotInitResult = snapshot_loader.InitResult;
+pub const SnapshotInitOptions = snapshot_loader.InitOptions;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
