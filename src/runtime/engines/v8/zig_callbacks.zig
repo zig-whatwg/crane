@@ -78,7 +78,11 @@ const CallbackUserData = struct {
 /// 3. Converts V8 arguments to Zig types
 /// 4. Calls the Zig function
 /// 5. Converts return value to V8 (if any)
-fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+///
+/// Note: This function is made public so it can be registered as an external
+/// reference for V8 snapshots. Even if not used during snapshot creation,
+/// it must be registered if any code that creates Zig callbacks is reachable.
+pub fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     // Get isolate
     const isolate = info.getIsolate();
 

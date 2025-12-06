@@ -245,6 +245,17 @@ fn registerAllExternalReferences() void {
             }
         }
     }
+
+    // Register C++ callbacks that are created in v8_wrapper.cpp
+    // These are used by FunctionTemplates but are defined in C++, not Zig
+    ext_refs.registerCallbackRuntime(v8.ffi.v8_GetAsyncIteratorNextCallback());
+    ext_refs.registerCallbackRuntime(v8.ffi.v8_GetAsyncIteratorReturnCallback());
+    ext_refs.registerCallbackRuntime(v8.ffi.v8_GetAsyncIteratorSelfCallback());
+
+    // Register Zig callbacks that are used for Promise handlers and dynamic callbacks
+    // These are created by zig_callbacks.zig when streams invoke JS callbacks
+    const zig_callbacks = @import("v8").zig_callbacks;
+    ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
 }
 
 test "snapshot generator - external reference collection" {

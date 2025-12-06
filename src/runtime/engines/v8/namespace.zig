@@ -118,6 +118,30 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// All methods in this namespace
         const all_methods = methods;
 
+        /// Register all namespace callbacks as external references
+        ///
+        /// This MUST be called before creating a V8 snapshot. V8 snapshots
+        /// require all callback function pointers to be registered in the
+        /// external references array. Without this, snapshot creation fails
+        /// with "Unknown external reference" errors.
+        ///
+        /// ## Usage
+        ///
+        /// ```zig
+        /// // Before creating snapshot:
+        /// const ConsoleBinding = V8Namespace(console.console);
+        /// ConsoleBinding.registerExternalReferences();
+        /// ```
+        pub fn registerExternalReferences() void {
+            const ext_refs = @import("external_references.zig");
+
+            // Register callback for each method in the namespace
+            inline for (all_methods) |method| {
+                const callback = generateCallback(method);
+                ext_refs.registerCallbackRuntime(callback);
+            }
+        }
+
         /// Register namespace as a global object in V8
         ///
         /// Creates a new object with all namespace methods and attaches it
