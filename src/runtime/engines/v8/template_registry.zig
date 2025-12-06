@@ -94,6 +94,18 @@ pub fn clear() void {
     // when the Zig runtime is deinitialized
     v8.v8_ClearModuleResolveCallback();
     v8.v8_ClearDynamicImportCallback();
+
+    // Clear Zig-side global state that holds V8 references
+    // Order matters: clear dependent state before underlying state
+
+    // 1. Clear dynamic import handler (holds V8 callback references)
+    const engine = @import("engine.zig");
+    engine.clearDynamicImportHandler();
+
+    // 2. Clear global namespace context (holds V8 context references)
+    const namespace = @import("namespace.zig");
+    namespace.clearGlobalContext();
+
     // Don't reset initialized - the registry can be reused
 }
 

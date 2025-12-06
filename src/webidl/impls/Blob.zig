@@ -366,6 +366,17 @@ const blob_stream_type_bytes: []const u8 = "bytes";
 /// This is a workaround since UnderlyingSource doesn't support context
 threadlocal var blob_stream_context: ?*BlobStreamSource = null;
 
+/// Clear the thread-local blob stream context
+///
+/// MUST be called on isolate disposal to prevent use-after-free.
+/// The blob stream context may hold references to BlobData that becomes
+/// invalid when the isolate's associated Zig state is cleaned up.
+///
+/// Called by the isolate lifecycle cleanup sequence.
+pub fn clearBlobStreamContext() void {
+    blob_stream_context = null;
+}
+
 /// Internal state for blob stream source
 const BlobStreamSource = struct {
     blob_data: *file.BlobData,

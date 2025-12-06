@@ -45,6 +45,25 @@ pub fn getGlobalContext() ?runtime.Context {
     return global_context;
 }
 
+/// Clear the global runtime context
+///
+/// MUST be called before disposing an isolate to prevent use-after-free.
+/// The global context holds pointers to V8-specific data that becomes invalid
+/// when the isolate is disposed.
+///
+/// Called by template_registry.clear() as part of isolate cleanup.
+pub fn clearGlobalContext() void {
+    global_context_mutex.lock();
+    defer global_context_mutex.unlock();
+    if (global_context) |ctx| {
+        // Deinit the context data to free resources
+        ctx.deinit();
+        // Free the ContextData struct itself
+        std.heap.page_allocator.destroy(ctx);
+    }
+    global_context = null;
+}
+
 /// Comptime V8 namespace binding generator
 ///
 /// Takes a WebIDL namespace struct and generates V8 bindings for all its operations.
