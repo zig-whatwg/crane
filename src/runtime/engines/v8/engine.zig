@@ -107,6 +107,9 @@ pub const v8_engine_interface: EngineInterface = .{
     .disposeModule = v8DisposeModule,
     .runModuleAsync = v8RunModuleAsync,
     .hasTopLevelAwait = v8HasTopLevelAwait,
+    .freeze = v8Freeze,
+    .thaw = v8Thaw,
+    .isFrozen = v8IsFrozen,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -1223,6 +1226,90 @@ pub fn setDynamicImportHandler(isolate: *ffi.Isolate, handler: DynamicImportHand
 /// Clear the dynamic import handler
 pub fn clearDynamicImportHandler() void {
     g_dynamic_import_handler = null;
+}
+
+// ============================================================================
+// Bfcache Freeze/Thaw Support
+// ============================================================================
+
+// Import the context manager for accessing event loops
+const context_manager = @import("context_manager.zig");
+
+/// Freeze a V8 context for the back-forward cache
+///
+/// This freezes the event loop associated with the context, stopping
+/// all timer and task processing.
+fn v8Freeze(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = context_handle;
+
+    // engine_ctx is the V8 Context
+    const v8_ctx: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Get the context entry which contains the event loop
+    const ctx = context_manager.get(v8_ctx) orelse
+        return EngineError.OperationFailed;
+
+    // Get the event loop from context (use optional version for graceful handling)
+    if (ctx.getOptionalEventLoop()) |ev_loop| {
+        const event_loop_ptr = ev_loop.ptr;
+        const v8_event_loop: *event_loop_mod.V8EventLoop = @ptrCast(@alignCast(event_loop_ptr));
+        v8_event_loop.freeze() catch return EngineError.OperationFailed;
+    }
+
+    // Mark context as frozen (v8::Context::Exit is called by FrozenContextManager)
+}
+
+/// Thaw a V8 context from the back-forward cache
+///
+/// This resumes the event loop associated with the context.
+fn v8Thaw(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = context_handle;
+
+    // engine_ctx is the V8 Context
+    const v8_ctx: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Re-enter the V8 context
+    ffi.v8_Context_Enter(v8_ctx);
+
+    // Get the context entry which contains the event loop
+    const ctx = context_manager.get(v8_ctx) orelse
+        return EngineError.OperationFailed;
+
+    // Thaw the event loop (use optional version for graceful handling)
+    if (ctx.getOptionalEventLoop()) |ev_loop| {
+        const event_loop_ptr = ev_loop.ptr;
+        const v8_event_loop: *event_loop_mod.V8EventLoop = @ptrCast(@alignCast(event_loop_ptr));
+        v8_event_loop.thaw() catch return EngineError.OperationFailed;
+    }
+}
+
+/// Check if a V8 context is currently frozen
+fn v8IsFrozen(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) bool {
+    _ = context_handle;
+
+    // engine_ctx is the V8 Context
+    const v8_ctx: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Get the context entry which contains the event loop
+    const ctx = context_manager.get(v8_ctx) orelse return false;
+
+    // Check if event loop is frozen (use optional version for graceful handling)
+    if (ctx.getOptionalEventLoop()) |ev_loop| {
+        const event_loop_ptr = ev_loop.ptr;
+        const v8_event_loop: *event_loop_mod.V8EventLoop = @ptrCast(@alignCast(event_loop_ptr));
+        return v8_event_loop.isFrozen();
+    }
+
+    return false;
 }
 
 // ============================================================================

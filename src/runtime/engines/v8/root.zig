@@ -173,6 +173,12 @@ pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
 pub const SnapshotInitResult = snapshot_loader.InitResult;
 pub const SnapshotInitOptions = snapshot_loader.InitOptions;
 
+/// Bfcache (Back-Forward Cache) Frozen Context Manager
+pub const frozen_context_manager = @import("frozen_context_manager.zig");
+pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;
+pub const FrozenContext = frozen_context_manager.FrozenContext;
+pub const FrozenTimer = frozen_context_manager.FrozenTimer;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;

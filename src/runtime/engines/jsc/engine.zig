@@ -64,6 +64,9 @@ pub const jsc_engine_interface: EngineInterface = .{
     .disposeModule = jscDisposeModule,
     .runModuleAsync = jscRunModuleAsync,
     .hasTopLevelAwait = jscHasTopLevelAwait,
+    .freeze = jscFreeze,
+    .thaw = jscThaw,
+    .isFrozen = jscIsFrozen,
     .name = "JavaScriptCore",
     .version = "WebKit",
 };
@@ -625,6 +628,43 @@ fn jscHasTopLevelAwait(
 ) bool {
     _ = module;
     // TODO: Implement TLA detection
+    return false;
+}
+
+// ============================================================================
+// Bfcache Freeze/Thaw Support (Stub - JSC has different bfcache model)
+// ============================================================================
+
+/// Freeze a JSC context for the back-forward cache
+fn jscFreeze(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = engine_ctx;
+    _ = context_handle;
+    // JSC/WebKit handles bfcache differently via WKPageSetMaintainsInactiveProcesses
+    // For now, return success (no-op)
+}
+
+/// Thaw a JSC context from the back-forward cache
+fn jscThaw(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = engine_ctx;
+    _ = context_handle;
+    // JSC/WebKit handles bfcache thaw internally
+    // For now, return success (no-op)
+}
+
+/// Check if a JSC context is currently frozen
+fn jscIsFrozen(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) bool {
+    _ = engine_ctx;
+    _ = context_handle;
+    // Not tracked in this stub implementation
     return false;
 }
 

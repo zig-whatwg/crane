@@ -65,6 +65,9 @@ pub const quickjs_engine_interface: EngineInterface = .{
     .disposeModule = quickjsDisposeModule,
     .runModuleAsync = quickjsRunModuleAsync,
     .hasTopLevelAwait = quickjsHasTopLevelAwait,
+    .freeze = quickjsFreeze,
+    .thaw = quickjsThaw,
+    .isFrozen = quickjsIsFrozen,
     .name = "QuickJS",
     .version = "2024-01",
 };
@@ -693,6 +696,43 @@ fn quickjsHasTopLevelAwait(
     _ = module;
     // QuickJS doesn't provide a way to check this
     // We'd need to parse the source manually
+    return false;
+}
+
+// ============================================================================
+// Bfcache Freeze/Thaw Support (Stub - QuickJS is single-threaded)
+// ============================================================================
+
+/// Freeze a QuickJS context for the back-forward cache
+fn quickjsFreeze(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = engine_ctx;
+    _ = context_handle;
+    // QuickJS is embeddable and single-threaded
+    // Bfcache is typically not applicable in the same way
+    // Return success (no-op) for compatibility
+}
+
+/// Thaw a QuickJS context from the back-forward cache
+fn quickjsThaw(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) EngineError!void {
+    _ = engine_ctx;
+    _ = context_handle;
+    // Return success (no-op) for compatibility
+}
+
+/// Check if a QuickJS context is currently frozen
+fn quickjsIsFrozen(
+    engine_ctx: *anyopaque,
+    context_handle: *anyopaque,
+) bool {
+    _ = engine_ctx;
+    _ = context_handle;
+    // Not tracked in this stub implementation
     return false;
 }
 

@@ -618,6 +618,69 @@ pub const EngineInterface = struct {
         module: *anyopaque,
     ) bool,
 
+    // ========================================================================
+    // Bfcache Support (Back-Forward Cache)
+    // ========================================================================
+
+    /// Freeze a context for the back-forward cache
+    ///
+    /// Suspends task queue processing, retains the context, and prepares
+    /// for potential DOM detachment. The context can be restored later
+    /// with thaw().
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC Context, etc.)
+    ///   - context_handle: Handle to the context being frozen
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError.OperationFailed if freeze cannot be performed
+    ///
+    /// Note: Freezing should:
+    ///   - Stop timer and task processing
+    ///   - Retain the context (don't destroy on navigation)
+    ///   - Prepare for DOM detachment (optional)
+    freeze: ?*const fn (
+        engine_ctx: *anyopaque,
+        context_handle: *anyopaque,
+    ) EngineError!void,
+
+    /// Thaw a context from the back-forward cache
+    ///
+    /// Re-enters the context, resumes task queue processing, and reattaches
+    /// any detached DOM state.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - context_handle: Handle to the context being thawed
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError.OperationFailed if thaw cannot be performed
+    ///
+    /// Note: Thawing should:
+    ///   - Re-enter the context (v8::Context::Enter())
+    ///   - Resume timer and task processing
+    ///   - Reattach any detached DOM state
+    thaw: ?*const fn (
+        engine_ctx: *anyopaque,
+        context_handle: *anyopaque,
+    ) EngineError!void,
+
+    /// Check if a context is currently frozen
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - context_handle: Handle to check
+    ///
+    /// Returns:
+    ///   - true if the context is frozen
+    ///   - false otherwise
+    isFrozen: ?*const fn (
+        engine_ctx: *anyopaque,
+        context_handle: *anyopaque,
+    ) bool,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -660,6 +723,9 @@ pub const stub_engine: EngineInterface = .{
     .disposeModule = stubDisposeModule,
     .runModuleAsync = stubRunModuleAsync,
     .hasTopLevelAwait = stubHasTopLevelAwait,
+    .freeze = stubFreeze,
+    .thaw = stubThaw,
+    .isFrozen = stubIsFrozen,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -790,6 +856,30 @@ fn stubHasTopLevelAwait(
     _: *anyopaque,
 ) bool {
     // Stub: No module to check, return false
+    return false;
+}
+
+fn stubFreeze(
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No bfcache support
+    return EngineError.OperationFailed;
+}
+
+fn stubThaw(
+    _: *anyopaque,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No bfcache support
+    return EngineError.OperationFailed;
+}
+
+fn stubIsFrozen(
+    _: *anyopaque,
+    _: *anyopaque,
+) bool {
+    // Stub: Never frozen
     return false;
 }
 

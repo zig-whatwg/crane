@@ -66,6 +66,15 @@ const Task = event_loop_mod.Task;
 ///
 /// Wraps V8's native microtask queue and libuv timer loop to provide
 /// EventLoop interface with timer support.
+///
+/// ## Bfcache Support
+///
+/// The event loop supports freeze/thaw operations for the back-forward cache:
+/// - freeze(): Suspends all timer and task processing
+/// - thaw(): Resumes processing
+/// - isFrozen(): Check if currently frozen
+///
+/// When frozen, runOnce() returns immediately without processing any work.
 pub const V8EventLoop = struct {
     /// V8 isolate this event loop is bound to
     isolate: *v8_ffi.Isolate,
@@ -84,6 +93,9 @@ pub const V8EventLoop = struct {
 
     /// libuv-based timer manager for setTimeout/clearTimeout
     timer_manager: ?*libuv_timer.LibuvTimerManager,
+
+    /// Whether this event loop is frozen (for bfcache)
+    frozen: bool,
 
     const Self = @This();
 
@@ -112,6 +124,7 @@ pub const V8EventLoop = struct {
             .tasks = std.ArrayList(Task){},
             .in_run_once = false,
             .timer_manager = timer_mgr,
+            .frozen = false,
         };
     }
 
@@ -126,6 +139,7 @@ pub const V8EventLoop = struct {
             .tasks = std.ArrayList(Task){},
             .in_run_once = false,
             .timer_manager = null,
+            .frozen = false,
         };
     }
 
@@ -189,6 +203,60 @@ pub const V8EventLoop = struct {
     }
 
     // ========================================================================
+    // Bfcache Freeze/Thaw Support
+    // ========================================================================
+
+    /// Freeze the event loop for bfcache
+    ///
+    /// When frozen:
+    /// - runOnce() returns immediately without processing work
+    /// - Timers are NOT polled (preserving their remaining times)
+    /// - Tasks are NOT executed (preserved in queue)
+    /// - New microtasks can still be queued (V8 handles this)
+    ///
+    /// Returns error if already frozen.
+    ///
+    /// Example:
+    /// ```zig
+    /// // When navigating away from page
+    /// try event_loop.freeze();
+    /// // ... later, when navigating back
+    /// try event_loop.thaw();
+    /// ```
+    pub fn freeze(self: *Self) !void {
+        if (self.frozen) {
+            return error.AlreadyFrozen;
+        }
+
+        self.frozen = true;
+
+        // Note: Timer state is preserved automatically since we stop polling.
+        // When thawed, timers will continue from where they left off.
+        // For proper time adjustment, FrozenContextManager tracks freeze time.
+    }
+
+    /// Thaw the event loop after bfcache restoration
+    ///
+    /// Resumes normal event loop processing.
+    ///
+    /// Returns error if not frozen.
+    pub fn thaw(self: *Self) !void {
+        if (!self.frozen) {
+            return error.NotFrozen;
+        }
+
+        self.frozen = false;
+
+        // Timer adjustment is handled by FrozenContextManager which knows
+        // how long the context was frozen.
+    }
+
+    /// Check if the event loop is currently frozen
+    pub fn isFrozen(self: *Self) bool {
+        return self.frozen;
+    }
+
+    // ========================================================================
     // EventLoop Interface Implementation
     // ========================================================================
 
@@ -237,6 +305,11 @@ pub const V8EventLoop = struct {
 
     fn runOnce(ptr: *anyopaque) bool {
         const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Don't process tasks or timers when frozen (bfcache support)
+        if (self.frozen) {
+            return false;
+        }
 
         // Prevent reentrancy
         if (self.in_run_once) {
