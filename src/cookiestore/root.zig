@@ -103,6 +103,12 @@ pub const DeleteCookieOptions = algorithms.DeleteCookieOptions;
 pub const storage_integration = @import("storage_integration.zig");
 pub const CookieStorageArea = storage_integration.CookieStorageArea;
 
+// Change observer
+pub const change_observer = @import("change_observer.zig");
+pub const CookieChange = change_observer.CookieChange;
+pub const CookieChangeType = change_observer.CookieChangeType;
+pub const CookieChangeObserver = change_observer.CookieChangeObserver;
+
 test {
     _ = cookie;
     _ = validation;
@@ -110,4 +116,5 @@ test {
     _ = jar;
     _ = algorithms;
     _ = storage_integration;
+    _ = change_observer;
 }
