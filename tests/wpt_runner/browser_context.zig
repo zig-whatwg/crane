@@ -125,9 +125,11 @@ pub const BrowserContext = struct {
         //
         // Phase 2a: Clear thread-local DOM state on isolate disposal
         // - Custom element reactions stack and queues
-        // - Mutation observer agent state
+        // - Mutation observer agent state (TODO: re-enable when mutation_observer module is properly configured)
         html_full.custom_elements.deinitThreadLocalState();
-        dom.mutation_observer_algorithms.resetAgent();
+        // NOTE: mutation_observer_algorithms.resetAgent() is commented out because the
+        // mutation_observer module is not fully configured for the WPT runner build.
+        // dom.mutation_observer_algorithms.resetAgent();
 
         // CRITICAL: Clear template registry BEFORE disposing isolate
         // V8 FunctionTemplates are bound to specific isolates and cannot be reused.
@@ -501,8 +503,6 @@ pub const BrowserContext = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
 
-        _ = self;
-
         // Register setTimeout (mock implementation for now)
         {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
@@ -568,6 +568,40 @@ pub const BrowserContext = struct {
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
+
+        // Register console object with log, warn, error methods via JavaScript
+        // This is simpler than trying to create a V8 object template
+        {
+            const console_script =
+                \\(function() {
+                \\  function consoleLog() {
+                \\    // This is a no-op for now - we just want console.log to not throw
+                \\    // Real implementation would need native binding
+                \\  }
+                \\  self.console = {
+                \\    log: consoleLog,
+                \\    warn: consoleLog,
+                \\    error: consoleLog,
+                \\    info: consoleLog,
+                \\    debug: consoleLog,
+                \\    trace: consoleLog,
+                \\    dir: consoleLog,
+                \\    table: consoleLog,
+                \\    assert: function() {},
+                \\    clear: function() {},
+                \\    count: function() {},
+                \\    countReset: function() {},
+                \\    group: function() {},
+                \\    groupCollapsed: function() {},
+                \\    groupEnd: function() {},
+                \\    time: function() {},
+                \\    timeLog: function() {},
+                \\    timeEnd: function() {},
+                \\  };
+                \\})();
+            ;
+            self.executeScript(console_script) catch {};
+        }
     }
 
     /// Register WPT result callbacks (__wpt_report_result, __wpt_report_completion)
@@ -589,6 +623,14 @@ pub const BrowserContext = struct {
             const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptReportCompletionCallback, null) orelse return error.FunctionTemplateCreateFailed;
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_report_completion", 23) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register __wpt_debug_log callback (for debugging testharness.js)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptDebugLogCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_debug_log", 15) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
     }
@@ -613,6 +655,57 @@ pub const BrowserContext = struct {
         // Reset completion flag but keep collected results
         self.result_collector.completion_signaled = false;
         self.result_collector.completed = false;
+    }
+
+    /// Reset JavaScript state for context reuse between tests
+    ///
+    /// This resets testharness.js internal state and clears test artifacts.
+    /// Much faster than recreating the entire V8 context (~100ms vs ~11s).
+    pub fn resetJavaScriptState(self: *BrowserContext) !void {
+        const isolate = self.isolate orelse return error.NotInitialized;
+
+        // Comprehensive JavaScript state reset
+        const reset_script =
+            \\(function() {
+            \\  'use strict';
+            \\  
+            \\  // === Reset testharness.js internal state ===
+            \\  if (typeof tests !== 'undefined' && tests) {
+            \\    tests.tests = [];
+            \\    tests.num_pending = 0;
+            \\    tests.all_loaded = false;
+            \\    tests.all_done = false;
+            \\    tests.start_callbacks = [];
+            \\    tests.test_done_callbacks = [];
+            \\    tests.all_done_callbacks = [];
+            \\    tests.status = { status: null, message: null, stack: null };
+            \\    tests.timeout_length = null;
+            \\    tests.timeout_id = null;
+            \\    tests.file_is_test = false;
+            \\    tests.properties = {};
+            \\  }
+            \\  
+            \\  // Reset test_environment
+            \\  if (typeof test_environment !== 'undefined' && test_environment) {
+            \\    test_environment.all_loaded = false;
+            \\  }
+            \\  
+            \\  // Clear document.body
+            \\  if (typeof document !== 'undefined' && document && document.body) {
+            \\    document.body.innerHTML = '';
+            \\  }
+            \\  
+            \\  return true;
+            \\})();
+        ;
+
+        try self.executeScript(reset_script);
+
+        // Run microtasks to clear any pending work
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+        // Reset result collector
+        self.resetForNextTest();
     }
 
     /// Load and execute a script file
@@ -695,6 +788,10 @@ pub const BrowserContext = struct {
         // Timer interface is set once in initialize() and persists for the context lifetime
         setResultCollector(&self.result_collector);
         defer clearResultCollector();
+
+        // Set WPT root and test path for fetch callback URL resolution
+        setWptRoot(self.wpt_root);
+        setCurrentTestPath(test_path);
 
         // Execute test script
         try self.executeScript(test_content);
@@ -809,6 +906,32 @@ threadlocal var current_timer_interface: ?TimerInterface = null;
 
 // Thread-local storage for allocator (needed for timer callback contexts)
 threadlocal var current_allocator: ?std.mem.Allocator = null;
+
+// Thread-local storage for WPT root directory (needed for relative URL resolution in fetch)
+threadlocal var current_wpt_root: ?[]const u8 = null;
+
+// Thread-local storage for current test path (needed for relative URL resolution in fetch)
+threadlocal var current_test_path: ?[]const u8 = null;
+
+/// Set the WPT root for fetch callback URL resolution
+pub fn setWptRoot(wpt_root: []const u8) void {
+    current_wpt_root = wpt_root;
+}
+
+/// Set the current test path for fetch callback URL resolution
+pub fn setCurrentTestPath(test_path: []const u8) void {
+    current_test_path = test_path;
+}
+
+/// Get the WPT root (for V8 callbacks)
+pub fn getWptRoot() ?[]const u8 {
+    return current_wpt_root;
+}
+
+/// Get the current test path (for V8 callbacks)
+pub fn getCurrentTestPath() ?[]const u8 {
+    return current_test_path;
+}
 
 // Thread-local storage for ALL timer contexts (for cleanup on clearTimeout/clearInterval and deinit)
 // Maps timer_id -> V8TimerContext* so we can clean up pending timers when context is torn down
@@ -1336,6 +1459,107 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     // Set the Promise as return value immediately (async behavior)
     info.setReturnValue(@ptrCast(promise));
 
+    // Check for relative URLs (used by WPT tests like "resources/urltestdata.json")
+    // Resolve them relative to the current test file in the WPT directory
+    const is_relative = !std.mem.startsWith(u8, url_str, "http://") and
+        !std.mem.startsWith(u8, url_str, "https://") and
+        !std.mem.startsWith(u8, url_str, "file://") and
+        !std.mem.startsWith(u8, url_str, "data:");
+
+    if (is_relative) {
+        // Get the WPT root and current test path for resolution
+        const wpt_root = getWptRoot() orelse {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "No WPT root set", 15) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        const test_path = getCurrentTestPath() orelse {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "No test path set", 16) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+
+        // Get the directory of the test file
+        const test_dir = if (std.mem.lastIndexOf(u8, test_path, "/")) |pos|
+            test_path[0..pos]
+        else
+            "";
+
+        // Construct full path: wpt_root/test_dir/relative_url
+        const full_path = std.fs.path.join(allocator, &.{ wpt_root, test_dir, url_str }) catch {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to join path", 19) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        defer allocator.free(full_path);
+
+        // Read the file
+        const file = std.fs.cwd().openFile(full_path, .{}) catch {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to open file", 19) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to read file", 19) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+        defer allocator.free(content);
+
+        // Create Response-like object
+        const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
+            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create response", 25) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+            }
+            return;
+        };
+
+        // Set ok = true
+        const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |ok_val| {
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), ok_val);
+        }
+
+        // Set status = 200
+        const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
+        const status_val: *v8.ffi.Value = @ptrCast(v8.ffi.v8_Integer_New(isolate, 200));
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), status_val);
+
+        // Store content for json() method
+        const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
+        const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
+
+        // Add json() method
+        const json_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseJsonCallback, null) orelse return;
+        const json_func = v8.ffi.v8_FunctionTemplate_GetFunction(json_template, v8_context) orelse return;
+        const json_key = v8.ffi.v8_String_NewFromUtf8(isolate, "json", 4) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(json_key), @ptrCast(json_func));
+
+        // Add text() method
+        const text_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseTextCallback, null) orelse return;
+        const text_func = v8.ffi.v8_FunctionTemplate_GetFunction(text_template, v8_context) orelse return;
+        const text_key = v8.ffi.v8_String_NewFromUtf8(isolate, "text", 4) orelse return;
+        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(text_key), @ptrCast(text_func));
+
+        // Resolve the promise
+        _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
+        return;
+    }
+
     // Check for file: URL scheme (needed for WPT test resources)
     if (std.mem.startsWith(u8, url_str, "file://")) {
         // Extract the file path from file:// URL
@@ -1726,6 +1950,27 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
     }
+}
+
+/// Debug log callback - prints messages from JavaScript to stderr
+fn wptDebugLogCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    const arg_count = info.v8_FunctionCallbackInfo_Length();
+    if (arg_count == 0) return;
+
+    const arg = info.get(0);
+    const str = v8.ffi.v8_Value_ToString(arg, context) orelse return;
+    const len = v8.ffi.v8_String_Utf8Length(str);
+    if (len <= 0) return;
+
+    var buf: [4096]u8 = undefined;
+    const copy_len: usize = @min(@as(usize, @intCast(len)), buf.len - 1);
+    _ = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(copy_len));
+    buf[copy_len] = 0;
+
+    std.debug.print("{s}\n", .{buf[0..copy_len]});
 }
 
 /// WPT completion callback - called when all tests in a file complete

@@ -654,8 +654,64 @@ fn executeTestFile(
 
         test_content = combined;
     } else {
-        // For JS files, execute the content directly
-        test_content = parsed.content;
+        // For JS files, we need to load META scripts first, then the test content
+        // META scripts are specified like: // META: script=/common/subset-tests-by-key.js
+        var all_scripts: std.ArrayListUnmanaged([]const u8) = .{};
+        defer all_scripts.deinit(allocator);
+
+        // Load external META scripts first
+        for (parsed.metadata.scripts.items) |script| {
+            if (!script.inline_script) {
+                // Resolve the script path
+                var script_path: []u8 = undefined;
+                if (std.mem.startsWith(u8, script.path, "/")) {
+                    // Absolute path from WPT root (e.g., "/common/subset-tests-by-key.js")
+                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, script.path[1..] });
+                } else {
+                    // Relative path from test file
+                    const test_dir = if (std.mem.lastIndexOf(u8, test_file.path, "/")) |pos|
+                        test_file.path[0..pos]
+                    else
+                        "";
+                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_dir, script.path });
+                }
+                defer allocator.free(script_path);
+
+                // Read the script file
+                const script_content = std.fs.cwd().readFileAlloc(allocator, script_path, 10 * 1024 * 1024) catch |err| {
+                    // Skip missing scripts with a warning
+                    std.debug.print("Warning: Could not load META script {s}: {}\n", .{ script.path, err });
+                    continue;
+                };
+                try all_scripts.append(allocator, script_content);
+            }
+        }
+
+        // Add the main test content
+        const test_content_copy = try allocator.dupe(u8, parsed.content);
+        try all_scripts.append(allocator, test_content_copy);
+
+        // Calculate total length
+        var total_len: usize = 0;
+        for (all_scripts.items) |s| {
+            total_len += s.len + 2; // +2 for ";\n" separator
+        }
+
+        // Concatenate all scripts
+        const combined = try allocator.alloc(u8, total_len);
+        test_content_owned = combined;
+
+        var offset: usize = 0;
+        for (all_scripts.items) |s| {
+            @memcpy(combined[offset .. offset + s.len], s);
+            offset += s.len;
+            combined[offset] = ';';
+            combined[offset + 1] = '\n';
+            offset += 2;
+            allocator.free(s);
+        }
+
+        test_content = combined;
     }
 
     // Execute the test using the BrowserAdapter
