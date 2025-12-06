@@ -15,13 +15,16 @@ const std = @import("std");
 const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 
-// Import types from webidl/src/dom
-// These will be provided as module imports by build.zig
-const Node = @import("node").Node;
-const NodeList = @import("node_list").NodeList;
-const MutationObserver = @import("mutation_observer").MutationObserver;
-const MutationRecord = @import("mutation_record").MutationRecord;
-const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
+// Import DOM types from interfaces (via root.zig re-exports)
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+const NodeList = interfaces.NodeList;
+const MutationObserver = interfaces.MutationObserver;
+const MutationRecord = interfaces.MutationRecord;
+
+// Import dictionary from dictionaries module
+const dictionaries = @import("dictionaries");
+const MutationObserverInit = dictionaries.MutationObserverInit;
 
 /// Global mutation observer state (per similar-origin window agent)
 /// In a real implementation, this would be per-agent state
