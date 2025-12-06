@@ -602,6 +602,52 @@ pub const BrowserContext = struct {
             ;
             self.executeScript(console_script) catch {};
         }
+
+        // Register btoa/atob for base64 encoding/decoding
+        // These are needed by some WPT tests (e.g., percent-encoding.window.js)
+        {
+            const btoa_atob_script =
+                \\(function() {
+                \\  // btoa: binary string to base64
+                \\  self.btoa = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = str.charCodeAt(i++) || 0;
+                \\      var b = str.charCodeAt(i++) || 0;
+                \\      var c = str.charCodeAt(i++) || 0;
+                \\      var triplet = (a << 16) | (b << 8) | c;
+                \\      result += chars[(triplet >> 18) & 63];
+                \\      result += chars[(triplet >> 12) & 63];
+                \\      result += (i > str.length + 1) ? '=' : chars[(triplet >> 6) & 63];
+                \\      result += (i > str.length) ? '=' : chars[triplet & 63];
+                \\    }
+                \\    return result;
+                \\  };
+                \\  
+                \\  // atob: base64 to binary string
+                \\  self.atob = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    str = str.replace(/=+$/, '');
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = chars.indexOf(str[i++]);
+                \\      var b = chars.indexOf(str[i++]);
+                \\      var c = chars.indexOf(str[i++]);
+                \\      var d = chars.indexOf(str[i++]);
+                \\      var triplet = (a << 18) | (b << 12) | (c << 6) | d;
+                \\      result += String.fromCharCode((triplet >> 16) & 255);
+                \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
+                \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
+                \\    }
+                \\    return result;
+                \\  };
+                \\})();
+            ;
+            self.executeScript(btoa_atob_script) catch {};
+        }
     }
 
     /// Register WPT result callbacks (__wpt_report_result, __wpt_report_completion)
@@ -730,6 +776,10 @@ pub const BrowserContext = struct {
 
     /// Load testharness.js and testharnessreport.js
     pub fn loadTestHarness(self: *BrowserContext) !void {
+        // Re-ensure global aliases are set before loading testharness.js
+        // testharness.js may overwrite or depend on these globals
+        try self.setupGlobalAliases();
+
         const harness_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "resources", "testharness.js" });
         defer self.allocator.free(harness_path);
 
