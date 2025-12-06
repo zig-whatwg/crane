@@ -29,7 +29,7 @@ const std = @import("std");
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
-const browser_context = @import("browser_context.zig");
+const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
 
 /// Command-line options
@@ -553,12 +553,17 @@ pub fn executeTests(
     const total = discovery.test_files.items.len;
     print("\nRunning {d} test files...\n\n", .{total});
 
+    // Create a single BrowserAdapter for all tests (single V8 isolate, new context per navigation)
+    // This is much more efficient than creating a new isolate per test (~1-5ms vs ~50-100ms)
+    var browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
+    defer browser.deinit();
+
     var progress = ProgressTracker.init(allocator, total, options.verbose);
     defer progress.deinit();
 
     for (discovery.test_files.items) |test_file| {
         // Execute single test file
-        const test_result = executeTestFile(allocator, options, test_file) catch |err| {
+        const test_result = executeTestFile(allocator, options, test_file, browser) catch |err| {
             // Create error result
             var error_result = try test_harness.TestResult.init(allocator, test_file.path);
             error_result.status = .@"error";
@@ -589,11 +594,12 @@ pub fn executeTests(
     progress.printSummary(output_path);
 }
 
-/// Execute a single test file
+/// Execute a single test file using the shared BrowserAdapter
 fn executeTestFile(
     allocator: std.mem.Allocator,
     options: Options,
     test_file: TestFile,
+    browser: *browser_adapter.BrowserAdapter,
 ) !test_harness.TestResult {
     // Read test file content
     const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_file.path });
@@ -606,79 +612,56 @@ fn executeTestFile(
     var parsed = try test_parser.parseTestFile(allocator, test_file.path, content);
     defer parsed.deinit();
 
-    // Execute in appropriate context(s)
-    // For .any.js files, may need to run in multiple contexts
-    for (parsed.metadata.globals.items) |global| {
-        var ctx = try browser_context.createContextForTest(allocator, options.wpt_root, global);
-        defer ctx.deinit();
+    // Build test content to execute
+    // For HTML files, we need to concatenate inline scripts
+    // For JS files, we execute the content directly
+    var test_content: []const u8 = undefined;
+    var test_content_owned: ?[]u8 = null;
+    defer if (test_content_owned) |owned| allocator.free(owned);
 
-        // Set test URL
-        const test_url = try std.fmt.allocPrint(allocator, "http://web-platform.test:8000/{s}", .{test_file.path});
-        defer allocator.free(test_url);
-        try ctx.setTestUrl(test_url);
-
-        // Load test harness
-        try ctx.loadTestHarness();
-
-        // Load external scripts and collect inline scripts
+    if (test_file.file_type == .html) {
+        // Collect inline scripts from HTML
         var inline_scripts: std.ArrayListUnmanaged([]const u8) = .{};
         defer inline_scripts.deinit(allocator);
 
         for (parsed.metadata.scripts.items) |script| {
             if (script.inline_script) {
-                // Collect inline scripts for later execution
                 try inline_scripts.append(allocator, script.path);
-            } else {
-                // Load external scripts
-                const script_path = try test_parser.resolveScriptPath(
-                    allocator,
-                    options.wpt_root,
-                    test_file.path,
-                    script.path,
-                );
-                defer allocator.free(script_path);
-                try ctx.loadScript(script_path);
             }
         }
 
-        // Determine what to execute:
-        // - For JS files: parsed.content (the JS file itself)
-        // - For HTML files: the inline scripts extracted from the HTML
-        if (test_file.file_type == .html) {
-            // Execute inline scripts for HTML tests
-            if (inline_scripts.items.len == 0) {
-                // No inline scripts - nothing to test
-                return test_harness.TestResult.init(allocator, test_file.path);
-            }
-
-            // Concatenate inline scripts
-            var total_len: usize = 0;
-            for (inline_scripts.items) |script| {
-                total_len += script.len + 1; // +1 for newline separator
-            }
-
-            const combined = try allocator.alloc(u8, total_len);
-            defer allocator.free(combined);
-
-            var offset: usize = 0;
-            for (inline_scripts.items) |script| {
-                @memcpy(combined[offset .. offset + script.len], script);
-                offset += script.len;
-                combined[offset] = '\n';
-                offset += 1;
-            }
-
-            const result = try ctx.executeTest(test_file.path, combined, parsed.metadata.timeout);
-            return result;
-        } else {
-            // For JS files, execute the content directly
-            const result = try ctx.executeTest(test_file.path, parsed.content, parsed.metadata.timeout);
-            return result;
+        if (inline_scripts.items.len == 0) {
+            // No inline scripts - nothing to test
+            return test_harness.TestResult.init(allocator, test_file.path);
         }
+
+        // Concatenate inline scripts
+        var total_len: usize = 0;
+        for (inline_scripts.items) |script| {
+            total_len += script.len + 1; // +1 for newline separator
+        }
+
+        const combined = try allocator.alloc(u8, total_len);
+        test_content_owned = combined;
+
+        var offset: usize = 0;
+        for (inline_scripts.items) |script| {
+            @memcpy(combined[offset .. offset + script.len], script);
+            offset += script.len;
+            combined[offset] = '\n';
+            offset += 1;
+        }
+
+        test_content = combined;
+    } else {
+        // For JS files, execute the content directly
+        test_content = parsed.content;
     }
 
-    // If we get here, no globals were specified (shouldn't happen)
-    return error.NoGlobalsSpecified;
+    // Execute the test using the BrowserAdapter
+    // The browser maintains a single V8 isolate and creates a new context per navigation
+    const result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout);
+    return result;
 }
 
 /// Output helper - uses std.debug.print for standalone compatibility

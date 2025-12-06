@@ -27,7 +27,8 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
-const Storage = @import("storage/Storage.zig");
+const storage_mod = @import("storage/Storage.zig");
+const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
 const context_manager = v8.context_manager;
 

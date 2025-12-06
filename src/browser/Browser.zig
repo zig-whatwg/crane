@@ -38,8 +38,10 @@ const std = @import("std");
 const v8 = @import("v8");
 const runtime = @import("runtime");
 
-const Context = @import("Context.zig");
-const Storage = @import("storage/Storage.zig");
+const context_mod = @import("Context.zig");
+const Context = context_mod.Context;
+const storage_mod = @import("storage/Storage.zig");
+const Storage = storage_mod.Storage;
 
 /// Browser configuration options
 pub const BrowserConfig = struct {

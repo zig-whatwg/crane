@@ -1400,6 +1400,7 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
+    browser_mod.addImport("fetch", fetch_mod);
 
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
@@ -2058,6 +2059,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "html", .module = html_core_mod },
                 // Infra primitives
                 .{ .name = "infra", .module = infra_mod },
+                // Browser module for single-isolate WPT execution
+                .{ .name = "browser", .module = browser_mod },
             },
         }),
     });

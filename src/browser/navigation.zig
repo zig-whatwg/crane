@@ -287,8 +287,7 @@ fn fetchHttpUrl(
     defer request.deinit();
 
     // Perform fetch using the fetch algorithms
-    const fetch_alg = fetch_mod.algorithms.fetch;
-    var result = fetch_alg.fetch(allocator, request, .{}) catch |err| {
+    var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {
         return switch (err) {
             error.NetworkError => NavigationError.NetworkError,
             error.AbortError => NavigationError.Timeout,
@@ -302,13 +301,13 @@ fn fetchHttpUrl(
 
     // Extract body
     const body = if (response.body) |b| blk: {
-        const data = b.getBytes(allocator) catch break :blk try allocator.dupe(u8, "");
-        break :blk data;
+        const data = b.getBytes();
+        break :blk try allocator.dupe(u8, data);
     } else try allocator.dupe(u8, "");
     errdefer allocator.free(body);
 
     // Extract content type
-    const ct = response.header_list.get("Content-Type") orelse "text/html";
+    const ct = response.header_list.getFirstValue("Content-Type") orelse "text/html";
     const content_type = try allocator.dupe(u8, ct);
     errdefer allocator.free(content_type);
 
