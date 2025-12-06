@@ -80,8 +80,17 @@ pub const isPublicSuffix = domain_matching.isPublicSuffix;
 pub const isRegistrableDomainSuffixOrEqual = domain_matching.isRegistrableDomainSuffixOrEqual;
 pub const normalizeDomain = domain_matching.normalizeDomain;
 
+// Cookie Jar
+pub const jar = @import("jar.zig");
+pub const CookieJar = jar.CookieJar;
+pub const RetrieveOptions = jar.RetrieveOptions;
+pub const SameSiteContext = jar.SameSiteContext;
+pub const MAX_COOKIES_PER_DOMAIN = jar.MAX_COOKIES_PER_DOMAIN;
+pub const MAX_TOTAL_COOKIES = jar.MAX_TOTAL_COOKIES;
+
 test {
     _ = cookie;
     _ = validation;
     _ = domain_matching;
+    _ = jar;
 }

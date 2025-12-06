@@ -198,6 +198,15 @@ pub const Cookie = struct {
     /// Set the path attribute
     pub fn setPath(self: *Self, path: []const u8) !void {
         if (self.allocator) |alloc| {
+            // If setting to "/" (default), just use the static string
+            if (std.mem.eql(u8, path, "/")) {
+                if (!std.mem.eql(u8, self.path, "/")) {
+                    alloc.free(self.path);
+                }
+                self.path = "/";
+                return;
+            }
+            // Free old path if it was allocated (not the default "/")
             if (!std.mem.eql(u8, self.path, "/")) {
                 alloc.free(self.path);
             }
