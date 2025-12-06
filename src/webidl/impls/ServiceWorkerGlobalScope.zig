@@ -1,4 +1,9 @@
 //! Implementation for ServiceWorkerGlobalScope interface
+//!
+//! WHATWG Service Worker + Cookie Store Standard Integration
+//!
+//! The ServiceWorkerGlobalScope includes the cookieStore attribute and
+//! oncookiechange event handler from the CookieStore API.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,19 +12,54 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const CookieStoreImpl = @import("CookieStore.zig");
 const ServiceWorkerGlobalScope = interfaces.ServiceWorkerGlobalScope;
 
 pub const State = ServiceWorkerGlobalScope.State;
 
 pub const ImplError = error{
     NotImplemented,
+    SecurityError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for ServiceWorkerGlobalScope implementation
+pub const InternalState = struct {
+    /// The origin host for this service worker
+    origin_host: []const u8,
+    /// Whether this is a secure context
+    is_secure_context: bool,
+    /// Lazily initialized CookieStore instance (SameObject)
+    cookie_store: ?*runtime.Instance,
+    /// The oncookiechange event handler
+    oncookiechange_handler: ?*const anyopaque,
+    /// Allocator for internal allocations
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, origin_host: []const u8, is_secure_context: bool) !*InternalState {
+        const internal = try allocator.create(InternalState);
+        errdefer allocator.destroy(internal);
+
+        const host_copy = try allocator.dupe(u8, origin_host);
+        errdefer allocator.free(host_copy);
+
+        internal.* = InternalState{
+            .origin_host = host_copy,
+            .is_secure_context = is_secure_context,
+            .cookie_store = null,
+            .oncookiechange_handler = null,
+            .allocator = allocator,
+        };
+
+        return internal;
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // Note: cookie_store is owned by the runtime GC, we don't deinit it here
+        self.allocator.free(self.origin_host);
+        self.allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -29,14 +69,28 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+
+    // Initialize internal state with default values
+    const internal = try InternalState.init(allocator, "localhost", true);
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+}
+
+/// Helper to get internal state from instance
+fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
 }
 
 /// Getter for clients
@@ -94,15 +148,50 @@ pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!typedefs.EventHa
 }
 
 /// Getter for cookieStore
+/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-cookiestore
+///
+/// Returns the CookieStore for this service worker's origin.
+/// CookieStore is a SecureContext-only feature.
 pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+
+    // SecureContext check
+    if (!internal.is_secure_context) {
+        return error.SecurityError;
+    }
+
+    // Lazy initialization (SameObject behavior)
+    if (internal.cookie_store) |store| {
+        return store;
+    }
+
+    // Create new CookieStore for this origin
+    const CookieStore = interfaces.CookieStore;
+
+    const cookie_store = CookieStoreImpl.createForOrigin(
+        internal.allocator,
+        CookieStore.State,
+        &CookieStore.vtable,
+        instance.ctx,
+        internal.origin_host,
+        internal.is_secure_context,
+    ) catch {
+        return error.OutOfMemory;
+    };
+
+    internal.cookie_store = cookie_store;
+    return cookie_store;
 }
 
 /// Getter for oncookiechange
+/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-oncookiechange
 pub fn get_oncookiechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return null;
+    // Cast the stored opaque pointer back to EventHandler type
+    if (internal.oncookiechange_handler) |handler| {
+        return @ptrCast(@alignCast(handler));
+    }
+    return null;
 }
 
 /// Getter for onsync
@@ -220,10 +309,10 @@ pub fn set_onperiodicsync(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Setter for oncookiechange
+/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerglobalscope-oncookiechange
 pub fn set_oncookiechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    internal.oncookiechange_handler = value;
 }
 
 /// Setter for onsync
@@ -316,3 +405,38 @@ pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!*const anyopaque {
     return error.NotImplemented;
 }
 
+// ============================================================================
+// Public API for integration
+// ============================================================================
+
+/// Create a new ServiceWorkerGlobalScope for a given origin
+/// This is used when creating a new service worker context.
+pub fn createForOrigin(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+    origin_host: []const u8,
+    is_secure_context: bool,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+
+    const internal = try InternalState.init(allocator, origin_host, is_secure_context);
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
+    return instance;
+}
+
+/// Get the CookieStore for this service worker (if available)
+pub fn getCookieStore(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternalState(instance) orelse return null;
+    return internal.cookie_store;
+}
+
+/// Get the oncookiechange handler
+pub fn getOncookiechangeHandler(instance: *runtime.Instance) ?*const anyopaque {
+    const internal = getInternalState(instance) orelse return null;
+    return internal.oncookiechange_handler;
+}

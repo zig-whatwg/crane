@@ -1,4 +1,9 @@
 //! Implementation for ServiceWorkerRegistration interface
+//!
+//! WHATWG Service Worker + Cookie Store Standard Integration
+//!
+//! The ServiceWorkerRegistration includes the cookies attribute
+//! which returns a CookieStoreManager for managing cookie subscriptions.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,19 +13,51 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const CookieStoreManagerImpl = @import("CookieStoreManager.zig");
 const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
 
 pub const State = ServiceWorkerRegistration.State;
 
 pub const ImplError = error{
     NotImplemented,
+    SecurityError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for ServiceWorkerRegistration implementation
+pub const InternalState = struct {
+    /// The scope URL for this registration
+    scope_url: []const u8,
+    /// Whether this is a secure context
+    is_secure_context: bool,
+    /// Lazily initialized CookieStoreManager instance (SameObject)
+    cookie_store_manager: ?*runtime.Instance,
+    /// Allocator for internal allocations
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, scope_url: []const u8, is_secure_context: bool) !*InternalState {
+        const internal = try allocator.create(InternalState);
+        errdefer allocator.destroy(internal);
+
+        const scope_copy = try allocator.dupe(u8, scope_url);
+        errdefer allocator.free(scope_copy);
+
+        internal.* = InternalState{
+            .scope_url = scope_copy,
+            .is_secure_context = is_secure_context,
+            .cookie_store_manager = null,
+            .allocator = allocator,
+        };
+
+        return internal;
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // Note: cookie_store_manager is owned by the runtime GC, we don't deinit it here
+        self.allocator.free(self.scope_url);
+        self.allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +67,28 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+
+    // Initialize internal state with default scope
+    const internal = try InternalState.init(allocator, "/", true);
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+}
+
+/// Helper to get internal state from instance
+fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
 }
 
 /// Getter for installing
@@ -66,8 +117,8 @@ pub fn get_navigationPreload(instance: *runtime.Instance) anyerror!*runtime.Inst
 
 /// Getter for scope
 pub fn get_scope(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    return internal.scope_url;
 }
 
 /// Getter for updateViaCache
@@ -89,9 +140,39 @@ pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance 
 }
 
 /// Getter for cookies
+/// https://cookiestore.spec.whatwg.org/#dom-serviceworkerregistration-cookies
+///
+/// Returns the CookieStoreManager for this registration.
+/// CookieStoreManager is a SecureContext-only feature.
 pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+
+    // SecureContext check
+    if (!internal.is_secure_context) {
+        return error.SecurityError;
+    }
+
+    // Lazy initialization (SameObject behavior)
+    if (internal.cookie_store_manager) |manager| {
+        return manager;
+    }
+
+    // Create new CookieStoreManager for this registration
+    const CookieStoreManager = interfaces.CookieStoreManager;
+
+    const cookie_store_manager = CookieStoreManagerImpl.createForRegistration(
+        internal.allocator,
+        CookieStoreManager.State,
+        &CookieStoreManager.vtable,
+        instance.ctx,
+        internal.scope_url,
+        internal.is_secure_context,
+    ) catch {
+        return error.OutOfMemory;
+    };
+
+    internal.cookie_store_manager = cookie_store_manager;
+    return cookie_store_manager;
 }
 
 /// Getter for sync
@@ -158,3 +239,38 @@ pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dic
     return error.NotImplemented;
 }
 
+// ============================================================================
+// Public API for integration
+// ============================================================================
+
+/// Create a new ServiceWorkerRegistration for a given scope
+/// This is used when registering a new service worker.
+pub fn createForScope(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+    scope_url: []const u8,
+    is_secure_context: bool,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+
+    const internal = try InternalState.init(allocator, scope_url, is_secure_context);
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
+    return instance;
+}
+
+/// Get the CookieStoreManager for this registration (if available)
+pub fn getCookieStoreManager(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternalState(instance) orelse return null;
+    return internal.cookie_store_manager;
+}
+
+/// Get the scope URL for this registration
+pub fn getScopeUrl(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternalState(instance) orelse return null;
+    return internal.scope_url;
+}

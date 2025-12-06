@@ -1,4 +1,10 @@
 //! Implementation for ExtendableCookieChangeEvent interface
+//!
+//! WHATWG Cookie Store Standard: https://cookiestore.spec.whatwg.org/
+//!
+//! The ExtendableCookieChangeEvent interface represents a cookie change event
+//! in Service Worker contexts. It extends ExtendableEvent to allow the
+//! Service Worker to extend its lifetime while processing the event.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,19 +14,64 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const cookiestore = @import("cookiestore");
 const ExtendableCookieChangeEvent = interfaces.ExtendableCookieChangeEvent;
+const CookieListItem = cookiestore.CookieListItem;
 
 pub const State = ExtendableCookieChangeEvent.State;
 
 pub const ImplError = error{
     NotImplemented,
+    TypeError,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for ExtendableCookieChangeEvent implementation
+/// Same as CookieChangeEvent but extends ExtendableEvent
+pub const InternalState = struct {
+    /// Changed cookies (FrozenArray<CookieListItem>)
+    changed: std.ArrayListUnmanaged(CookieListItem),
+
+    /// Deleted cookies (FrozenArray<CookieListItem>)
+    deleted: std.ArrayListUnmanaged(CookieListItem),
+
+    /// Allocator for internal allocations
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) !*InternalState {
+        const internal = try allocator.create(InternalState);
+        internal.* = InternalState{
+            .changed = .{},
+            .deleted = .{},
+            .allocator = allocator,
+        };
+        return internal;
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        for (self.changed.items) |*item| {
+            item.deinit();
+        }
+        self.changed.deinit(self.allocator);
+
+        for (self.deleted.items) |*item| {
+            item.deinit();
+        }
+        self.deleted.deinit(self.allocator);
+
+        self.allocator.destroy(self);
+    }
+
+    /// Add a changed cookie
+    pub fn addChanged(self: *InternalState, item: CookieListItem) !void {
+        try self.changed.append(self.allocator, item);
+    }
+
+    /// Add a deleted cookie
+    pub fn addDeleted(self: *InternalState, item: CookieListItem) !void {
+        try self.deleted.append(self.allocator, item);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,39 +81,154 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+
+    // Initialize internal state
+    const internal = try InternalState.init(allocator);
+
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+}
+
+/// Helper to get internal state
+fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return state.own._internal;
 }
 
 /// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-extendablecookiechangeevent
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableCookieChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ExtendableCookieChangeEvent.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+
+    // Get the ExtendableEvent state (parent) to initialize base event properties
+    const state = instance.getState(State);
+
+    // Initialize ExtendableEvent -> Event base properties
+    // ExtendableEvent.State.parent is Event.State
+    state.parent.parent.own.type = try @"type".clone(allocator);
+    state.parent.parent.own.bubbles = false;
+    state.parent.parent.own.cancelable = false;
+    state.parent.parent.own.composed = false;
+    state.parent.parent.own.target = null;
+    state.parent.parent.own.srcElement = null;
+    state.parent.parent.own.currentTarget = null;
+    state.parent.parent.own.eventPhase = 0; // NONE
+    state.parent.parent.own.cancelBubble = false;
+    state.parent.parent.own.returnValue = true;
+    state.parent.parent.own.defaultPrevented = false;
+    state.parent.parent.own.isTrusted = false;
+    state.parent.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+
+    // Process eventInitDict if provided
+    if (eventInitDict.was_passed) {
+        const init_dict = eventInitDict.value;
+
+        // Apply ExtendableEventInit -> EventInit base properties
+        if (init_dict.base.base.bubbles) |bubbles| {
+            state.parent.parent.own.bubbles = bubbles;
+        }
+        if (init_dict.base.base.cancelable) |cancelable| {
+            state.parent.parent.own.cancelable = cancelable;
+        }
+        if (init_dict.base.base.composed) |composed| {
+            state.parent.parent.own.composed = composed;
+        }
+
+        // Process changed cookies
+        if (init_dict.changed) |changed_ptr| {
+            const changed_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(changed_ptr)));
+            for (changed_list.*) |dict_item| {
+                const item = CookieListItem{
+                    .name = try allocator.dupe(u8, dict_item.name orelse ""),
+                    .value = try allocator.dupe(u8, dict_item.value orelse ""),
+                    .allocator = allocator,
+                };
+                try internal.addChanged(item);
+            }
+        }
+
+        // Process deleted cookies
+        if (init_dict.deleted) |deleted_ptr| {
+            const deleted_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(deleted_ptr)));
+            for (deleted_list.*) |dict_item| {
+                const item = CookieListItem{
+                    .name = try allocator.dupe(u8, dict_item.name orelse ""),
+                    .value = try allocator.dupe(u8, dict_item.value orelse ""),
+                    .allocator = allocator,
+                };
+                try internal.addDeleted(item);
+            }
+        }
+    }
 
     return instance;
 }
 
 /// Getter for changed
+/// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-changed
 pub fn get_changed(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    return @ptrCast(&internal.changed);
 }
 
 /// Getter for deleted
+/// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-deleted
 pub fn get_deleted(instance: *runtime.Instance) anyerror!*const anyopaque {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    return @ptrCast(&internal.deleted);
 }
 
+// ============================================================================
+// Public API for event creation
+// ============================================================================
+
+/// Create an ExtendableCookieChangeEvent from cookie changes
+/// This is used by the Service Worker cookie change dispatch
+pub fn createFromChanges(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    changed: []const cookiestore.CookieChange,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &ExtendableCookieChangeEvent.vtable, ctx);
+    errdefer deinit(instance);
+
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    const state = instance.getState(State);
+
+    // Set event type
+    state.parent.parent.own.type = try allocator.dupe(u8, "cookiechange");
+    state.parent.parent.own.bubbles = false;
+    state.parent.parent.own.cancelable = false;
+    state.parent.parent.own.isTrusted = true;
+    state.parent.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+
+    // Separate changed and deleted
+    for (changed) |change| {
+        const item = try CookieListItem.fromCookie(allocator, change.cookie);
+
+        if (change.change_type == .changed) {
+            try internal.addChanged(item);
+        } else {
+            allocator.free(item.value);
+            var deleted_item = item;
+            deleted_item.value = try allocator.dupe(u8, "");
+            try internal.addDeleted(deleted_item);
+        }
+    }
+
+    return instance;
+}

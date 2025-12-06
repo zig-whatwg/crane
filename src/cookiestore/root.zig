@@ -109,6 +109,21 @@ pub const CookieChange = change_observer.CookieChange;
 pub const CookieChangeType = change_observer.ChangeType;
 pub const CookieChangeObserver = change_observer.CookieChangeObserver;
 
+// Event dispatch
+pub const event_dispatch = @import("event_dispatch.zig");
+pub const processCookieChanges = event_dispatch.processCookieChanges;
+pub const matchesSubscription = event_dispatch.matchesSubscription;
+pub const filterChangesForSubscriptions = event_dispatch.filterChangesForSubscriptions;
+pub const ProcessResult = event_dispatch.ProcessResult;
+pub const Subscription = event_dispatch.Subscription;
+
+// HTTP integration (for Fetch API)
+pub const http_integration = @import("http_integration.zig");
+pub const generateCookieHeader = http_integration.generateCookieHeader;
+pub const parseSetCookieHeader = http_integration.parseSetCookieHeader;
+pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
+pub const ParseError = http_integration.ParseError;
+
 test {
     _ = cookie;
     _ = validation;
@@ -117,4 +132,6 @@ test {
     _ = algorithms;
     _ = storage_integration;
     _ = change_observer;
+    _ = event_dispatch;
+    _ = http_integration;
 }
