@@ -215,6 +215,9 @@ pub fn setCookie(
 
     if (cookie_domain) |d| {
         try cookie.setDomain(d);
+    } else {
+        // Host-only cookies must store the request host for proper matching
+        try cookie.setDomain(host);
     }
 
     if (!std.mem.eql(u8, path, "/")) {
