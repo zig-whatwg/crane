@@ -234,6 +234,7 @@ pub const ResultCollector = struct {
         try self.results.append(self.allocator, result);
         self.current_test = &self.results.items[self.results.items.len - 1];
         self.completion_signaled = false;
+        self.completed = false;
     }
 
     /// Add a subtest result to the current test
@@ -326,6 +327,13 @@ pub const testharnessreport_js =
     \\  }
     \\  if (typeof __wpt_report_completion !== 'function') {
     \\    throw new Error('__wpt_report_completion not available');
+    \\  }
+    \\
+    \\  // Configure testharness.js with a shorter timeout
+    \\  // The default is 10 seconds which is too slow for running many tests
+    \\  // We use explicit_timeout to disable the built-in timeout since we have our own
+    \\  if (typeof setup === 'function') {
+    \\    setup({ explicit_timeout: true });
     \\  }
     \\
     \\  // Register callback for individual test results

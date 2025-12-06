@@ -106,8 +106,10 @@ pub const BrowserAdapter = struct {
         if (!self.context_initialized) {
             try self.initializeTestHarness();
         } else {
-            // Subsequent tests: reset JavaScript state
-            try self.context.resetJavaScriptState();
+            // Subsequent tests: reload testharness.js completely
+            // We can't reset testharness.js state because 'tests' is a local variable
+            // in the IIFE, not accessible from outside. Re-loading is the only way.
+            try self.context.loadTestHarness();
         }
 
         // Execute the test

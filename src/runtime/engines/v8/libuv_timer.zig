@@ -184,12 +184,25 @@ pub const LibuvTimerManager = struct {
         libuv.close(libuv.timerToHandle(&ctx.handle), closeCallback);
     }
 
-    /// Run the event loop once (non-blocking).
-    /// This processes any ready timer callbacks.
+    /// Run the event loop once.
+    /// This processes any ready timer callbacks and blocks until at least one event
+    /// occurs, or returns immediately if there are no active handles.
     /// Returns true if there are still active handles.
     pub fn poll(self: *Self) bool {
         if (!self.initialized) return false;
-        const result = libuv.run(self.loop, .UV_RUN_NOWAIT);
+        // Use UV_RUN_ONCE to ensure timers with 0ms delay actually fire.
+        // UV_RUN_NOWAIT doesn't always process timers that were just added.
+        const result = libuv.run(self.loop, .UV_RUN_ONCE);
+        return result > 0;
+    }
+
+    /// Run the event loop once (blocking).
+    /// This blocks until at least one callback has been invoked, or until
+    /// there are no more active handles.
+    /// Returns true if there are still active handles.
+    pub fn pollBlocking(self: *Self) bool {
+        if (!self.initialized) return false;
+        const result = libuv.run(self.loop, .UV_RUN_ONCE);
         return result > 0;
     }
 

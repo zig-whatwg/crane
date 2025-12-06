@@ -701,6 +701,11 @@ pub const BrowserContext = struct {
 
         try self.executeScript(reset_script);
 
+        // Re-register testharnessreport.js callbacks (they were cleared by the reset above)
+        // This is critical: add_result_callback and add_completion_callback must be
+        // re-registered after clearing tests.test_done_callbacks and tests.all_done_callbacks
+        try self.executeScript(test_harness.testharnessreport_js);
+
         // Run microtasks to clear any pending work
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
@@ -819,19 +824,37 @@ pub const BrowserContext = struct {
             \\  // CRITICAL: testharness.js WindowTestEnvironment sets all_loaded = true
             \\  // only when the window 'load' event fires. Since we don't have a real
             \\  // window load event, we need to set this manually for tests.all_done() to work.
-            \\  // test_environment is a global variable in testharness.js
             \\  if (typeof test_environment !== 'undefined') {
             \\    test_environment.all_loaded = true;
             \\  }
             \\  
-            \\  // Call the exposed done() function to signal test completion
-            \\  // testharness.js exposes this globally via expose(done, 'done')
-            \\  if (typeof done === 'function') {
-            \\    // Use setTimeout 0 to allow any pending microtasks/promises to resolve first
-            \\    setTimeout(function() {
-            \\      done();
-            \\    }, 0);
-            \\  }
+            \\  // Use setTimeout to allow any pending microtasks/promises to resolve first,
+            \\  // then directly trigger completion via our native callback.
+            \\  // We bypass testharness.js's done() because its internal state management
+            \\  // can get out of sync when we reload it between tests.
+            \\  setTimeout(function() {
+            \\    // Check if tests object exists and get its status
+            \\    var harness_status = 0; // OK
+            \\    var harness_message = null;
+            \\    
+            \\    if (typeof tests !== 'undefined' && tests) {
+            \\      // If tests.status has been set, use it
+            \\      if (tests.status && tests.status.status !== null) {
+            \\        harness_status = tests.status.status;
+            \\        harness_message = tests.status.message || null;
+            \\      }
+            \\      // Check for pending tests that never completed
+            \\      if (tests.num_pending > 0) {
+            \\        harness_status = 2; // TIMEOUT
+            \\        harness_message = tests.num_pending + ' test(s) did not complete';
+            \\      }
+            \\    }
+            \\    
+            \\    // Directly call our completion callback, bypassing testharness.js chain
+            \\    if (typeof __wpt_report_completion === 'function') {
+            \\      __wpt_report_completion(harness_status, harness_message);
+            \\    }
+            \\  }, 0);
             \\})();
         ;
         try self.executeScript(completion_script);
@@ -853,7 +876,7 @@ pub const BrowserContext = struct {
 
             // 1. Run one iteration of the V8 event loop
             // This processes ready timers (via libuv), runs tasks, and runs microtasks
-            _ = event_loop.eventLoop().runOnce();
+            const did_work = event_loop.eventLoop().runOnce();
 
             // 2. Check if completion callback has been called
             if (self.result_collector.completed) {
@@ -868,9 +891,11 @@ pub const BrowserContext = struct {
                 return;
             }
 
-            // 4. Short sleep to avoid busy-waiting
-            // The libuv loop handles actual timer scheduling, we just need to poll frequently
-            std.Thread.sleep(1 * std.time.ns_per_ms);
+            // 4. If no work was done (no timers ready, no tasks), briefly yield
+            // to avoid busy-waiting. When work is being done, keep processing.
+            if (!did_work) {
+                std.Thread.sleep(1 * std.time.ns_per_ms);
+            }
         }
     }
 
@@ -1169,7 +1194,6 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // Get timer interface from thread-local storage
     const timer = getTimerInterface() orelse {
         // Fallback: execute immediately if no timer interface
-        std.debug.print("WARNING: No timer interface, executing setTimeout callback immediately\n", .{});
         const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
             const result = v8.ffi.v8_Integer_New(isolate, 0);
             info.setReturnValue(@ptrCast(result));
