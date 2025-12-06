@@ -70,6 +70,7 @@ pub const BucketMode = enum {
 /// https://storage.spec.whatwg.org/#storage-identifier
 pub const StorageIdentifier = enum {
     caches,
+    cookies,
     fileSystem,
     indexedDB,
     localStorage,
@@ -79,6 +80,7 @@ pub const StorageIdentifier = enum {
     pub fn toString(self: StorageIdentifier) []const u8 {
         return switch (self) {
             .caches => "caches",
+            .cookies => "cookies",
             .fileSystem => "fileSystem",
             .indexedDB => "indexedDB",
             .localStorage => "localStorage",
@@ -105,8 +107,10 @@ pub const FIVE_MEBIBYTES: u64 = 5 * 1024 * 1024;
 /// Registered storage endpoints per the spec
 /// https://storage.spec.whatwg.org/#registered-storage-endpoints
 /// Note: fileSystem is from the File System Standard
+/// Note: cookies is for CookieStore API integration
 pub const registered_storage_endpoints = [_]StorageEndpoint{
     .{ .identifier = .caches, .types = &.{.local}, .quota = null },
+    .{ .identifier = .cookies, .types = &.{.local}, .quota = null },
     .{ .identifier = .fileSystem, .types = &.{.local}, .quota = null },
     .{ .identifier = .indexedDB, .types = &.{.local}, .quota = null },
     .{ .identifier = .localStorage, .types = &.{.local}, .quota = FIVE_MEBIBYTES },
@@ -806,12 +810,24 @@ test "StorageBucket - init with bottles" {
 
     // Should have bottles for all local endpoints
     try std.testing.expect(bucket.getBottle(.caches) != null);
+    try std.testing.expect(bucket.getBottle(.cookies) != null);
     try std.testing.expect(bucket.getBottle(.indexedDB) != null);
     try std.testing.expect(bucket.getBottle(.localStorage) != null);
     try std.testing.expect(bucket.getBottle(.serviceWorkerRegistrations) != null);
 
     // Should not have session storage bottle
     try std.testing.expect(bucket.getBottle(.sessionStorage) == null);
+}
+
+test "StorageIdentifier - cookies" {
+    try std.testing.expectEqualStrings("cookies", StorageIdentifier.cookies.toString());
+
+    // Verify cookies endpoint exists and is local storage with no quota
+    const endpoint = getEndpoint(.cookies);
+    try std.testing.expectEqual(StorageIdentifier.cookies, endpoint.identifier);
+    try std.testing.expect(endpoint.quota == null);
+    try std.testing.expectEqual(@as(usize, 1), endpoint.types.len);
+    try std.testing.expectEqual(StorageType.local, endpoint.types[0]);
 }
 
 test "StorageShelf - default bucket" {
