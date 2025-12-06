@@ -281,6 +281,46 @@ pub fn build(b: *std.Build) void {
     // BUILD OPTIONS
     // ========================================================================
 
+    // JavaScript Engine Selection
+    // Default: v8 (fully implemented)
+    // Future: jsc (JavaScriptCore), quickjs
+    const engine_choice = b.option(
+        []const u8,
+        "engine",
+        "JavaScript engine backend: v8 (default), jsc, quickjs",
+    ) orelse "v8";
+
+    // Validate engine choice
+    const valid_engines = [_][]const u8{ "v8", "jsc", "quickjs" };
+    var engine_valid = false;
+    for (valid_engines) |e| {
+        if (std.mem.eql(u8, engine_choice, e)) {
+            engine_valid = true;
+            break;
+        }
+    }
+    if (!engine_valid) {
+        std.debug.print("Error: Invalid engine '{s}'\n", .{engine_choice});
+        std.debug.print("Valid engines: v8 (default), jsc, quickjs\n", .{});
+        std.debug.print("\nUsage:\n", .{});
+        std.debug.print("  zig build -Dengine=v8      # Build with V8 (default)\n", .{});
+        std.debug.print("  zig build -Dengine=jsc     # Build with JavaScriptCore\n", .{});
+        std.debug.print("  zig build -Dengine=quickjs # Build with QuickJS\n", .{});
+        std.process.exit(1);
+    }
+
+    // Check if selected engine is implemented
+    const engine_implemented = std.mem.eql(u8, engine_choice, "v8");
+    if (!engine_implemented) {
+        std.debug.print("Error: Engine '{s}' is not yet fully implemented.\n", .{engine_choice});
+        std.debug.print("\nCurrently supported engines:\n", .{});
+        std.debug.print("  v8       Google V8 (fully implemented)\n", .{});
+        std.debug.print("\nPlanned engines (see issue whatwg-qfv3a):\n", .{});
+        std.debug.print("  jsc      JavaScriptCore (WebKit) - partial\n", .{});
+        std.debug.print("  quickjs  QuickJS - partial\n", .{});
+        std.process.exit(1);
+    }
+
     const spec_filter = b.option(
         []const u8,
         "spec",
@@ -319,6 +359,11 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+
+    // Engine configuration options (for conditional compilation)
+    build_options.addOption([]const u8, "engine_name", engine_choice);
+    build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
+    build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
 
     // Validate spec filter
     if (spec_filter) |spec| {
@@ -2444,4 +2489,46 @@ pub fn build(b: *std.Build) void {
     });
 
     lint_impls_step.dependOn(&lint_impls.step);
+
+    // ========================================================================
+    // HELP: Available JavaScript Engines
+    // ========================================================================
+
+    const help_engines_step = b.step("help-engines", "Show available JavaScript engines");
+    const help_engines_cmd = b.addSystemCommand(&[_][]const u8{
+        "sh",
+        "-c",
+        \\echo "Available JavaScript Engines"
+        \\echo "============================"
+        \\echo ""
+        \\echo "  v8       Google V8 (default)"
+        \\echo "           - Best performance and feature support"
+        \\echo "           - Supports heap snapshots for fast startup"
+        \\echo "           - Isolate-per-thread threading model"
+        \\echo "           - Status: FULLY IMPLEMENTED"
+        \\echo "           - Requires: Homebrew V8 (brew install v8)"
+        \\echo ""
+        \\echo "  jsc      JavaScriptCore (WebKit)"
+        \\echo "           - Native on macOS/iOS"
+        \\echo "           - Good performance, stable C API"
+        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
+        \\echo "           - Requires: JavaScriptCore.framework (macOS)"
+        \\echo "                       javascriptcoregtk-4.0 (Linux)"
+        \\echo ""
+        \\echo "  quickjs  QuickJS"
+        \\echo "           - Lightweight, embeddable"
+        \\echo "           - Good for resource-constrained environments"
+        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
+        \\echo "           - Requires: libquickjs.a"
+        \\echo ""
+        \\echo "Usage:"
+        \\echo "  zig build -Dengine=v8      # Build with V8 (default)"
+        \\echo "  zig build -Dengine=jsc     # Build with JavaScriptCore"
+        \\echo "  zig build -Dengine=quickjs # Build with QuickJS"
+        \\echo ""
+        \\echo "Note: Currently only V8 is fully implemented."
+        \\echo "JSC and QuickJS backends are tracked in issue whatwg-qfv3a."
+        ,
+    });
+    help_engines_step.dependOn(&help_engines_cmd.step);
 }
