@@ -22,6 +22,7 @@ const webidl = @import("webidl");
 
 // Import impl modules for accessing internal state
 const NodeImpl = @import("Node.zig");
+const ParentNodeImpl = @import("ParentNode.zig");
 
 pub const State = interfaces.ChildNode.State;
 
@@ -32,12 +33,9 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Union type for nodes or strings (used in variadic node methods)
+/// Use the same NodeOrString type as ParentNode to ensure type compatibility
 /// Spec: https://dom.spec.whatwg.org/#converting-nodes-into-a-node
-pub const NodeOrString = union(enum) {
-    node: *runtime.Instance,
-    string: []const u8,
-};
+pub const NodeOrString = ParentNodeImpl.NodeOrString;
 
 /// Internal state for implementation-specific data
 pub const InternalState = struct {};

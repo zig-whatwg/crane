@@ -1305,6 +1305,17 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     return count;
 }
 
+/// Get the owner document (returns null if this is a Document or no state)
+/// Per DOM spec: "The ownerDocument getter steps are to return null, if this
+/// is a document; otherwise this's node document."
+/// https://dom.spec.whatwg.org/#dom-node-ownerdocument
+pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    // Document nodes have no owner document (they ARE the document)
+    if (internal.node_type == NodeType.DOCUMENT_NODE) return null;
+    return internal.owner_document;
+}
+
 /// Append a node as the last child
 /// This is a public helper for DOMImplementation and other impls
 pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {

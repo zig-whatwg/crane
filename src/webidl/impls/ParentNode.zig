@@ -56,6 +56,12 @@ pub const NodeOrString = union(enum) {
     string: []const u8,
 };
 
+/// Internal state for ParentNode mixin
+/// Per DOM spec, ParentNode mixin doesn't define any internal slots.
+/// It operates on the node's existing children (from Node interface).
+/// This struct exists for compatibility with the interface State pattern.
+pub const InternalState = struct {};
+
 // =============================================================================
 // ParentNode Attribute Getters
 // =============================================================================
@@ -1180,7 +1186,7 @@ fn convertNodesIntoNode(
             .node => |n| n,
             .string => |s| try createTextNode(allocator, s, document, ctx),
         };
-        _ = try interfaces.Node.call_appendChild(fragment, child_node);
+        _ = interfaces.Node.call_appendChild(fragment, child_node) catch return error.HierarchyRequestError;
     }
 
     return fragment;
