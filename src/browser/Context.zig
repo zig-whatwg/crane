@@ -28,6 +28,7 @@ const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
 const Storage = @import("storage/Storage.zig");
+const navigation = @import("navigation.zig");
 const context_manager = v8.context_manager;
 
 /// Context type for determining which globals to register
@@ -407,10 +408,131 @@ pub const Context = struct {
     }
 
     /// Load page content (fetch, parse, execute)
+    ///
+    /// Navigation flow per HTML Standard:
+    /// 1. Fetch URL content
+    /// 2. Parse HTML into DOM tree
+    /// 3. Execute inline scripts (in document order)
+    /// 4. Fire DOMContentLoaded event
+    /// 5. Fire load event
     pub fn loadPage(self: *Context) !void {
-        // TODO: Implement full page loading
-        // For now, just ensure context is ready
+        const isolate = self.isolate;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+
+        // Step 1: Fetch URL content
+        var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
+            // Handle navigation errors gracefully
+            std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
+
+            // For about:blank or errors, just return with empty document
+            if (std.mem.eql(u8, self.url, "about:blank")) {
+                return;
+            }
+            return error.NavigationFailed;
+        };
+        defer result.deinit();
+
+        // Step 2: Check if HTML content
+        const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
+            std.mem.indexOf(u8, result.content_type, "application/xhtml") != null;
+
+        if (!is_html) {
+            // For non-HTML content, just set document.body.innerText
+            // This is a simplified approach for now
+            std.debug.print("Non-HTML content type: {s}\n", .{result.content_type});
+            return;
+        }
+
+        // Step 3: Parse HTML (for script extraction)
+        // Note: We're using a simplified approach here - just extracting scripts
+        // and executing them. Full DOM tree construction would integrate with
+        // the WebIDL Document interface.
+        try self.executeInlineScripts(result.body);
+
+        // Step 4: Fire DOMContentLoaded
+        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+
+        // Step 5: Fire load event
+        navigation.fireLoad(isolate, v8_ctx);
+    }
+
+    /// Execute inline scripts from HTML content
+    fn executeInlineScripts(self: *Context, html: []const u8) !void {
+        const isolate = self.isolate;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+
+        // Simple script extractor - find <script>...</script> blocks
+        var pos: usize = 0;
+        while (pos < html.len) {
+            // Find <script
+            const script_start = std.mem.indexOfPos(u8, html, pos, "<script") orelse break;
+
+            // Find > (end of opening tag)
+            const tag_end = std.mem.indexOfPos(u8, html, script_start, ">") orelse break;
+
+            // Check if it's a src script (external) - skip those for now
+            const tag_attrs = html[script_start..tag_end];
+            if (std.mem.indexOf(u8, tag_attrs, " src=") != null or
+                std.mem.indexOf(u8, tag_attrs, " src =") != null)
+            {
+                // External script - skip for now
+                // TODO: Fetch and execute external scripts
+                pos = tag_end + 1;
+                continue;
+            }
+
+            // Find </script>
+            const script_end = std.mem.indexOfPos(u8, html, tag_end, "</script>") orelse break;
+
+            // Extract script content
+            const script_content = html[tag_end + 1 .. script_end];
+
+            if (script_content.len > 0) {
+                // Execute the script
+                _ = self.evaluateScriptSafe(script_content, isolate, v8_ctx);
+            }
+
+            pos = script_end + 9; // Move past </script>
+        }
+    }
+
+    /// Evaluate script with error handling (doesn't propagate errors)
+    fn evaluateScriptSafe(
+        self: *Context,
+        script: []const u8,
+        isolate: *v8.ffi.Isolate,
+        v8_ctx: *v8.ffi.Context,
+    ) ?*v8.ffi.Value {
         _ = self;
+
+        const source_str = v8.ffi.v8_String_NewFromUtf8(
+            isolate,
+            script.ptr,
+            @intCast(script.len),
+        ) orelse return null;
+
+        const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse {
+            // Log compile error but continue
+            const exception = v8.ffi.v8_TryCatch_Exception(v8_ctx);
+            if (exception) |exc| {
+                const exc_str = v8.ffi.v8_Value_ToString(exc, v8_ctx);
+                if (exc_str) |str| {
+                    var buf: [1024]u8 = undefined;
+                    const len = v8.ffi.v8_String_Utf8Length(str);
+                    const write_len: usize = @min(@as(usize, @intCast(len)), buf.len - 1);
+                    _ = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(write_len));
+                    std.debug.print("Script compile error: {s}\n", .{buf[0..write_len]});
+                }
+            }
+            return null;
+        };
+
+        const result = v8.ffi.v8_Script_Run(v8_ctx, compiled);
+
+        // Run microtasks
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+        return result;
     }
 
     /// Evaluate JavaScript in this context

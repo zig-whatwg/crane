@@ -43,6 +43,11 @@ pub const BrowserConfig = @import("Browser.zig").BrowserConfig;
 pub const Context = @import("Context.zig").Context;
 pub const ContextType = @import("Context.zig").ContextType;
 
+pub const navigation = @import("navigation.zig");
+pub const NavigationResult = navigation.NavigationResult;
+pub const NavigationOptions = navigation.NavigationOptions;
+pub const NavigationError = navigation.NavigationError;
+
 pub const storage = @import("storage/Storage.zig");
 pub const Storage = storage.Storage;
 pub const CookieStore = storage.CookieStore;
@@ -53,5 +58,6 @@ pub const SessionStorage = storage.SessionStorage;
 test {
     _ = @import("Browser.zig");
     _ = @import("Context.zig");
+    _ = @import("navigation.zig");
     _ = @import("storage/Storage.zig");
 }
