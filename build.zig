@@ -2037,6 +2037,67 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
+    // SNAPSHOT GENERATOR
+    // ========================================================================
+
+    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
+    const snapshot_gen_exe = b.addExecutable(.{
+        .name = "snapshot_generator",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
+            },
+        }),
+    });
+
+    // Add V8 C++ wrapper
+    snapshot_gen_exe.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add V8 include paths (Homebrew on macOS)
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+    // Link V8 libraries
+    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
+    snapshot_gen_exe.linkSystemLibrary("v8");
+    snapshot_gen_exe.linkSystemLibrary("v8_libplatform");
+    snapshot_gen_exe.linkSystemLibrary("v8_libbase");
+
+    // Link libuv for timer support
+    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    snapshot_gen_exe.linkSystemLibrary("uv");
+
+    // Link C++ standard library
+    snapshot_gen_exe.linkLibCpp();
+
+    // Note: Not installing by default - run explicitly via snapshot-generator step
+    // b.installArtifact(snapshot_gen_exe);
+
+    // Add run step for Snapshot Generator
+    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
+    // Don't depend on install step since we're not installing by default
+    // run_snapshot_gen.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_snapshot_gen.addArgs(args);
+
+    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
+    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
+
+    // ========================================================================
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================
 

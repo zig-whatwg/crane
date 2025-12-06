@@ -68,7 +68,15 @@ var runtime_ref_count: usize = 0;
 /// This is used when callbacks cannot be collected at comptime.
 /// Must be called before snapshot creation.
 pub fn registerCallbackRuntime(callback: v8.FunctionCallback) void {
-    const ptr_value: isize = @intCast(@intFromPtr(callback));
+    registerPointer(@intFromPtr(callback));
+}
+
+/// Register any pointer as an external reference
+///
+/// This is the generic version that accepts any pointer type.
+/// Use this for non-FunctionCallback callbacks (e.g., NamedPropertyCallback).
+pub fn registerPointer(ptr: usize) void {
+    const ptr_value: isize = @intCast(ptr);
 
     // Check if already registered
     for (runtime_refs[0..runtime_ref_count]) |ref| {

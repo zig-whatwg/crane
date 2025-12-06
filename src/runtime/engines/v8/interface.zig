@@ -288,16 +288,20 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Register method callbacks
+            // Method tuple format: { js_name, zig_call_name, arg_count }
             inline for (methods) |method| {
-                const Callback = MethodCallback(method.zig_name);
+                const zig_name: []const u8 = method[1];
+                const Callback = MethodCallback(zig_name);
                 ext_refs.registerCallbackRuntime(Callback.callback);
             }
 
             // Register static method callbacks
             // Static methods are defined in Meta.static_operations
+            // Static operation tuple format: { js_name, zig_call_name, arg_count }
             if (@hasDecl(Meta, "static_operations")) {
                 inline for (Meta.static_operations) |op| {
-                    const StaticCallback = StaticMethodCallback(op.zig_name);
+                    const zig_name: []const u8 = op[1];
+                    const StaticCallback = StaticMethodCallback(zig_name);
                     ext_refs.registerCallbackRuntime(StaticCallback.callback);
                 }
             }
@@ -329,14 +333,16 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Register lazy property handlers if there are lazy properties
+            // Note: These are NamedPropertyCallbacks, not FunctionCallbacks, so use registerPointer
             if (lazy_properties.len > 0) {
-                ext_refs.registerCallbackRuntime(lazyPropertyGetter);
-                ext_refs.registerCallbackRuntime(lazyPropertySetter);
+                ext_refs.registerPointer(@intFromPtr(&lazyPropertyGetter));
+                ext_refs.registerPointer(@intFromPtr(&lazyPropertySetter));
             }
 
             // Register indexed property handler if interface is iterable
+            // Note: This is an IndexedPropertyCallback, not a FunctionCallback
             if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
-                ext_refs.registerCallbackRuntime(indexedPropertyGetter);
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
             }
         }
 
