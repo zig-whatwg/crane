@@ -88,9 +88,21 @@ pub const SameSiteContext = jar.SameSiteContext;
 pub const MAX_COOKIES_PER_DOMAIN = jar.MAX_COOKIES_PER_DOMAIN;
 pub const MAX_TOTAL_COOKIES = jar.MAX_TOTAL_COOKIES;
 
+// Algorithms
+pub const algorithms = @import("algorithms.zig");
+pub const queryCookies = algorithms.queryCookies;
+pub const setCookie = algorithms.setCookie;
+pub const deleteCookie = algorithms.deleteCookie;
+pub const createCookieListItem = algorithms.createCookieListItem;
+pub const normalizeCookieNameOrValue = algorithms.normalizeCookieNameOrValue;
+pub const CookieError = algorithms.CookieError;
+pub const SetCookieOptions = algorithms.SetCookieOptions;
+pub const DeleteCookieOptions = algorithms.DeleteCookieOptions;
+
 test {
     _ = cookie;
     _ = validation;
     _ = domain_matching;
     _ = jar;
+    _ = algorithms;
 }

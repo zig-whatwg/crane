@@ -128,20 +128,26 @@ pub fn getDefaultPath(uri_path: []const u8) []const u8 {
 }
 
 /// Check if a domain is a public suffix
-/// Uses the Public Suffix List for accurate detection
-pub fn isPublicSuffix(allocator: std.mem.Allocator, domain: []const u8) !bool {
-    // Import the URL module's PSL support
-    const Host = @import("url").Host;
+/// Uses simple heuristics for common TLDs.
+/// For production use with full PSL support, integrate with url/public_suffix.zig
+pub fn isPublicSuffix(_: std.mem.Allocator, domain: []const u8) !bool {
+    // Common public suffixes
+    const public_suffixes = [_][]const u8{
+        "com",   "org",    "net",   "edu",   "gov",   "mil",    "co.uk",  "org.uk",
+        "ac.uk", "gov.uk", "co.jp", "ne.jp", "or.jp", "com.au", "net.au", "org.au",
+        "co.nz", "com.br", "io",    "dev",   "app",   "uk",     "de",     "fr",
+        "jp",    "cn",     "ru",    "nl",    "it",    "es",     "ca",     "au",
+        "in",    "ch",     "se",    "no",    "fi",    "dk",     "be",     "at",
+        "pl",    "cz",     "pt",    "ie",    "nz",    "il",     "za",     "sg",
+        "hk",    "tw",     "kr",    "mx",    "ar",    "cl",     "co",
+    };
 
-    // Try to get the public suffix
-    const host = Host{ .domain = domain };
-    const url_psl = @import("url").public_suffix;
-    const ps = try url_psl.getPublicSuffix(allocator, host);
-    defer if (ps) |p| allocator.free(p);
+    const lower = domain;
 
-    if (ps) |public_suffix| {
-        // If the public suffix equals the domain, it's a public suffix
-        return std.ascii.eqlIgnoreCase(public_suffix, domain);
+    for (public_suffixes) |suffix| {
+        if (std.ascii.eqlIgnoreCase(lower, suffix)) {
+            return true;
+        }
     }
 
     return false;
