@@ -15,6 +15,7 @@
 //! - xhr/ - XMLHttpRequest Standard
 //! - dom/ - DOM Standard
 //! - html/ - HTML Standard (non-rendering only)
+//! - cookiestore/ - Cookie Store API
 //!
 //! ## Out-of-Scope Categories
 //!
@@ -84,6 +85,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "xhr", .description = "XMLHttpRequest Standard" },
     .{ .name = "dom", .description = "DOM Standard" },
     .{ .name = "html", .description = "HTML Standard (non-rendering)" },
+    .{ .name = "cookiestore", .description = "Cookie Store API" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
@@ -199,6 +201,7 @@ test "isInScope" {
     try testing.expect(isInScope("url/url-constructor.any.js"));
     try testing.expect(isInScope("encoding/textdecoder.any.js"));
     try testing.expect(isInScope("dom/events/Event.html"));
+    try testing.expect(isInScope("cookiestore/cookieStore_get_set_basic.https.any.js"));
     try testing.expect(!isInScope("css/selectors/test.html"));
     try testing.expect(!isInScope("webgl/test.html"));
     try testing.expect(!isInScope("html/rendering/test.html"));

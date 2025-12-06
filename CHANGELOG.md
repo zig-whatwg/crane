@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - CookieStore API Implementation (v0.8.0 - 2025-12-05)
+
+#### WHATWG Cookie Store API (`src/cookiestore/`)
+Complete implementation of the [WHATWG Cookie Store API](https://cookiestore.spec.whatwg.org/) in native Zig.
+
+- **Core Types** (`src/cookiestore/cookie.zig`)
+  - `Cookie` struct with all RFC 6265bis fields (name, value, domain, path, expiry, etc.)
+  - `SameSite` enum (strict, lax, none)
+  - `PartitionKey` for CHIPS (Cookies Having Independent Partitioned State)
+  - `CookieListItem` for WebIDL conversion
+
+- **Cookie Jar** (`src/cookiestore/jar.zig`)
+  - Efficient cookie collection management
+  - Store/retrieve with automatic deduplication
+  - Domain and path matching per RFC 6265bis
+  - Cookie sorting (longer paths first, earlier creation first)
+  - Automatic expiration cleanup
+  - Configurable limits (50 per domain, 3000 total)
+
+- **Algorithms** (`src/cookiestore/algorithms.zig`)
+  - `queryCookies` - Retrieve cookies matching criteria (HttpOnly filtered for JS API)
+  - `setCookie` - Create and store cookies with full validation
+  - `deleteCookie` - Remove cookies via expiration
+
+- **Validation** (`src/cookiestore/validation.zig`)
+  - RFC 6265bis name/value character validation
+  - Size limits (4096 bytes name+value)
+  - Cookie prefix validation (__Host-, __Secure-)
+  - Reserved prefix rejection
+
+- **Domain/Path Matching** (`src/cookiestore/domain_matching.zig`)
+  - Domain matching per RFC 6265bis 5.1.3
+  - Path matching per RFC 6265bis 5.1.4
+  - Public suffix validation using existing PSL
+  - Registrable domain suffix checks
+
+- **HTTP Integration** (`src/cookiestore/http_integration.zig`)
+  - `generateCookieHeader` - Build Cookie header for requests
+  - `parseSetCookieHeader` - Parse Set-Cookie headers from responses
+  - Cookie attribute parsing (Expires, Max-Age, Domain, Path, SameSite, etc.)
+
+- **Change Observer** (`src/cookiestore/change_observer.zig`)
+  - Track cookie changes (set, delete)
+  - Listener registration for change notifications
+  - Observable changes filtering (domain/path/name)
+
+- **Storage Integration** (`src/cookiestore/storage.zig`)
+  - Persistent cookie storage via Storage Standard
+  - JSON serialization/deserialization
+  - Backend-agnostic (memory, SQLite, LevelDB)
+
+#### WebIDL Interfaces (`src/webidl/impls/`)
+- **CookieStore** - JavaScript API for cookie operations
+  - `get(name)` / `get(options)` - Retrieve single cookie
+  - `getAll()` / `getAll(name)` / `getAll(options)` - Retrieve all matching cookies
+  - `set(name, value)` / `set(options)` - Store a cookie
+  - `delete(name)` / `delete(options)` - Remove a cookie
+  - `onchange` event handler
+
+- **CookieStoreManager** - Service Worker subscription management
+  - `subscribe(subscriptions)` - Subscribe to cookie changes
+  - `getSubscriptions()` - Get current subscriptions
+  - `unsubscribe(subscriptions)` - Remove subscriptions
+
+- **CookieChangeEvent** - Change notification events
+  - `changed` - FrozenArray of added/modified cookies
+  - `deleted` - FrozenArray of removed cookies
+
+- **ExtendableCookieChangeEvent** - Service Worker variant
+  - Extends ExtendableEvent for SW lifecycle
+
+#### Window/ServiceWorker Integration
+- `Window.cookieStore` attribute
+- `ServiceWorkerGlobalScope.cookieStore` attribute
+- `ServiceWorkerGlobalScope.oncookiechange` handler
+- `ServiceWorkerRegistration.cookies` attribute
+
+#### Security Features
+- SecureContext enforcement (HTTPS only)
+- HttpOnly cookies never exposed via JavaScript API
+- SameSite attribute enforcement
+- Partitioned cookie isolation (CHIPS)
+- Public suffix list validation
+- Cookie prefix validation
+
+#### Test Coverage
+- 74 core module tests (cookie, jar, algorithms, validation, domain matching, HTTP integration)
+- 17 WebIDL integration tests
+- Zero memory leaks verified
+- WPT test runner configured (55 test files)
+
 ### Breaking Changes - Cookie Implementation Migration
 
 #### Removed: `src/fetch/cookies/` module
