@@ -28,6 +28,52 @@ const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
 const callback_wrapper_mod = @import("callback_wrapper.zig");
 
+// Logging for V8 exceptions
+const log = std.log.scoped(.v8_engine);
+
+// ============================================================================
+// V8 Exception Logging Helpers
+// ============================================================================
+
+/// Log detailed V8 error information
+/// Call this when a _Safe function returns an error to get full exception details.
+fn logV8Error(error_info: *const ffi.V8ErrorInfo, operation: []const u8) void {
+    if (!error_info.has_error) return;
+
+    const message = error_info.getMessage() orelse "Unknown error";
+    const resource = error_info.getResourceName() orelse "<unknown>";
+
+    if (error_info.line_number >= 0) {
+        log.err("{s} failed at {s}:{d}:{d}: {s}", .{
+            operation,
+            resource,
+            error_info.line_number,
+            error_info.column_number,
+            message,
+        });
+    } else {
+        log.err("{s} failed: {s}", .{ operation, message });
+    }
+
+    // Log source line if available
+    if (error_info.getSourceLine()) |source_line| {
+        log.err("  Source: {s}", .{source_line});
+        // Add caret pointing to error column
+        if (error_info.column_number >= 0 and error_info.column_number < 200) {
+            var caret_buf: [256]u8 = undefined;
+            const col: usize = @intCast(error_info.column_number);
+            @memset(caret_buf[0..col], ' ');
+            caret_buf[col] = '^';
+            log.err("  {s}", .{caret_buf[0 .. col + 1]});
+        }
+    }
+
+    // Log stack trace if available
+    if (error_info.getStackTrace()) |stack| {
+        log.err("Stack trace:\n{s}", .{stack});
+    }
+}
+
 /// V8 implementation of the abstract EngineInterface
 pub const v8_engine_interface: EngineInterface = .{
     .wrapAsyncIterator = v8WrapAsyncIterator,
@@ -310,11 +356,29 @@ fn v8ParseJson(
         @intCast(escaped.items.len),
     ) orelse return EngineError.OperationFailed;
 
-    const script = ffi.v8_Script_Compile(context, parse_str) orelse
+    // Compile using safe variant for error reporting
+    const compile_result = ffi.v8_Script_Compile_Safe(context, parse_str);
+    defer ffi.v8_FreeScriptCompileResult(compile_result);
+
+    if (compile_result.error_info) |err| {
+        logV8Error(err, "JSON.parse compilation");
+        return EngineError.OperationFailed;
+    }
+
+    const script = compile_result.script orelse
         return EngineError.OperationFailed;
     defer ffi.v8_Script_Dispose(script);
 
-    const result = ffi.v8_Script_Run(context, script) orelse
+    // Run using safe variant for error reporting
+    const run_result = ffi.v8_Script_Run_Safe(context, script);
+    defer ffi.v8_FreeScriptRunResult(run_result);
+
+    if (run_result.error_info) |err| {
+        logV8Error(err, "JSON.parse execution");
+        return EngineError.OperationFailed;
+    }
+
+    const result = run_result.value orelse
         return EngineError.OperationFailed;
 
     return @ptrCast(result);
@@ -584,17 +648,24 @@ fn v8InvokeStreamCallback(
     const this_val = ffi.v8_Undefined(isolate) orelse
         return EngineError.OperationFailed;
 
-    // Call the function
+    // Call the function using safe variant with TryCatch
     const args_ptr: [*]*ffi.Value = &args;
-    const result = ffi.v8_Function_Call(
+    const call_result = ffi.v8_Function_Call_Safe(
         callback_fn,
         context,
         this_val,
         @intCast(arg_count),
-        if (arg_count > 0) args_ptr else args_ptr,
+        if (arg_count > 0) args_ptr else null,
     );
+    defer ffi.v8_FreeFunctionCallResult(call_result);
 
-    if (result) |r| {
+    // Check for error
+    if (call_result.error_info) |err| {
+        logV8Error(err, "Stream callback invocation");
+        return null;
+    }
+
+    if (call_result.value) |r| {
         // If result is a Promise, return it directly
         if (ffi.v8_Value_IsPromise(r)) {
             return @ptrCast(r);
@@ -610,8 +681,8 @@ fn v8InvokeStreamCallback(
         return @ptrCast(promise);
     }
 
-    // Call failed - this likely means an exception was thrown
-    // Return null to signal error
+    // Call returned null without error - unexpected
+    log.warn("Stream callback returned null without error", .{});
     return null;
 }
 
@@ -733,22 +804,30 @@ fn v8CompileScript(
         );
     }
 
-    // Compile the script with optional source origin
-    const script = if (resource_name) |name|
-        ffi.v8_Script_CompileWithOrigin(context, source_str, name)
+    // Compile the script using safe variant with TryCatch
+    const compile_result = if (resource_name) |name|
+        ffi.v8_Script_CompileWithOrigin_Safe(context, source_str, name)
     else
-        ffi.v8_Script_Compile(context, source_str);
+        ffi.v8_Script_Compile_Safe(context, source_str);
+    defer ffi.v8_FreeScriptCompileResult(compile_result);
 
     // Clean up resource name if created
     if (resource_name) |name| {
         ffi.v8_String_Dispose(name);
     }
 
-    if (script) |s| {
+    // Check for compilation error
+    if (compile_result.error_info) |err| {
+        logV8Error(err, "Script compilation");
+        return null;
+    }
+
+    if (compile_result.script) |s| {
         return @ptrCast(s);
     }
 
-    // Compilation failed (likely syntax error)
+    // Compilation failed without error info - unexpected
+    log.warn("Script compilation returned null without error", .{});
     return null;
 }
 
@@ -771,13 +850,22 @@ fn v8RunScript(
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const v8_script: *ffi.Script = @ptrCast(@alignCast(script));
 
-    const result = ffi.v8_Script_Run(context, v8_script);
+    // Run script using safe variant with TryCatch
+    const run_result = ffi.v8_Script_Run_Safe(context, v8_script);
+    defer ffi.v8_FreeScriptRunResult(run_result);
 
-    if (result) |r| {
+    // Check for execution error
+    if (run_result.error_info) |err| {
+        logV8Error(err, "Script execution");
+        return null;
+    }
+
+    if (run_result.value) |r| {
         return @ptrCast(r);
     }
 
-    // Execution threw an exception
+    // Execution returned null without error - unexpected
+    log.warn("Script execution returned null without error", .{});
     return null;
 }
 
@@ -817,19 +905,27 @@ fn v8CompileModule(
         @intCast(source_url.len),
     );
 
-    // Compile as ES Module
-    const module = ffi.v8_Module_Compile(context, source_str, resource_name);
+    // Compile as ES Module using safe variant with TryCatch
+    const compile_result = ffi.v8_Module_Compile_Safe(context, source_str, resource_name);
+    defer ffi.v8_FreeModuleCompileResult(compile_result);
 
     // Clean up strings (V8 manages the V8 string memory)
     if (resource_name) |name| {
         ffi.v8_String_Dispose(name);
     }
 
-    if (module) |m| {
+    // Check for compilation error
+    if (compile_result.error_info) |err| {
+        logV8Error(err, "Module compilation");
+        return null;
+    }
+
+    if (compile_result.module) |m| {
         return @ptrCast(m);
     }
 
-    // Compilation failed
+    // Compilation failed without error info - unexpected
+    log.warn("Module compilation returned null without error", .{});
     return null;
 }
 
@@ -851,15 +947,30 @@ fn v8RunModule(
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
 
-    // Instantiate the module (link imports)
-    if (!ffi.v8_Module_Instantiate(context, v8_module)) {
+    // Instantiate the module (link imports) using safe variant
+    const instantiate_result = ffi.v8_Module_Instantiate_Safe(context, v8_module);
+    defer ffi.v8_FreeModuleInstantiateResult(instantiate_result);
+
+    if (instantiate_result.error_info) |err| {
+        logV8Error(err, "Module instantiation");
         return EngineError.OperationFailed;
     }
 
-    // Evaluate the module (execute top-level code)
-    _ = ffi.v8_Module_Evaluate(context, v8_module) orelse {
+    if (!instantiate_result.success) {
+        log.err("Module instantiation failed without error details", .{});
         return EngineError.OperationFailed;
-    };
+    }
+
+    // Evaluate the module (execute top-level code) using safe variant
+    const evaluate_result = ffi.v8_Module_Evaluate_Safe(context, v8_module);
+    defer ffi.v8_FreeModuleEvaluateResult(evaluate_result);
+
+    if (evaluate_result.error_info) |err| {
+        logV8Error(err, "Module evaluation");
+        return EngineError.OperationFailed;
+    }
+
+    // Success (value is discarded for sync evaluation)
 }
 
 /// Dispose of a compiled V8 script
@@ -913,22 +1024,41 @@ fn v8RunModuleAsync(
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const v8_module: *ffi.Module = @ptrCast(@alignCast(module));
 
-    // Instantiate the module if not already done
-    // (idempotent - V8 tracks module status)
-    if (!ffi.v8_Module_Instantiate(context, v8_module)) {
+    // Instantiate the module if not already done (idempotent - V8 tracks module status)
+    // Using safe variant for detailed error reporting
+    const instantiate_result = ffi.v8_Module_Instantiate_Safe(context, v8_module);
+    defer ffi.v8_FreeModuleInstantiateResult(instantiate_result);
+
+    if (instantiate_result.error_info) |err| {
+        logV8Error(err, "Module instantiation (async)");
         return EngineError.OperationFailed;
     }
 
-    // Evaluate the module - returns a Promise for TLA modules
-    // For non-TLA modules, the Promise resolves immediately
-    const result = ffi.v8_Module_Evaluate(context, v8_module) orelse {
+    if (!instantiate_result.success) {
+        log.err("Module instantiation failed without error details", .{});
         return EngineError.OperationFailed;
-    };
+    }
 
-    // V8's Module::Evaluate() always returns a Promise (as of V8 9.0+)
-    // For modules without TLA, it's an already-resolved Promise
-    // For modules with TLA, it resolves when async execution completes
-    return @ptrCast(result);
+    // Evaluate the module using safe variant - returns a Promise for TLA modules
+    // For non-TLA modules, the Promise resolves immediately
+    const evaluate_result = ffi.v8_Module_Evaluate_Safe(context, v8_module);
+    defer ffi.v8_FreeModuleEvaluateResult(evaluate_result);
+
+    if (evaluate_result.error_info) |err| {
+        logV8Error(err, "Module evaluation (async)");
+        return EngineError.OperationFailed;
+    }
+
+    if (evaluate_result.value) |result| {
+        // V8's Module::Evaluate() always returns a Promise (as of V8 9.0+)
+        // For modules without TLA, it's an already-resolved Promise
+        // For modules with TLA, it resolves when async execution completes
+        return @ptrCast(result);
+    }
+
+    // Evaluation returned null without error - unexpected
+    log.warn("Module evaluation returned null without error", .{});
+    return null;
 }
 
 /// Check if a V8 module contains top-level await

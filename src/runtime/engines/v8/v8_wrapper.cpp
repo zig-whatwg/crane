@@ -86,7 +86,559 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     }
 }
 
+// ============================================================================
+// V8 Exception Information Structure
+// ============================================================================
+//
+// When V8 operations throw JavaScript exceptions, we capture detailed error
+// information including the message, stack trace, line/column numbers, and
+// source line. This enables proper error reporting in Zig code.
+
+struct V8ErrorInfo {
+    bool has_error;
+    char* message;         // malloc'd, Zig must free
+    char* stack_trace;     // malloc'd, Zig must free
+    int line_number;
+    int column_number;
+    char* source_line;     // malloc'd, Zig must free
+    char* resource_name;   // malloc'd, Zig must free
+};
+
+/// Extract exception information from a TryCatch
+///
+/// This function extracts all available information from a V8 exception:
+/// - The exception message
+/// - Stack trace (if available)
+/// - Line and column numbers
+/// - Source line text
+/// - Resource name (filename/URL)
+///
+/// The caller is responsible for freeing the returned struct with v8_FreeErrorInfo.
+static V8ErrorInfo* extractException(Isolate* isolate, TryCatch* try_catch) {
+    HandleScope handle_scope(isolate);
+    
+    V8ErrorInfo* info = new V8ErrorInfo();
+    info->has_error = true;
+    info->message = nullptr;
+    info->stack_trace = nullptr;
+    info->line_number = -1;
+    info->column_number = -1;
+    info->source_line = nullptr;
+    info->resource_name = nullptr;
+    
+    // Extract exception message
+    Local<Value> exception = try_catch->Exception();
+    String::Utf8Value exception_str(isolate, exception);
+    info->message = strdup(*exception_str ? *exception_str : "Unknown error");
+    
+    // Extract detailed message information
+    Local<Message> message = try_catch->Message();
+    if (!message.IsEmpty()) {
+        Local<Context> ctx = isolate->GetCurrentContext();
+        
+        // Line and column numbers
+        info->line_number = message->GetLineNumber(ctx).FromMaybe(-1);
+        info->column_number = message->GetStartColumn();
+        
+        // Source line
+        MaybeLocal<String> source_line_maybe = message->GetSourceLine(ctx);
+        if (!source_line_maybe.IsEmpty()) {
+            String::Utf8Value source(isolate, source_line_maybe.ToLocalChecked());
+            info->source_line = strdup(*source ? *source : "");
+        }
+        
+        // Resource name (filename/URL)
+        Local<Value> resource = message->GetScriptResourceName();
+        String::Utf8Value resource_str(isolate, resource);
+        info->resource_name = strdup(*resource_str ? *resource_str : "<unknown>");
+        
+        // Full stack trace
+        MaybeLocal<Value> stack_trace_maybe = try_catch->StackTrace(ctx);
+        if (!stack_trace_maybe.IsEmpty()) {
+            String::Utf8Value stack(isolate, stack_trace_maybe.ToLocalChecked());
+            info->stack_trace = strdup(*stack ? *stack : "");
+        }
+    }
+    
+    return info;
+}
+
 extern "C" {
+
+// ============================================================================
+// V8ErrorInfo Functions
+// ============================================================================
+
+/// Free a V8ErrorInfo structure
+///
+/// Frees all strings allocated within the structure and the structure itself.
+void v8_FreeErrorInfo(V8ErrorInfo* info) {
+    if (!info) return;
+    
+    if (info->message) free(info->message);
+    if (info->stack_trace) free(info->stack_trace);
+    if (info->source_line) free(info->source_line);
+    if (info->resource_name) free(info->resource_name);
+    
+    delete info;
+}
+
+// ============================================================================
+// Safe Script/Module Operations with TryCatch
+// ============================================================================
+// These "_Safe" variants wrap V8 operations with TryCatch to capture exception
+// details when operations fail. This enables proper error reporting in Zig.
+
+/// Result structure for safe script compilation
+struct V8ScriptCompileResult {
+    Global<Script>* script;      // nullptr if compilation failed
+    V8ErrorInfo* error;          // nullptr if compilation succeeded
+};
+
+/// Result structure for safe script execution
+struct V8ScriptRunResult {
+    Global<Value>* value;        // nullptr if execution failed
+    V8ErrorInfo* error;          // nullptr if execution succeeded
+};
+
+/// Result structure for safe function calls
+struct V8FunctionCallResult {
+    Global<Value>* value;        // nullptr if call failed
+    V8ErrorInfo* error;          // nullptr if call succeeded
+};
+
+/// Result structure for safe module compilation
+struct V8ModuleCompileResult {
+    Global<Module>* module;      // nullptr if compilation failed
+    V8ErrorInfo* error;          // nullptr if compilation succeeded
+};
+
+/// Result structure for safe module instantiation
+struct V8ModuleInstantiateResult {
+    bool success;                // true if instantiation succeeded
+    V8ErrorInfo* error;          // nullptr if instantiation succeeded
+};
+
+/// Result structure for safe module evaluation
+struct V8ModuleEvaluateResult {
+    Global<Value>* value;        // nullptr if evaluation failed
+    V8ErrorInfo* error;          // nullptr if evaluation succeeded
+};
+
+/// Compile a script with TryCatch error handling
+///
+/// Returns both the compiled script (on success) and error details (on failure).
+/// The caller must free the error with v8_FreeErrorInfo if non-null.
+V8ScriptCompileResult* v8_Script_Compile_Safe(Global<Context>* context, Global<String>* source) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<String> local_source = source->Get(isolate);
+    
+    V8ScriptCompileResult* result = new V8ScriptCompileResult();
+    result->script = nullptr;
+    result->error = nullptr;
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_script.IsEmpty()) {
+        // No exception but empty result - create generic error
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Script compilation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Script> script = maybe_script.ToLocalChecked();
+    result->script = trackHandle(new Global<Script>(isolate, script));
+    return result;
+}
+
+/// Compile a script with origin and TryCatch error handling
+V8ScriptCompileResult* v8_Script_CompileWithOrigin_Safe(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<String> local_source = source->Get(isolate);
+    Local<String> local_resource_name = resource_name->Get(isolate);
+    
+    V8ScriptCompileResult* result = new V8ScriptCompileResult();
+    result->script = nullptr;
+    result->error = nullptr;
+    
+    ScriptOrigin origin(local_resource_name);
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source, &origin);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_script.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Script compilation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Script> script = maybe_script.ToLocalChecked();
+    result->script = trackHandle(new Global<Script>(isolate, script));
+    return result;
+}
+
+/// Free a V8ScriptCompileResult
+void v8_FreeScriptCompileResult(V8ScriptCompileResult* result) {
+    if (!result) return;
+    // Note: script is owned by caller if non-null
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
+
+/// Run a compiled script with TryCatch error handling
+V8ScriptRunResult* v8_Script_Run_Safe(Global<Context>* context, Global<Script>* script) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Script> local_script = script->Get(isolate);
+    
+    V8ScriptRunResult* result = new V8ScriptRunResult();
+    result->value = nullptr;
+    result->error = nullptr;
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Value> maybe_result = local_script->Run(local_context);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_result.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Script execution failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Value> value = maybe_result.ToLocalChecked();
+    result->value = trackHandle(new Global<Value>(isolate, value));
+    return result;
+}
+
+/// Free a V8ScriptRunResult
+void v8_FreeScriptRunResult(V8ScriptRunResult* result) {
+    if (!result) return;
+    // Note: value is owned by caller if non-null
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
+
+/// Call a function with TryCatch error handling
+V8FunctionCallResult* v8_Function_Call_Safe(
+    Global<Function>* function,
+    Global<Context>* context,
+    Global<Value>* recv,
+    int argc,
+    Global<Value>** argv
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Function> fn = function->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> this_val = recv ? recv->Get(isolate) : Undefined(isolate).As<Value>();
+    
+    V8FunctionCallResult* result = new V8FunctionCallResult();
+    result->value = nullptr;
+    result->error = nullptr;
+    
+    // Convert argument array from Global to Local
+    Local<Value>* local_argv = argc > 0 ? new Local<Value>[argc] : nullptr;
+    for (int i = 0; i < argc; i++) {
+        local_argv[i] = argv[i]->Get(isolate);
+    }
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Value> maybe_result = fn->Call(ctx, this_val, argc, local_argv);
+    
+    delete[] local_argv;
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_result.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Function call failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Value> value = maybe_result.ToLocalChecked();
+    result->value = trackHandle(new Global<Value>(isolate, value));
+    return result;
+}
+
+/// Call a function with receiver and TryCatch error handling
+V8FunctionCallResult* v8_Function_CallWithReceiver_Safe(
+    Global<Context>* context,
+    Global<Function>* function,
+    Global<Value>* receiver,
+    int argc,
+    Global<Value>** argv
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Function> fn = function->Get(isolate);
+    Local<Value> recv = receiver ? receiver->Get(isolate) : Undefined(isolate).As<Value>();
+    
+    V8FunctionCallResult* result = new V8FunctionCallResult();
+    result->value = nullptr;
+    result->error = nullptr;
+    
+    std::vector<Local<Value>> args;
+    args.reserve(argc);
+    for (int i = 0; i < argc; i++) {
+        args.push_back(argv[i]->Get(isolate));
+    }
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Value> maybe_result = fn->Call(ctx, recv, argc, args.data());
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_result.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Function call failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Value> value = maybe_result.ToLocalChecked();
+    result->value = trackHandle(new Global<Value>(isolate, value));
+    return result;
+}
+
+/// Free a V8FunctionCallResult
+void v8_FreeFunctionCallResult(V8FunctionCallResult* result) {
+    if (!result) return;
+    // Note: value is owned by caller if non-null
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
+
+/// Compile an ES module with TryCatch error handling
+V8ModuleCompileResult* v8_Module_Compile_Safe(
+    Global<Context>* context,
+    Global<String>* source,
+    Global<String>* resource_name
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<String> local_source = source->Get(isolate);
+    Local<String> local_name = resource_name ? resource_name->Get(isolate) : String::Empty(isolate);
+    
+    V8ModuleCompileResult* result = new V8ModuleCompileResult();
+    result->module = nullptr;
+    result->error = nullptr;
+    
+    // Create ScriptOrigin for module (is_module = true)
+    ScriptOrigin origin(
+        local_name,        // resource name
+        0,                 // line offset
+        0,                 // column offset
+        false,             // is_shared_cross_origin
+        -1,                // script id
+        Local<Value>(),    // source_map_url
+        false,             // is_opaque
+        false,             // is_wasm
+        true               // is_module
+    );
+    
+    ScriptCompiler::Source script_source(local_source, origin);
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Module> maybe_module = ScriptCompiler::CompileModule(isolate, &script_source);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_module.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Module compilation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Module> module = maybe_module.ToLocalChecked();
+    result->module = trackHandle(new Global<Module>(isolate, module));
+    return result;
+}
+
+/// Free a V8ModuleCompileResult
+void v8_FreeModuleCompileResult(V8ModuleCompileResult* result) {
+    if (!result) return;
+    // Note: module is owned by caller if non-null
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
+
+/// Forward declaration of module resolve callback (defined later in file)
+static MaybeLocal<Module> V8ModuleResolveCallback(
+    Local<Context> context,
+    Local<String> specifier,
+    Local<FixedArray> import_assertions,
+    Local<Module> referrer
+);
+
+/// Instantiate a module with TryCatch error handling
+V8ModuleInstantiateResult* v8_Module_Instantiate_Safe(Global<Context>* context, Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Module> local_module = module->Get(isolate);
+    
+    V8ModuleInstantiateResult* result = new V8ModuleInstantiateResult();
+    result->success = false;
+    result->error = nullptr;
+    
+    TryCatch try_catch(isolate);
+    
+    Maybe<bool> maybe_success = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    result->success = maybe_success.FromMaybe(false);
+    if (!result->success) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Module instantiation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+    }
+    return result;
+}
+
+/// Free a V8ModuleInstantiateResult
+void v8_FreeModuleInstantiateResult(V8ModuleInstantiateResult* result) {
+    if (!result) return;
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
+
+/// Evaluate a module with TryCatch error handling
+V8ModuleEvaluateResult* v8_Module_Evaluate_Safe(Global<Context>* context, Global<Module>* module) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Module> local_module = module->Get(isolate);
+    
+    V8ModuleEvaluateResult* result = new V8ModuleEvaluateResult();
+    result->value = nullptr;
+    result->error = nullptr;
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<Value> maybe_result = local_module->Evaluate(local_context);
+    
+    if (try_catch.HasCaught()) {
+        result->error = extractException(isolate, &try_catch);
+        return result;
+    }
+    
+    if (maybe_result.IsEmpty()) {
+        result->error = new V8ErrorInfo();
+        result->error->has_error = true;
+        result->error->message = strdup("Module evaluation failed");
+        result->error->stack_trace = nullptr;
+        result->error->line_number = -1;
+        result->error->column_number = -1;
+        result->error->source_line = nullptr;
+        result->error->resource_name = nullptr;
+        return result;
+    }
+    
+    Local<Value> value = maybe_result.ToLocalChecked();
+    result->value = trackHandle(new Global<Value>(isolate, value));
+    return result;
+}
+
+/// Free a V8ModuleEvaluateResult
+void v8_FreeModuleEvaluateResult(V8ModuleEvaluateResult* result) {
+    if (!result) return;
+    // Note: value is owned by caller if non-null
+    if (result->error) v8_FreeErrorInfo(result->error);
+    delete result;
+}
 
 // ============================================================================
 // Snapshot Mode Control
@@ -2936,6 +3488,16 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     info.GetReturnValue().Set(promise);
 }
 
+/// Callback for Symbol.asyncIterator - returns 'this' (the iterator itself)
+///
+/// This makes the async iterator object both an iterator AND an iterable,
+/// allowing `for await...of` to work directly on the iterator object.
+/// ES spec: https://tc39.es/ecma262/#sec-%asynciteratorprototype%-@@asynciterator
+static void AsyncIteratorSelfCallback(const FunctionCallbackInfo<Value>& info) {
+    // Return the iterator object itself (this)
+    info.GetReturnValue().Set(info.This());
+}
+
 /// Create a V8 async iterator object wrapping a Zig async iterator
 ///
 /// Creates a JavaScript object with next() and return() methods that conform
@@ -3050,11 +3612,7 @@ Global<Object>* v8_AsyncIterator_New(
     // This makes the object both an async iterator AND async iterable
     // so that `for await...of` works directly on the iterator object
     Local<Symbol> async_iterator_symbol = Symbol::GetAsyncIterator(isolate);
-    Local<FunctionTemplate> self_tpl = FunctionTemplate::New(isolate, 
-        [](const FunctionCallbackInfo<Value>& info) {
-            // Return the iterator object itself (this)
-            info.GetReturnValue().Set(info.This());
-        });
+    Local<FunctionTemplate> self_tpl = FunctionTemplate::New(isolate, AsyncIteratorSelfCallback);
     Local<Function> self_fn = self_tpl->GetFunction(ctx).ToLocalChecked();
     obj->Set(ctx, async_iterator_symbol, self_fn).Check();
     
@@ -3352,6 +3910,49 @@ bool v8_Snapshot_IsValid(const char* snapshot_data, int snapshot_size) {
     startup_data.raw_size = snapshot_size;
     
     return startup_data.IsValid();
+}
+
+// ============================================================================
+// C++ Callback Pointers for External References
+// ============================================================================
+//
+// These functions return pointers to C++ callbacks that are used by V8
+// FunctionTemplates. For V8 snapshots to work correctly, ALL callback
+// function pointers must be registered in the external references array.
+//
+// Since C++ static functions aren't directly accessible from Zig FFI,
+// we expose them through these getter functions.
+
+/// Get pointer to AsyncIteratorNextCallback
+///
+/// This callback is used when creating async iterator objects via
+/// v8_CreateAsyncIterator. It wraps the Zig next function and handles
+/// the V8-specific Promise wrapping.
+///
+/// @return Function pointer to AsyncIteratorNextCallback
+void* v8_GetAsyncIteratorNextCallback() {
+    return reinterpret_cast<void*>(&AsyncIteratorNextCallback);
+}
+
+/// Get pointer to AsyncIteratorReturnCallback
+///
+/// This callback is used when creating async iterator objects via
+/// v8_CreateAsyncIterator. It wraps the Zig return function and handles
+/// the V8-specific Promise wrapping.
+///
+/// @return Function pointer to AsyncIteratorReturnCallback
+void* v8_GetAsyncIteratorReturnCallback() {
+    return reinterpret_cast<void*>(&AsyncIteratorReturnCallback);
+}
+
+/// Get pointer to AsyncIteratorSelfCallback
+///
+/// This callback is used for Symbol.asyncIterator on async iterator objects.
+/// It simply returns 'this', making the iterator both an iterator and iterable.
+///
+/// @return Function pointer to AsyncIteratorSelfCallback
+void* v8_GetAsyncIteratorSelfCallback() {
+    return reinterpret_cast<void*>(&AsyncIteratorSelfCallback);
 }
 
 } // extern "C"

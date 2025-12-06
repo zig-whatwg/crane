@@ -430,6 +430,187 @@ pub extern fn v8_Script_Run(context: *Context, script: *Script) ?*Value;
 pub extern fn v8_Script_Dispose(script: *Script) void;
 
 // ============================================================================
+// V8 Exception Handling with TryCatch
+// ============================================================================
+//
+// These types and functions provide detailed exception information when V8
+// operations fail. The "_Safe" variants wrap operations with TryCatch to
+// capture error messages, stack traces, and source location information.
+
+/// V8 error information extracted from exceptions
+/// Captures detailed exception data including message, stack trace, and source location.
+/// All string fields are heap-allocated and must be freed via v8_FreeErrorInfo.
+pub const V8ErrorInfo = extern struct {
+    /// Whether an error occurred
+    has_error: bool,
+    /// Exception message (heap-allocated, null-terminated)
+    message: ?[*:0]u8,
+    /// Stack trace string (heap-allocated, null-terminated, may be null)
+    stack_trace: ?[*:0]u8,
+    /// Line number where error occurred (-1 if unknown)
+    line_number: c_int,
+    /// Column number where error occurred (-1 if unknown)
+    column_number: c_int,
+    /// Source line text (heap-allocated, null-terminated, may be null)
+    source_line: ?[*:0]u8,
+    /// Resource name/URL (heap-allocated, null-terminated, may be null)
+    resource_name: ?[*:0]u8,
+
+    /// Get the message as a Zig slice
+    pub fn getMessage(self: *const V8ErrorInfo) ?[]const u8 {
+        if (self.message) |msg| {
+            return std.mem.sliceTo(msg, 0);
+        }
+        return null;
+    }
+
+    /// Get the stack trace as a Zig slice
+    pub fn getStackTrace(self: *const V8ErrorInfo) ?[]const u8 {
+        if (self.stack_trace) |st| {
+            return std.mem.sliceTo(st, 0);
+        }
+        return null;
+    }
+
+    /// Get the source line as a Zig slice
+    pub fn getSourceLine(self: *const V8ErrorInfo) ?[]const u8 {
+        if (self.source_line) |sl| {
+            return std.mem.sliceTo(sl, 0);
+        }
+        return null;
+    }
+
+    /// Get the resource name as a Zig slice
+    pub fn getResourceName(self: *const V8ErrorInfo) ?[]const u8 {
+        if (self.resource_name) |rn| {
+            return std.mem.sliceTo(rn, 0);
+        }
+        return null;
+    }
+};
+
+/// Free a V8ErrorInfo structure and all its allocated strings
+pub extern fn v8_FreeErrorInfo(info: ?*V8ErrorInfo) void;
+
+/// Result of safe script compilation
+pub const V8ScriptCompileResult = extern struct {
+    /// Compiled script (null if compilation failed)
+    script: ?*Script,
+    /// Error information (null if compilation succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Result of safe script execution
+pub const V8ScriptRunResult = extern struct {
+    /// Execution result value (null if execution failed)
+    value: ?*Value,
+    /// Error information (null if execution succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Result of safe function calls
+pub const V8FunctionCallResult = extern struct {
+    /// Return value (null if call failed)
+    value: ?*Value,
+    /// Error information (null if call succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Result of safe module compilation
+pub const V8ModuleCompileResult = extern struct {
+    /// Compiled module (null if compilation failed)
+    module: ?*Module,
+    /// Error information (null if compilation succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Result of safe module instantiation
+pub const V8ModuleInstantiateResult = extern struct {
+    /// Whether instantiation succeeded
+    success: bool,
+    /// Error information (null if instantiation succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Result of safe module evaluation
+pub const V8ModuleEvaluateResult = extern struct {
+    /// Evaluation result value (null if evaluation failed)
+    value: ?*Value,
+    /// Error information (null if evaluation succeeded)
+    error_info: ?*V8ErrorInfo,
+};
+
+/// Compile a script with TryCatch error handling
+/// Returns both the compiled script (on success) and detailed error info (on failure).
+/// Caller must free the result with v8_FreeScriptCompileResult.
+pub extern fn v8_Script_Compile_Safe(context: *Context, source: *String) *V8ScriptCompileResult;
+
+/// Compile a script with origin and TryCatch error handling
+pub extern fn v8_Script_CompileWithOrigin_Safe(context: *Context, source: *String, resource_name: *String) *V8ScriptCompileResult;
+
+/// Free a V8ScriptCompileResult (does not free the script if non-null)
+pub extern fn v8_FreeScriptCompileResult(result: ?*V8ScriptCompileResult) void;
+
+/// Run a compiled script with TryCatch error handling
+/// Returns both the result value (on success) and detailed error info (on failure).
+/// Caller must free the result with v8_FreeScriptRunResult.
+pub extern fn v8_Script_Run_Safe(context: *Context, script: *Script) *V8ScriptRunResult;
+
+/// Free a V8ScriptRunResult (does not free the value if non-null)
+pub extern fn v8_FreeScriptRunResult(result: ?*V8ScriptRunResult) void;
+
+/// Call a JavaScript function with TryCatch error handling
+/// Returns both the return value (on success) and detailed error info (on failure).
+/// Caller must free the result with v8_FreeFunctionCallResult.
+pub extern fn v8_Function_Call_Safe(
+    function: *Function,
+    context: *Context,
+    recv: ?*Value,
+    argc: c_int,
+    argv: ?[*]*Value,
+) *V8FunctionCallResult;
+
+/// Call a function with receiver and TryCatch error handling
+pub extern fn v8_Function_CallWithReceiver_Safe(
+    context: *Context,
+    function: *Function,
+    receiver: ?*Value,
+    argc: c_int,
+    argv: ?[*]*Value,
+) *V8FunctionCallResult;
+
+/// Free a V8FunctionCallResult (does not free the value if non-null)
+pub extern fn v8_FreeFunctionCallResult(result: ?*V8FunctionCallResult) void;
+
+/// Compile an ES module with TryCatch error handling
+/// Returns both the compiled module (on success) and detailed error info (on failure).
+/// Caller must free the result with v8_FreeModuleCompileResult.
+pub extern fn v8_Module_Compile_Safe(
+    context: *Context,
+    source: *String,
+    resource_name: ?*String,
+) *V8ModuleCompileResult;
+
+/// Free a V8ModuleCompileResult (does not free the module if non-null)
+pub extern fn v8_FreeModuleCompileResult(result: ?*V8ModuleCompileResult) void;
+
+/// Instantiate a module with TryCatch error handling
+/// Returns whether instantiation succeeded and detailed error info (on failure).
+/// Caller must free the result with v8_FreeModuleInstantiateResult.
+pub extern fn v8_Module_Instantiate_Safe(context: *Context, module: *Module) *V8ModuleInstantiateResult;
+
+/// Free a V8ModuleInstantiateResult
+pub extern fn v8_FreeModuleInstantiateResult(result: ?*V8ModuleInstantiateResult) void;
+
+/// Evaluate a module with TryCatch error handling
+/// Returns both the result value (on success) and detailed error info (on failure).
+/// Caller must free the result with v8_FreeModuleEvaluateResult.
+pub extern fn v8_Module_Evaluate_Safe(context: *Context, module: *Module) *V8ModuleEvaluateResult;
+
+/// Free a V8ModuleEvaluateResult (does not free the value if non-null)
+pub extern fn v8_FreeModuleEvaluateResult(result: ?*V8ModuleEvaluateResult) void;
+
+// ============================================================================
 // ES Module API
 // ============================================================================
 
@@ -1347,3 +1528,37 @@ pub extern fn v8_Snapshot_IsValid(
     snapshot_data: [*]const u8,
     snapshot_size: c_int,
 ) bool;
+
+// ============================================================================
+// C++ Callback Pointers for External References
+// ============================================================================
+//
+// These functions return pointers to C++ callbacks that are used by V8
+// FunctionTemplates. For V8 snapshots to work correctly, ALL callback
+// function pointers must be registered in the external references array.
+
+/// Get pointer to AsyncIteratorNextCallback
+///
+/// This callback is used when creating async iterator objects via
+/// v8_CreateAsyncIterator. It wraps the Zig next function and handles
+/// the V8-specific Promise wrapping.
+///
+/// @return Function pointer to AsyncIteratorNextCallback
+pub extern fn v8_GetAsyncIteratorNextCallback() FunctionCallback;
+
+/// Get pointer to AsyncIteratorReturnCallback
+///
+/// This callback is used when creating async iterator objects via
+/// v8_CreateAsyncIterator. It wraps the Zig return function and handles
+/// the V8-specific Promise wrapping.
+///
+/// @return Function pointer to AsyncIteratorReturnCallback
+pub extern fn v8_GetAsyncIteratorReturnCallback() FunctionCallback;
+
+/// Get pointer to AsyncIteratorSelfCallback
+///
+/// This callback is used for Symbol.asyncIterator on async iterator objects.
+/// It simply returns 'this', making the iterator both an iterator and iterable.
+///
+/// @return Function pointer to AsyncIteratorSelfCallback
+pub extern fn v8_GetAsyncIteratorSelfCallback() FunctionCallback;
