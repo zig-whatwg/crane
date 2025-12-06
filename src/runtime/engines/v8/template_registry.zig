@@ -53,6 +53,32 @@ var templates: [MAX_TEMPLATES]?TemplateEntry = [_]?TemplateEntry{null} ** MAX_TE
 var template_count: usize = 0;
 var initialized: bool = false;
 
+/// Snapshot mode flag - when true, templates are NOT cached
+///
+/// This prevents V8's "CheckGlobalAndEternalHandles failed" error during snapshot creation.
+/// When in snapshot mode:
+/// - Templates are created as Local handles within the current HandleScope
+/// - Templates are NOT stored in Zig-side caches (neither template_registry nor per-interface static caches)
+/// - V8 serializes only the attached constructors on the global object
+/// - At load time, templates are recreated from the snapshot context
+///
+/// ## Why This Works
+///
+/// V8 snapshots serialize the JavaScript heap, including constructor functions attached to
+/// the global object. The template caches are Zig-side caching - not needed for snapshot creation.
+/// By only creating Local handles (not Global), V8 has nothing to complain about.
+///
+/// ## Usage
+///
+/// ```zig
+/// // In snapshot generator:
+/// template_registry.snapshot_mode = true;
+/// interface_bindings.initializeBindings(isolate, context);
+/// // ... create snapshot ...
+/// template_registry.snapshot_mode = false; // reset for normal operation
+/// ```
+pub var snapshot_mode: bool = false;
+
 /// Global cache generation counter
 /// Incremented each time clear() is called to invalidate all per-interface caches.
 /// Per-interface static caches in V8Interface(T) store this generation along with
@@ -113,11 +139,19 @@ pub fn clear() void {
 ///
 /// Called by V8Interface.registerGlobal after creating the template.
 /// This allows later wrapping of instances via wrapInstanceAsV8Object.
+///
+/// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
+/// This prevents storing Global handles that would cause V8's
+/// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
 pub fn register(
     interface_name: []const u8,
     template: *v8.FunctionTemplate,
     isolate: *v8.Isolate,
 ) void {
+    // In snapshot mode, don't cache templates - they're not needed for snapshot creation
+    // and would cause V8 to complain about Global handles
+    if (snapshot_mode) return;
+
     ensureInitialized();
 
     // Check if already registered (avoid duplicates on re-registration)

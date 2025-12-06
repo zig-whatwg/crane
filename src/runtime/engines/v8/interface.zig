@@ -631,28 +631,32 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate_templates = @import("isolate_templates.zig");
             const isolate_alloc = @import("isolate_allocator.zig");
 
-            // FIRST: Check isolate-local storage (primary cache)
-            // This is the canonical approach - templates live with their isolate
-            if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
-                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
-                    if (storage.get(interface_name)) |cached| {
-                        return cached;
+            // Skip cache lookup in snapshot mode - always create fresh templates
+            // as Local handles that V8 can serialize without complaining about Global handles
+            if (!template_registry.snapshot_mode) {
+                // FIRST: Check isolate-local storage (primary cache)
+                // This is the canonical approach - templates live with their isolate
+                if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
+                    if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                        if (storage.get(interface_name)) |cached| {
+                            return cached;
+                        }
                     }
                 }
-            }
 
-            // SECOND: Check per-interface static cache (backup/fallback)
-            // Retained as defense in depth - handles cases where isolate-local fails
-            if (template_cache) |cached| {
-                if (template_cache_isolate == isolate and
-                    template_cache_generation == template_registry.cache_generation)
-                {
-                    return cached;
+                // SECOND: Check per-interface static cache (backup/fallback)
+                // Retained as defense in depth - handles cases where isolate-local fails
+                if (template_cache) |cached| {
+                    if (template_cache_isolate == isolate and
+                        template_cache_generation == template_registry.cache_generation)
+                    {
+                        return cached;
+                    }
+                    // Different isolate or different generation - cache is stale
+                    // Clear it before creating new template
+                    template_cache = null;
+                    template_cache_isolate = null;
                 }
-                // Different isolate or different generation - cache is stale
-                // Clear it before creating new template
-                template_cache = null;
-                template_cache_isolate = null;
             }
 
             // Create function template - only with constructor callback if interface is constructible
@@ -841,6 +845,12 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // TODO: Handle mixins
+
+            // Skip caching in snapshot mode - prevents V8's "CheckGlobalAndEternalHandles failed"
+            // In snapshot mode, templates are created as Local handles and not stored in Zig caches.
+            if (template_registry.snapshot_mode) {
+                return template;
+            }
 
             // Cache the template in BOTH places for defense in depth
             //
