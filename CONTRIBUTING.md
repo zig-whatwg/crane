@@ -353,6 +353,112 @@ Unacceptable deviations:
 - ❌ Missing validation steps
 - ❌ Incompatible URL behavior with browsers
 
+## V8 Isolate Lifecycle Management
+
+When working with V8-dependent code (JavaScript bindings, templates, contexts), you must properly manage state tied to V8 isolate lifetime.
+
+### The Problem
+
+V8 isolates are independent JavaScript execution environments. When an isolate is disposed, all V8 objects (templates, contexts, values) become invalid. If your code caches V8 objects in static or global variables, those caches become stale after isolate disposal.
+
+### The Solution: Cleanup Registry
+
+Use the `isolate_lifecycle` module to register cleanup handlers:
+
+```zig
+const lifecycle = @import("runtime/engines/v8/isolate_lifecycle.zig");
+
+// Register your cleanup handler during module initialization
+try lifecycle.registerCleanup(
+    "my_module",           // Module name for debugging
+    myCleanupFn,           // Cleanup function
+    myValidatorFn,         // Optional debug validator (null if none)
+    lifecycle.Priority.default,  // Priority (lower = earlier)
+);
+```
+
+### Cleanup Function Signature
+
+```zig
+fn myCleanupFn(isolate: ?*v8.Isolate, allocator: std.mem.Allocator) void {
+    // Clear any cached V8 objects
+    my_cached_template = null;
+    my_cached_context = null;
+    
+    // Free any allocated memory
+    if (my_state) |state| {
+        allocator.destroy(state);
+        my_state = null;
+    }
+}
+```
+
+### Priority Levels
+
+Use appropriate priority to ensure cleanup happens in the correct order:
+
+| Priority | Use Case | Value |
+|----------|----------|-------|
+| `dom_state` | DOM-related thread-local state | 10 |
+| `wrapper_cache` | Object wrapper caches | 20 |
+| `templates` | V8 template caches | 30 |
+| `engine` | Engine-level state | 40 |
+| `namespace` | Namespace contexts | 50 |
+| `default` | General cleanup | 100 |
+
+Lower numbers run first (clean up dependent state before cleaning up what it depends on).
+
+### Debug Validators
+
+In debug mode, validators check that cleanup was complete:
+
+```zig
+fn myValidatorFn() bool {
+    // Return true if state is clean
+    return my_cached_template == null and my_state == null;
+}
+```
+
+### Best Practices
+
+1. **Prefer isolate-local storage** over static variables for V8 objects
+2. **Always register cleanup handlers** for any module-level V8 state
+3. **Use appropriate priority** to respect dependency order
+4. **Add debug validators** to catch incomplete cleanup early
+5. **Test with multiple isolate lifecycles** (WPT runner creates/destroys isolates)
+
+### Example: Complete Module
+
+```zig
+//! My V8-dependent module
+
+const v8 = @import("ffi.zig");
+const lifecycle = @import("isolate_lifecycle.zig");
+
+// Module-level state (will be cleaned up)
+var cached_template: ?*v8.FunctionTemplate = null;
+var initialized: bool = false;
+
+pub fn init() !void {
+    try lifecycle.registerCleanup(
+        "my_module",
+        cleanup,
+        validate,
+        lifecycle.Priority.templates,
+    );
+    initialized = true;
+}
+
+fn cleanup(_: ?*v8.Isolate, _: std.mem.Allocator) void {
+    cached_template = null;
+    initialized = false;
+}
+
+fn validate() bool {
+    return cached_template == null;
+}
+```
+
 ## Questions?
 
 - Open an issue for questions

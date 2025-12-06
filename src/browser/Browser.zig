@@ -94,6 +94,11 @@ pub const Browser = struct {
 
         v8.ffi.v8_Isolate_Enter(isolate);
 
+        // Register V8 lifecycle cleanup handlers
+        v8.registerBuiltinHandlers() catch |err| {
+            std.debug.print("Warning: Failed to register lifecycle handlers: {}\n", .{err});
+        };
+
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
         errdefer storage.deinit();
@@ -148,19 +153,14 @@ pub const Browser = struct {
             self.allocator.destroy(event_loop);
         }
 
-        // Cleanup order is CRITICAL for isolate disposal:
-        // 1. Cleanup isolate-local template storage BEFORE isolate disposal
-        // 2. Clear global template registry to invalidate per-interface caches
-        // 3. Dispose isolate
-        //
-        // This order prevents use-after-free crashes when V8 reuses isolate addresses.
+        // Use the isolate lifecycle manager for centralized cleanup
+        // This ensures all V8-dependent modules are cleaned up in the correct order
+        // See src/runtime/engines/v8/isolate_lifecycle.zig for the full list
 
         if (self.isolate) |isolate| {
-            // 1. Cleanup isolate-local template storage
-            v8.cleanupTemplateStorage(isolate, self.allocator);
-
-            // 2. Clear global template registry (increments generation counter)
-            v8.template_registry.clear();
+            // Central cleanup - calls all registered handlers in priority order
+            // This includes: isolate_templates, template_registry, context_manager, etc.
+            v8.cleanupAll(isolate, self.allocator);
 
             // Force V8 garbage collection before isolate disposal
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -168,7 +168,7 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
-            // 3. Dispose isolate
+            // Dispose isolate
             v8.ffi.v8_Isolate_Exit(isolate);
             v8.ffi.v8_Isolate_Dispose(isolate);
         }

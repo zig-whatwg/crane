@@ -137,6 +137,13 @@ pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 /// Isolate allocator (per-isolate memory management)
 pub const isolate_allocator = @import("isolate_allocator.zig");
 
+/// Isolate lifecycle manager (central cleanup registry)
+pub const isolate_lifecycle = @import("isolate_lifecycle.zig");
+pub const registerCleanup = isolate_lifecycle.registerCleanup;
+pub const registerCleanupDefault = isolate_lifecycle.registerCleanupDefault;
+pub const cleanupAll = isolate_lifecycle.cleanupAll;
+pub const registerBuiltinHandlers = isolate_lifecycle.registerBuiltinHandlers;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
