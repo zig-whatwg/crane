@@ -1562,3 +1562,50 @@ pub extern fn v8_GetAsyncIteratorReturnCallback() FunctionCallback;
 ///
 /// @return Function pointer to AsyncIteratorSelfCallback
 pub extern fn v8_GetAsyncIteratorSelfCallback() FunctionCallback;
+
+// ============================================================================
+// V8 Locker/Unlocker API - Thread Safety for Multi-Threaded Access
+// ============================================================================
+//
+// V8 isolates are NOT thread-safe. When multiple threads need to access
+// the same isolate, they MUST use v8::Locker to acquire exclusive access.
+
+/// Create a new Locker for exclusive isolate access
+///
+/// This blocks if another thread holds the lock.
+/// Returns an opaque pointer that must be passed to v8_Locker_Dispose.
+///
+/// @param isolate - The isolate to lock
+/// @return Opaque Locker pointer (caller must dispose)
+pub extern fn v8_Locker_New(isolate: *Isolate) ?*anyopaque;
+
+/// Dispose a Locker and release the lock
+///
+/// After calling this, other threads can acquire the lock.
+///
+/// @param locker - Locker pointer from v8_Locker_New
+pub extern fn v8_Locker_Dispose(locker: ?*anyopaque) void;
+
+/// Check if the current thread holds a lock on the isolate
+///
+/// @param isolate - The isolate to check
+/// @return true if current thread holds the lock
+pub extern fn v8_Locker_IsLocked(isolate: *Isolate) bool;
+
+/// Create a new Unlocker to temporarily release the isolate lock
+///
+/// Use this when performing blocking operations that don't need V8 access.
+/// The lock is automatically reacquired when the Unlocker is disposed.
+///
+/// IMPORTANT: Only call this when you already hold the lock (via Locker).
+///
+/// @param isolate - The isolate to temporarily unlock
+/// @return Opaque Unlocker pointer (caller must dispose)
+pub extern fn v8_Unlocker_New(isolate: *Isolate) ?*anyopaque;
+
+/// Dispose an Unlocker and reacquire the lock
+///
+/// This blocks if another thread acquired the lock while unlocked.
+///
+/// @param unlocker - Unlocker pointer from v8_Unlocker_New
+pub extern fn v8_Unlocker_Dispose(unlocker: ?*anyopaque) void;

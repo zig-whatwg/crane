@@ -3955,4 +3955,73 @@ void* v8_GetAsyncIteratorSelfCallback() {
     return reinterpret_cast<void*>(&AsyncIteratorSelfCallback);
 }
 
+// ============================================================================
+// V8 Locker/Unlocker API - Thread Safety for Multi-Threaded Access
+// ============================================================================
+//
+// V8 isolates are NOT thread-safe. When multiple threads need to access
+// the same isolate, they MUST use v8::Locker to acquire exclusive access.
+//
+// Usage Pattern:
+//   Thread 1: v8_Locker_New(isolate) -> do work -> v8_Locker_Dispose(locker)
+//   Thread 2: blocks until Thread 1 releases, then acquires
+//
+// For blocking operations within locked sections, use Unlocker to temporarily
+// release the lock so other threads can make progress:
+//   v8_Unlocker_New(isolate) -> blocking I/O -> v8_Unlocker_Dispose(unlocker)
+
+/// Create a new Locker for exclusive isolate access
+///
+/// This blocks if another thread holds the lock.
+/// Returns an opaque pointer that must be passed to v8_Locker_Dispose.
+///
+/// @param isolate - The isolate to lock
+/// @return Opaque Locker pointer (caller must dispose)
+void* v8_Locker_New(Isolate* isolate) {
+    return new Locker(isolate);
+}
+
+/// Dispose a Locker and release the lock
+///
+/// After calling this, other threads can acquire the lock.
+///
+/// @param locker - Locker pointer from v8_Locker_New
+void v8_Locker_Dispose(void* locker) {
+    if (locker) {
+        delete static_cast<Locker*>(locker);
+    }
+}
+
+/// Check if the current thread holds a lock on the isolate
+///
+/// @param isolate - The isolate to check
+/// @return true if current thread holds the lock
+bool v8_Locker_IsLocked(Isolate* isolate) {
+    return Locker::IsLocked(isolate);
+}
+
+/// Create a new Unlocker to temporarily release the isolate lock
+///
+/// Use this when performing blocking operations that don't need V8 access.
+/// The lock is automatically reacquired when the Unlocker is disposed.
+///
+/// IMPORTANT: Only call this when you already hold the lock (via Locker).
+///
+/// @param isolate - The isolate to temporarily unlock
+/// @return Opaque Unlocker pointer (caller must dispose)
+void* v8_Unlocker_New(Isolate* isolate) {
+    return new Unlocker(isolate);
+}
+
+/// Dispose an Unlocker and reacquire the lock
+///
+/// This blocks if another thread acquired the lock while unlocked.
+///
+/// @param unlocker - Unlocker pointer from v8_Unlocker_New
+void v8_Unlocker_Dispose(void* unlocker) {
+    if (unlocker) {
+        delete static_cast<Unlocker*>(unlocker);
+    }
+}
+
 } // extern "C"

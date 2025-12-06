@@ -147,6 +147,26 @@ pub const registerCleanupDefault = isolate_lifecycle.registerCleanupDefault;
 pub const cleanupAll = isolate_lifecycle.cleanupAll;
 pub const registerBuiltinHandlers = isolate_lifecycle.registerBuiltinHandlers;
 
+/// RAII Handle Wrappers for V8 memory safety
+pub const handles = @import("handles.zig");
+pub const V8Value = handles.V8Value;
+pub const V8String = handles.V8String;
+pub const V8Object = handles.V8Object;
+pub const V8Array = handles.V8Array;
+pub const V8Function = handles.V8Function;
+pub const V8Promise = handles.V8Promise;
+pub const V8PromiseResolver = handles.V8PromiseResolver;
+pub const V8Context = handles.V8Context;
+pub const V8Script = handles.V8Script;
+pub const V8Module = handles.V8Module;
+pub const HandleBag = handles.HandleBag;
+
+/// Thread safety primitives for V8 isolate access
+pub const locker = @import("locker.zig");
+pub const IsolateLock = locker.IsolateLock;
+pub const IsolateUnlock = locker.IsolateUnlock;
+pub const ThreadCheck = locker.ThreadCheck;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
