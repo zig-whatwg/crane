@@ -500,12 +500,32 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Constructor callback (if interface has constructor)
         /// - Prototype with all methods
         /// - Internal fields for Zig instance storage
+        ///
+        /// ## Template Caching Strategy (Defense in Depth)
+        ///
+        /// Templates are cached at TWO levels:
+        /// 1. **Isolate-local storage** (PRIMARY) - Templates stored in V8 isolate data slot
+        ///    Automatically cleaned up when isolate is disposed
+        /// 2. **Per-interface static cache** (BACKUP) - Generation counter validates freshness
+        ///    Handles edge cases where isolate-local storage fails
+        ///
+        /// The generation counter is retained as a safety net even with isolate-local storage.
         pub fn createTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
-            // Return cached template if already created AND from same isolate AND same generation
-            // V8 templates are bound to specific isolates and cannot be reused across isolates.
-            // The generation check handles the case where V8 reuses the same isolate address
-            // after the old isolate was disposed - without generation check, the stale cache
-            // would incorrectly match and return a dangling pointer.
+            const isolate_templates = @import("isolate_templates.zig");
+            const isolate_alloc = @import("isolate_allocator.zig");
+
+            // FIRST: Check isolate-local storage (primary cache)
+            // This is the canonical approach - templates live with their isolate
+            if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                    if (storage.get(interface_name)) |cached| {
+                        return cached;
+                    }
+                }
+            }
+
+            // SECOND: Check per-interface static cache (backup/fallback)
+            // Retained as defense in depth - handles cases where isolate-local fails
             if (template_cache) |cached| {
                 if (template_cache_isolate == isolate and
                     template_cache_generation == template_registry.cache_generation)
@@ -865,7 +885,18 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // TODO: Handle mixins
 
-            // Cache the template for future use (bound to this isolate and generation)
+            // Cache the template in BOTH places for defense in depth
+            //
+            // 1. Isolate-local storage (PRIMARY) - auto-cleanup on isolate disposal
+            if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                    storage.put(interface_name, template) catch {
+                        // Log but don't fail - static cache will work as backup
+                    };
+                }
+            }
+
+            // 2. Per-interface static cache (BACKUP) - generation counter validates
             template_cache = template;
             template_cache_isolate = isolate;
             template_cache_generation = template_registry.cache_generation;

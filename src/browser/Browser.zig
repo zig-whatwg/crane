@@ -148,16 +148,27 @@ pub const Browser = struct {
             self.allocator.destroy(event_loop);
         }
 
-        // Clear template registry before disposing isolate
-        v8.template_registry.clear();
+        // Cleanup order is CRITICAL for isolate disposal:
+        // 1. Cleanup isolate-local template storage BEFORE isolate disposal
+        // 2. Clear global template registry to invalidate per-interface caches
+        // 3. Dispose isolate
+        //
+        // This order prevents use-after-free crashes when V8 reuses isolate addresses.
 
-        // Force V8 garbage collection before isolate disposal
         if (self.isolate) |isolate| {
+            // 1. Cleanup isolate-local template storage
+            v8.cleanupTemplateStorage(isolate, self.allocator);
+
+            // 2. Clear global template registry (increments generation counter)
+            v8.template_registry.clear();
+
+            // Force V8 garbage collection before isolate disposal
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
+            // 3. Dispose isolate
             v8.ffi.v8_Isolate_Exit(isolate);
             v8.ffi.v8_Isolate_Dispose(isolate);
         }

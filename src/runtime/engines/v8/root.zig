@@ -127,6 +127,16 @@ pub const LibuvTimerManager = libuv_timer.LibuvTimerManager;
 /// Template registry for wrapping Zig instances as V8 objects
 pub const template_registry = @import("template_registry.zig");
 
+/// Isolate-local template storage (per-isolate HashMap for templates)
+pub const isolate_templates = @import("isolate_templates.zig");
+pub const IsolateTemplates = isolate_templates.IsolateTemplates;
+pub const getOrCreateTemplateStorage = isolate_templates.getOrCreateTemplateStorage;
+pub const getTemplateStorage = isolate_templates.getTemplateStorage;
+pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
+
+/// Isolate allocator (per-isolate memory management)
+pub const isolate_allocator = @import("isolate_allocator.zig");
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
