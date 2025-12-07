@@ -34,6 +34,9 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const StorageEvent = interfaces.StorageEvent;
 
+// Import pointer_tag for V8 pointer untagging (via v8 module)
+const pointer_tag = @import("v8").pointer_tag;
+
 pub const State = StorageEvent.State;
 
 pub const ImplError = error{
@@ -179,8 +182,11 @@ pub fn call_constructor(
             const old_val = if (dict.oldValue) |o| domStringToSlice(o) else null;
             const new_val = if (dict.newValue) |n| domStringToSlice(n) else null;
             const url_val = dict.url orelse "";
-            // storageArea is ?*const anyopaque, need to cast to ?*runtime.Instance
-            const storage: ?*runtime.Instance = if (dict.storageArea) |s| @ptrCast(@alignCast(@constCast(s))) else null;
+            // storageArea is ?*const anyopaque, need to untag and cast to ?*runtime.Instance
+            const storage: ?*runtime.Instance = if (dict.storageArea) |s| blk: {
+                const untagged = pointer_tag.untagPointer(s);
+                break :blk @ptrCast(@alignCast(untagged.ptr));
+            } else null;
 
             try internal.setFromDict(key, old_val, new_val, url_val, storage);
         }
