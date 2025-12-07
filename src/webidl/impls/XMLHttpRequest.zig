@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -44,14 +45,31 @@ pub const InternalState = struct {
     xhr_state: XMLHttpRequestState,
     allocator: std.mem.Allocator,
 
+    /// Event handler stored as V8 Global handle.
+    ///
+    /// This MUST be a Global handle (not raw pointer) because:
+    /// 1. The JavaScript callback needs to survive past the setter's HandleScope
+    /// 2. Local handles become invalid when the HandleScope that created them is destroyed
+    /// 3. Without Global handles, invoking the handler would crash due to dangling pointers
+    ///
+    /// See: src/runtime/engines/v8/global_handles.zig for Global handle management.
+    onreadystatechange: v8_engine.OptionalGlobalHandle,
+
+    /// V8 isolate for creating/disposing Global handles
+    isolate: ?*v8_engine.ffi.Isolate,
+
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
+            .onreadystatechange = null,
+            .isolate = null,
         };
     }
 
     pub fn deinitState(self: *InternalState) void {
+        // Dispose V8 Global handle to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.onreadystatechange);
         self.xhr_state.deinit();
     }
 };
@@ -99,6 +117,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     const instance = try init(allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
 
+    // Store V8 isolate for Global handle management
+    const internal = getInternal(instance);
+    internal.isolate = @ptrCast(@alignCast(ctx.engine_ctx));
+
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()
 
@@ -121,9 +143,15 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// Getter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
+/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onreadystatechange;
+    const internal = getInternal(instance);
+    const isolate = internal.isolate orelse return null;
+    if (internal.onreadystatechange) |global| {
+        // Use GlobalHandle's get() method to retrieve Local handle
+        return @ptrCast(@alignCast(global.get(isolate)));
+    }
+    return null;
 }
 
 /// Getter for readyState
@@ -268,9 +296,20 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// Setter for onreadystatechange
 ///
 /// Spec: "The onreadystatechange attribute is an event handler IDL attribute."
+/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.onreadystatechange = value;
+    const internal = getInternal(instance);
+    const isolate = internal.isolate orelse return;
+
+    // Dispose old Global handle first to prevent memory leaks
+    v8_engine.disposeOptionalGlobalHandle(&internal.onreadystatechange);
+
+    // Create new Global handle from the Local handle (value)
+    if (value) |handler| {
+        internal.onreadystatechange = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+    } else {
+        internal.onreadystatechange = null;
+    }
 }
 
 /// Setter for timeout
@@ -393,36 +432,25 @@ pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: r
 /// Fire the readystatechange event by invoking the onreadystatechange handler
 /// Per WHATWG XHR spec, this is fired whenever the readyState attribute changes
 fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
+    const internal = getInternal(instance);
+    const isolate = internal.isolate orelse return;
 
-    // Get the onreadystatechange handler
-    const handler = state.own.onreadystatechange;
+    // Get the onreadystatechange handler from Global handle
+    if (internal.onreadystatechange) |global| {
+        // Retrieve Local handle from Global handle
+        const local_value = global.get(isolate) orelse return;
 
-    // If handler is set (not null), invoke it
-    // The handler is stored as a runtime.CallbackWrapper pointer but is actually
-    // a V8-specific CallbackWrapper that was cast during conversion
-    if (handler) |callback_wrapper_ptr| {
         // Get V8 context from the instance's runtime context
-        // engine_ctx is the V8 Context (not Isolate) per context_manager.zig
         const engine_ctx = instance.ctx.engine_ctx orelse return;
+        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
 
-        // Import V8-specific types
-        const v8 = @import("v8");
-
-        // Untag pointer from V8 before use
-        const untagged = pointer_tag.untagPointer(@ptrCast(callback_wrapper_ptr));
-
-        // Cast to V8-specific callback wrapper
-        // This works because the conversion code in interface.zig casts the
-        // v8.CallbackWrapper* to runtime.CallbackWrapper* for storage
-        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(untagged.ptr));
-
-        // engine_ctx is the V8 Context
-        const context: *v8.Context = @ptrCast(@alignCast(engine_ctx));
-
-        // Call the callback with no arguments
-        // The readystatechange event doesn't pass an event object in typical XHR usage
-        _ = v8_wrapper.call0(context);
+        // Check if it's a function and invoke it
+        if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+            const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+            // Call the callback with no arguments
+            // The readystatechange event doesn't pass an event object in typical XHR usage
+            _ = v8_engine.ffi.v8_Function_Call0(v8_context, function);
+        }
     }
 }
 
