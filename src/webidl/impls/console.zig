@@ -23,7 +23,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const webidl = @import("webidl");
 
 /// Get indentation string for current group level

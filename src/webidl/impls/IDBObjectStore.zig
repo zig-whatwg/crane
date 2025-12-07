@@ -9,7 +9,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");

@@ -4,7 +4,6 @@
 //! Implement the functions below to provide actual functionality.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const webidl = @import("webidl");
 
 pub fn call_compile(ctx: runtime.Context, bytes: *const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {

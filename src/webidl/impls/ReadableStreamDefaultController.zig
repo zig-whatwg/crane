@@ -7,7 +7,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
