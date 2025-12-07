@@ -1,11 +1,12 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SVGTextContentElementImpl = @import("impls").SVGTextContentElement;
 const mixins = @import("mixins");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
@@ -91,16 +92,16 @@ pub const SVGTextContentElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "textLength", "get_textLength", null },
             .{ "lengthAdjust", "get_lengthAdjust", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getNumberOfChars", "call_getNumberOfChars", 0 },
@@ -113,14 +114,14 @@ pub const SVGTextContentElement = struct {
             .{ "getCharNumAtPosition", "call_getCharNumAtPosition", 0 },
             .{ "selectSubString", "call_selectSubString", 2 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "LENGTHADJUST_UNKNOWN", "get_LENGTHADJUST_UNKNOWN" },
             .{ "LENGTHADJUST_SPACING", "get_LENGTHADJUST_SPACING" },
             .{ "LENGTHADJUST_SPACINGANDGLYPHS", "get_LENGTHADJUST_SPACINGANDGLYPHS" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getNumberOfChars",
@@ -133,7 +134,7 @@ pub const SVGTextContentElement = struct {
             "getCharNumAtPosition",
             "selectSubString",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -227,16 +228,17 @@ pub const SVGTextContentElement = struct {
             "getCTM",
             "getScreenCTM",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "textLength", "get_textLength", null },
             .{ "lengthAdjust", "get_lengthAdjust", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -272,6 +274,7 @@ pub const SVGTextContentElement = struct {
     }
 
     const delegates = .{
+
         .get_LENGTHADJUST_SPACING = &get_LENGTHADJUST_SPACING,
         .get_LENGTHADJUST_SPACINGANDGLYPHS = &get_LENGTHADJUST_SPACINGANDGLYPHS,
         .get_LENGTHADJUST_UNKNOWN = &get_LENGTHADJUST_UNKNOWN,
@@ -327,10 +330,12 @@ pub const SVGTextContentElement = struct {
     }
 
     pub fn call_selectSubString(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!void {
+        
         return try SVGTextContentElementImpl.call_selectSubString(instance, charnum, nchars);
     }
 
     pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+        
         return try SVGTextContentElementImpl.call_getExtentOfChar(instance, charnum);
     }
 
@@ -339,14 +344,17 @@ pub const SVGTextContentElement = struct {
     }
 
     pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+        
         return try SVGTextContentElementImpl.call_getStartPositionOfChar(instance, charnum);
     }
 
     pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+        
         return try SVGTextContentElementImpl.call_getEndPositionOfChar(instance, charnum);
     }
 
     pub fn call_getRotationOfChar(instance: *runtime.Instance, charnum: u32) anyerror!f32 {
+        
         return try SVGTextContentElementImpl.call_getRotationOfChar(instance, charnum);
     }
 
@@ -355,10 +363,13 @@ pub const SVGTextContentElement = struct {
     }
 
     pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!i32 {
+        
         return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
     }
 
     pub fn call_getSubStringLength(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!f32 {
+        
         return try SVGTextContentElementImpl.call_getSubStringLength(instance, charnum, nchars);
     }
+
 };

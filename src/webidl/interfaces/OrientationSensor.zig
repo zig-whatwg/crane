@@ -1,11 +1,12 @@
 //! Generated from: orientation-sensor.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const OrientationSensorImpl = @import("impls").OrientationSensor;
 const mixins = @import("mixins");
 const Sensor = @import("interfaces").Sensor;
@@ -33,25 +34,25 @@ pub const OrientationSensor = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "quaternion", "get_quaternion", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "populateMatrix", "call_populateMatrix", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "populateMatrix",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -61,15 +62,16 @@ pub const OrientationSensor = struct {
             "start",
             "stop",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "quaternion", "get_quaternion", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -83,6 +85,7 @@ pub const OrientationSensor = struct {
     );
 
     const delegates = .{
+
         .get_quaternion = &get_quaternion,
 
         .call_populateMatrix = &call_populateMatrix,
@@ -106,6 +109,8 @@ pub const OrientationSensor = struct {
     }
 
     pub fn call_populateMatrix(instance: *runtime.Instance, targetMatrix: RotationMatrixType) anyerror!void {
+        
         return try OrientationSensorImpl.call_populateMatrix(instance, targetMatrix);
     }
+
 };

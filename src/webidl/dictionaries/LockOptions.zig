@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const LockOptions = struct {
-    mode: ?*const anyopaque = null,
+    mode: ?enums.LockMode = null,
     ifAvailable: ?bool = null,
     steal: ?bool = null,
-    signal: ?*const anyopaque = null,
+    signal: ?*runtime.Instance = null,
 };

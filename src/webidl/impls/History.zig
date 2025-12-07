@@ -23,6 +23,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -160,7 +161,7 @@ pub fn set_scrollRestoration(instance: *runtime.Instance, value: enums.ScrollRes
 
 /// Getter for state
 /// Per spec §7.2.2: Returns the current state object, or null.
-pub fn get_state(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_state(instance: *runtime.Instance) anyerror!v8.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Get current entry's state
@@ -230,12 +231,7 @@ pub fn call_forward(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: pushState
 /// Per spec §7.2.2: Push a new entry onto the session history.
-pub fn call_pushState(
-    instance: *runtime.Instance,
-    data: *const anyopaque,
-    unused: runtime.DOMString,
-    url: webidl.Opt(?runtime.USVString),
-) anyerror!void {
+pub fn call_pushState(instance: *runtime.Instance, data: v8.JSValue, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = unused; // The second parameter is unused per spec (legacy)
 
@@ -283,12 +279,7 @@ pub fn call_pushState(
 
 /// Operation: replaceState
 /// Per spec §7.2.2: Replace the current entry in session history.
-pub fn call_replaceState(
-    instance: *runtime.Instance,
-    data: *const anyopaque,
-    unused: runtime.DOMString,
-    url: webidl.Opt(?runtime.USVString),
-) anyerror!void {
+pub fn call_replaceState(instance: *runtime.Instance, data: v8.JSValue, unused: runtime.DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     _ = unused; // The second parameter is unused per spec (legacy)
     _ = data; // TODO: Serialize via structured clone

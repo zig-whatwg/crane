@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const GPUShaderModuleCompilationHint = @import("GPUShaderModuleCompilationHint.zig").GPUShaderModuleCompilationHint;
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUShaderModuleDescriptor = struct {
@@ -10,5 +12,5 @@ pub const GPUShaderModuleDescriptor = struct {
     base: GPUObjectDescriptorBase,
 
     code: runtime.USVString,
-    compilationHints: ?*const anyopaque = null,
+    compilationHints: ?[]const GPUShaderModuleCompilationHint = null,
 };

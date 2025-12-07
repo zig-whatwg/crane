@@ -1,11 +1,12 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SpeechSynthesisErrorEventImpl = @import("impls").SpeechSynthesisErrorEvent;
 const mixins = @import("mixins");
 const SpeechSynthesisEvent = @import("interfaces").SpeechSynthesisEvent;
@@ -30,21 +31,23 @@ pub const SpeechSynthesisErrorEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "error", "get_error", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -53,15 +56,16 @@ pub const SpeechSynthesisErrorEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "error", "get_error", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -75,6 +79,7 @@ pub const SpeechSynthesisErrorEvent = struct {
     );
 
     const delegates = .{
+
         .get_error = &get_error,
 
         .deinit = &deinit,
@@ -100,4 +105,5 @@ pub const SpeechSynthesisErrorEvent = struct {
     pub fn get_error(instance: *runtime.Instance) anyerror!SpeechSynthesisErrorCode {
         return try SpeechSynthesisErrorEventImpl.get_error(instance);
     }
+
 };

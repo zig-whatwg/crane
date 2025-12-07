@@ -1,11 +1,12 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SVGSVGElementImpl = @import("impls").SVGSVGElement;
 const mixins = @import("mixins");
 const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
@@ -103,10 +104,10 @@ pub const SVGSVGElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -139,7 +140,7 @@ pub const SVGSVGElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getIntersectionList", "call_getIntersectionList", 2 },
@@ -166,7 +167,7 @@ pub const SVGSVGElement = struct {
             .{ "getCurrentTime", "call_getCurrentTime", 0 },
             .{ "setCurrentTime", "call_setCurrentTime", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getIntersectionList",
@@ -193,7 +194,7 @@ pub const SVGSVGElement = struct {
             "getCurrentTime",
             "setCurrentTime",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -287,7 +288,7 @@ pub const SVGSVGElement = struct {
             "getCTM",
             "getScreenCTM",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -320,10 +321,11 @@ pub const SVGSVGElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -372,6 +374,7 @@ pub const SVGSVGElement = struct {
     );
 
     const delegates = .{
+
         .get_currentScale = &get_currentScale,
         .get_currentTranslate = &get_currentTranslate,
         .get_height = &get_height,
@@ -730,10 +733,12 @@ pub const SVGSVGElement = struct {
     }
 
     pub fn call_suspendRedraw(instance: *runtime.Instance, maxWaitMilliseconds: u32) anyerror!u32 {
+        
         return try SVGSVGElementImpl.call_suspendRedraw(instance, maxWaitMilliseconds);
     }
 
     pub fn call_setCurrentTime(instance: *runtime.Instance, seconds: f32) anyerror!void {
+        
         return try SVGSVGElementImpl.call_setCurrentTime(instance, seconds);
     }
 
@@ -748,18 +753,22 @@ pub const SVGSVGElement = struct {
     }
 
     pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+        
         return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
+        
         return try SVGSVGElementImpl.call_getElementById(instance, elementId);
     }
 
     pub fn call_unsuspendRedraw(instance: *runtime.Instance, suspendHandleID: u32) anyerror!void {
+        
         return try SVGSVGElementImpl.call_unsuspendRedraw(instance, suspendHandleID);
     }
 
     pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+        
         return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
 
@@ -776,7 +785,7 @@ pub const SVGSVGElement = struct {
     /// Extended attributes: [NewObject]
     pub fn call_createSVGTransformFromMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try SVGSVGElementImpl.call_createSVGTransformFromMatrix(instance, matrix);
     }
 
@@ -799,10 +808,12 @@ pub const SVGSVGElement = struct {
     }
 
     pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+        
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
 
     pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+        
         return try SVGSVGElementImpl.call_checkEnclosure(instance, element, rect);
     }
 
@@ -831,4 +842,5 @@ pub const SVGSVGElement = struct {
     pub fn call_deselectAll(instance: *runtime.Instance) anyerror!void {
         return try SVGSVGElementImpl.call_deselectAll(instance);
     }
+
 };

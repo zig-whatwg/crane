@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 const RTCSentRtpStreamStats = @import("RTCSentRtpStreamStats.zig").RTCSentRtpStreamStats;
 
 pub const RTCOutboundRtpStreamStats = struct {
@@ -28,12 +31,12 @@ pub const RTCOutboundRtpStreamStats = struct {
     framesEncoded: ?u32 = null,
     keyFramesEncoded: ?u32 = null,
     qpSum: ?u64 = null,
-    psnrSum: ?*const anyopaque = null,
+    psnrSum: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
     psnrMeasurements: ?u64 = null,
     totalEncodeTime: ?f64 = null,
     totalPacketSendDelay: ?f64 = null,
-    qualityLimitationReason: ?*const anyopaque = null,
-    qualityLimitationDurations: ?*const anyopaque = null,
+    qualityLimitationReason: ?enums.RTCQualityLimitationReason = null,
+    qualityLimitationDurations: ?[]const struct { key: runtime.DOMString, value: f64 } = null,
     qualityLimitationResolutionChanges: ?u32 = null,
     nackCount: ?u32 = null,
     firCount: ?u32 = null,

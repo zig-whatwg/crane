@@ -448,7 +448,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
 /// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 

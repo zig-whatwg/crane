@@ -3,19 +3,21 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const MLOperatorOptions = @import("MLOperatorOptions.zig").MLOperatorOptions;
 
 pub const MLLstmOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    bias: ?*const anyopaque = null,
-    recurrentBias: ?*const anyopaque = null,
-    peepholeWeight: ?*const anyopaque = null,
-    initialHiddenState: ?*const anyopaque = null,
-    initialCellState: ?*const anyopaque = null,
+    bias: ?*runtime.Instance = null,
+    recurrentBias: ?*runtime.Instance = null,
+    peepholeWeight: ?*runtime.Instance = null,
+    initialHiddenState: ?*runtime.Instance = null,
+    initialCellState: ?*runtime.Instance = null,
     returnSequence: ?bool = null,
-    direction: ?*const anyopaque = null,
-    layout: ?*const anyopaque = null,
-    activations: ?*const anyopaque = null,
+    direction: ?enums.MLRecurrentNetworkDirection = null,
+    layout: ?enums.MLLstmWeightLayout = null,
+    activations: ?[]const enums.MLRecurrentNetworkActivation = null,
 };

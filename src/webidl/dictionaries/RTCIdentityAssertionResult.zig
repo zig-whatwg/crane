@@ -3,8 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const RTCIdentityProviderDetails = @import("RTCIdentityProviderDetails.zig").RTCIdentityProviderDetails;
 
 pub const RTCIdentityAssertionResult = struct {
-    idp: *const anyopaque,
+    idp: RTCIdentityProviderDetails,
     assertion: runtime.DOMString,
 };

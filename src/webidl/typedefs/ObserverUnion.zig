@@ -1,11 +1,12 @@
 //! WebIDL typedef: ObserverUnion
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
-//! NOTE: Dictionary/callback types use *runtime.Instance to avoid circular imports
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const callbacks = @import("callbacks");
 
 pub const ObserverUnion = union(enum) {
-    observable_subscription_callback: *runtime.Instance,
-    subscription_observer: *runtime.Instance,
+    observable_subscription_callback: callbacks.ObservableSubscriptionCallback,
+    subscription_observer: dictionaries.SubscriptionObserver,
 };

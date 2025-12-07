@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ImageBitmapRenderingContextImpl = @import("impls").ImageBitmapRenderingContext;
 const mixins = @import("mixins");
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
@@ -23,39 +24,41 @@ pub const ImageBitmapRenderingContext = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "canvas", "get_canvas", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "transferFromImageBitmap", "call_transferFromImageBitmap", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "transferFromImageBitmap",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "canvas", "get_canvas", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -72,6 +75,7 @@ pub const ImageBitmapRenderingContext = struct {
     );
 
     const delegates = .{
+
         .get_canvas = &get_canvas,
 
         .call_transferFromImageBitmap = &call_transferFromImageBitmap,
@@ -95,6 +99,8 @@ pub const ImageBitmapRenderingContext = struct {
     }
 
     pub fn call_transferFromImageBitmap(instance: *runtime.Instance, bitmap: ?*runtime.Instance) anyerror!void {
+        
         return try ImageBitmapRenderingContextImpl.call_transferFromImageBitmap(instance, bitmap);
     }
+
 };

@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const VideoColorSpaceInit = struct {
-    primaries: ?*const anyopaque = null,
-    transfer: ?*const anyopaque = null,
-    matrix: ?*const anyopaque = null,
+    primaries: ?enums.VideoColorPrimaries = null,
+    transfer: ?enums.VideoTransferCharacteristics = null,
+    matrix: ?enums.VideoMatrixCoefficients = null,
     fullRange: ?bool = null,
 };

@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLLinkElementImpl = @import("impls").HTMLLinkElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -90,10 +91,10 @@ pub const HTMLLinkElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -118,13 +119,15 @@ pub const HTMLLinkElement = struct {
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -220,7 +223,7 @@ pub const HTMLLinkElement = struct {
             "focus",
             "blur",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -245,10 +248,11 @@ pub const HTMLLinkElement = struct {
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -264,7 +268,7 @@ pub const HTMLLinkElement = struct {
             media: runtime.DOMString = undefined,
             integrity: runtime.DOMString = undefined,
             hreflang: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             sizes: *runtime.Instance = undefined,
             imageSrcset: runtime.USVString = undefined,
             imageSizes: runtime.DOMString = undefined,
@@ -284,6 +288,7 @@ pub const HTMLLinkElement = struct {
     );
 
     const delegates = .{
+
         .get_as = &get_as,
         .get_blocking = &get_blocking,
         .get_charset = &get_charset,
@@ -352,7 +357,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_href(instance, value);
     }
 
@@ -366,7 +371,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -380,7 +385,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_rel(instance, value);
     }
 
@@ -394,7 +399,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_as(instance, value);
     }
 
@@ -420,7 +425,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_media(instance, value);
     }
 
@@ -434,7 +439,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_integrity(instance, value);
     }
 
@@ -448,7 +453,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_hreflang(instance, value);
     }
 
@@ -462,7 +467,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_type(instance, value);
     }
 
@@ -488,7 +493,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_imageSrcset(instance, value);
     }
 
@@ -502,7 +507,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_imageSizes(instance, value);
     }
 
@@ -516,7 +521,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -542,7 +547,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_disabled(instance, value);
     }
 
@@ -556,7 +561,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_fetchPriority(instance, value);
     }
 
@@ -570,7 +575,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_charset(instance, value);
     }
 
@@ -584,7 +589,7 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_rev(instance, value);
     }
 
@@ -598,11 +603,12 @@ pub const HTMLLinkElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLLinkElementImpl.set_target(instance, value);
     }
 
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLinkElementImpl.get_sheet(instance);
     }
+
 };

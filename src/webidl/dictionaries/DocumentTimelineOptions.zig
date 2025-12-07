@@ -3,7 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const DocumentTimelineOptions = struct {
-    originTime: ?*const anyopaque = null,
+    originTime: ?typedefs.DOMHighResTimeStamp = null,
 };

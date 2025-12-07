@@ -1,11 +1,12 @@
 //! Generated from: fs.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const FileSystemSyncAccessHandleImpl = @import("impls").FileSystemSyncAccessHandle;
 const mixins = @import("mixins");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
@@ -23,13 +24,14 @@ pub const FileSystemSyncAccessHandle = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "DedicatedWorker" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .DedicatedWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "read", "call_read", 1 },
@@ -39,7 +41,7 @@ pub const FileSystemSyncAccessHandle = struct {
             .{ "flush", "call_flush", 0 },
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "read",
@@ -49,16 +51,19 @@ pub const FileSystemSyncAccessHandle = struct {
             "flush",
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -71,6 +76,7 @@ pub const FileSystemSyncAccessHandle = struct {
     );
 
     const delegates = .{
+
         .call_close = &call_close,
         .call_flush = &call_flush,
         .call_getSize = &call_getSize,
@@ -93,17 +99,19 @@ pub const FileSystemSyncAccessHandle = struct {
     }
 
     pub fn call_read(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
+        
         return try FileSystemSyncAccessHandleImpl.call_read(instance, buffer, options);
     }
 
     pub fn call_truncate(instance: *runtime.Instance, newSize: u64) anyerror!void {
         // [EnforceRange] on newSize
         if (!runtime.isInRange(u64, newSize)) return error.TypeError;
-
+        
         return try FileSystemSyncAccessHandleImpl.call_truncate(instance, newSize);
     }
 
     pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
+        
         return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options);
     }
 
@@ -118,4 +126,5 @@ pub const FileSystemSyncAccessHandle = struct {
     pub fn call_flush(instance: *runtime.Instance) anyerror!void {
         return try FileSystemSyncAccessHandleImpl.call_flush(instance);
     }
+
 };

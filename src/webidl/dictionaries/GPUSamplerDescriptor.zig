@@ -3,20 +3,22 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUSamplerDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    addressModeU: ?*const anyopaque = null,
-    addressModeV: ?*const anyopaque = null,
-    addressModeW: ?*const anyopaque = null,
-    magFilter: ?*const anyopaque = null,
-    minFilter: ?*const anyopaque = null,
-    mipmapFilter: ?*const anyopaque = null,
+    addressModeU: ?enums.GPUAddressMode = null,
+    addressModeV: ?enums.GPUAddressMode = null,
+    addressModeW: ?enums.GPUAddressMode = null,
+    magFilter: ?enums.GPUFilterMode = null,
+    minFilter: ?enums.GPUFilterMode = null,
+    mipmapFilter: ?enums.GPUMipmapFilterMode = null,
     lodMinClamp: ?f32 = null,
     lodMaxClamp: ?f32 = null,
-    compare: ?*const anyopaque = null,
+    compare: ?enums.GPUCompareFunction = null,
     maxAnisotropy: ?u16 = null,
 };

@@ -3,12 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const AudioNodeOptions = @import("AudioNodeOptions.zig").AudioNodeOptions;
 
 pub const ConvolverOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    buffer: ?*const anyopaque = null,
+    buffer: ?*runtime.Instance = null,
     disableNormalization: ?bool = null,
 };

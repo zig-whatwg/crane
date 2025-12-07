@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WorkerNavigatorImpl = @import("impls").WorkerNavigator;
 const mixins = @import("mixins");
 const NavigatorLocks = @import("interfaces").NavigatorLocks;
@@ -66,10 +67,10 @@ pub const WorkerNavigator = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Worker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mediaCapabilities", "get_mediaCapabilities", null },
@@ -103,24 +104,25 @@ pub const WorkerNavigator = struct {
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
             .{ "userAgentData", "get_userAgentData", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "taintEnabled", "call_taintEnabled", 0 },
             .{ "setAppBadge", "call_setAppBadge", 0 },
             .{ "clearAppBadge", "call_clearAppBadge", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "taintEnabled",
             "setAppBadge",
             "clearAppBadge",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mediaCapabilities", "get_mediaCapabilities", null },
@@ -154,10 +156,11 @@ pub const WorkerNavigator = struct {
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
             .{ "userAgentData", "get_userAgentData", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -212,6 +215,7 @@ pub const WorkerNavigator = struct {
     );
 
     const delegates = .{
+
         .get_appCodeName = &get_appCodeName,
         .get_appName = &get_appName,
         .get_appVersion = &get_appVersion,
@@ -490,11 +494,12 @@ pub const WorkerNavigator = struct {
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
-
+        
         return try WorkerNavigatorImpl.call_setAppBadge(instance, contents);
     }
 
     pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WorkerNavigatorImpl.call_clearAppBadge(instance);
     }
+
 };

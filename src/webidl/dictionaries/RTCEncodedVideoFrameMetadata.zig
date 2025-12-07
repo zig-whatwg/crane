@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const RTCEncodedFrameMetadata = @import("RTCEncodedFrameMetadata.zig").RTCEncodedFrameMetadata;
 
 pub const RTCEncodedVideoFrameMetadata = struct {
@@ -10,7 +11,7 @@ pub const RTCEncodedVideoFrameMetadata = struct {
     base: RTCEncodedFrameMetadata,
 
     frameId: ?u64 = null,
-    dependencies: ?*const anyopaque = null,
+    dependencies: ?[]const u64 = null,
     width: ?u16 = null,
     height: ?u16 = null,
     spatialIndex: ?u32 = null,

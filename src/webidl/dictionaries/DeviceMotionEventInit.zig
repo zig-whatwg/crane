@@ -3,14 +3,17 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const DeviceMotionEventRotationRateInit = @import("DeviceMotionEventRotationRateInit.zig").DeviceMotionEventRotationRateInit;
+const DeviceMotionEventAccelerationInit = @import("DeviceMotionEventAccelerationInit.zig").DeviceMotionEventAccelerationInit;
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const DeviceMotionEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    acceleration: ?*const anyopaque = null,
-    accelerationIncludingGravity: ?*const anyopaque = null,
-    rotationRate: ?*const anyopaque = null,
+    acceleration: ?DeviceMotionEventAccelerationInit = null,
+    accelerationIncludingGravity: ?DeviceMotionEventAccelerationInit = null,
+    rotationRate: ?DeviceMotionEventRotationRateInit = null,
     interval: ?f64 = null,
 };

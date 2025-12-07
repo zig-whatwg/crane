@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -52,7 +53,7 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: error
-pub fn call_error(instance: *runtime.Instance, @"error": *const anyopaque) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, @"error": v8.JSValue) anyerror!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;
@@ -72,7 +73,7 @@ pub fn call_addTeardown(instance: *runtime.Instance, teardown: callbacks.VoidFun
 }
 
 /// Operation: next
-pub fn call_next(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn call_next(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

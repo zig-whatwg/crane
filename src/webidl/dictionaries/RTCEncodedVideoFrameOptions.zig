@@ -3,7 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const RTCEncodedVideoFrameMetadata = @import("RTCEncodedVideoFrameMetadata.zig").RTCEncodedVideoFrameMetadata;
 
 pub const RTCEncodedVideoFrameOptions = struct {
-    metadata: ?*const anyopaque = null,
+    metadata: ?RTCEncodedVideoFrameMetadata = null,
 };

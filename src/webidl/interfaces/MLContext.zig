@@ -1,11 +1,12 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MLContextImpl = @import("impls").MLContext;
 const mixins = @import("mixins");
 const MLTensor = @import("interfaces").MLTensor;
@@ -29,19 +30,19 @@ pub const MLContext = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "accelerated", "get_accelerated", null },
             .{ "lost", "get_lost", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "dispatch", "call_dispatch", 3 },
@@ -53,7 +54,7 @@ pub const MLContext = struct {
             .{ "opSupportLimits", "call_opSupportLimits", 0 },
             .{ "destroy", "call_destroy", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "dispatch",
@@ -65,19 +66,21 @@ pub const MLContext = struct {
             "opSupportLimits",
             "destroy",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "accelerated", "get_accelerated", null },
             .{ "lost", "get_lost", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -92,6 +95,7 @@ pub const MLContext = struct {
     );
 
     const delegates = .{
+
         .get_accelerated = &get_accelerated,
         .get_lost = &get_lost,
 
@@ -126,6 +130,7 @@ pub const MLContext = struct {
     }
 
     pub fn call_dispatch(instance: *runtime.Instance, graph: *runtime.Instance, inputs: MLNamedTensors, outputs: MLNamedTensors) anyerror!void {
+        
         return try MLContextImpl.call_dispatch(instance, graph, inputs, outputs);
     }
 
@@ -134,14 +139,17 @@ pub const MLContext = struct {
     }
 
     pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, inputData: AllowSharedBufferSource) anyerror!void {
+        
         return try MLContextImpl.call_writeTensor(instance, tensor, inputData);
     }
 
     pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*const anyopaque {
+        
         return try MLContextImpl.call_readTensor(instance, tensor);
     }
 
     pub fn call_createTensor(instance: *runtime.Instance, descriptor: MLTensorDescriptor) anyerror!*const anyopaque {
+        
         return try MLContextImpl.call_createTensor(instance, descriptor);
     }
 
@@ -150,6 +158,8 @@ pub const MLContext = struct {
     }
 
     pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: MLOperandDescriptor, inputData: AllowSharedBufferSource) anyerror!*const anyopaque {
+        
         return try MLContextImpl.call_createConstantTensor(instance, descriptor, inputData);
     }
+
 };

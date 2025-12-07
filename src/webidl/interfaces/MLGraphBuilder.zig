@@ -1,11 +1,12 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MLGraphBuilderImpl = @import("impls").MLGraphBuilder;
 const mixins = @import("mixins");
 const MLTensor = @import("interfaces").MLTensor;
@@ -61,16 +62,17 @@ pub const MLGraphBuilder = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "input", "call_input", 2 },
@@ -174,7 +176,7 @@ pub const MLGraphBuilder = struct {
             .{ "triangular", "call_triangular", 1 },
             .{ "where", "call_where", 3 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "input",
@@ -278,16 +280,19 @@ pub const MLGraphBuilder = struct {
             "triangular",
             "where",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -300,6 +305,7 @@ pub const MLGraphBuilder = struct {
     );
 
     const delegates = .{
+
         .call_abs = &call_abs,
         .call_add = &call_add,
         .call_argMax = &call_argMax,
@@ -420,74 +426,92 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_reduceL2(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceL2(instance, input, options);
     }
 
     pub fn call_reverse(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReverseOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reverse(instance, input, options);
     }
 
     pub fn call_lesserOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_lesserOrEqual(instance, a, b, options);
     }
 
     pub fn call_reduceSumSquare(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceSumSquare(instance, input, options);
     }
 
     pub fn call_instanceNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLInstanceNormalizationOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_instanceNormalization(instance, input, options);
     }
 
     pub fn call_ceil(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_ceil(instance, input, options);
     }
 
     pub fn call_greater(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_greater(instance, a, b, options);
     }
 
     pub fn call_exp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_exp(instance, input, options);
     }
 
     pub fn call_reduceLogSum(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceLogSum(instance, input, options);
     }
 
     pub fn call_gatherElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(MLGatherOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_gatherElements(instance, input, indices, options);
     }
 
     pub fn call_convTranspose2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: webidl.Opt(MLConvTranspose2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_convTranspose2d(instance, input, filter, options);
     }
 
     pub fn call_relu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_relu(instance, input, options);
     }
 
     pub fn call_where(instance: *runtime.Instance, condition: *runtime.Instance, trueValue: *runtime.Instance, falseValue: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_where(instance, condition, trueValue, falseValue, options);
     }
 
     pub fn call_build(instance: *runtime.Instance, outputs: MLNamedOperands) anyerror!*const anyopaque {
+        
         return try MLGraphBuilderImpl.call_build(instance, outputs);
     }
 
     pub fn call_sub(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_sub(instance, a, b, options);
     }
 
     pub fn call_isInfinite(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_isInfinite(instance, a, options);
     }
 
     pub fn call_reduceLogSumExp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceLogSumExp(instance, input, options);
     }
 
     pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLTransposeOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_transpose(instance, input, options);
     }
 
@@ -496,264 +520,323 @@ pub const MLGraphBuilder = struct {
         if (!runtime.isInRange(u32, steps)) return error.TypeError;
         // [EnforceRange] on hiddenSize
         if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_gru(instance, input, weight, recurrentWeight, steps, hiddenSize, options);
     }
 
     pub fn call_conv2d(instance: *runtime.Instance, input: *runtime.Instance, filter: *runtime.Instance, options: webidl.Opt(MLConv2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_conv2d(instance, input, filter, options);
     }
 
     pub fn call_cos(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_cos(instance, input, options);
     }
 
     pub fn call_quantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_quantizeLinear(instance, input, scale, zeroPoint, options);
     }
 
     pub fn call_elu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLEluOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_elu(instance, input, options);
     }
 
     pub fn call_gather(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(MLGatherOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_gather(instance, input, indices, options);
     }
 
     pub fn call_greaterOrEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_greaterOrEqual(instance, a, b, options);
     }
 
     pub fn call_gatherND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_gatherND(instance, input, indices, options);
     }
 
     pub fn call_l2Pool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLPool2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_l2Pool2d(instance, input, options);
     }
 
     pub fn call_erf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_erf(instance, input, options);
     }
 
     pub fn call_add(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_add(instance, a, b, options);
     }
 
     pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLLayerNormalizationOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_layerNormalization(instance, input, options);
     }
 
     pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: webidl.Opt(MLPadOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_pad(instance, input, beginningPadding, endingPadding, options);
     }
 
     pub fn call_notEqual(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_notEqual(instance, a, b, options);
     }
 
     pub fn call_log(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_log(instance, input, options);
     }
 
     pub fn call_dequantizeLinear(instance: *runtime.Instance, input: *runtime.Instance, scale: *runtime.Instance, zeroPoint: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_dequantizeLinear(instance, input, scale, zeroPoint, options);
     }
 
     pub fn call_maxPool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLPool2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_maxPool2d(instance, input, options);
     }
 
     pub fn call_reduceL1(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceL1(instance, input, options);
     }
 
     pub fn call_floor(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_floor(instance, input, options);
     }
 
     pub fn call_linear(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLLinearOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_linear(instance, input, options);
     }
 
     pub fn call_reduceMax(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceMax(instance, input, options);
     }
 
     pub fn call_resample2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLResample2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_resample2d(instance, input, options);
     }
 
     pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
         // [EnforceRange] on axis
         if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_softmax(instance, input, axis, options);
     }
 
     pub fn call_min(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_min(instance, a, b, options);
     }
 
     pub fn call_lesser(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_lesser(instance, a, b, options);
     }
 
     pub fn call_isNaN(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_isNaN(instance, a, options);
     }
 
     pub fn call_gemm(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLGemmOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_gemm(instance, a, b, options);
     }
 
     pub fn call_cast(instance: *runtime.Instance, input: *runtime.Instance, dataType: MLOperandDataType, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_cast(instance, input, dataType, options);
     }
 
     pub fn call_hardSwish(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_hardSwish(instance, input, options);
     }
 
     pub fn call_reduceSum(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceSum(instance, input, options);
     }
 
     pub fn call_roundEven(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_roundEven(instance, input, options);
     }
 
     pub fn call_sqrt(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_sqrt(instance, input, options);
     }
 
     pub fn call_averagePool2d(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLPool2dOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_averagePool2d(instance, input, options);
     }
 
     pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_equal(instance, a, b, options);
     }
 
     pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: *const anyopaque, sizes: *const anyopaque, options: webidl.Opt(MLSliceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_slice(instance, input, starts, sizes, options);
     }
 
     pub fn call_logicalNot(instance: *runtime.Instance, a: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_logicalNot(instance, a, options);
     }
 
     pub fn call_mul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_mul(instance, a, b, options);
     }
 
     pub fn call_sin(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_sin(instance, input, options);
     }
 
     pub fn call_constant(instance: *runtime.Instance, descriptor: MLOperandDescriptor, buffer: AllowSharedBufferSource) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_constant(instance, descriptor, buffer);
     }
 
     pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(MLGruCellOptions)) anyerror!*runtime.Instance {
         // [EnforceRange] on hiddenSize
         if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_gruCell(instance, input, weight, recurrentWeight, hiddenState, hiddenSize, options);
     }
 
     pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: *const anyopaque, options: webidl.Opt(MLSplitOptions)) anyerror!*const anyopaque {
+        
         return try MLGraphBuilderImpl.call_split(instance, input, splits, options);
     }
 
     pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_tanh(instance, input, options);
     }
 
     pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reshape(instance, input, newShape, options);
     }
 
     pub fn call_hardSigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLHardSigmoidOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_hardSigmoid(instance, input, options);
     }
 
     pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reciprocal(instance, input, options);
     }
 
     pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_expand(instance, input, newShape, options);
     }
 
     pub fn call_identity(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_identity(instance, input, options);
     }
 
     pub fn call_leakyRelu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLLeakyReluOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_leakyRelu(instance, input, options);
     }
 
     pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLClampOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_clamp(instance, input, options);
     }
 
     pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(MLLstmCellOptions)) anyerror!*const anyopaque {
         // [EnforceRange] on hiddenSize
         if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_lstmCell(instance, input, weight, recurrentWeight, hiddenState, cellState, hiddenSize, options);
     }
 
     pub fn call_prelu(instance: *runtime.Instance, input: *runtime.Instance, slope: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_prelu(instance, input, slope, options);
     }
 
     pub fn call_logicalXor(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_logicalXor(instance, a, b, options);
     }
 
     pub fn call_scatterElements(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: webidl.Opt(MLScatterOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_scatterElements(instance, input, indices, updates, options);
     }
 
     pub fn call_abs(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_abs(instance, input, options);
     }
 
     pub fn call_input(instance: *runtime.Instance, name: runtime.USVString, descriptor: MLOperandDescriptor) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_input(instance, name, descriptor);
     }
 
     pub fn call_tan(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_tan(instance, input, options);
     }
 
     pub fn call_logicalAnd(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_logicalAnd(instance, a, b, options);
     }
 
     pub fn call_softsign(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_softsign(instance, input, options);
     }
 
     pub fn call_triangular(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLTriangularOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_triangular(instance, input, options);
     }
 
     pub fn call_max(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_max(instance, a, b, options);
     }
 
     pub fn call_sign(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_sign(instance, input, options);
     }
 
     pub fn call_logicalOr(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_logicalOr(instance, a, b, options);
     }
 
     pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_neg(instance, input, options);
     }
 
@@ -762,80 +845,94 @@ pub const MLGraphBuilder = struct {
         if (!runtime.isInRange(u32, steps)) return error.TypeError;
         // [EnforceRange] on hiddenSize
         if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_lstm(instance, input, weight, recurrentWeight, steps, hiddenSize, options);
     }
 
     pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
         // [EnforceRange] on axis
         if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_concat(instance, inputs, axis, options);
     }
 
     pub fn call_pow(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_pow(instance, a, b, options);
     }
 
     pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLArgMinMaxOptions)) anyerror!*runtime.Instance {
         // [EnforceRange] on axis
         if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_argMax(instance, input, axis, options);
     }
 
     pub fn call_reduceMean(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceMean(instance, input, options);
     }
 
     pub fn call_softplus(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_softplus(instance, input, options);
     }
 
     pub fn call_gelu(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_gelu(instance, input, options);
     }
 
     pub fn call_reduceMin(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceMin(instance, input, options);
     }
 
     pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLArgMinMaxOptions)) anyerror!*runtime.Instance {
         // [EnforceRange] on axis
         if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
+        
         return try MLGraphBuilderImpl.call_argMin(instance, input, axis, options);
     }
 
     pub fn call_batchNormalization(instance: *runtime.Instance, input: *runtime.Instance, mean: *runtime.Instance, variance: *runtime.Instance, options: webidl.Opt(MLBatchNormalizationOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_batchNormalization(instance, input, mean, variance, options);
     }
 
     pub fn call_cumulativeSum(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLCumulativeSumOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_cumulativeSum(instance, input, axis, options);
     }
 
     pub fn call_matmul(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_matmul(instance, a, b, options);
     }
 
     pub fn call_scatterND(instance: *runtime.Instance, input: *runtime.Instance, indices: *runtime.Instance, updates: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_scatterND(instance, input, indices, updates, options);
     }
 
     pub fn call_reduceProduct(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLReduceOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_reduceProduct(instance, input, options);
     }
 
     pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_sigmoid(instance, input, options);
     }
 
     pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: *const anyopaque, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_tile(instance, input, repetitions, options);
     }
 
     pub fn call_div(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
+        
         return try MLGraphBuilderImpl.call_div(instance, a, b, options);
     }
+
 };

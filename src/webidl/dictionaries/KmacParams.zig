@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const Algorithm = @import("Algorithm.zig").Algorithm;
 
 pub const KmacParams = struct {
@@ -10,5 +12,5 @@ pub const KmacParams = struct {
     base: Algorithm,
 
     length: u32,
-    customization: ?*const anyopaque = null,
+    customization: ?typedefs.BufferSource = null,
 };

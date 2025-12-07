@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const RunFunctionForSharedStorageSelectURLOperation = *const fn (urls: *const anyopaque, data: webidl.Opt(*const anyopaque)) *const anyopaque;
+pub const RunFunctionForSharedStorageSelectURLOperation = *const fn (urls: *const anyopaque, data: webidl.Opt(v8.JSValue)) *const anyopaque;

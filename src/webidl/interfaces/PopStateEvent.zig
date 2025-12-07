@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const PopStateEventImpl = @import("impls").PopStateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -27,22 +28,24 @@ pub const PopStateEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "state", "get_state", null },
             .{ "hasUAVisualTransition", "get_hasUAVisualTransition", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -51,16 +54,17 @@ pub const PopStateEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "state", "get_state", null },
             .{ "hasUAVisualTransition", "get_hasUAVisualTransition", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -68,13 +72,14 @@ pub const PopStateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: *const anyopaque = undefined,
+            state: v8.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             _internal: ?*PopStateEventImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_hasUAVisualTransition = &get_hasUAVisualTransition,
         .get_state = &get_state,
 
@@ -98,11 +103,12 @@ pub const PopStateEvent = struct {
         return try PopStateEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_state(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_state(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try PopStateEventImpl.get_state(instance);
     }
 
     pub fn get_hasUAVisualTransition(instance: *runtime.Instance) anyerror!bool {
         return try PopStateEventImpl.get_hasUAVisualTransition(instance);
     }
+
 };

@@ -3,11 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const BluetoothLEScanFilterInit = @import("BluetoothLEScanFilterInit.zig").BluetoothLEScanFilterInit;
 
 pub const RequestDeviceOptions = struct {
-    filters: ?*const anyopaque = null,
-    exclusionFilters: ?*const anyopaque = null,
-    optionalServices: ?*const anyopaque = null,
-    optionalManufacturerData: ?*const anyopaque = null,
+    filters: ?[]const BluetoothLEScanFilterInit = null,
+    exclusionFilters: ?[]const BluetoothLEScanFilterInit = null,
+    optionalServices: ?[]const typedefs.BluetoothServiceUUID = null,
+    optionalManufacturerData: ?[]const u16 = null,
     acceptAllDevices: ?bool = null,
 };

@@ -1,11 +1,12 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RTCRtpReceiverImpl = @import("impls").RTCRtpReceiver;
 const mixins = @import("mixins");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
@@ -30,10 +31,10 @@ pub const RTCRtpReceiver = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "track", "get_track", null },
@@ -41,7 +42,7 @@ pub const RTCRtpReceiver = struct {
             .{ "jitterBufferTarget", "get_jitterBufferTarget", "set_jitterBufferTarget" },
             .{ "transform", "get_transform", "set_transform" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getParameters", "call_getParameters", 0 },
@@ -49,12 +50,12 @@ pub const RTCRtpReceiver = struct {
             .{ "getSynchronizationSources", "call_getSynchronizationSources", 0 },
             .{ "getStats", "call_getStats", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "getCapabilities", "call_getCapabilities", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCapabilities",
@@ -63,10 +64,11 @@ pub const RTCRtpReceiver = struct {
             "getSynchronizationSources",
             "getStats",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "track", "get_track", null },
@@ -74,10 +76,11 @@ pub const RTCRtpReceiver = struct {
             .{ "jitterBufferTarget", "get_jitterBufferTarget", "set_jitterBufferTarget" },
             .{ "transform", "get_transform", "set_transform" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -94,6 +97,7 @@ pub const RTCRtpReceiver = struct {
     );
 
     const delegates = .{
+
         .get_jitterBufferTarget = &get_jitterBufferTarget,
         .get_track = &get_track,
         .get_transform = &get_transform,
@@ -150,6 +154,7 @@ pub const RTCRtpReceiver = struct {
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
+        
         return try RTCRtpReceiverImpl.call_getCapabilities(instance, kind);
     }
 
@@ -164,4 +169,5 @@ pub const RTCRtpReceiver = struct {
     pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCRtpReceiverImpl.call_getSynchronizationSources(instance);
     }
+
 };

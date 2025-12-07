@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const EventTargetImpl = @import("impls").EventTarget;
 const mixins = @import("mixins");
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -27,13 +28,14 @@ pub const EventTarget = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addEventListener", "call_addEventListener", 2 },
@@ -41,7 +43,7 @@ pub const EventTarget = struct {
             .{ "dispatchEvent", "call_dispatchEvent", 1 },
             .{ "when", "call_when", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addEventListener",
@@ -49,16 +51,19 @@ pub const EventTarget = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -71,6 +76,7 @@ pub const EventTarget = struct {
     );
 
     const delegates = .{
+
         .call_addEventListener = &call_addEventListener,
         .call_dispatchEvent = &call_dispatchEvent,
         .call_removeEventListener = &call_removeEventListener,
@@ -97,18 +103,23 @@ pub const EventTarget = struct {
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
+        
         return try EventTargetImpl.call_dispatchEvent(instance, event);
     }
 
     pub fn call_when(instance: *runtime.Instance, @"type": DOMString, options: webidl.Opt(ObservableEventListenerOptions)) anyerror!*runtime.Instance {
+        
         return try EventTargetImpl.call_when(instance, @"type", options);
     }
 
     pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+        
         return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
     }
 
     pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+        
         return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
     }
+
 };

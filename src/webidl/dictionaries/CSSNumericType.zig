@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const CSSNumericType = struct {
     length: ?i32 = null,
@@ -12,5 +14,5 @@ pub const CSSNumericType = struct {
     resolution: ?i32 = null,
     flex: ?i32 = null,
     percent: ?i32 = null,
-    percentHint: ?*const anyopaque = null,
+    percentHint: ?enums.CSSNumericBaseType = null,
 };

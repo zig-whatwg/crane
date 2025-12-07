@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const OffscreenCanvasImpl = @import("impls").OffscreenCanvas;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -36,13 +37,13 @@ pub const OffscreenCanvas = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Transferable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", "set_width" },
@@ -50,21 +51,21 @@ pub const OffscreenCanvas = struct {
             .{ "oncontextlost", "get_oncontextlost", "set_oncontextlost" },
             .{ "oncontextrestored", "get_oncontextrestored", "set_oncontextrestored" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getContext", "call_getContext", 1 },
             .{ "transferToImageBitmap", "call_transferToImageBitmap", 0 },
             .{ "convertToBlob", "call_convertToBlob", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getContext",
             "transferToImageBitmap",
             "convertToBlob",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -72,7 +73,7 @@ pub const OffscreenCanvas = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", "set_width" },
@@ -80,10 +81,11 @@ pub const OffscreenCanvas = struct {
             .{ "oncontextlost", "get_oncontextlost", "set_oncontextlost" },
             .{ "oncontextrestored", "get_oncontextrestored", "set_oncontextrestored" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -100,6 +102,7 @@ pub const OffscreenCanvas = struct {
     );
 
     const delegates = .{
+
         .get_height = &get_height,
         .get_oncontextlost = &get_oncontextlost,
         .get_oncontextrestored = &get_oncontextrestored,
@@ -170,15 +173,18 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) anyerror!?OffscreenRenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(v8.JSValue)) anyerror!?OffscreenRenderingContext {
+        
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }
 
     pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!*const anyopaque {
+        
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }
 
     pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OffscreenCanvasImpl.call_transferToImageBitmap(instance);
     }
+
 };

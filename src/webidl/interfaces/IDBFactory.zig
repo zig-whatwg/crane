@@ -1,11 +1,12 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IDBFactoryImpl = @import("impls").IDBFactory;
 const mixins = @import("mixins");
 const IDBOpenDBRequest = @import("interfaces").IDBOpenDBRequest;
@@ -22,16 +23,17 @@ pub const IDBFactory = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 1 },
@@ -39,7 +41,7 @@ pub const IDBFactory = struct {
             .{ "databases", "call_databases", 0 },
             .{ "cmp", "call_cmp", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -47,16 +49,19 @@ pub const IDBFactory = struct {
             "databases",
             "cmp",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -69,6 +74,7 @@ pub const IDBFactory = struct {
     );
 
     const delegates = .{
+
         .call_cmp = &call_cmp,
         .call_databases = &call_databases,
         .call_deleteDatabase = &call_deleteDatabase,
@@ -93,7 +99,7 @@ pub const IDBFactory = struct {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on version
         if (!runtime.isInRange(u64, version)) return error.TypeError;
-
+        
         return try IDBFactoryImpl.call_open(instance, name, version);
     }
 
@@ -104,11 +110,13 @@ pub const IDBFactory = struct {
     /// Extended attributes: [NewObject]
     pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBFactoryImpl.call_deleteDatabase(instance, name);
     }
 
-    pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) anyerror!i16 {
+    pub fn call_cmp(instance: *runtime.Instance, first: v8.JSValue, second: v8.JSValue) anyerror!i16 {
+        
         return try IDBFactoryImpl.call_cmp(instance, first, second);
     }
+
 };

@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -76,7 +77,7 @@ pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: getQueryObjectEXT
-pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = query;
     _ = pname;
@@ -84,7 +85,7 @@ pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Insta
 }
 
 /// Operation: getQueryEXT
-pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = pname;

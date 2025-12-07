@@ -1,9 +1,9 @@
 //! WebIDL dictionary: ResponseInit
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
-//! NOTE: headers field manually changed to use HeadersInit instead of opaque
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const typedefs = @import("typedefs");
 
 pub const ResponseInit = struct {

@@ -118,11 +118,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 ///      document's error flag.
 ///
 /// 3. Return document.
-pub fn call_parseFromString(
-    instance: *runtime.Instance,
-    string: runtime.DOMString,
-    @"type": enums.DOMParserSupportedType,
-) anyerror!*runtime.Instance {
+pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMString, @"type": enums.DOMParserSupportedType) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const html_string = string.asSlice();
 

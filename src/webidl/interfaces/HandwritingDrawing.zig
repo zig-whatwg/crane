@@ -1,11 +1,12 @@
 //! Generated from: handwriting-recognition.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HandwritingDrawingImpl = @import("impls").HandwritingDrawing;
 const mixins = @import("mixins");
 const HandwritingStroke = @import("interfaces").HandwritingStroke;
@@ -22,13 +23,14 @@ pub const HandwritingDrawing = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addStroke", "call_addStroke", 1 },
@@ -37,7 +39,7 @@ pub const HandwritingDrawing = struct {
             .{ "getStrokes", "call_getStrokes", 0 },
             .{ "getPrediction", "call_getPrediction", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addStroke",
@@ -46,16 +48,19 @@ pub const HandwritingDrawing = struct {
             "getStrokes",
             "getPrediction",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -68,6 +73,7 @@ pub const HandwritingDrawing = struct {
     );
 
     const delegates = .{
+
         .call_addStroke = &call_addStroke,
         .call_clear = &call_clear,
         .call_getPrediction = &call_getPrediction,
@@ -89,6 +95,7 @@ pub const HandwritingDrawing = struct {
     }
 
     pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
+        
         return try HandwritingDrawingImpl.call_addStroke(instance, stroke);
     }
 
@@ -105,6 +112,8 @@ pub const HandwritingDrawing = struct {
     }
 
     pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
+        
         return try HandwritingDrawingImpl.call_removeStroke(instance, stroke);
     }
+
 };

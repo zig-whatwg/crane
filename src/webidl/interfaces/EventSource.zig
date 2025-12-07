@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const EventSourceImpl = @import("impls").EventSource;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -32,13 +33,13 @@ pub const EventSource = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "url", "get_url", null },
@@ -48,24 +49,24 @@ pub const EventSource = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "CONNECTING", "get_CONNECTING" },
             .{ "OPEN", "get_OPEN" },
             .{ "CLOSED", "get_CLOSED" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -73,7 +74,7 @@ pub const EventSource = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "url", "get_url", null },
@@ -83,10 +84,11 @@ pub const EventSource = struct {
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -124,6 +126,7 @@ pub const EventSource = struct {
     }
 
     const delegates = .{
+
         .get_CLOSED = &get_CLOSED,
         .get_CONNECTING = &get_CONNECTING,
         .get_OPEN = &get_OPEN,
@@ -199,4 +202,5 @@ pub const EventSource = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try EventSourceImpl.call_close(instance);
     }
+
 };

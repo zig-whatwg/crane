@@ -1,11 +1,11 @@
 //! WebIDL typedef: LineAndPositionSetting
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
-//! NOTE: Enum types use DOMString to avoid circular imports (WebIDL enums are strings)
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
 pub const LineAndPositionSetting = union(enum) {
     double: f64,
-    auto_keyword: runtime.DOMString,
+    auto_keyword: enums.AutoKeyword,
 };

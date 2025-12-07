@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
 pub const IdleRequestCallback = *const fn (deadline: *const anyopaque) void;

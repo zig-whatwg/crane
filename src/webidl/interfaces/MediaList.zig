@@ -1,11 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MediaListImpl = @import("impls").MediaList;
 const mixins = @import("mixins");
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -22,10 +23,10 @@ pub const MediaList = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mediaText", "get_mediaText", "set_mediaText" },
@@ -33,7 +34,7 @@ pub const MediaList = struct {
             .{ "mediaText", "get_mediaText", "set_mediaText" },
             .{ "length", "get_length", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
@@ -43,7 +44,7 @@ pub const MediaList = struct {
             .{ "deleteMedium", "call_deleteMedium", 1 },
             .{ "appendMedium", "call_appendMedium", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
@@ -53,10 +54,11 @@ pub const MediaList = struct {
             "deleteMedium",
             "appendMedium",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mediaText", "get_mediaText", "set_mediaText" },
@@ -64,10 +66,11 @@ pub const MediaList = struct {
             .{ "mediaText", "get_mediaText", "set_mediaText" },
             .{ "length", "get_length", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -82,6 +85,7 @@ pub const MediaList = struct {
     );
 
     const delegates = .{
+
         .get_length = &get_length,
         .get_mediaText = &get_mediaText,
 
@@ -120,14 +124,18 @@ pub const MediaList = struct {
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?CSSOMString {
+        
         return try MediaListImpl.call_item(instance, index);
     }
 
     pub fn call_deleteMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
+        
         return try MediaListImpl.call_deleteMedium(instance, medium);
     }
 
     pub fn call_appendMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
+        
         return try MediaListImpl.call_appendMedium(instance, medium);
     }
+
 };

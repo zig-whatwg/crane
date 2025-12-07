@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -99,7 +100,7 @@ pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
 }
 
 /// Operation: takeUntil
-pub fn call_takeUntil(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_takeUntil(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -156,7 +157,7 @@ pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(dictionarie
 }
 
 /// Operation: reduce
-pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: webidl.Opt(*const anyopaque), options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: webidl.Opt(v8.JSValue), options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = reducer;
     _ = initialValue;
@@ -179,7 +180,7 @@ pub fn call_flatMap(instance: *runtime.Instance, mapper: callbacks.Mapper) anyer
 }
 
 /// Operation: from
-pub fn call_from(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_from(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;

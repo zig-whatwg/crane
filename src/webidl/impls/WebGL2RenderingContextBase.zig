@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -272,7 +273,7 @@ pub fn call_uniform2ui(instance: *runtime.Instance, location: ?*runtime.Instance
 }
 
 /// Operation: getSyncParameter
-pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = sync;
     _ = pname;
@@ -421,7 +422,7 @@ pub fn call_bindSampler(instance: *runtime.Instance, unit: typedefs.GLuint, samp
 }
 
 /// Operation: getSamplerParameter
-pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = sampler;
     _ = pname;
@@ -479,7 +480,7 @@ pub fn call_uniformMatrix4x2fv(instance: *runtime.Instance, location: ?*runtime.
 }
 
 /// Operation: getInternalformatParameter
-pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: typedefs.GLenum, internalformat: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: typedefs.GLenum, internalformat: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = internalformat;
@@ -580,7 +581,7 @@ pub fn call_getFragDataLocation(instance: *runtime.Instance, program: *runtime.I
 }
 
 /// Operation: getQueryParameter
-pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = query;
     _ = pname;
@@ -638,7 +639,7 @@ pub fn call_isSync(instance: *runtime.Instance, sync: ?*runtime.Instance) anyerr
 }
 
 /// Operation: getActiveUniforms
-pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = uniformIndices;
@@ -730,7 +731,7 @@ pub fn call_uniform1ui(instance: *runtime.Instance, location: ?*runtime.Instance
 }
 
 /// Operation: getActiveUniformBlockParameter
-pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = uniformBlockIndex;
@@ -747,7 +748,7 @@ pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.
 }
 
 /// Operation: getIndexedParameter
-pub fn call_getIndexedParameter(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!*const anyopaque {
+pub fn call_getIndexedParameter(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = index;

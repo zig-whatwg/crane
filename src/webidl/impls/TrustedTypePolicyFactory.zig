@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -121,7 +122,7 @@ pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMStr
 
 /// Operation: isHTML
 /// Per spec: "boolean isHTML(any value)"
-pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
+pub fn call_isHTML(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
     _ = instance;
     // Check if value is a TrustedHTML instance
     // In JS integration, this would check the internal slot
@@ -132,7 +133,7 @@ pub fn call_isHTML(instance: *runtime.Instance, value: *const anyopaque) anyerro
 
 /// Operation: isScript
 /// Per spec: "boolean isScript(any value)"
-pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
+pub fn call_isScript(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
     _ = instance;
     _ = value;
     return false;
@@ -140,7 +141,7 @@ pub fn call_isScript(instance: *runtime.Instance, value: *const anyopaque) anyer
 
 /// Operation: isScriptURL
 /// Per spec: "boolean isScriptURL(any value)"
-pub fn call_isScriptURL(instance: *runtime.Instance, value: *const anyopaque) anyerror!bool {
+pub fn call_isScriptURL(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
     _ = instance;
     _ = value;
     return false;

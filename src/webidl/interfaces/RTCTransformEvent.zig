@@ -1,11 +1,12 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RTCTransformEventImpl = @import("impls").RTCTransformEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -27,21 +28,23 @@ pub const RTCTransformEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "DedicatedWorker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .DedicatedWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "transformer", "get_transformer", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -50,15 +53,16 @@ pub const RTCTransformEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "transformer", "get_transformer", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -72,6 +76,7 @@ pub const RTCTransformEvent = struct {
     );
 
     const delegates = .{
+
         .get_transformer = &get_transformer,
 
         .deinit = &deinit,
@@ -91,4 +96,5 @@ pub const RTCTransformEvent = struct {
     pub fn get_transformer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCTransformEventImpl.get_transformer(instance);
     }
+
 };

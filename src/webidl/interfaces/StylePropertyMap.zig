@@ -1,11 +1,12 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const StylePropertyMapImpl = @import("impls").StylePropertyMap;
 const mixins = @import("mixins");
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
@@ -24,13 +25,14 @@ pub const StylePropertyMap = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "set", "call_set", 2 },
@@ -38,7 +40,7 @@ pub const StylePropertyMap = struct {
             .{ "delete", "call_delete", 1 },
             .{ "clear", "call_clear", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "set",
@@ -46,20 +48,22 @@ pub const StylePropertyMap = struct {
             "delete",
             "clear",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "get",
             "getAll",
             "has",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -72,6 +76,7 @@ pub const StylePropertyMap = struct {
     );
 
     const delegates = .{
+
         .call_append = &call_append,
         .call_clear = &call_clear,
         .call_delete = &call_delete,
@@ -92,10 +97,12 @@ pub const StylePropertyMap = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) anyerror!void {
+        
         return try StylePropertyMapImpl.call_delete(instance, property);
     }
 
     pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+        
         return try StylePropertyMapImpl.call_append(instance, property, values);
     }
 
@@ -104,6 +111,8 @@ pub const StylePropertyMap = struct {
     }
 
     pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+        
         return try StylePropertyMapImpl.call_set(instance, property, values);
     }
+
 };

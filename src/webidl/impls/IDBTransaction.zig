@@ -100,7 +100,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for objectStoreNames
 ///
 /// Returns a DOMStringList of object store names in this transaction's scope.
-pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;
@@ -115,7 +115,7 @@ pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Inst
 /// Getter for mode
 ///
 /// Returns the mode of the transaction (readonly, readwrite, or versionchange).
-pub fn get_mode(instance: *runtime.Instance) ImplError!enums.IDBTransactionMode {
+pub fn get_mode(instance: *runtime.Instance) anyerror!enums.IDBTransactionMode {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;
@@ -130,7 +130,7 @@ pub fn get_mode(instance: *runtime.Instance) ImplError!enums.IDBTransactionMode 
 /// Getter for durability
 ///
 /// Returns the durability hint for the transaction.
-pub fn get_durability(instance: *runtime.Instance) ImplError!enums.IDBTransactionDurability {
+pub fn get_durability(instance: *runtime.Instance) anyerror!enums.IDBTransactionDurability {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;
@@ -145,7 +145,7 @@ pub fn get_durability(instance: *runtime.Instance) ImplError!enums.IDBTransactio
 /// Getter for db
 ///
 /// Returns the database this transaction belongs to.
-pub fn get_db(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_db(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -155,7 +155,7 @@ pub fn get_db(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Getter for error
 ///
 /// Returns the error that caused the transaction to abort, if any.
-pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     _ = state.own._internal orelse return error.InvalidState;
 
@@ -165,42 +165,42 @@ pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onabort;
 }
 
 /// Getter for oncomplete
-pub fn get_oncomplete(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_oncomplete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.oncomplete;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onerror;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onabort = value;
 }
 
 /// Setter for oncomplete
-pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.oncomplete = value;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onerror = value;
@@ -211,7 +211,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) Im
 /// Returns an object store in the transaction's scope.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbtransaction-objectstore
-pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;
@@ -244,7 +244,7 @@ pub fn call_objectStore(instance: *runtime.Instance, name: runtime.DOMString) Im
 /// Commits the transaction.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbtransaction-commit
-pub fn call_commit(instance: *runtime.Instance) ImplError!void {
+pub fn call_commit(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;
@@ -262,7 +262,7 @@ pub fn call_commit(instance: *runtime.Instance) ImplError!void {
 /// Aborts the transaction.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbtransaction-abort
-pub fn call_abort(instance: *runtime.Instance) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const txn = internal.transaction orelse return error.InvalidState;

@@ -3,9 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const NotificationAction = @import("NotificationAction.zig").NotificationAction;
 
 pub const NotificationOptions = struct {
-    dir: ?*const anyopaque = null,
+    dir: ?enums.NotificationDirection = null,
     lang: ?runtime.DOMString = null,
     body: ?runtime.DOMString = null,
     navigate: ?runtime.USVString = null,
@@ -13,11 +17,11 @@ pub const NotificationOptions = struct {
     image: ?runtime.USVString = null,
     icon: ?runtime.USVString = null,
     badge: ?runtime.USVString = null,
-    vibrate: ?*const anyopaque = null,
-    timestamp: ?*const anyopaque = null,
+    vibrate: ?typedefs.VibratePattern = null,
+    timestamp: ?typedefs.EpochTimeStamp = null,
     renotify: ?bool = null,
     silent: ?bool = null,
     requireInteraction: ?bool = null,
-    data: ?*const anyopaque = null,
-    actions: ?*const anyopaque = null,
+    data: ?v8.JSValue = null,
+    actions: ?[]const NotificationAction = null,
 };

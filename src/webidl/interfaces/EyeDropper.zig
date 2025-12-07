@@ -1,11 +1,12 @@
 //! Generated from: eyedropper-api.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const EyeDropperImpl = @import("impls").EyeDropper;
 const mixins = @import("mixins");
 const ColorSelectionOptions = @import("dictionaries").ColorSelectionOptions;
@@ -23,32 +24,36 @@ pub const EyeDropper = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -61,6 +66,7 @@ pub const EyeDropper = struct {
     );
 
     const delegates = .{
+
         .call_open = &call_open,
 
         .deinit = &deinit,
@@ -84,6 +90,8 @@ pub const EyeDropper = struct {
     }
 
     pub fn call_open(instance: *runtime.Instance, options: webidl.Opt(ColorSelectionOptions)) anyerror!*const anyopaque {
+        
         return try EyeDropperImpl.call_open(instance, options);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: speech-api.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SpeechRecognitionImpl = @import("impls").SpeechRecognition;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -36,10 +37,10 @@ pub const SpeechRecognition = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
@@ -61,7 +62,7 @@ pub const SpeechRecognition = struct {
             .{ "onstart", "get_onstart", "set_onstart" },
             .{ "onend", "get_onend", "set_onend" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
@@ -69,13 +70,13 @@ pub const SpeechRecognition = struct {
             .{ "stop", "call_stop", 0 },
             .{ "abort", "call_abort", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "available", "call_available", 1 },
             .{ "install", "call_install", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
@@ -85,7 +86,7 @@ pub const SpeechRecognition = struct {
             "available",
             "install",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -93,7 +94,7 @@ pub const SpeechRecognition = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
@@ -114,12 +115,12 @@ pub const SpeechRecognition = struct {
             .{ "onstart", "get_onstart", "set_onstart" },
             .{ "onend", "get_onend", "set_onend" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "lang", "get_lang", "set_lang" },
         };
-
+        
         pub const has_constructor = true;
     };
 
@@ -150,6 +151,7 @@ pub const SpeechRecognition = struct {
     );
 
     const delegates = .{
+
         .get_continuous = &get_continuous,
         .get_grammars = &get_grammars,
         .get_interimResults = &get_interimResults,
@@ -361,6 +363,7 @@ pub const SpeechRecognition = struct {
     }
 
     pub fn call_available(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
+        
         return try SpeechRecognitionImpl.call_available(instance, options);
     }
 
@@ -373,6 +376,8 @@ pub const SpeechRecognition = struct {
     }
 
     pub fn call_install(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
+        
         return try SpeechRecognitionImpl.call_install(instance, options);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const AnalyserNodeImpl = @import("impls").AnalyserNode;
 const mixins = @import("mixins");
 const AudioNode = @import("interfaces").AudioNode;
@@ -34,10 +35,10 @@ pub const AnalyserNode = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "fftSize", "get_fftSize", "set_fftSize" },
@@ -46,7 +47,7 @@ pub const AnalyserNode = struct {
             .{ "maxDecibels", "get_maxDecibels", "set_maxDecibels" },
             .{ "smoothingTimeConstant", "get_smoothingTimeConstant", "set_smoothingTimeConstant" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getFloatFrequencyData", "call_getFloatFrequencyData", 1 },
@@ -54,7 +55,7 @@ pub const AnalyserNode = struct {
             .{ "getFloatTimeDomainData", "call_getFloatTimeDomainData", 1 },
             .{ "getByteTimeDomainData", "call_getByteTimeDomainData", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getFloatFrequencyData",
@@ -62,7 +63,7 @@ pub const AnalyserNode = struct {
             "getFloatTimeDomainData",
             "getByteTimeDomainData",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -79,7 +80,7 @@ pub const AnalyserNode = struct {
             "disconnect",
             "disconnect",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "fftSize", "get_fftSize", "set_fftSize" },
@@ -88,10 +89,11 @@ pub const AnalyserNode = struct {
             .{ "maxDecibels", "get_maxDecibels", "set_maxDecibels" },
             .{ "smoothingTimeConstant", "get_smoothingTimeConstant", "set_smoothingTimeConstant" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -109,6 +111,7 @@ pub const AnalyserNode = struct {
     );
 
     const delegates = .{
+
         .get_fftSize = &get_fftSize,
         .get_frequencyBinCount = &get_frequencyBinCount,
         .get_maxDecibels = &get_maxDecibels,
@@ -182,18 +185,23 @@ pub const AnalyserNode = struct {
     }
 
     pub fn call_getByteFrequencyData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+        
         return try AnalyserNodeImpl.call_getByteFrequencyData(instance, array);
     }
 
     pub fn call_getFloatFrequencyData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+        
         return try AnalyserNodeImpl.call_getFloatFrequencyData(instance, array);
     }
 
     pub fn call_getFloatTimeDomainData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+        
         return try AnalyserNodeImpl.call_getFloatTimeDomainData(instance, array);
     }
 
     pub fn call_getByteTimeDomainData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+        
         return try AnalyserNodeImpl.call_getByteTimeDomainData(instance, array);
     }
+
 };

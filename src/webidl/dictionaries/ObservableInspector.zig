@@ -3,11 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const callbacks = @import("callbacks");
 
 pub const ObservableInspector = struct {
-    next: ?*const anyopaque = null,
-    @"error": ?*const anyopaque = null,
-    complete: ?*const anyopaque = null,
-    subscribe: ?*const anyopaque = null,
-    abort: ?*const anyopaque = null,
+    next: ?callbacks.ObservableSubscriptionCallback = null,
+    @"error": ?callbacks.ObservableSubscriptionCallback = null,
+    complete: ?callbacks.VoidFunction = null,
+    subscribe: ?callbacks.VoidFunction = null,
+    abort: ?callbacks.ObservableInspectorAbortHandler = null,
 };

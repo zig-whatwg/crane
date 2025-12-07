@@ -1,11 +1,12 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRSystemImpl = @import("impls").XRSystem;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -34,27 +35,27 @@ pub const XRSystem = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "isSessionSupported", "call_isSessionSupported", 1 },
             .{ "requestSession", "call_requestSession", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "isSessionSupported",
             "requestSession",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,15 +63,16 @@ pub const XRSystem = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "ondevicechange", "get_ondevicechange", "set_ondevicechange" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -84,6 +86,7 @@ pub const XRSystem = struct {
     );
 
     const delegates = .{
+
         .get_ondevicechange = &get_ondevicechange,
 
         .set_ondevicechange = &set_ondevicechange,
@@ -116,11 +119,13 @@ pub const XRSystem = struct {
     /// Extended attributes: [NewObject]
     pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: webidl.Opt(XRSessionInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-
+        
         return try XRSystemImpl.call_requestSession(instance, mode, options);
     }
 
     pub fn call_isSessionSupported(instance: *runtime.Instance, mode: XRSessionMode) anyerror!*const anyopaque {
+        
         return try XRSystemImpl.call_isSessionSupported(instance, mode);
     }
+
 };

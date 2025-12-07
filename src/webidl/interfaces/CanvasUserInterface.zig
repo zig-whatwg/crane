@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CanvasUserInterfaceImpl = @import("impls").CanvasUserInterface;
 const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
@@ -20,31 +21,35 @@ pub const CanvasUserInterface = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "drawFocusIfNeeded", "call_drawFocusIfNeeded", 1 },
             .{ "drawFocusIfNeeded", "call_drawFocusIfNeeded", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "drawFocusIfNeeded",
             "drawFocusIfNeeded",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -57,6 +62,7 @@ pub const CanvasUserInterface = struct {
     );
 
     const delegates = .{
+
         .call_drawFocusIfNeeded = &call_drawFocusIfNeeded,
 
         .deinit = &deinit,
@@ -74,6 +80,8 @@ pub const CanvasUserInterface = struct {
     }
 
     pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
+        
         return try CanvasUserInterfaceImpl.call_drawFocusIfNeeded(instance, element);
     }
+
 };

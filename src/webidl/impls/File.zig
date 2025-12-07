@@ -160,7 +160,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-name
 /// Returns the name of the file (without path information).
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const name = internal.file_data.getName();
     if (name.len == 0) {
@@ -173,7 +173,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-lastModified
 /// Returns the last modified timestamp in milliseconds since Unix epoch.
-pub fn get_lastModified(instance: *runtime.Instance) ImplError!i64 {
+pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
     const internal = getInternal(instance) orelse return 0;
     return internal.file_data.getLastModified();
 }
@@ -183,7 +183,7 @@ pub fn get_lastModified(instance: *runtime.Instance) ImplError!i64 {
 /// Non-standard webkit extension.
 /// Returns the relative path of the file within a selected directory.
 /// Usually empty string unless file was selected via directory input.
-pub fn get_webkitRelativePath(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
     return internal.webkit_relative_path;
 }

@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NavigatorConcurrentHardwareImpl = @import("impls").NavigatorConcurrentHardware;
 const mixins = @import("mixins");
 
@@ -18,29 +19,33 @@ pub const NavigatorConcurrentHardware = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -54,6 +59,7 @@ pub const NavigatorConcurrentHardware = struct {
     );
 
     const delegates = .{
+
         .get_hardwareConcurrency = &get_hardwareConcurrency,
 
         .deinit = &deinit,
@@ -73,4 +79,5 @@ pub const NavigatorConcurrentHardware = struct {
     pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
         return try NavigatorConcurrentHardwareImpl.get_hardwareConcurrency(instance);
     }
+
 };

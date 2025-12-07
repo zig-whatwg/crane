@@ -1,11 +1,12 @@
 //! Generated from: OVR_multiview2.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const OVR_multiview2Impl = @import("impls").OVR_multiview2;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
@@ -25,21 +26,22 @@ pub const OVR_multiview2 = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "framebufferTextureMultiviewOVR", "call_framebufferTextureMultiviewOVR", 6 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR", "get_FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR" },
@@ -47,21 +49,24 @@ pub const OVR_multiview2 = struct {
             .{ "MAX_VIEWS_OVR", "get_MAX_VIEWS_OVR" },
             .{ "FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR", "get_FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "framebufferTextureMultiviewOVR",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -98,6 +103,7 @@ pub const OVR_multiview2 = struct {
     }
 
     const delegates = .{
+
         .get_FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR = &get_FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR,
         .get_FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR = &get_FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR,
         .get_FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR = &get_FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR,
@@ -120,6 +126,8 @@ pub const OVR_multiview2 = struct {
     }
 
     pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: ?*runtime.Instance, level: GLint, baseViewIndex: GLint, numViews: GLsizei) anyerror!void {
+        
         return try OVR_multiview2Impl.call_framebufferTextureMultiviewOVR(instance, target, attachment, texture, level, baseViewIndex, numViews);
     }
+
 };

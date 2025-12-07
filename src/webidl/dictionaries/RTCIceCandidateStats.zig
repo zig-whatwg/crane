@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 const RTCStats = @import("RTCStats.zig").RTCStats;
 
 pub const RTCIceCandidateStats = struct {
@@ -13,13 +16,13 @@ pub const RTCIceCandidateStats = struct {
     address: ?runtime.DOMString = null,
     port: ?i32 = null,
     protocol: ?runtime.DOMString = null,
-    candidateType: *const anyopaque,
+    candidateType: enums.RTCIceCandidateType,
     priority: ?i32 = null,
     url: ?runtime.DOMString = null,
-    relayProtocol: ?*const anyopaque = null,
+    relayProtocol: ?enums.RTCIceServerTransportProtocol = null,
     foundation: ?runtime.DOMString = null,
     relatedAddress: ?runtime.DOMString = null,
     relatedPort: ?i32 = null,
     usernameFragment: ?runtime.DOMString = null,
-    tcpType: ?*const anyopaque = null,
+    tcpType: ?enums.RTCIceTcpCandidateType = null,
 };

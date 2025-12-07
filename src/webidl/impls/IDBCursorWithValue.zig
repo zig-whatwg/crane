@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -68,7 +69,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for value - returns the current record's value
-pub fn get_value(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const cursor_with_value = internal.cursor_with_value orelse return error.InvalidState;

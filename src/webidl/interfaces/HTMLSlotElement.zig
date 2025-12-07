@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:44Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLSlotElementImpl = @import("impls").HTMLSlotElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -86,29 +87,29 @@ pub const HTMLSlotElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "assignedNodes", "call_assignedNodes", 0 },
             .{ "assignedElements", "call_assignedElements", 0 },
             .{ "assign", "call_assign", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "assignedNodes",
             "assignedElements",
             "assign",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -204,15 +205,16 @@ pub const HTMLSlotElement = struct {
             "focus",
             "blur",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -226,6 +228,7 @@ pub const HTMLSlotElement = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
 
         .set_name = &set_name,
@@ -264,19 +267,23 @@ pub const HTMLSlotElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLSlotElementImpl.set_name(instance, value);
     }
 
     pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
+        
         return try HTMLSlotElementImpl.call_assignedElements(instance, options);
     }
 
     pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
+        
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
 
     pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
+        
         return try HTMLSlotElementImpl.call_assign(instance, nodes);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XPathNSResolverImpl = @import("impls").XPathNSResolver;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -19,29 +20,33 @@ pub const XPathNSResolver = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "lookupNamespaceURI", "call_lookupNamespaceURI", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "lookupNamespaceURI",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -54,6 +59,7 @@ pub const XPathNSResolver = struct {
     );
 
     const delegates = .{
+
         .call_lookupNamespaceURI = &call_lookupNamespaceURI,
 
         .deinit = &deinit,
@@ -71,6 +77,8 @@ pub const XPathNSResolver = struct {
     }
 
     pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
+        
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }
+
 };

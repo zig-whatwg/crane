@@ -16,6 +16,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -204,7 +205,7 @@ pub fn set_ondispose(instance: *runtime.Instance, value: typedefs.EventHandler) 
 
 /// Operation: getState()
 /// HTML Standard §7.2.6.1: Returns a clone of the navigation API state
-pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getState(instance: *runtime.Instance) anyerror!v8.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const entry = internal.session_entry orelse return error.InvalidStateError;
 

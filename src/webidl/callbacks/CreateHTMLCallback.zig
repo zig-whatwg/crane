@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const CreateHTMLCallback = *const fn (input: runtime.DOMString, arguments: []const *const anyopaque) runtime.DOMString;
+pub const CreateHTMLCallback = *const fn (input: runtime.DOMString, arguments: []const v8.JSValue) runtime.DOMString;

@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const MouseEventInit = @import("MouseEventInit.zig").MouseEventInit;
 
 pub const PointerEventInit = struct {
@@ -22,6 +24,6 @@ pub const PointerEventInit = struct {
     pointerType: ?runtime.DOMString = null,
     isPrimary: ?bool = null,
     persistentDeviceId: ?i32 = null,
-    coalescedEvents: ?*const anyopaque = null,
-    predictedEvents: ?*const anyopaque = null,
+    coalescedEvents: ?[]const *runtime.Instance = null,
+    predictedEvents: ?[]const *runtime.Instance = null,
 };

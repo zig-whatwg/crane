@@ -3,17 +3,19 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const Algorithm = @import("Algorithm.zig").Algorithm;
 
 pub const Argon2Params = struct {
     // Inherited from Algorithm
     base: Algorithm,
 
-    nonce: *const anyopaque,
+    nonce: typedefs.BufferSource,
     parallelism: u32,
     memory: u32,
     passes: u32,
     version: ?u8 = null,
-    secretValue: ?*const anyopaque = null,
-    associatedData: ?*const anyopaque = null,
+    secretValue: ?typedefs.BufferSource = null,
+    associatedData: ?typedefs.BufferSource = null,
 };

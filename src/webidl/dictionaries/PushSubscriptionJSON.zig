@@ -3,9 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const PushSubscriptionJSON = struct {
     endpoint: ?runtime.USVString = null,
-    expirationTime: ?*const anyopaque = null,
-    keys: ?*const anyopaque = null,
+    expirationTime: ?typedefs.EpochTimeStamp = null,
+    keys: ?[]const struct { key: runtime.DOMString, value: runtime.USVString } = null,
 };

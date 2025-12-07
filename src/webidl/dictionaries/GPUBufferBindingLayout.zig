@@ -3,9 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const GPUBufferBindingLayout = struct {
-    type: ?*const anyopaque = null,
+    @"type": ?enums.GPUBufferBindingType = null,
     hasDynamicOffset: ?bool = null,
-    minBindingSize: ?*const anyopaque = null,
+    minBindingSize: ?typedefs.GPUSize64 = null,
 };

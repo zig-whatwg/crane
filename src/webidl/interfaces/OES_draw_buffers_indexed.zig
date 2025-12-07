@@ -1,11 +1,12 @@
 //! Generated from: OES_draw_buffers_indexed.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const OES_draw_buffers_indexedImpl = @import("impls").OES_draw_buffers_indexed;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
@@ -24,16 +25,17 @@ pub const OES_draw_buffers_indexed = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "enableiOES", "call_enableiOES", 2 },
@@ -44,7 +46,7 @@ pub const OES_draw_buffers_indexed = struct {
             .{ "blendFuncSeparateiOES", "call_blendFuncSeparateiOES", 5 },
             .{ "colorMaskiOES", "call_colorMaskiOES", 5 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "enableiOES",
@@ -55,16 +57,19 @@ pub const OES_draw_buffers_indexed = struct {
             "blendFuncSeparateiOES",
             "colorMaskiOES",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -77,6 +82,7 @@ pub const OES_draw_buffers_indexed = struct {
     );
 
     const delegates = .{
+
         .call_blendEquationSeparateiOES = &call_blendEquationSeparateiOES,
         .call_blendEquationiOES = &call_blendEquationiOES,
         .call_blendFuncSeparateiOES = &call_blendFuncSeparateiOES,
@@ -100,30 +106,38 @@ pub const OES_draw_buffers_indexed = struct {
     }
 
     pub fn call_enableiOES(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_enableiOES(instance, target, index);
     }
 
     pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: GLuint, mode: GLenum) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_blendEquationiOES(instance, buf, mode);
     }
 
     pub fn call_blendEquationSeparateiOES(instance: *runtime.Instance, buf: GLuint, modeRGB: GLenum, modeAlpha: GLenum) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_blendEquationSeparateiOES(instance, buf, modeRGB, modeAlpha);
     }
 
     pub fn call_blendFunciOES(instance: *runtime.Instance, buf: GLuint, src: GLenum, dst: GLenum) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_blendFunciOES(instance, buf, src, dst);
     }
 
     pub fn call_blendFuncSeparateiOES(instance: *runtime.Instance, buf: GLuint, srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_blendFuncSeparateiOES(instance, buf, srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
     pub fn call_colorMaskiOES(instance: *runtime.Instance, buf: GLuint, r: GLboolean, g: GLboolean, b: GLboolean, a: GLboolean) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_colorMaskiOES(instance, buf, r, g, b, a);
     }
 
     pub fn call_disableiOES(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!void {
+        
         return try OES_draw_buffers_indexedImpl.call_disableiOES(instance, target, index);
     }
+
 };

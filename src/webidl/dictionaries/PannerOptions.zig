@@ -3,14 +3,16 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const AudioNodeOptions = @import("AudioNodeOptions.zig").AudioNodeOptions;
 
 pub const PannerOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    panningModel: ?*const anyopaque = null,
-    distanceModel: ?*const anyopaque = null,
+    panningModel: ?enums.PanningModelType = null,
+    distanceModel: ?enums.DistanceModelType = null,
     positionX: ?f32 = null,
     positionY: ?f32 = null,
     positionZ: ?f32 = null,

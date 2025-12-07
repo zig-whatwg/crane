@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -78,7 +79,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
     _ = instance;
     _ = message;
     _ = transfer;

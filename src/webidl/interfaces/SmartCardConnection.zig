@@ -1,11 +1,12 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-12-05T20:30:44Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SmartCardConnectionImpl = @import("impls").SmartCardConnection;
 const mixins = @import("mixins");
 const SmartCardTransactionOptions = @import("dictionaries").SmartCardTransactionOptions;
@@ -28,17 +29,18 @@ pub const SmartCardConnection = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .SharedWorker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "disconnect", "call_disconnect", 0 },
@@ -49,7 +51,7 @@ pub const SmartCardConnection = struct {
             .{ "getAttribute", "call_getAttribute", 1 },
             .{ "setAttribute", "call_setAttribute", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "disconnect",
@@ -60,16 +62,19 @@ pub const SmartCardConnection = struct {
             "getAttribute",
             "setAttribute",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -82,6 +87,7 @@ pub const SmartCardConnection = struct {
     );
 
     const delegates = .{
+
         .call_control = &call_control,
         .call_disconnect = &call_disconnect,
         .call_getAttribute = &call_getAttribute,
@@ -105,17 +111,19 @@ pub const SmartCardConnection = struct {
     }
 
     pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!*const anyopaque {
+        
         return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
 
     pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!*const anyopaque {
         // [EnforceRange] on tag
         if (!runtime.isInRange(u32, tag)) return error.TypeError;
-
+        
         return try SmartCardConnectionImpl.call_getAttribute(instance, tag);
     }
 
     pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: webidl.Opt(SmartCardTransmitOptions)) anyerror!*const anyopaque {
+        
         return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options);
     }
 
@@ -124,20 +132,22 @@ pub const SmartCardConnection = struct {
     }
 
     pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(SmartCardDisposition)) anyerror!*const anyopaque {
+        
         return try SmartCardConnectionImpl.call_disconnect(instance, disposition);
     }
 
     pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: BufferSource) anyerror!*const anyopaque {
         // [EnforceRange] on tag
         if (!runtime.isInRange(u32, tag)) return error.TypeError;
-
+        
         return try SmartCardConnectionImpl.call_setAttribute(instance, tag, value);
     }
 
     pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: BufferSource) anyerror!*const anyopaque {
         // [EnforceRange] on controlCode
         if (!runtime.isInRange(u32, controlCode)) return error.TypeError;
-
+        
         return try SmartCardConnectionImpl.call_control(instance, controlCode, data);
     }
+
 };

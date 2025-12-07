@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const XRDepthStateInit = struct {
-    usagePreference: *const anyopaque,
-    dataFormatPreference: *const anyopaque,
-    depthTypeRequest: ?*const anyopaque = null,
+    usagePreference: []const enums.XRDepthUsage,
+    dataFormatPreference: []const enums.XRDepthDataFormat,
+    depthTypeRequest: ?[]const enums.XRDepthType = null,
     matchDepthView: ?bool = null,
 };

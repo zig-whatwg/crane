@@ -3,12 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const UIEventInit = @import("UIEventInit.zig").UIEventInit;
 
 pub const NavigationEventInit = struct {
     // Inherited from UIEventInit
     base: UIEventInit,
 
-    dir: ?*const anyopaque = null,
-    relatedTarget: ?*const anyopaque = null,
+    dir: ?enums.SpatialNavigationDirection = null,
+    relatedTarget: ?*runtime.Instance = null,
 };

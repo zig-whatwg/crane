@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
 pub const SharedStorageUrlWithMetadata = struct {
     url: runtime.USVString,
-    reportingMetadata: ?*const anyopaque = null,
+    reportingMetadata: ?v8.JSValue = null,
 };

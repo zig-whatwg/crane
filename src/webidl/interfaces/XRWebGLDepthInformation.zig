@@ -1,11 +1,12 @@
 //! Generated from: webxr-depth-sensing.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRWebGLDepthInformationImpl = @import("impls").XRWebGLDepthInformation;
 const mixins = @import("mixins");
 const XRDepthInformation = @import("interfaces").XRDepthInformation;
@@ -25,36 +26,40 @@ pub const XRWebGLDepthInformation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "texture", "get_texture", null },
             .{ "textureType", "get_textureType", null },
             .{ "imageIndex", "get_imageIndex", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "texture", "get_texture", null },
             .{ "textureType", "get_textureType", null },
             .{ "imageIndex", "get_imageIndex", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -71,6 +76,7 @@ pub const XRWebGLDepthInformation = struct {
     );
 
     const delegates = .{
+
         .get_imageIndex = &get_imageIndex,
         .get_texture = &get_texture,
         .get_textureType = &get_textureType,
@@ -108,4 +114,5 @@ pub const XRWebGLDepthInformation = struct {
     pub fn get_imageIndex(instance: *runtime.Instance) anyerror!?u32 {
         return try XRWebGLDepthInformationImpl.get_imageIndex(instance);
     }
+
 };

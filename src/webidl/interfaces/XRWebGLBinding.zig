@@ -1,11 +1,12 @@
 //! Generated from: webxrlayers.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRWebGLBindingImpl = @import("impls").XRWebGLBinding;
 const mixins = @import("mixins");
 const XREquirectLayer = @import("interfaces").XREquirectLayer;
@@ -42,16 +43,16 @@ pub const XRWebGLBinding = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "nativeProjectionScaleFactor", "get_nativeProjectionScaleFactor", null },
             .{ "usesDepthValues", "get_usesDepthValues", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createProjectionLayer", "call_createProjectionLayer", 0 },
@@ -66,7 +67,7 @@ pub const XRWebGLBinding = struct {
             .{ "getDepthInformation", "call_getDepthInformation", 1 },
             .{ "getReflectionCubeMap", "call_getReflectionCubeMap", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createProjectionLayer",
@@ -81,19 +82,21 @@ pub const XRWebGLBinding = struct {
             "getDepthInformation",
             "getReflectionCubeMap",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "nativeProjectionScaleFactor", "get_nativeProjectionScaleFactor", null },
             .{ "usesDepthValues", "get_usesDepthValues", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -108,6 +111,7 @@ pub const XRWebGLBinding = struct {
     );
 
     const delegates = .{
+
         .get_nativeProjectionScaleFactor = &get_nativeProjectionScaleFactor,
         .get_usesDepthValues = &get_usesDepthValues,
 
@@ -152,46 +156,58 @@ pub const XRWebGLBinding = struct {
     }
 
     pub fn call_getCameraImage(instance: *runtime.Instance, camera: *runtime.Instance) anyerror!?*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_getCameraImage(instance, camera);
     }
 
     pub fn call_createCylinderLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRCylinderLayerInit)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_createCylinderLayer(instance, init_data);
     }
 
     pub fn call_createCubeLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRCubeLayerInit)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_createCubeLayer(instance, init_data);
     }
 
     pub fn call_createQuadLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRQuadLayerInit)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_createQuadLayer(instance, init_data);
     }
 
     pub fn call_getSubImage(instance: *runtime.Instance, layer: *runtime.Instance, frame: *runtime.Instance, eye: webidl.Opt(XREye)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_getSubImage(instance, layer, frame, eye);
     }
 
     pub fn call_getViewSubImage(instance: *runtime.Instance, layer: *runtime.Instance, view: *runtime.Instance) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_getViewSubImage(instance, layer, view);
     }
 
     pub fn call_getReflectionCubeMap(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_getReflectionCubeMap(instance, lightProbe);
     }
 
     pub fn call_createProjectionLayer(instance: *runtime.Instance, init_data: webidl.Opt(XRProjectionLayerInit)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_createProjectionLayer(instance, init_data);
     }
 
     pub fn call_createEquirectLayer(instance: *runtime.Instance, init_data: webidl.Opt(XREquirectLayerInit)) anyerror!*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_createEquirectLayer(instance, init_data);
     }
 
     pub fn call_foveateBoundTexture(instance: *runtime.Instance, target: GLenum, fixed_foveation: f32) anyerror!void {
+        
         return try XRWebGLBindingImpl.call_foveateBoundTexture(instance, target, fixed_foveation);
     }
 
     pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
+        
         return try XRWebGLBindingImpl.call_getDepthInformation(instance, view);
     }
+
 };

@@ -3,9 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const GPUStorageTextureBindingLayout = struct {
-    access: ?*const anyopaque = null,
-    format: *const anyopaque,
-    viewDimension: ?*const anyopaque = null,
+    access: ?enums.GPUStorageTextureAccess = null,
+    format: enums.GPUTextureFormat,
+    viewDimension: ?enums.GPUTextureViewDimension = null,
 };

@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NavigateEventImpl = @import("impls").NavigateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -33,10 +34,10 @@ pub const NavigateEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "navigationType", "get_navigationType", null },
@@ -51,19 +52,19 @@ pub const NavigateEvent = struct {
             .{ "hasUAVisualTransition", "get_hasUAVisualTransition", null },
             .{ "sourceElement", "get_sourceElement", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "intercept", "call_intercept", 0 },
             .{ "scroll", "call_scroll", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "intercept",
             "scroll",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -72,7 +73,7 @@ pub const NavigateEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "navigationType", "get_navigationType", null },
@@ -87,10 +88,11 @@ pub const NavigateEvent = struct {
             .{ "hasUAVisualTransition", "get_hasUAVisualTransition", null },
             .{ "sourceElement", "get_sourceElement", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -106,7 +108,7 @@ pub const NavigateEvent = struct {
             signal: *runtime.Instance = undefined,
             formData: ?*runtime.Instance = null,
             downloadRequest: ?runtime.DOMString = null,
-            info: *const anyopaque = undefined,
+            info: v8.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             sourceElement: ?*runtime.Instance = null,
             _internal: ?*NavigateEventImpl.InternalState = null,
@@ -114,6 +116,7 @@ pub const NavigateEvent = struct {
     );
 
     const delegates = .{
+
         .get_canIntercept = &get_canIntercept,
         .get_destination = &get_destination,
         .get_downloadRequest = &get_downloadRequest,
@@ -181,7 +184,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_downloadRequest(instance);
     }
 
-    pub fn get_info(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_info(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try NavigateEventImpl.get_info(instance);
     }
 
@@ -198,6 +201,8 @@ pub const NavigateEvent = struct {
     }
 
     pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(NavigationInterceptOptions)) anyerror!void {
+        
         return try NavigateEventImpl.call_intercept(instance, options);
     }
+
 };

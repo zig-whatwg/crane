@@ -1,11 +1,12 @@
 //! Generated from: webxr-lighting-estimation.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRLightEstimateImpl = @import("impls").XRLightEstimate;
 const mixins = @import("mixins");
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
@@ -22,36 +23,40 @@ pub const XRLightEstimate = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sphericalHarmonicsCoefficients", "get_sphericalHarmonicsCoefficients", null },
             .{ "primaryLightDirection", "get_primaryLightDirection", null },
             .{ "primaryLightIntensity", "get_primaryLightIntensity", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sphericalHarmonicsCoefficients", "get_sphericalHarmonicsCoefficients", null },
             .{ "primaryLightDirection", "get_primaryLightDirection", null },
             .{ "primaryLightIntensity", "get_primaryLightIntensity", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -67,6 +72,7 @@ pub const XRLightEstimate = struct {
     );
 
     const delegates = .{
+
         .get_primaryLightDirection = &get_primaryLightDirection,
         .get_primaryLightIntensity = &get_primaryLightIntensity,
         .get_sphericalHarmonicsCoefficients = &get_sphericalHarmonicsCoefficients,
@@ -96,4 +102,5 @@ pub const XRLightEstimate = struct {
     pub fn get_primaryLightIntensity(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRLightEstimateImpl.get_primaryLightIntensity(instance);
     }
+
 };

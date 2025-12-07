@@ -8,6 +8,7 @@
 //! a range of records from an object store or index.
 
 const std = @import("std");
+const v8 = @import("v8");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -84,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for lower
 ///
 /// Returns the lower bound of the range, or undefined if no lower bound.
-pub fn get_lower(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_lower(instance: *runtime.Instance) anyerror!v8.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -93,7 +94,6 @@ pub fn get_lower(instance: *runtime.Instance) ImplError!*const anyopaque {
     }
 
     // Return undefined for no lower bound - use V8 undefined
-    const v8 = @import("v8");
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     return @ptrCast(v8.ffi.v8_Undefined(isolate));
 }
@@ -101,7 +101,7 @@ pub fn get_lower(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Getter for upper
 ///
 /// Returns the upper bound of the range, or undefined if no upper bound.
-pub fn get_upper(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_upper(instance: *runtime.Instance) anyerror!v8.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -110,7 +110,6 @@ pub fn get_upper(instance: *runtime.Instance) ImplError!*const anyopaque {
     }
 
     // Return undefined for no upper bound - use V8 undefined
-    const v8 = @import("v8");
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     return @ptrCast(v8.ffi.v8_Undefined(isolate));
 }
@@ -118,7 +117,7 @@ pub fn get_upper(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Getter for lowerOpen
 ///
 /// Returns true if the lower bound is open (excluded).
-pub fn get_lowerOpen(instance: *runtime.Instance) ImplError!bool {
+pub fn get_lowerOpen(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.range.lower_open;
@@ -127,7 +126,7 @@ pub fn get_lowerOpen(instance: *runtime.Instance) ImplError!bool {
 /// Getter for upperOpen
 ///
 /// Returns true if the upper bound is open (excluded).
-pub fn get_upperOpen(instance: *runtime.Instance) ImplError!bool {
+pub fn get_upperOpen(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.range.upper_open;
@@ -138,7 +137,7 @@ pub fn get_upperOpen(instance: *runtime.Instance) ImplError!bool {
 /// Creates a key range containing only a single key.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-only
-pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_only(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -164,7 +163,7 @@ pub fn call_only(instance: *runtime.Instance, value: *const anyopaque) ImplError
 /// Returns true if the given key is within this range.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-includes
-pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplError!bool {
+pub fn call_includes(instance: *runtime.Instance, key: v8.JSValue) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -179,7 +178,7 @@ pub fn call_includes(instance: *runtime.Instance, key: *const anyopaque) ImplErr
 /// Creates a key range with both lower and upper bounds.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-bound
-pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *const anyopaque, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) ImplError!*runtime.Instance {
+pub fn call_bound(instance: *runtime.Instance, lower: v8.JSValue, upper: v8.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -213,7 +212,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: *const anyopaque, upper: *
 /// Creates a key range with only an upper bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperbound
-pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, open: webidl.Opt(bool)) ImplError!*runtime.Instance {
+pub fn call_upperBound(instance: *runtime.Instance, upper: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -240,7 +239,7 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: *const anyopaque, ope
 /// Creates a key range with only a lower bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lowerbound
-pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, open: webidl.Opt(bool)) ImplError!*runtime.Instance {
+pub fn call_lowerBound(instance: *runtime.Instance, lower: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -267,7 +266,6 @@ pub fn call_lowerBound(instance: *runtime.Instance, lower: *const anyopaque, ope
 /// This handles the conversion from backend IDBKey type to V8 values.
 /// Returns an opaque pointer that can be returned directly to JavaScript.
 fn convertKeyToV8(key: BackendKey) !*const anyopaque {
-    const v8 = @import("v8");
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
 
     switch (key.key_type) {
@@ -317,7 +315,6 @@ fn convertKeyToV8(key: BackendKey) !*const anyopaque {
 /// - binary (ArrayBuffer, etc.)
 /// - array (of valid keys)
 fn convertToKey(ptr: *const anyopaque) !BackendKey {
-    const v8 = @import("v8");
 
     // Cast to V8 value
     const value: *v8.ffi.Value = @ptrCast(@constCast(ptr));

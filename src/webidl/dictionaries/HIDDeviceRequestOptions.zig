@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const HIDDeviceFilter = @import("HIDDeviceFilter.zig").HIDDeviceFilter;
 
 pub const HIDDeviceRequestOptions = struct {
-    filters: *const anyopaque,
-    exclusionFilters: ?*const anyopaque = null,
+    filters: []const HIDDeviceFilter,
+    exclusionFilters: ?[]const HIDDeviceFilter = null,
 };

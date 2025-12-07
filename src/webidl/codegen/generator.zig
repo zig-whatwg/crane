@@ -618,9 +618,9 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
     } else if (std.mem.eql(u8, type_str, "undefined") or std.mem.eql(u8, type_str, "void")) {
         try w.writeAll("void");
     } else if (std.mem.eql(u8, type_str, "any") or std.mem.eql(u8, type_str, "object")) {
-        // Use pointer to anyopaque for 'any' and 'object' types
-        // Cannot pass anyopaque by value in Zig 0.15.2
-        try w.writeAll("*const anyopaque");
+        // Use type-safe JSValue for 'any' and 'object' types
+        // This replaces the unsafe *const anyopaque with a tagged union
+        try w.writeAll("v8.JSValue");
     } else {
         // Check type registry if available
         if (type_registry) |reg| {
@@ -725,6 +725,7 @@ fn generateImplFile(
     try w.writeAll("const std = @import(\"std\");\n");
     try w.writeAll("const runtime = @import(\"runtime\");\n");
     try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n");
     try w.writeAll("const interfaces = @import(\"interfaces\");\n");
     try w.writeAll("const typedefs = @import(\"typedefs\");\n");
     try w.writeAll("const enums = @import(\"enums\");\n");
@@ -2157,6 +2158,7 @@ pub fn generateTypedef(
 
     // Import runtime (needed for DOMString types and Instance)
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n");
 
     // Check if typedef references a callback - if so, import callbacks module
     const needs_callbacks = try typeReferencesCallback(allocator, typedef.idlType, typedefs_path);
@@ -2348,6 +2350,7 @@ pub fn generateDictionary(
 
     // Write imports
     try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n");
     if (needs_typedefs) {
         try w.writeAll("const typedefs = @import(\"typedefs\");\n");
     }
@@ -2496,7 +2499,8 @@ pub fn generateCallback(
 
     // Write imports
     try w.writeAll("const runtime = @import(\"runtime\");\n");
-    try w.writeAll("const webidl = @import(\"webidl\");\n\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n\n");
 
     // Generate callback function type
     try w.print("pub const {s} = *const fn (", .{callback.name});
@@ -2553,6 +2557,7 @@ pub fn generateNamespace(
     // Write imports
     try w.writeAll("const runtime = @import(\"runtime\");\n");
     try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n");
     try w.print("const {s}_impl = @import(\"impls\").{s};\n\n", .{ namespace.name, namespace.name });
 
     // Generate namespace as a struct with only static methods
@@ -2737,7 +2742,8 @@ pub fn generateNamespaceImpl(
     try w.writeAll("\n");
 
     // Write imports
-    try w.writeAll("const runtime = @import(\"runtime\");\n\n");
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const v8 = @import(\"v8\");\n\n");
 
     // Collect operations for overload detection
     var operations = std.ArrayList(types.Operation).empty;

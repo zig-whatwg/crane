@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DocumentTypeImpl = @import("impls").DocumentType;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -37,17 +38,17 @@ pub const DocumentType = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "publicId", "get_publicId", null },
             .{ "systemId", "get_systemId", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "before", "call_before", 1 },
@@ -55,7 +56,7 @@ pub const DocumentType = struct {
             .{ "replaceWith", "call_replaceWith", 1 },
             .{ "remove", "call_remove", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "before",
@@ -63,7 +64,7 @@ pub const DocumentType = struct {
             "replaceWith",
             "remove",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -86,17 +87,18 @@ pub const DocumentType = struct {
             "replaceChild",
             "removeChild",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "publicId", "get_publicId", null },
             .{ "systemId", "get_systemId", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -112,6 +114,7 @@ pub const DocumentType = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
         .get_publicId = &get_publicId,
         .get_systemId = &get_systemId,
@@ -152,7 +155,8 @@ pub const DocumentType = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentTypeImpl.call_replaceWith(instance, nodes);
     }
 
@@ -161,7 +165,8 @@ pub const DocumentType = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentTypeImpl.call_before(instance, nodes);
     }
 
@@ -170,7 +175,8 @@ pub const DocumentType = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentTypeImpl.call_after(instance, nodes);
     }
 
@@ -179,7 +185,8 @@ pub const DocumentType = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         return try DocumentTypeImpl.call_remove(instance);
     }
+
 };

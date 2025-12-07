@@ -1,11 +1,12 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSHSLImpl = @import("impls").CSSHSL;
 const mixins = @import("mixins");
 const CSSColorValue = @import("interfaces").CSSColorValue;
@@ -27,7 +28,7 @@ pub const CSSHSL = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker", "PaintWorklet", "LayoutWorklet" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
@@ -35,7 +36,7 @@ pub const CSSHSL = struct {
             .PaintWorklet = true,
             .LayoutWorklet = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "h", "get_h", "set_h" },
@@ -43,20 +44,22 @@ pub const CSSHSL = struct {
             .{ "l", "get_l", "set_l" },
             .{ "alpha", "get_alpha", "set_alpha" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "parse",
             "parseAll",
             "parse",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "h", "get_h", "set_h" },
@@ -64,10 +67,11 @@ pub const CSSHSL = struct {
             .{ "l", "get_l", "set_l" },
             .{ "alpha", "get_alpha", "set_alpha" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -84,6 +88,7 @@ pub const CSSHSL = struct {
     );
 
     const delegates = .{
+
         .get_alpha = &get_alpha,
         .get_h = &get_h,
         .get_l = &get_l,
@@ -145,4 +150,5 @@ pub const CSSHSL = struct {
     pub fn set_alpha(instance: *runtime.Instance, value: CSSColorPercent) anyerror!void {
         try CSSHSLImpl.set_alpha(instance, value);
     }
+
 };

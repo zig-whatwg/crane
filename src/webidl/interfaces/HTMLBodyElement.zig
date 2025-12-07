@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLBodyElementImpl = @import("impls").HTMLBodyElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -89,10 +90,10 @@ pub const HTMLBodyElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
@@ -124,13 +125,15 @@ pub const HTMLBodyElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -226,7 +229,7 @@ pub const HTMLBodyElement = struct {
             "focus",
             "blur",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
@@ -258,10 +261,11 @@ pub const HTMLBodyElement = struct {
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -302,6 +306,7 @@ pub const HTMLBodyElement = struct {
     );
 
     const delegates = .{
+
         .get_aLink = &get_aLink,
         .get_background = &get_background,
         .get_bgColor = &get_bgColor,
@@ -398,7 +403,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_text(instance, value);
     }
 
@@ -412,7 +417,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_link(instance, value);
     }
 
@@ -426,7 +431,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_vLink(instance, value);
     }
 
@@ -440,7 +445,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_aLink(instance, value);
     }
 
@@ -454,7 +459,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_bgColor(instance, value);
     }
 
@@ -468,7 +473,7 @@ pub const HTMLBodyElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLBodyElementImpl.set_background(instance, value);
     }
 
@@ -639,4 +644,5 @@ pub const HTMLBodyElement = struct {
     pub fn set_onportalactivate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try HTMLBodyElementImpl.set_onportalactivate(instance, value);
     }
+
 };

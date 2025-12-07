@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const MLTensorLimits = @import("MLTensorLimits.zig").MLTensorLimits;
 
 pub const MLGemmSupportLimits = struct {
-    a: ?*const anyopaque = null,
-    b: ?*const anyopaque = null,
-    c: ?*const anyopaque = null,
-    output: ?*const anyopaque = null,
+    a: ?MLTensorLimits = null,
+    b: ?MLTensorLimits = null,
+    c: ?MLTensorLimits = null,
+    output: ?MLTensorLimits = null,
 };

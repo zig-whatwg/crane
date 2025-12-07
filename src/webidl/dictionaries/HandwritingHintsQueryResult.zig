@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const HandwritingHintsQueryResult = struct {
-    recognitionType: ?*const anyopaque = null,
-    inputType: ?*const anyopaque = null,
+    recognitionType: ?[]const enums.HandwritingRecognitionType = null,
+    inputType: ?[]const enums.HandwritingInputType = null,
     textContext: ?bool = null,
     alternatives: ?bool = null,
 };

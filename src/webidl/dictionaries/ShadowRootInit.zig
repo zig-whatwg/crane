@@ -3,12 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const ShadowRootInit = struct {
-    mode: *const anyopaque,
+    mode: enums.ShadowRootMode,
     delegatesFocus: ?bool = null,
-    slotAssignment: ?*const anyopaque = null,
+    slotAssignment: ?enums.SlotAssignmentMode = null,
     clonable: ?bool = null,
     serializable: ?bool = null,
-    customElementRegistry: ?*const anyopaque = null,
+    customElementRegistry: ?*runtime.Instance = null,
 };

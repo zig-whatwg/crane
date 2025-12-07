@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -47,7 +48,7 @@ pub fn call_commit(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: atomicWrite
-pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
     _ = instance;
     _ = chunk;
     return error.NotImplemented;

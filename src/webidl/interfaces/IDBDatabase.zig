@@ -1,11 +1,12 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IDBDatabaseImpl = @import("impls").IDBDatabase;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -37,13 +38,13 @@ pub const IDBDatabase = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
@@ -54,7 +55,7 @@ pub const IDBDatabase = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onversionchange", "get_onversionchange", "set_onversionchange" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "transaction", "call_transaction", 1 },
@@ -62,7 +63,7 @@ pub const IDBDatabase = struct {
             .{ "createObjectStore", "call_createObjectStore", 1 },
             .{ "deleteObjectStore", "call_deleteObjectStore", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "transaction",
@@ -70,7 +71,7 @@ pub const IDBDatabase = struct {
             "createObjectStore",
             "deleteObjectStore",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -78,7 +79,7 @@ pub const IDBDatabase = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
@@ -89,10 +90,11 @@ pub const IDBDatabase = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onversionchange", "get_onversionchange", "set_onversionchange" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -112,6 +114,7 @@ pub const IDBDatabase = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
         .get_objectStoreNames = &get_objectStoreNames,
         .get_onabort = &get_onabort,
@@ -191,14 +194,14 @@ pub const IDBDatabase = struct {
     /// Extended attributes: [NewObject]
     pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);
     }
 
@@ -207,6 +210,8 @@ pub const IDBDatabase = struct {
     }
 
     pub fn call_deleteObjectStore(instance: *runtime.Instance, name: DOMString) anyerror!void {
+        
         return try IDBDatabaseImpl.call_deleteObjectStore(instance, name);
     }
+
 };

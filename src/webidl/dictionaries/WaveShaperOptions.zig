@@ -3,12 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const AudioNodeOptions = @import("AudioNodeOptions.zig").AudioNodeOptions;
 
 pub const WaveShaperOptions = struct {
     // Inherited from AudioNodeOptions
     base: AudioNodeOptions,
 
-    curve: ?*const anyopaque = null,
-    oversample: ?*const anyopaque = null,
+    curve: ?[]const f32 = null,
+    oversample: ?enums.OverSampleType = null,
 };

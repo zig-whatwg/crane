@@ -1,11 +1,12 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const LayoutFragmentImpl = @import("impls").LayoutFragment;
 const mixins = @import("mixins");
 const ChildBreakToken = @import("interfaces").ChildBreakToken;
@@ -21,10 +22,10 @@ pub const LayoutFragment = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "LayoutWorklet" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .LayoutWorklet = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "inlineSize", "get_inlineSize", null },
@@ -34,16 +35,19 @@ pub const LayoutFragment = struct {
             .{ "data", "get_data", null },
             .{ "breakToken", "get_breakToken", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "inlineSize", "get_inlineSize", null },
@@ -53,10 +57,11 @@ pub const LayoutFragment = struct {
             .{ "data", "get_data", null },
             .{ "breakToken", "get_breakToken", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -68,13 +73,14 @@ pub const LayoutFragment = struct {
             blockSize: f64 = undefined,
             inlineOffset: f64 = undefined,
             blockOffset: f64 = undefined,
-            data: *const anyopaque = undefined,
+            data: v8.JSValue = undefined,
             breakToken: ?*runtime.Instance = null,
             _internal: ?*LayoutFragmentImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_blockOffset = &get_blockOffset,
         .get_blockSize = &get_blockSize,
         .get_breakToken = &get_breakToken,
@@ -123,11 +129,12 @@ pub const LayoutFragment = struct {
         try LayoutFragmentImpl.set_blockOffset(instance, value);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try LayoutFragmentImpl.get_data(instance);
     }
 
     pub fn get_breakToken(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try LayoutFragmentImpl.get_breakToken(instance);
     }
+
 };

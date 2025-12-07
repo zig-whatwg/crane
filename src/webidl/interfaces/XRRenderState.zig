@@ -1,11 +1,12 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRRenderStateImpl = @import("impls").XRRenderState;
 const mixins = @import("mixins");
 const XRWebGLLayer = @import("interfaces").XRWebGLLayer;
@@ -23,10 +24,10 @@ pub const XRRenderState = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "depthNear", "get_depthNear", null },
@@ -36,16 +37,19 @@ pub const XRRenderState = struct {
             .{ "baseLayer", "get_baseLayer", null },
             .{ "layers", "get_layers", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "depthNear", "get_depthNear", null },
@@ -55,10 +59,11 @@ pub const XRRenderState = struct {
             .{ "baseLayer", "get_baseLayer", null },
             .{ "layers", "get_layers", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -77,6 +82,7 @@ pub const XRRenderState = struct {
     );
 
     const delegates = .{
+
         .get_baseLayer = &get_baseLayer,
         .get_depthFar = &get_depthFar,
         .get_depthNear = &get_depthNear,
@@ -121,4 +127,5 @@ pub const XRRenderState = struct {
     pub fn get_layers(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try XRRenderStateImpl.get_layers(instance);
     }
+
 };

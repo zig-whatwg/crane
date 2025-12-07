@@ -1,11 +1,12 @@
 //! Generated from: OES_vertex_array_object.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const OES_vertex_array_objectImpl = @import("impls").OES_vertex_array_object;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
@@ -24,16 +25,17 @@ pub const OES_vertex_array_object = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createVertexArrayOES", "call_createVertexArrayOES", 0 },
@@ -41,12 +43,12 @@ pub const OES_vertex_array_object = struct {
             .{ "isVertexArrayOES", "call_isVertexArrayOES", 1 },
             .{ "bindVertexArrayOES", "call_bindVertexArrayOES", 1 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "VERTEX_ARRAY_BINDING_OES", "get_VERTEX_ARRAY_BINDING_OES" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createVertexArrayOES",
@@ -54,16 +56,19 @@ pub const OES_vertex_array_object = struct {
             "isVertexArrayOES",
             "bindVertexArrayOES",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -85,6 +90,7 @@ pub const OES_vertex_array_object = struct {
     }
 
     const delegates = .{
+
         .get_VERTEX_ARRAY_BINDING_OES = &get_VERTEX_ARRAY_BINDING_OES,
 
         .call_bindVertexArrayOES = &call_bindVertexArrayOES,
@@ -107,6 +113,7 @@ pub const OES_vertex_array_object = struct {
     }
 
     pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
+        
         return try OES_vertex_array_objectImpl.call_bindVertexArrayOES(instance, arrayObject);
     }
 
@@ -115,11 +122,14 @@ pub const OES_vertex_array_object = struct {
     }
 
     pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
+        
         return try OES_vertex_array_objectImpl.call_deleteVertexArrayOES(instance, arrayObject);
     }
 
     /// Extended attributes: [WebGLHandlesContextLoss]
     pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!GLboolean {
+        
         return try OES_vertex_array_objectImpl.call_isVertexArrayOES(instance, arrayObject);
     }
+
 };

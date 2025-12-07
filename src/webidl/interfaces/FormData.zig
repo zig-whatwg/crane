@@ -1,11 +1,12 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const FormDataImpl = @import("impls").FormData;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -25,50 +26,58 @@ pub const FormData = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        /// Note: "append" uses call_appendDispatch which handles overload resolution at runtime
         pub const methods = .{
-            .{ "append", "call_appendDispatch", 2 },
+            .{ "append", "call_append", 2 },
+            .{ "append", "call_append", 2 },
             .{ "delete", "call_delete", 1 },
             .{ "get", "call_get", 1 },
             .{ "getAll", "call_getAll", 1 },
             .{ "has", "call_has", 1 },
-            .{ "set", "call_setDispatch", 2 },
+            .{ "set", "call_set", 2 },
+            .{ "set", "call_set", 2 },
+            .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "append",
             "append",
             "delete",
             "get",
             "getAll",
             "has",
             "set",
+            "set",
             "forEach",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
-
+        
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -85,6 +94,7 @@ pub const FormData = struct {
     );
 
     const delegates = .{
+
         .call_append = &call_append,
         .call_delete = &call_delete,
         .call_forEach = &call_forEach,
@@ -92,6 +102,8 @@ pub const FormData = struct {
         .call_getAll = &call_getAll,
         .call_has = &call_has,
         .call_set = &call_set,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -112,60 +124,44 @@ pub const FormData = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
+        
         return try FormDataImpl.call_delete(instance, name);
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
         return try FormDataImpl.call_append(instance, name, value);
     }
 
-    /// Blob overload: append(name, Blob, filename?)
-    /// This is called from V8 when second argument is detected as a Blob instance
-    pub fn call_appendBlob(instance: *runtime.Instance, name: runtime.USVString, blob: *runtime.Instance, filename: ?runtime.USVString) anyerror!void {
-        return try FormDataImpl.call_appendBlob(instance, name, blob, filename);
-    }
-
-    /// Dispatch method for append - handles overload resolution
-    /// The second parameter is raw V8 value to allow runtime type checking
-    pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString, value_or_blob: runtime.Any) anyerror!void {
-        return try FormDataImpl.call_appendDispatch(instance, name, value_or_blob);
-    }
-
-    /// Dispatch method for set - handles overload resolution
-    pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, value_or_blob: runtime.Any) anyerror!void {
-        return try FormDataImpl.call_setDispatch(instance, name, value_or_blob);
-    }
-
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+        
         return try FormDataImpl.call_getAll(instance, name);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!bool {
+        
         return try FormDataImpl.call_has(instance, name);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+        
         return try FormDataImpl.call_forEach(instance, callback);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
         return try FormDataImpl.call_set(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?FormDataEntryValue {
+        
         return try FormDataImpl.call_get(instance, name);
     }
 
-    /// Entry type for iterable protocol
-    /// Used by V8Interface to iterate over FormData entries
-    pub const IterableEntry = struct {
-        name: []const u8,
-        value: []const u8,
-    };
-
-    /// Get entries for iterable protocol (used by V8Interface's collectPairIterableEntries)
-    /// Returns an array of entries that can be iterated
-    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry {
-        return FormDataImpl.getEntriesForIterable(instance);
+    /// Get entries for pair iterable support (used by V8 for iteration)
+    /// Returns slice of entries with .name and .value fields
+    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const FormDataImpl.IterableEntry {
+        return FormDataImpl.getEntriesInternal(instance);
     }
+
 };

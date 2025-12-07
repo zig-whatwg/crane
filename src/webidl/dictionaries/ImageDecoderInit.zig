@@ -3,13 +3,16 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const ImageDecoderInit = struct {
-    type: runtime.DOMString,
-    data: *const anyopaque,
-    colorSpaceConversion: ?*const anyopaque = null,
+    @"type": runtime.DOMString,
+    data: typedefs.ImageBufferSource,
+    colorSpaceConversion: ?enums.ColorSpaceConversion = null,
     desiredWidth: ?u32 = null,
     desiredHeight: ?u32 = null,
     preferAnimation: ?bool = null,
-    transfer: ?*const anyopaque = null,
+    transfer: ?[]const *const anyopaque = null,
 };

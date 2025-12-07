@@ -1,11 +1,12 @@
 //! Generated from: pointerevents.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const PointerEventImpl = @import("impls").PointerEvent;
 const mixins = @import("mixins");
 const MouseEvent = @import("interfaces").MouseEvent;
@@ -31,10 +32,10 @@ pub const PointerEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "pointerId", "get_pointerId", null },
@@ -51,19 +52,19 @@ pub const PointerEvent = struct {
             .{ "isPrimary", "get_isPrimary", null },
             .{ "persistentDeviceId", "get_persistentDeviceId", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getCoalescedEvents", "call_getCoalescedEvents", 0 },
             .{ "getPredictedEvents", "call_getPredictedEvents", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCoalescedEvents",
             "getPredictedEvents",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -75,7 +76,7 @@ pub const PointerEvent = struct {
             "getModifierState",
             "initMouseEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "pointerId", "get_pointerId", null },
@@ -92,10 +93,11 @@ pub const PointerEvent = struct {
             .{ "isPrimary", "get_isPrimary", null },
             .{ "persistentDeviceId", "get_persistentDeviceId", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -121,6 +123,7 @@ pub const PointerEvent = struct {
     );
 
     const delegates = .{
+
         .get_altitudeAngle = &get_altitudeAngle,
         .get_azimuthAngle = &get_azimuthAngle,
         .get_height = &get_height,
@@ -218,4 +221,5 @@ pub const PointerEvent = struct {
     pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PointerEventImpl.call_getPredictedEvents(instance);
     }
+
 };

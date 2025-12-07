@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLScriptElementImpl = @import("impls").HTMLScriptElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -88,10 +89,10 @@ pub const HTMLScriptElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", "set_type" },
@@ -110,20 +111,21 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_supports", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "supports",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -219,7 +221,7 @@ pub const HTMLScriptElement = struct {
             "focus",
             "blur",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", "set_type" },
@@ -238,10 +240,11 @@ pub const HTMLScriptElement = struct {
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -249,10 +252,10 @@ pub const HTMLScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             src: runtime.USVString = undefined,
             noModule: bool = undefined,
-            async: bool = undefined,
+            @"async": bool = undefined,
             @"defer": bool = undefined,
             blocking: *runtime.Instance = undefined,
             crossOrigin: ?runtime.DOMString = null,
@@ -270,6 +273,7 @@ pub const HTMLScriptElement = struct {
     );
 
     const delegates = .{
+
         .get_async = &get_async,
         .get_attributionSrc = &get_attributionSrc,
         .get_blocking = &get_blocking,
@@ -331,7 +335,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_type(instance, value);
     }
 
@@ -345,7 +349,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_src(instance, value);
     }
 
@@ -359,7 +363,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_noModule(instance, value);
     }
 
@@ -373,7 +377,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_async(instance, value);
     }
 
@@ -387,7 +391,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_defer(instance, value);
     }
 
@@ -413,7 +417,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_crossOrigin(instance, value);
     }
 
@@ -427,7 +431,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_referrerPolicy(instance, value);
     }
 
@@ -441,7 +445,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_integrity(instance, value);
     }
 
@@ -455,7 +459,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_fetchPriority(instance, value);
     }
 
@@ -469,7 +473,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_text(instance, value);
     }
 
@@ -483,7 +487,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_charset(instance, value);
     }
 
@@ -497,7 +501,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_event(instance, value);
     }
 
@@ -511,7 +515,7 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_htmlFor(instance, value);
     }
 
@@ -525,129 +529,13 @@ pub const HTMLScriptElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLScriptElementImpl.set_attributionSrc(instance, value);
     }
 
     pub fn call_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+        
         return try HTMLScriptElementImpl.call_supports(instance, @"type");
     }
 
-    // =========================================================================
-    // Custom internal functions (not from WebIDL, delegated to impl)
-    // These are HTML spec-defined internal slot accessors needed by script_execution
-    // Per Golden Rule #12: External code calls interfaces, not impls
-    // =========================================================================
-
-    /// Check if script is ready to be parser-executed
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#ready-to-be-parser-executed
-    pub fn isReadyToBeParserExecuted(instance: *runtime.Instance) bool {
-        return HTMLScriptElementImpl.isReadyToBeParserExecuted(instance);
-    }
-
-    /// Set ready to be parser-executed flag
-    pub fn setReadyToBeParserExecuted(instance: *runtime.Instance, value: bool) void {
-        HTMLScriptElementImpl.setReadyToBeParserExecuted(instance, value);
-    }
-
-    /// Check if script has already started
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#already-started
-    pub fn hasAlreadyStarted(instance: *runtime.Instance) bool {
-        return HTMLScriptElementImpl.hasAlreadyStarted(instance);
-    }
-
-    /// Set already started flag
-    pub fn setAlreadyStarted(instance: *runtime.Instance, value: bool) void {
-        HTMLScriptElementImpl.setAlreadyStarted(instance, value);
-    }
-
-    /// Get parser document
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#parser-document
-    pub fn getParserDocument(instance: *runtime.Instance) ?*runtime.Instance {
-        return HTMLScriptElementImpl.getParserDocument(instance);
-    }
-
-    /// Set parser document
-    pub fn setParserDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) void {
-        HTMLScriptElementImpl.setParserDocument(instance, doc);
-    }
-
-    /// Get preparation-time document
-    pub fn getPreparationTimeDocument(instance: *runtime.Instance) ?*runtime.Instance {
-        return HTMLScriptElementImpl.getPreparationTimeDocument(instance);
-    }
-
-    /// Set preparation-time document
-    pub fn setPreparationTimeDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) void {
-        HTMLScriptElementImpl.setPreparationTimeDocument(instance, doc);
-    }
-
-    /// Get script type
-    pub fn getScriptType(instance: *runtime.Instance) HTMLScriptElementImpl.ScriptType {
-        return HTMLScriptElementImpl.getScriptType(instance);
-    }
-
-    /// Set script type
-    pub fn setScriptType(instance: *runtime.Instance, script_type: HTMLScriptElementImpl.ScriptType) void {
-        HTMLScriptElementImpl.setScriptType(instance, script_type);
-    }
-
-    /// Check if from external file
-    pub fn isFromExternalFile(instance: *runtime.Instance) bool {
-        return HTMLScriptElementImpl.isFromExternalFile(instance);
-    }
-
-    /// Set from external file flag
-    pub fn setFromExternalFile(instance: *runtime.Instance, value: bool) void {
-        HTMLScriptElementImpl.setFromExternalFile(instance, value);
-    }
-
-    /// Get script result
-    pub fn getResult(instance: *runtime.Instance) HTMLScriptElementImpl.ScriptResult {
-        return HTMLScriptElementImpl.getResult(instance);
-    }
-
-    /// Set script result
-    pub fn setResult(instance: *runtime.Instance, result: HTMLScriptElementImpl.ScriptResult) void {
-        HTMLScriptElementImpl.setResult(instance, result);
-    }
-
-    /// Cache source text for execution
-    pub fn cacheSourceText(instance: *runtime.Instance, source: []const u8) !void {
-        return HTMLScriptElementImpl.cacheSourceText(instance, source);
-    }
-
-    /// Get cached source text
-    pub fn getCachedSourceText(instance: *runtime.Instance) ?[]const u8 {
-        return HTMLScriptElementImpl.getCachedSourceText(instance);
-    }
-
-    /// Clear force async flag
-    pub fn clearForceAsync(instance: *runtime.Instance) void {
-        HTMLScriptElementImpl.clearForceAsync(instance);
-    }
-
-    /// Get internal state (for direct field access when needed)
-    pub fn getInternal(instance: *runtime.Instance) ?*HTMLScriptElementImpl.InternalState {
-        return HTMLScriptElementImpl.getInternal(instance);
-    }
-
-    /// Prepare the script element
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
-    pub fn prepareScriptElement(allocator: std.mem.Allocator, instance: *runtime.Instance) !bool {
-        return HTMLScriptElementImpl.prepareScriptElement(allocator, instance);
-    }
-
-    /// Execute the script element
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#execute-the-script-element
-    pub fn executeScriptElement(allocator: std.mem.Allocator, instance: *runtime.Instance) !void {
-        return HTMLScriptElementImpl.executeScriptElement(allocator, instance);
-    }
-
-    // Re-export types from impl for external use
-    pub const ScriptType = HTMLScriptElementImpl.ScriptType;
-    pub const ScriptResult = HTMLScriptElementImpl.ScriptResult;
-    pub const ClassicScript = HTMLScriptElementImpl.ClassicScript;
-    pub const ModuleScript = HTMLScriptElementImpl.ModuleScript;
-    pub const InternalState = HTMLScriptElementImpl.InternalState;
 };

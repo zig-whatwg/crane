@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -193,7 +194,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// invoked the respective postMessage(message, transfer) and postMessage(message, options)
 /// methods on the port that the DedicatedWorkerGlobalScope object's implicit port is
 /// entangled with, with the same arguments."
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.dedicated_worker) |worker| {

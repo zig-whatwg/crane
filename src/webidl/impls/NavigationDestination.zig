@@ -17,6 +17,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -217,7 +218,7 @@ pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
 
 /// Operation: getState()
 /// HTML Standard §7.2.6.5: Returns the state that will be set on the entry
-pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getState(instance: *runtime.Instance) anyerror!v8.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return the state pointer, or sentinel for undefined

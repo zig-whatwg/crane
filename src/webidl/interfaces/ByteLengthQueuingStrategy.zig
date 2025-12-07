@@ -1,11 +1,12 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ByteLengthQueuingStrategyImpl = @import("impls").ByteLengthQueuingStrategy;
 const mixins = @import("mixins");
 const Function = @import("callbacks").Function;
@@ -22,34 +23,38 @@ pub const ByteLengthQueuingStrategy = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "highWaterMark", "get_highWaterMark", null },
             .{ "size", "get_size", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "highWaterMark", "get_highWaterMark", null },
             .{ "size", "get_size", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -64,6 +69,7 @@ pub const ByteLengthQueuingStrategy = struct {
     );
 
     const delegates = .{
+
         .get_highWaterMark = &get_highWaterMark,
         .get_size = &get_size,
 
@@ -94,4 +100,5 @@ pub const ByteLengthQueuingStrategy = struct {
     pub fn get_size(instance: *runtime.Instance) anyerror!Function {
         return try ByteLengthQueuingStrategyImpl.get_size(instance);
     }
+
 };

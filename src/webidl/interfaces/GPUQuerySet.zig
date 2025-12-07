@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUQuerySetImpl = @import("impls").GPUQuerySet;
 const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
@@ -27,43 +28,45 @@ pub const GPUQuerySet = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
             .{ "count", "get_count", null },
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "destroy", "call_destroy", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "destroy",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "count", "get_count", null },
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -71,7 +74,7 @@ pub const GPUQuerySet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: GPUQueryType = undefined,
+            @"type": GPUQueryType = undefined,
             count: GPUSize32Out = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUQuerySetImpl.InternalState = null,
@@ -79,6 +82,7 @@ pub const GPUQuerySet = struct {
     );
 
     const delegates = .{
+
         .get_count = &get_count,
         .get_label = &get_label,
         .get_type = &get_type,
@@ -120,4 +124,5 @@ pub const GPUQuerySet = struct {
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try GPUQuerySetImpl.call_destroy(instance);
     }
+
 };

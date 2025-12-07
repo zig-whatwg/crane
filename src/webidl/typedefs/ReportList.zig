@@ -1,8 +1,8 @@
 //! WebIDL typedef: ReportList
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
-//! NOTE: Dictionary types use *runtime.Instance to avoid circular imports
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
-pub const ReportList = []const *runtime.Instance;
+pub const ReportList = []const dictionaries.Report;

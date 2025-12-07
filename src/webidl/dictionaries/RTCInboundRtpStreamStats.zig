@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const RTCReceivedRtpStreamStats = @import("RTCReceivedRtpStreamStats.zig").RTCReceivedRtpStreamStats;
 
 pub const RTCInboundRtpStreamStats = struct {
@@ -27,7 +29,7 @@ pub const RTCInboundRtpStreamStats = struct {
     totalPausesDuration: ?f64 = null,
     freezeCount: ?u32 = null,
     totalFreezesDuration: ?f64 = null,
-    lastPacketReceivedTimestamp: ?*const anyopaque = null,
+    lastPacketReceivedTimestamp: ?typedefs.DOMHighResTimeStamp = null,
     headerBytesReceived: ?u64 = null,
     packetsDiscarded: ?u64 = null,
     fecBytesReceived: ?u64 = null,
@@ -38,7 +40,7 @@ pub const RTCInboundRtpStreamStats = struct {
     firCount: ?u32 = null,
     pliCount: ?u32 = null,
     totalProcessingDelay: ?f64 = null,
-    estimatedPlayoutTimestamp: ?*const anyopaque = null,
+    estimatedPlayoutTimestamp: ?typedefs.DOMHighResTimeStamp = null,
     jitterBufferDelay: ?f64 = null,
     jitterBufferTargetDelay: ?f64 = null,
     jitterBufferEmittedCount: ?u64 = null,

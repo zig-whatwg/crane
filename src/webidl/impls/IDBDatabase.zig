@@ -106,7 +106,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for name
 ///
 /// Returns the name of the database.
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return runtime.DOMString.initInterned(internal.database.name);
@@ -115,7 +115,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 /// Getter for version
 ///
 /// Returns the version of the database.
-pub fn get_version(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_version(instance: *runtime.Instance) anyerror!u64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.database.version;
@@ -124,7 +124,7 @@ pub fn get_version(instance: *runtime.Instance) ImplError!u64 {
 /// Getter for objectStoreNames
 ///
 /// Returns a DOMStringList of object store names.
-pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -139,56 +139,56 @@ pub fn get_objectStoreNames(instance: *runtime.Instance) ImplError!*runtime.Inst
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onabort;
 }
 
 /// Getter for onclose
-pub fn get_onclose(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onclose;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onerror;
 }
 
 /// Getter for onversionchange
-pub fn get_onversionchange(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onversionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onversionchange;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onabort = value;
 }
 
 /// Setter for onclose
-pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onclose = value;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onerror = value;
 }
 
 /// Setter for onversionchange
-pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onversionchange = value;
@@ -199,7 +199,7 @@ pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHan
 /// Creates a new transaction on the database.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) ImplError!*runtime.Instance {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -249,7 +249,7 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaqu
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-createobjectstore
 ///
 /// Note: Can only be called during a versionchange transaction.
-pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.IDBObjectStoreParameters)) ImplError!*runtime.Instance {
+pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.IDBObjectStoreParameters)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -296,7 +296,7 @@ pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMStri
 /// Closes the database connection.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-close
-pub fn call_close(instance: *runtime.Instance) ImplError!void {
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -310,7 +310,7 @@ pub fn call_close(instance: *runtime.Instance) ImplError!void {
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-deleteobjectstore
 ///
 /// Note: Can only be called during a versionchange transaction.
-pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) ImplError!void {
+pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -15,6 +15,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
 const v8_engine = @import("v8");
+const v8 = v8_engine;
 
 // Type-safe V8 value system
 const StoredError = v8_engine.stored_error.StoredError;
@@ -163,7 +164,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     if (underlyingSource.was_passed) {
         // underlyingSource.value is a V8 Object* (Global<Value>*)
         // Extract callback properties using V8 FFI
-        const v8 = @import("v8").ffi;
+        const v8_ffi = v8.ffi;
         const pointer_tag = @import("v8").pointer_tag;
 
         // Untag the pointer before using it as a V8 object
@@ -174,11 +175,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
             return error.TypeError; // Expected V8 object, got Zig instance
         }
 
-        const v8_obj: *v8.Object = @ptrCast(untagged.ptr);
+        const v8_obj: *v8_ffi.Object = @ptrCast(untagged.ptr);
 
         // Get V8 context from runtime context
         const v8_context_ptr = ctx.getEngineContext() orelse return error.InvalidState;
-        const v8_context: *v8.Context = @ptrCast(@alignCast(v8_context_ptr));
+        const v8_context: *v8_ffi.Context = @ptrCast(@alignCast(v8_context_ptr));
 
         // Get current isolate
         const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
@@ -353,7 +354,7 @@ pub fn invokePendingStartCallback(
     };
 
     // Import V8 FFI for direct function invocation
-    const v8 = @import("v8").ffi;
+    const v8_ffi = v8.ffi;
 
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
@@ -516,7 +517,7 @@ pub fn invokePendingByteStartCallback(
     };
 
     // Import V8 FFI for direct function invocation
-    const v8 = @import("v8").ffi;
+    const v8_ffi = v8.ffi;
 
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
@@ -861,7 +862,7 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 /// - null if the object doesn't have internal fields (not a wrapped Zig object)
 /// - error.TypeError if the value is not an object
 fn unwrapV8Instance(v8_ptr: *const anyopaque) !?*runtime.Instance {
-    const v8 = @import("v8").ffi;
+    const v8_ffi = v8.ffi;
     const pointer_tag = @import("v8").pointer_tag;
 
     // Untag the pointer before using it as a V8 value

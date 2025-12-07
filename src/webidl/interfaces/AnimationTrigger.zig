@@ -1,11 +1,12 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-12-05T20:30:49Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const AnimationTriggerImpl = @import("impls").AnimationTrigger;
 const mixins = @import("mixins");
 const AnimationTriggerBehavior = @import("enums").AnimationTriggerBehavior;
@@ -23,10 +24,10 @@ pub const AnimationTrigger = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
@@ -36,16 +37,19 @@ pub const AnimationTrigger = struct {
             .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
             .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "timeline", "get_timeline", "set_timeline" },
@@ -55,10 +59,11 @@ pub const AnimationTrigger = struct {
             .{ "exitRangeStart", "get_exitRangeStart", "set_exitRangeStart" },
             .{ "exitRangeEnd", "get_exitRangeEnd", "set_exitRangeEnd" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -68,15 +73,16 @@ pub const AnimationTrigger = struct {
         struct {
             timeline: *runtime.Instance = undefined,
             behavior: AnimationTriggerBehavior = undefined,
-            rangeStart: *const anyopaque = undefined,
-            rangeEnd: *const anyopaque = undefined,
-            exitRangeStart: *const anyopaque = undefined,
-            exitRangeEnd: *const anyopaque = undefined,
+            rangeStart: v8.JSValue = undefined,
+            rangeEnd: v8.JSValue = undefined,
+            exitRangeStart: v8.JSValue = undefined,
+            exitRangeEnd: v8.JSValue = undefined,
             _internal: ?*AnimationTriggerImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_behavior = &get_behavior,
         .get_exitRangeEnd = &get_exitRangeEnd,
         .get_exitRangeStart = &get_exitRangeStart,
@@ -127,35 +133,36 @@ pub const AnimationTrigger = struct {
         try AnimationTriggerImpl.set_behavior(instance, value);
     }
 
-    pub fn get_rangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_rangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try AnimationTriggerImpl.get_rangeStart(instance);
     }
 
-    pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_rangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
         try AnimationTriggerImpl.set_rangeStart(instance, value);
     }
 
-    pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try AnimationTriggerImpl.get_rangeEnd(instance);
     }
 
-    pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_rangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
         try AnimationTriggerImpl.set_rangeEnd(instance, value);
     }
 
-    pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try AnimationTriggerImpl.get_exitRangeStart(instance);
     }
 
-    pub fn set_exitRangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_exitRangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
         try AnimationTriggerImpl.set_exitRangeStart(instance, value);
     }
 
-    pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try AnimationTriggerImpl.get_exitRangeEnd(instance);
     }
 
-    pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_exitRangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
         try AnimationTriggerImpl.set_exitRangeEnd(instance, value);
     }
+
 };

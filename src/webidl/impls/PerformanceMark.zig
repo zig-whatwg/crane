@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -55,7 +56,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mark
 }
 
 /// Getter for detail
-pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

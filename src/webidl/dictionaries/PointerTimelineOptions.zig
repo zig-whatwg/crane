@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const PointerTimelineOptions = struct {
-    source: ?*const anyopaque = null,
-    axis: ?*const anyopaque = null,
+    source: ?*runtime.Instance = null,
+    axis: ?enums.PointerAxis = null,
 };

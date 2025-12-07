@@ -3,12 +3,16 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const ImageResource = @import("ImageResource.zig").ImageResource;
 
 pub const ContentDescription = struct {
     id: runtime.DOMString,
     title: runtime.DOMString,
     description: runtime.DOMString,
-    category: ?*const anyopaque = null,
-    icons: ?*const anyopaque = null,
+    category: ?enums.ContentCategory = null,
+    icons: ?[]const ImageResource = null,
     url: runtime.USVString,
 };

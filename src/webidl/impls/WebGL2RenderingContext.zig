@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -366,7 +367,7 @@ pub fn call_isShader(instance: *runtime.Instance, shader: ?*runtime.Instance) an
 }
 
 /// Operation: getParameter
-pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = pname;
     return error.NotImplemented;
@@ -421,7 +422,7 @@ pub fn call_bindTransformFeedback(instance: *runtime.Instance, target: typedefs.
 }
 
 /// Operation: getVertexAttrib
-pub fn call_getVertexAttrib(instance: *runtime.Instance, index: typedefs.GLuint, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getVertexAttrib(instance: *runtime.Instance, index: typedefs.GLuint, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = index;
     _ = pname;
@@ -640,7 +641,7 @@ pub fn call_checkFramebufferStatus(instance: *runtime.Instance, target: typedefs
 }
 
 /// Operation: getRenderbufferParameter
-pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -787,7 +788,7 @@ pub fn call_bindBufferBase(instance: *runtime.Instance, target: typedefs.GLenum,
 }
 
 /// Operation: getExtension
-pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*const anyopaque {
+pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?v8.JSValue {
     _ = instance;
     _ = name;
     return null;
@@ -916,7 +917,7 @@ pub fn call_vertexAttribI4iv(instance: *runtime.Instance, index: typedefs.GLuint
 }
 
 /// Operation: getShaderParameter
-pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = shader;
     _ = pname;
@@ -1127,7 +1128,7 @@ pub fn call_clearBufferfi(instance: *runtime.Instance, buffer: typedefs.GLenum, 
 }
 
 /// Operation: getFramebufferAttachmentParameter
-pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = attachment;
@@ -1281,7 +1282,7 @@ pub fn call_isSampler(instance: *runtime.Instance, sampler: ?*runtime.Instance) 
 }
 
 /// Operation: getSamplerParameter
-pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = sampler;
     _ = pname;
@@ -1345,7 +1346,7 @@ pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!*const anyopa
 }
 
 /// Operation: getQueryParameter
-pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = query;
     _ = pname;
@@ -1458,7 +1459,7 @@ pub fn call_stencilFunc(instance: *runtime.Instance, func: typedefs.GLenum, ref:
 }
 
 /// Operation: getActiveUniformBlockParameter
-pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: typedefs.GLuint, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = uniformBlockIndex;
@@ -1486,7 +1487,7 @@ pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.
 }
 
 /// Operation: getIndexedParameter
-pub fn call_getIndexedParameter(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!*const anyopaque {
+pub fn call_getIndexedParameter(instance: *runtime.Instance, target: typedefs.GLenum, index: typedefs.GLuint) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = index;
@@ -1543,7 +1544,7 @@ pub fn call_bufferData(instance: *runtime.Instance, target: typedefs.GLenum, siz
 }
 
 /// Operation: getTexParameter
-pub fn call_getTexParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getTexParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -1691,7 +1692,7 @@ pub fn call_deleteSampler(instance: *runtime.Instance, sampler: ?*runtime.Instan
 }
 
 /// Operation: getSyncParameter
-pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = sync;
     _ = pname;
@@ -1806,7 +1807,7 @@ pub fn call_uniform3uiv(instance: *runtime.Instance, location: ?*runtime.Instanc
 }
 
 /// Operation: getProgramParameter
-pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = pname;
@@ -1828,7 +1829,7 @@ pub fn call_vertexAttrib2fv(instance: *runtime.Instance, index: typedefs.GLuint,
 }
 
 /// Operation: getInternalformatParameter
-pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: typedefs.GLenum, internalformat: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: typedefs.GLenum, internalformat: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = internalformat;
@@ -1899,7 +1900,7 @@ pub fn call_createBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Operation: getActiveUniforms
-pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = uniformIndices;
@@ -2006,7 +2007,7 @@ pub fn call_deleteTransformFeedback(instance: *runtime.Instance, tf: ?*runtime.I
 }
 
 /// Operation: getBufferParameter
-pub fn call_getBufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!*const anyopaque {
+pub fn call_getBufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -2065,7 +2066,7 @@ pub fn call_attachShader(instance: *runtime.Instance, program: *runtime.Instance
 }
 
 /// Operation: getUniform
-pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     _ = program;
     _ = location;

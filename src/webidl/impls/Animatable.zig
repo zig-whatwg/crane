@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;

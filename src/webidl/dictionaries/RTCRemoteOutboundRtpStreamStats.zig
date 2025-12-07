@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const RTCSentRtpStreamStats = @import("RTCSentRtpStreamStats.zig").RTCSentRtpStreamStats;
 
 pub const RTCRemoteOutboundRtpStreamStats = struct {
@@ -10,7 +12,7 @@ pub const RTCRemoteOutboundRtpStreamStats = struct {
     base: RTCSentRtpStreamStats,
 
     localId: ?runtime.DOMString = null,
-    remoteTimestamp: ?*const anyopaque = null,
+    remoteTimestamp: ?typedefs.DOMHighResTimeStamp = null,
     reportsSent: ?u64 = null,
     roundTripTime: ?f64 = null,
     totalRoundTripTime: ?f64 = null,

@@ -10,6 +10,7 @@
 //! Migrated from: webidl/src/dom/element.zig
 
 const std = @import("std");
+const v8 = @import("v8");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -2893,7 +2894,7 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(d
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
 ///
 /// Note: Returns null - requires Web Animations API and rendering engine
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;
@@ -3351,7 +3352,6 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
 fn parseShadowRootMode(ptr: *const anyopaque) enums.ShadowRootMode {
     // The V8 conversion layer passes enum values as strings via anyopaque pointer
     // For now, try to extract the string and match
-    const v8 = @import("v8");
 
     // Check if this is a V8 string value
     const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
@@ -3375,7 +3375,6 @@ fn parseShadowRootMode(ptr: *const anyopaque) enums.ShadowRootMode {
 
 /// Parse SlotAssignmentMode from V8 value
 fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
-    const v8 = @import("v8");
 
     const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
     if (v8.ffi.v8_Value_IsString(v8_value)) {

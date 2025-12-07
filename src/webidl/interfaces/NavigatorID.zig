@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NavigatorIDImpl = @import("impls").NavigatorID;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -19,7 +20,7 @@ pub const NavigatorID = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "appCodeName", "get_appCodeName", null },
@@ -33,20 +34,21 @@ pub const NavigatorID = struct {
             .{ "vendorSub", "get_vendorSub", null },
             .{ "oscpu", "get_oscpu", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "taintEnabled", "call_taintEnabled", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "taintEnabled",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "appCodeName", "get_appCodeName", null },
@@ -60,10 +62,11 @@ pub const NavigatorID = struct {
             .{ "vendorSub", "get_vendorSub", null },
             .{ "oscpu", "get_oscpu", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -86,6 +89,7 @@ pub const NavigatorID = struct {
     );
 
     const delegates = .{
+
         .get_appCodeName = &get_appCodeName,
         .get_appName = &get_appName,
         .get_appVersion = &get_appVersion,
@@ -161,4 +165,5 @@ pub const NavigatorID = struct {
     pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
         return try NavigatorIDImpl.call_taintEnabled(instance);
     }
+
 };

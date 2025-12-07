@@ -1,11 +1,12 @@
 //! Generated from: webgl2.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WebGL2RenderingContextOverloadsImpl = @import("impls").WebGL2RenderingContextOverloads;
 const mixins = @import("mixins");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
@@ -31,10 +32,11 @@ pub const WebGL2RenderingContextOverloads = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "bufferData", "call_bufferData", 3 },
@@ -71,7 +73,7 @@ pub const WebGL2RenderingContextOverloads = struct {
             .{ "readPixels", "call_readPixels", 7 },
             .{ "readPixels", "call_readPixels", 8 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "bufferData",
@@ -108,16 +110,19 @@ pub const WebGL2RenderingContextOverloads = struct {
             "readPixels",
             "readPixels",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -130,6 +135,7 @@ pub const WebGL2RenderingContextOverloads = struct {
     );
 
     const delegates = .{
+
         .call_bufferData = &call_bufferData,
         .call_bufferSubData = &call_bufferSubData,
         .call_compressedTexImage2D = &call_compressedTexImage2D,
@@ -164,74 +170,93 @@ pub const WebGL2RenderingContextOverloads = struct {
     }
 
     pub fn call_bufferData(instance: *runtime.Instance, target: GLenum, size: GLsizeiptr, usage: GLenum) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_bufferData(instance, target, size, usage);
     }
 
     pub fn call_compressedTexSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, imageSize: GLsizei, offset: GLintptr) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_compressedTexSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, imageSize, offset);
     }
 
     pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
     }
 
     pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniformMatrix2fv(instance, location, transpose, data, srcOffset, srcLength);
     }
 
     pub fn call_readPixels(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, dstData: ?ArrayBufferView) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_readPixels(instance, x, y, width, height, format, @"type", dstData);
     }
 
     pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform4fv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform2fv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_bufferSubData(instance: *runtime.Instance, target: GLenum, dstByteOffset: GLintptr, srcData: AllowSharedBufferSource) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_bufferSubData(instance, target, dstByteOffset, srcData);
     }
 
     pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform4iv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniformMatrix4fv(instance, location, transpose, data, srcOffset, srcLength);
     }
 
     pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_texImage2D(instance, target, level, internalformat, width, height, border, format, @"type", pixels);
     }
 
     pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform1fv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, imageSize: GLsizei, offset: GLintptr) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_compressedTexImage2D(instance, target, level, internalformat, width, height, border, imageSize, offset);
     }
 
     pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform1iv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform2iv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniformMatrix3fv(instance, location, transpose, data, srcOffset, srcLength);
     }
 
     pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Int32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform3iv(instance, location, data, srcOffset, srcLength);
     }
 
     pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, data: Float32List, srcOffset: webidl.Opt(u64), srcLength: webidl.Opt(GLuint)) anyerror!void {
+        
         return try WebGL2RenderingContextOverloadsImpl.call_uniform3fv(instance, location, data, srcOffset, srcLength);
     }
+
 };

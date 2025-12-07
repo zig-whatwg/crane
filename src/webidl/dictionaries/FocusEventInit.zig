@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const UIEventInit = @import("UIEventInit.zig").UIEventInit;
 
 pub const FocusEventInit = struct {
     // Inherited from UIEventInit
     base: UIEventInit,
 
-    relatedTarget: ?*const anyopaque = null,
+    relatedTarget: ?*runtime.Instance = null,
 };

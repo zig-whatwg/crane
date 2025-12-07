@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLOrSVGElementImpl = @import("impls").HTMLOrSVGElement;
 const mixins = @import("mixins");
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -21,7 +22,7 @@ pub const HTMLOrSVGElement = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "dataset", "get_dataset", null },
@@ -29,34 +30,35 @@ pub const HTMLOrSVGElement = struct {
             .{ "autofocus", "get_autofocus", "set_autofocus" },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "focus", "call_focus", 0 },
             .{ "blur", "call_blur", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "focus",
             "blur",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dataset", "get_dataset", null },
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
-
+        
         pub const has_constructor = false;
     };
 
@@ -74,6 +76,7 @@ pub const HTMLOrSVGElement = struct {
     );
 
     const delegates = .{
+
         .get_autofocus = &get_autofocus,
         .get_dataset = &get_dataset,
         .get_nonce = &get_nonce,
@@ -130,7 +133,7 @@ pub const HTMLOrSVGElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLOrSVGElementImpl.set_autofocus(instance, value);
     }
 
@@ -144,7 +147,7 @@ pub const HTMLOrSVGElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
     }
 
@@ -153,6 +156,8 @@ pub const HTMLOrSVGElement = struct {
     }
 
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
+        
         return try HTMLOrSVGElementImpl.call_focus(instance, options);
     }
+
 };

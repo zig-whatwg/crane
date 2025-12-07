@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUImpl = @import("impls").GPU;
 const mixins = @import("mixins");
 const GPUAdapter = @import("interfaces").GPUAdapter;
@@ -25,41 +26,43 @@ pub const GPU = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "wgslLanguageFeatures", "get_wgslLanguageFeatures", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestAdapter", "call_requestAdapter", 0 },
             .{ "getPreferredCanvasFormat", "call_getPreferredCanvasFormat", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestAdapter",
             "getPreferredCanvasFormat",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "wgslLanguageFeatures", "get_wgslLanguageFeatures", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -74,6 +77,7 @@ pub const GPU = struct {
     );
 
     const delegates = .{
+
         .get_wgslLanguageFeatures = &get_wgslLanguageFeatures,
 
         .call_getPreferredCanvasFormat = &call_getPreferredCanvasFormat,
@@ -106,10 +110,12 @@ pub const GPU = struct {
     }
 
     pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(GPURequestAdapterOptions)) anyerror!*const anyopaque {
+        
         return try GPUImpl.call_requestAdapter(instance, options);
     }
 
     pub fn call_getPreferredCanvasFormat(instance: *runtime.Instance) anyerror!GPUTextureFormat {
         return try GPUImpl.call_getPreferredCanvasFormat(instance);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IDBRequestImpl = @import("impls").IDBRequest;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -36,13 +37,13 @@ pub const IDBRequest = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "result", "get_result", null },
@@ -53,13 +54,15 @@ pub const IDBRequest = struct {
             .{ "onsuccess", "get_onsuccess", "set_onsuccess" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -67,7 +70,7 @@ pub const IDBRequest = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "result", "get_result", null },
@@ -78,10 +81,11 @@ pub const IDBRequest = struct {
             .{ "onsuccess", "get_onsuccess", "set_onsuccess" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -89,7 +93,7 @@ pub const IDBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            result: *const anyopaque = undefined,
+            result: v8.JSValue = undefined,
             @"error": ?*runtime.Instance = null,
             source: ?union(enum) {
                 IDBObjectStore: IDBObjectStore,
@@ -105,6 +109,7 @@ pub const IDBRequest = struct {
     );
 
     const delegates = .{
+
         .get_error = &get_error,
         .get_onerror = &get_onerror,
         .get_onsuccess = &get_onsuccess,
@@ -130,7 +135,7 @@ pub const IDBRequest = struct {
         IDBRequestImpl.deinit(instance);
     }
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_result(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try IDBRequestImpl.get_result(instance);
     }
 
@@ -165,4 +170,5 @@ pub const IDBRequest = struct {
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try IDBRequestImpl.set_onerror(instance, value);
     }
+
 };

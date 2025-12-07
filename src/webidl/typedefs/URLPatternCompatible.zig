@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const dictionaries = @import("dictionaries");
+const v8 = @import("v8");
 
 pub const URLPatternCompatible = union(enum) {
     usvstring: runtime.USVString,

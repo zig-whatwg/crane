@@ -102,14 +102,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for oldVersion - returns the previous version of the database
-pub fn get_oldVersion(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_oldVersion(instance: *runtime.Instance) anyerror!u64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.old_version;
 }
 
 /// Getter for newVersion - returns the new version of the database (null if deleted)
-pub fn get_newVersion(instance: *runtime.Instance) ImplError!?u64 {
+pub fn get_newVersion(instance: *runtime.Instance) anyerror!?u64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.new_version;

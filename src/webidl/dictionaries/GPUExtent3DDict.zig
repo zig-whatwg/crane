@@ -3,9 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const GPUExtent3DDict = struct {
-    width: *const anyopaque,
-    height: ?*const anyopaque = null,
-    depthOrArrayLayers: ?*const anyopaque = null,
+    width: typedefs.GPUIntegerCoordinate,
+    height: ?typedefs.GPUIntegerCoordinate = null,
+    depthOrArrayLayers: ?typedefs.GPUIntegerCoordinate = null,
 };

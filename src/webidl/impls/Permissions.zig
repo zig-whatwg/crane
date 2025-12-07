@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -40,21 +41,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: revoke
-pub fn call_revoke(instance: *runtime.Instance, permissionDesc: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_revoke(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, permissionDesc: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;
 }
 
 /// Operation: query
-pub fn call_query(instance: *runtime.Instance, permissionDesc: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_query(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;

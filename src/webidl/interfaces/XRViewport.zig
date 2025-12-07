@@ -1,11 +1,12 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const XRViewportImpl = @import("impls").XRViewport;
 const mixins = @import("mixins");
 
@@ -21,10 +22,10 @@ pub const XRViewport = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -32,16 +33,19 @@ pub const XRViewport = struct {
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -49,10 +53,11 @@ pub const XRViewport = struct {
             .{ "width", "get_width", null },
             .{ "height", "get_height", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -69,6 +74,7 @@ pub const XRViewport = struct {
     );
 
     const delegates = .{
+
         .get_height = &get_height,
         .get_width = &get_width,
         .get_x = &get_x,
@@ -103,4 +109,5 @@ pub const XRViewport = struct {
     pub fn get_height(instance: *runtime.Instance) anyerror!i32 {
         return try XRViewportImpl.get_height(instance);
     }
+
 };

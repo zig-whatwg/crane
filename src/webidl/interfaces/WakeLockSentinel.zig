@@ -1,11 +1,12 @@
 //! Generated from: screen-wake-lock.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WakeLockSentinelImpl = @import("impls").WakeLockSentinel;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -30,31 +31,31 @@ pub const WakeLockSentinel = struct {
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{"Window"} } },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "released", "get_released", null },
             .{ "type", "get_type", null },
             .{ "onrelease", "get_onrelease", "set_onrelease" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "release", "call_release", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "release",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -62,17 +63,18 @@ pub const WakeLockSentinel = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "released", "get_released", null },
             .{ "type", "get_type", null },
             .{ "onrelease", "get_onrelease", "set_onrelease" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -81,13 +83,14 @@ pub const WakeLockSentinel = struct {
         Meta.MixinTypes,
         struct {
             released: bool = undefined,
-            type: WakeLockType = undefined,
+            @"type": WakeLockType = undefined,
             onrelease: EventHandler = undefined,
             _internal: ?*WakeLockSentinelImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_onrelease = &get_onrelease,
         .get_released = &get_released,
         .get_type = &get_type,
@@ -129,4 +132,5 @@ pub const WakeLockSentinel = struct {
     pub fn call_release(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WakeLockSentinelImpl.call_release(instance);
     }
+
 };

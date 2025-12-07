@@ -1,11 +1,12 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const BluetoothLEScanImpl = @import("impls").BluetoothLEScan;
 const mixins = @import("mixins");
 const BluetoothLEScanFilter = @import("interfaces").BluetoothLEScanFilter;
@@ -22,10 +23,10 @@ pub const BluetoothLEScan = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "filters", "get_filters", null },
@@ -33,20 +34,21 @@ pub const BluetoothLEScan = struct {
             .{ "acceptAllAdvertisements", "get_acceptAllAdvertisements", null },
             .{ "active", "get_active", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "stop", "call_stop", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "stop",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "filters", "get_filters", null },
@@ -54,10 +56,11 @@ pub const BluetoothLEScan = struct {
             .{ "acceptAllAdvertisements", "get_acceptAllAdvertisements", null },
             .{ "active", "get_active", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -74,6 +77,7 @@ pub const BluetoothLEScan = struct {
     );
 
     const delegates = .{
+
         .get_acceptAllAdvertisements = &get_acceptAllAdvertisements,
         .get_active = &get_active,
         .get_filters = &get_filters,
@@ -114,4 +118,5 @@ pub const BluetoothLEScan = struct {
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try BluetoothLEScanImpl.call_stop(instance);
     }
+
 };

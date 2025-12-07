@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const LayoutConstraintsOptions = struct {
     availableInlineSize: ?f64 = null,
@@ -12,6 +14,6 @@ pub const LayoutConstraintsOptions = struct {
     percentageInlineSize: ?f64 = null,
     percentageBlockSize: ?f64 = null,
     blockFragmentationOffset: ?f64 = null,
-    blockFragmentationType: ?*const anyopaque = null,
-    data: ?*const anyopaque = null,
+    blockFragmentationType: ?enums.BlockFragmentationType = null,
+    data: ?v8.JSValue = null,
 };

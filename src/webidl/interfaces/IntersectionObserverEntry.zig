@@ -1,11 +1,12 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IntersectionObserverEntryImpl = @import("impls").IntersectionObserverEntry;
 const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
@@ -24,10 +25,10 @@ pub const IntersectionObserverEntry = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "time", "get_time", null },
@@ -39,16 +40,19 @@ pub const IntersectionObserverEntry = struct {
             .{ "intersectionRatio", "get_intersectionRatio", null },
             .{ "target", "get_target", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "time", "get_time", null },
@@ -60,10 +64,11 @@ pub const IntersectionObserverEntry = struct {
             .{ "intersectionRatio", "get_intersectionRatio", null },
             .{ "target", "get_target", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -84,6 +89,7 @@ pub const IntersectionObserverEntry = struct {
     );
 
     const delegates = .{
+
         .get_boundingClientRect = &get_boundingClientRect,
         .get_intersectionRatio = &get_intersectionRatio,
         .get_intersectionRect = &get_intersectionRect,
@@ -144,4 +150,5 @@ pub const IntersectionObserverEntry = struct {
     pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try IntersectionObserverEntryImpl.get_target(instance);
     }
+
 };

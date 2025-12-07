@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const LocationImpl = @import("impls").Location;
 const mixins = @import("mixins");
 const DOMStringList = @import("interfaces").DOMStringList;
@@ -22,10 +23,10 @@ pub const Location = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -39,24 +40,25 @@ pub const Location = struct {
             .{ "hash", "get_hash", "set_hash" },
             .{ "ancestorOrigins", "get_ancestorOrigins", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "assign", "call_assign", 1 },
             .{ "replace", "call_replace", 1 },
             .{ "reload", "call_reload", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "assign",
             "replace",
             "reload",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -70,10 +72,11 @@ pub const Location = struct {
             .{ "hash", "get_hash", "set_hash" },
             .{ "ancestorOrigins", "get_ancestorOrigins", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -97,6 +100,7 @@ pub const Location = struct {
     );
 
     const delegates = .{
+
         .get_ancestorOrigins = &get_ancestorOrigins,
         .get_hash = &get_hash,
         .get_host = &get_host,
@@ -136,8 +140,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_href(instance);
     }
 
@@ -147,14 +150,12 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_origin(instance);
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_protocol(instance);
     }
 
@@ -164,8 +165,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_host(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_host(instance);
     }
 
@@ -175,8 +175,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_hostname(instance);
     }
 
@@ -186,8 +185,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_port(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_port(instance);
     }
 
@@ -197,8 +195,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_pathname(instance);
     }
 
@@ -208,8 +205,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_search(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_search(instance);
     }
 
@@ -219,8 +215,7 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    /// Returns DOMString with owned memory - caller must free after conversion to V8.
-    pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_hash(instance);
     }
 
@@ -248,11 +243,14 @@ pub const Location = struct {
 
     /// Extended attributes: [LegacyUnforgeable]
     pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
+        
         return try LocationImpl.call_replace(instance, url);
     }
 
     /// Extended attributes: [LegacyUnforgeable]
     pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
+        
         return try LocationImpl.call_assign(instance, url);
     }
+
 };

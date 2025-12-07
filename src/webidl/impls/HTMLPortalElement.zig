@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -112,7 +113,7 @@ pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(dictionari
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, options: webidl.Opt(dictionaries.PostMessageOptions)) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, options: webidl.Opt(dictionaries.PostMessageOptions)) anyerror!void {
     _ = instance;
     _ = message;
     _ = options;

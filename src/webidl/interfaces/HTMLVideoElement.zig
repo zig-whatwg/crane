@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HTMLVideoElementImpl = @import("impls").HTMLVideoElement;
 const mixins = @import("mixins");
 const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
@@ -100,10 +101,10 @@ pub const HTMLVideoElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "width", "get_width", "set_width" },
@@ -116,7 +117,7 @@ pub const HTMLVideoElement = struct {
             .{ "onleavepictureinpicture", "get_onleavepictureinpicture", "set_onleavepictureinpicture" },
             .{ "disablePictureInPicture", "get_disablePictureInPicture", "set_disablePictureInPicture" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestPictureInPicture", "call_requestPictureInPicture", 0 },
@@ -124,7 +125,7 @@ pub const HTMLVideoElement = struct {
             .{ "cancelVideoFrameCallback", "call_cancelVideoFrameCallback", 1 },
             .{ "getVideoPlaybackQuality", "call_getVideoPlaybackQuality", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPictureInPicture",
@@ -132,7 +133,7 @@ pub const HTMLVideoElement = struct {
             "cancelVideoFrameCallback",
             "getVideoPlaybackQuality",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -238,7 +239,7 @@ pub const HTMLVideoElement = struct {
             "setMediaKeys",
             "captureStream",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "width", "get_width", "set_width" },
@@ -251,10 +252,11 @@ pub const HTMLVideoElement = struct {
             .{ "onleavepictureinpicture", "get_onleavepictureinpicture", "set_onleavepictureinpicture" },
             .{ "disablePictureInPicture", "get_disablePictureInPicture", "set_disablePictureInPicture" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -276,6 +278,7 @@ pub const HTMLVideoElement = struct {
     );
 
     const delegates = .{
+
         .get_disablePictureInPicture = &get_disablePictureInPicture,
         .get_height = &get_height,
         .get_onenterpictureinpicture = &get_onenterpictureinpicture,
@@ -329,7 +332,7 @@ pub const HTMLVideoElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLVideoElementImpl.set_width(instance, value);
     }
 
@@ -343,7 +346,7 @@ pub const HTMLVideoElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLVideoElementImpl.set_height(instance, value);
     }
 
@@ -365,7 +368,7 @@ pub const HTMLVideoElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLVideoElementImpl.set_poster(instance, value);
     }
 
@@ -379,7 +382,7 @@ pub const HTMLVideoElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLVideoElementImpl.set_playsInline(instance, value);
     }
 
@@ -409,11 +412,12 @@ pub const HTMLVideoElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLVideoElementImpl.set_disablePictureInPicture(instance, value);
     }
 
     pub fn call_cancelVideoFrameCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
+        
         return try HTMLVideoElementImpl.call_cancelVideoFrameCallback(instance, handle);
     }
 
@@ -424,10 +428,12 @@ pub const HTMLVideoElement = struct {
     }
 
     pub fn call_requestVideoFrameCallback(instance: *runtime.Instance, callback: VideoFrameRequestCallback) anyerror!u32 {
+        
         return try HTMLVideoElementImpl.call_requestVideoFrameCallback(instance, callback);
     }
 
     pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLVideoElementImpl.call_getVideoPlaybackQuality(instance);
     }
+
 };

@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const AudioDecoderConfig = struct {
     codec: runtime.DOMString,
     sampleRate: u32,
     numberOfChannels: u32,
-    description: ?*const anyopaque = null,
+    description: ?typedefs.AllowSharedBufferSource = null,
 };

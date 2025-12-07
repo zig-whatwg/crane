@@ -1,11 +1,12 @@
 //! Generated from: mediacapture-streams.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const InputDeviceInfoImpl = @import("impls").InputDeviceInfo;
 const mixins = @import("mixins");
 const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
@@ -26,34 +27,37 @@ pub const InputDeviceInfo = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getCapabilities", "call_getCapabilities", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getCapabilities",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "toJSON",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -66,6 +70,7 @@ pub const InputDeviceInfo = struct {
     );
 
     const delegates = .{
+
         .call_getCapabilities = &call_getCapabilities,
 
         .deinit = &deinit,
@@ -85,4 +90,5 @@ pub const InputDeviceInfo = struct {
     pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!MediaTrackCapabilities {
         return try InputDeviceInfoImpl.call_getCapabilities(instance);
     }
+
 };

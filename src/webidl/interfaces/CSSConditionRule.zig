@@ -1,11 +1,12 @@
 //! Generated from: css-conditional.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSConditionRuleImpl = @import("impls").CSSConditionRule;
 const mixins = @import("mixins");
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
@@ -27,35 +28,38 @@ pub const CSSConditionRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "conditionText", "get_conditionText", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "insertRule",
             "deleteRule",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "conditionText", "get_conditionText", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -69,6 +73,7 @@ pub const CSSConditionRule = struct {
     );
 
     const delegates = .{
+
         .get_conditionText = &get_conditionText,
 
         .deinit = &deinit,
@@ -88,4 +93,5 @@ pub const CSSConditionRule = struct {
     pub fn get_conditionText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSConditionRuleImpl.get_conditionText(instance);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: css-regions.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NamedFlowImpl = @import("impls").NamedFlow;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -32,31 +33,31 @@ pub const NamedFlow = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "overset", "get_overset", null },
             .{ "firstEmptyRegionIndex", "get_firstEmptyRegionIndex", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRegions", "call_getRegions", 0 },
             .{ "getContent", "call_getContent", 0 },
             .{ "getRegionsByContent", "call_getRegionsByContent", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRegions",
             "getContent",
             "getRegionsByContent",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -64,17 +65,18 @@ pub const NamedFlow = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "overset", "get_overset", null },
             .{ "firstEmptyRegionIndex", "get_firstEmptyRegionIndex", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -90,6 +92,7 @@ pub const NamedFlow = struct {
     );
 
     const delegates = .{
+
         .get_firstEmptyRegionIndex = &get_firstEmptyRegionIndex,
         .get_name = &get_name,
         .get_overset = &get_overset,
@@ -133,6 +136,8 @@ pub const NamedFlow = struct {
     }
 
     pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*const anyopaque {
+        
         return try NamedFlowImpl.call_getRegionsByContent(instance, node);
     }
+
 };

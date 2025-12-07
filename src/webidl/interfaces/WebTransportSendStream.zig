@@ -1,11 +1,12 @@
 //! Generated from: webtransport.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WebTransportSendStreamImpl = @import("impls").WebTransportSendStream;
 const mixins = @import("mixins");
 const WritableStream = @import("interfaces").WritableStream;
@@ -29,46 +30,47 @@ pub const WebTransportSendStream = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Transferable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sendGroup", "get_sendGroup", "set_sendGroup" },
             .{ "sendOrder", "get_sendOrder", "set_sendOrder" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getStats", "call_getStats", 0 },
             .{ "getWriter", "call_getWriter", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getStats",
             "getWriter",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "abort",
             "close",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sendGroup", "get_sendGroup", "set_sendGroup" },
             .{ "sendOrder", "get_sendOrder", "set_sendOrder" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -83,6 +85,7 @@ pub const WebTransportSendStream = struct {
     );
 
     const delegates = .{
+
         .get_sendGroup = &get_sendGroup,
         .get_sendOrder = &get_sendOrder,
 
@@ -129,4 +132,5 @@ pub const WebTransportSendStream = struct {
     pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WebTransportSendStreamImpl.call_getStats(instance);
     }
+
 };

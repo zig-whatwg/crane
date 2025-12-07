@@ -23,6 +23,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -160,12 +161,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// HTML Standard §7.2.6.5: NavigateEvent constructor
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    @"type": runtime.DOMString,
-    eventInitDict: dictionaries.NavigateEventInit,
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigateEventInit) !*runtime.Instance {
     const instance = try init(allocator, State, &NavigateEvent.vtable, ctx);
     errdefer deinit(instance);
 
@@ -279,7 +275,7 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 
 /// Getter for info
 /// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
-pub fn get_info(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_info(instance: *runtime.Instance) anyerror!v8.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.info orelse error.InvalidStateError;
 }
@@ -310,10 +306,7 @@ pub fn get_sourceElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// 2. The handler function is run
 /// 3. Scroll position is restored after handler completes (unless manual)
 /// 4. Focus is reset after handler completes (unless manual)
-pub fn call_intercept(
-    instance: *runtime.Instance,
-    options: webidl.Opt(dictionaries.NavigationInterceptOptions),
-) anyerror!void {
+pub fn call_intercept(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationInterceptOptions)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if intercept is allowed

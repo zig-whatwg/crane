@@ -139,7 +139,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Spec: https://xhr.spec.whatwg.org/#dom-progressevent-lengthcomputable
 ///
 /// Returns true if the progress can be calculated (total is known).
-pub fn get_lengthComputable(instance: *runtime.Instance) ImplError!bool {
+pub fn get_lengthComputable(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse {
         // Fall back to state
         const state = instance.getState(State);
@@ -153,7 +153,7 @@ pub fn get_lengthComputable(instance: *runtime.Instance) ImplError!bool {
 /// Spec: https://xhr.spec.whatwg.org/#dom-progressevent-loaded
 ///
 /// Returns the number of bytes transferred so far.
-pub fn get_loaded(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_loaded(instance: *runtime.Instance) anyerror!f64 {
     const internal = getInternal(instance) orelse {
         // Fall back to state
         const state = instance.getState(State);
@@ -168,7 +168,7 @@ pub fn get_loaded(instance: *runtime.Instance) ImplError!f64 {
 ///
 /// Returns the total number of bytes to be transferred.
 /// Returns 0 if lengthComputable is false.
-pub fn get_total(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_total(instance: *runtime.Instance) anyerror!f64 {
     const internal = getInternal(instance) orelse {
         // Fall back to state
         const state = instance.getState(State);

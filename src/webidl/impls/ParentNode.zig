@@ -1045,7 +1045,7 @@ pub fn closest(
 
 /// prepend - Inserts nodes before the first child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1065,7 +1065,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) an
 
 /// append - Inserts nodes after the last child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1080,7 +1080,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) any
 
 /// replaceChildren - Replaces all children with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1235,4 +1235,21 @@ fn createDocumentFragment(
     NodeImpl.setOwnerDocument(fragment, document) catch {};
 
     return fragment;
+}
+
+
+pub fn deinit(instance: *runtime.Instance) void {
+    _ = instance;
+    // TODO: Clean up your instance's owned resources here (strings, arrays, etc.)
+}
+
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
+    return instance;
 }

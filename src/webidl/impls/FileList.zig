@@ -124,7 +124,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-length
 /// Returns the number of files in the list.
-pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     return @intCast(internal.files.len);
 }
@@ -133,7 +133,7 @@ pub fn get_length(instance: *runtime.Instance) ImplError!u32 {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-item
 /// Returns the indexth File object, or null if out of bounds.
-pub fn call_item(instance: *runtime.Instance, index: u32) ImplError!?*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
     if (index >= internal.files.len) {

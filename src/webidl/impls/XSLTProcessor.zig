@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -94,7 +95,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
 /// Operation: importStylesheet
 /// Imports an XSLT stylesheet from a Document or Element node
-pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) ImplError!void {
+pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -106,7 +107,7 @@ pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instan
 /// Transforms the source document and returns a new Document
 ///
 /// TODO: Implement actual XSLT transformation
-pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -129,7 +130,7 @@ pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.In
 /// Transforms the source and returns a DocumentFragment
 ///
 /// TODO: Implement actual XSLT transformation
-pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -146,7 +147,7 @@ pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.In
 
 /// Operation: setParameter
 /// Sets a parameter for the XSLT transformation
-pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: *const anyopaque) ImplError!void {
+pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: v8.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -165,7 +166,7 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 
 /// Operation: getParameter
 /// Gets a parameter value
-pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) ImplError!*const anyopaque {
+pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!v8.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -181,7 +182,7 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 
 /// Operation: removeParameter
 /// Removes a parameter
-pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) ImplError!void {
+pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -193,7 +194,7 @@ pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.D
 
 /// Operation: clearParameters
 /// Clears all parameters
-pub fn call_clearParameters(instance: *runtime.Instance) ImplError!void {
+pub fn call_clearParameters(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -202,7 +203,7 @@ pub fn call_clearParameters(instance: *runtime.Instance) ImplError!void {
 
 /// Operation: reset
 /// Resets the processor to initial state
-pub fn call_reset(instance: *runtime.Instance) ImplError!void {
+pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

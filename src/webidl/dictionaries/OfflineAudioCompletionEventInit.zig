@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const OfflineAudioCompletionEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    renderedBuffer: *const anyopaque,
+    renderedBuffer: *runtime.Instance,
 };

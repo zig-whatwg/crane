@@ -1,11 +1,12 @@
 //! Generated from: credential-management.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CredentialImpl = @import("impls").Credential;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -23,43 +24,46 @@ pub const Credential = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
             .{ "type", "get_type", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
             .{ "willRequestConditionalCreation", "call_willRequestConditionalCreation", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "isConditionalMediationAvailable",
             "willRequestConditionalCreation",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
             .{ "type", "get_type", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -68,12 +72,13 @@ pub const Credential = struct {
         Meta.MixinTypes,
         struct {
             id: runtime.USVString = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             _internal: ?*CredentialImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_id = &get_id,
         .get_type = &get_type,
 
@@ -106,4 +111,5 @@ pub const Credential = struct {
     pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try CredentialImpl.call_isConditionalMediationAvailable(instance);
     }
+
 };

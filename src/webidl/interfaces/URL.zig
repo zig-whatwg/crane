@@ -1,11 +1,12 @@
 //! Generated from: url.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const URLImpl = @import("impls").URL;
 const mixins = @import("mixins");
 const URLSearchParams = @import("interfaces").URLSearchParams;
@@ -26,14 +27,14 @@ pub const URL = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "webkitURL" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
             .SharedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -49,12 +50,12 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parse", "call_parse", 1 },
@@ -62,7 +63,7 @@ pub const URL = struct {
             .{ "createObjectURL", "call_createObjectURL", 1 },
             .{ "revokeObjectURL", "call_revokeObjectURL", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "parse",
@@ -71,10 +72,11 @@ pub const URL = struct {
             "createObjectURL",
             "revokeObjectURL",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -90,10 +92,11 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -119,6 +122,7 @@ pub const URL = struct {
     );
 
     const delegates = .{
+
         .get_hash = &get_hash,
         .get_host = &get_host,
         .get_hostname = &get_hostname,
@@ -262,6 +266,7 @@ pub const URL = struct {
     }
 
     pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
+        
         return try URLImpl.call_createObjectURL(instance, obj);
     }
 
@@ -270,14 +275,18 @@ pub const URL = struct {
     }
 
     pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
+        
         return try URLImpl.call_canParse(instance, url, base);
     }
 
     pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
+        
         return try URLImpl.call_parse(instance, url, base);
     }
 
     pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+        
         return try URLImpl.call_revokeObjectURL(instance, url);
     }
+
 };

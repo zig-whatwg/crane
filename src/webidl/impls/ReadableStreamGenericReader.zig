@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -92,7 +93,7 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Cancels the stream with the given reason.
 ///
 /// Note: This delegates to the concrete reader implementation via interfaces (per Golden Rule #13).
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
     // Determine which reader type this is and delegate via interface
     // Try DefaultReader first
     if (instance.vtable == &interfaces.ReadableStreamDefaultReader.vtable) {

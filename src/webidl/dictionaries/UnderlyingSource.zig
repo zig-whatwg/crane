@@ -3,11 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
+const callbacks = @import("callbacks");
 
 pub const UnderlyingSource = struct {
-    start: ?*const anyopaque = null,
-    pull: ?*const anyopaque = null,
-    cancel: ?*const anyopaque = null,
-    type: ?*const anyopaque = null,
+    start: ?callbacks.UnderlyingSourceStartCallback = null,
+    pull: ?callbacks.UnderlyingSourcePullCallback = null,
+    cancel: ?callbacks.UnderlyingSourceCancelCallback = null,
+    @"type": ?enums.ReadableStreamType = null,
     autoAllocateChunkSize: ?u64 = null,
 };

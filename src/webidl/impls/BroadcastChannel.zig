@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -91,7 +92,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue) anyerror!void {
     _ = instance;
     _ = message;
     return error.NotImplemented;

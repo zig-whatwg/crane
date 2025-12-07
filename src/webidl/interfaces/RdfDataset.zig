@@ -1,11 +1,12 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-11-29T11:15:56Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RdfDatasetImpl = @import("impls").RdfDataset;
 const mixins = @import("mixins");
 const RdfGraph = @import("interfaces").RdfGraph;
@@ -22,41 +23,43 @@ pub const RdfDataset = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "JsonLd" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .JsonLd = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "defaultGraph", "get_defaultGraph", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 2 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "add",
             "forEach",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "defaultGraph", "get_defaultGraph", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
-
+        
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -74,10 +77,13 @@ pub const RdfDataset = struct {
     );
 
     const delegates = .{
+
         .get_defaultGraph = &get_defaultGraph,
 
         .call_add = &call_add,
         .call_forEach = &call_forEach,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -102,10 +108,19 @@ pub const RdfDataset = struct {
     }
 
     pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
+        
         return try RdfDatasetImpl.call_add(instance, graphName, graph);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+        
         return try RdfDatasetImpl.call_forEach(instance, callback);
     }
+
+    /// Get entries for pair iterable support (used by V8 for iteration)
+    /// Returns slice of entries with .name and .value fields
+    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const RdfDatasetImpl.IterableEntry {
+        return RdfDatasetImpl.getEntriesInternal(instance);
+    }
+
 };

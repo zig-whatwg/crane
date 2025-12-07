@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -52,13 +53,13 @@ pub fn get_extractable(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for algorithm
-pub fn get_algorithm(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_algorithm(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usages
-pub fn get_usages(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_usages(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

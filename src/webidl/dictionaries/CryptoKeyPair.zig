@@ -3,8 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
 pub const CryptoKeyPair = struct {
-    publicKey: ?*const anyopaque = null,
-    privateKey: ?*const anyopaque = null,
+    publicKey: ?*runtime.Instance = null,
+    privateKey: ?*runtime.Instance = null,
 };

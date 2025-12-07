@@ -159,12 +159,7 @@ fn sliceToDOMString(slice: ?[]const u8) ?runtime.DOMString {
 
 /// Constructor implementation
 /// Spec: new StorageEvent(type, eventInitDict)
-pub fn call_constructor(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    @"type": runtime.DOMString,
-    eventInitDict: webidl.Opt(dictionaries.StorageEventInit),
-) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
     const instance = try init(allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
 
@@ -248,17 +243,7 @@ pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// Operation: initStorageEvent
 /// Legacy method to initialize the event after construction.
 /// Spec: initStorageEvent(type, bubbles, cancelable, key, oldValue, newValue, url, storageArea)
-pub fn call_initStorageEvent(
-    instance: *runtime.Instance,
-    @"type": runtime.DOMString,
-    bubbles: webidl.Opt(bool),
-    cancelable: webidl.Opt(bool),
-    key: webidl.Opt(?runtime.DOMString),
-    oldValue: webidl.Opt(?runtime.DOMString),
-    newValue: webidl.Opt(?runtime.DOMString),
-    url: webidl.Opt(runtime.USVString),
-    storageArea: webidl.Opt(?*runtime.Instance),
-) anyerror!void {
+pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
     // Set event type (handled by base Event)
     _ = @"type";
     _ = bubbles;

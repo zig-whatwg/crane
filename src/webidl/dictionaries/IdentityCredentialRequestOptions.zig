@@ -3,9 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
+const IdentityProviderRequestOptions = @import("IdentityProviderRequestOptions.zig").IdentityProviderRequestOptions;
 
 pub const IdentityCredentialRequestOptions = struct {
-    providers: *const anyopaque,
-    context: ?*const anyopaque = null,
-    mode: ?*const anyopaque = null,
+    providers: []const IdentityProviderRequestOptions,
+    context: ?enums.IdentityCredentialRequestOptionsContext = null,
+    mode: ?enums.IdentityCredentialRequestOptionsMode = null,
 };

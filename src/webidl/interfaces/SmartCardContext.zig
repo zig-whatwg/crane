@@ -1,11 +1,12 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SmartCardContextImpl = @import("impls").SmartCardContext;
 const mixins = @import("mixins");
 const SmartCardReaderStateIn = @import("dictionaries").SmartCardReaderStateIn;
@@ -28,40 +29,44 @@ pub const SmartCardContext = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .SharedWorker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "listReaders", "call_listReaders", 0 },
             .{ "getStatusChange", "call_getStatusChange", 1 },
             .{ "connect", "call_connect", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "listReaders",
             "getStatusChange",
             "connect",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -74,6 +79,7 @@ pub const SmartCardContext = struct {
     );
 
     const delegates = .{
+
         .call_connect = &call_connect,
         .call_getStatusChange = &call_getStatusChange,
         .call_listReaders = &call_listReaders,
@@ -97,10 +103,13 @@ pub const SmartCardContext = struct {
     }
 
     pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
+        
         return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
     pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
+        
         return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: resize-observer.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ResizeObserverImpl = @import("impls").ResizeObserver;
 const mixins = @import("mixins");
 const ResizeObserverCallback = @import("callbacks").ResizeObserverCallback;
@@ -21,40 +22,44 @@ pub const ResizeObserver = struct {
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{"Window"} } },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "observe", "call_observe", 1 },
             .{ "unobserve", "call_unobserve", 1 },
             .{ "disconnect", "call_disconnect", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "observe",
             "unobserve",
             "disconnect",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -67,6 +72,7 @@ pub const ResizeObserver = struct {
     );
 
     const delegates = .{
+
         .call_disconnect = &call_disconnect,
         .call_observe = &call_observe,
         .call_unobserve = &call_unobserve,
@@ -92,14 +98,17 @@ pub const ResizeObserver = struct {
     }
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(ResizeObserverOptions)) anyerror!void {
+        
         return try ResizeObserverImpl.call_observe(instance, target, options);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
+        
         return try ResizeObserverImpl.call_unobserve(instance, target);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
         return try ResizeObserverImpl.call_disconnect(instance);
     }
+
 };

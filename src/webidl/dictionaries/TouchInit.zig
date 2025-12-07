@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const TouchInit = struct {
     identifier: i32,
-    target: *const anyopaque,
+    target: *runtime.Instance,
     clientX: ?f64 = null,
     clientY: ?f64 = null,
     screenX: ?f64 = null,
@@ -19,5 +21,5 @@ pub const TouchInit = struct {
     force: ?f32 = null,
     altitudeAngle: ?f64 = null,
     azimuthAngle: ?f64 = null,
-    touchType: ?*const anyopaque = null,
+    touchType: ?enums.TouchType = null,
 };

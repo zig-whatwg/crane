@@ -1,11 +1,12 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DOMImplementationCSSImpl = @import("impls").DOMImplementationCSS;
 const mixins = @import("mixins");
 const DOMImplementation = @import("interfaces").DOMImplementation;
@@ -25,20 +26,21 @@ pub const DOMImplementationCSS = struct {
         pub const ParentInterface = DOMImplementation;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createCSSStyleSheet", "call_createCSSStyleSheet", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createCSSStyleSheet",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "createDocumentType",
@@ -46,13 +48,15 @@ pub const DOMImplementationCSS = struct {
             "createHTMLDocument",
             "hasFeature",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -65,6 +69,7 @@ pub const DOMImplementationCSS = struct {
     );
 
     const delegates = .{
+
         .call_createCSSStyleSheet = &call_createCSSStyleSheet,
 
         .deinit = &deinit,
@@ -82,6 +87,8 @@ pub const DOMImplementationCSS = struct {
     }
 
     pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: DOMString, media: DOMString) anyerror!*runtime.Instance {
+        
         return try DOMImplementationCSSImpl.call_createCSSStyleSheet(instance, title, media);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NotificationImpl = @import("impls").Notification;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -38,13 +39,13 @@ pub const Notification = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "permission", "get_permission", null },
@@ -70,23 +71,23 @@ pub const Notification = struct {
             .{ "data", "get_data", null },
             .{ "actions", "get_actions", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_requestPermission", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -94,7 +95,7 @@ pub const Notification = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "permission", "get_permission", null },
@@ -118,13 +119,13 @@ pub const Notification = struct {
             .{ "data", "get_data", null },
             .{ "actions", "get_actions", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "dir", "get_dir", null },
             .{ "lang", "get_lang", null },
         };
-
+        
         pub const has_constructor = true;
     };
 
@@ -150,16 +151,17 @@ pub const Notification = struct {
             renotify: bool = undefined,
             silent: ?bool = null,
             requireInteraction: bool = undefined,
-            data: *const anyopaque = undefined,
+            data: v8.JSValue = undefined,
             actions: runtime.FrozenArray(NotificationAction) = undefined,
             cached_vibrate: ?runtime.FrozenArray(unsignedlong) = null,
-            cached_data: ?*const anyopaque = null,
+            cached_data: ?v8.JSValue = null,
             cached_actions: ?runtime.FrozenArray(NotificationAction) = null,
             _internal: ?*NotificationImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_actions = &get_actions,
         .get_badge = &get_badge,
         .get_body = &get_body,
@@ -315,7 +317,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_data) |cached| {
@@ -344,6 +346,8 @@ pub const Notification = struct {
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
+        
         return try NotificationImpl.call_requestPermission(instance, deprecatedCallback);
     }
+
 };

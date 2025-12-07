@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WorkerGlobalScopeImpl = @import("impls").WorkerGlobalScope;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -57,10 +58,10 @@ pub const WorkerGlobalScope = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Worker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Worker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "self", "get_self", null },
@@ -83,7 +84,7 @@ pub const WorkerGlobalScope = struct {
             .{ "scheduler", "get_scheduler", null },
             .{ "crypto", "get_crypto", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "importScripts", "call_importScripts", 1 },
@@ -100,7 +101,7 @@ pub const WorkerGlobalScope = struct {
             .{ "structuredClone", "call_structuredClone", 1 },
             .{ "fetch", "call_fetch", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "importScripts",
@@ -117,7 +118,7 @@ pub const WorkerGlobalScope = struct {
             "structuredClone",
             "fetch",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -125,7 +126,7 @@ pub const WorkerGlobalScope = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "self", "get_self", null },
@@ -148,10 +149,11 @@ pub const WorkerGlobalScope = struct {
             .{ "scheduler", "get_scheduler", null },
             .{ "crypto", "get_crypto", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -186,6 +188,7 @@ pub const WorkerGlobalScope = struct {
     );
 
     const delegates = .{
+
         .get_caches = &get_caches,
         .get_crossOriginIsolated = &get_crossOriginIsolated,
         .get_crypto = &get_crypto,
@@ -367,54 +370,66 @@ pub const WorkerGlobalScope = struct {
         return value;
     }
 
-    pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
+    pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
+        
         return try WorkerGlobalScopeImpl.call_reportError(instance, e);
     }
 
     pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
+        
         return try WorkerGlobalScopeImpl.call_atob(instance, data);
     }
 
     pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
+        
         return try WorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+        
         return try WorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
 
     pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
+        
         return try WorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+        
         return try WorkerGlobalScopeImpl.call_clearInterval(instance, id);
     }
 
     pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
+        
         return try WorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(StructuredSerializeOptions)) anyerror!*const anyopaque {
+    pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!v8.JSValue {
+        
         return try WorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
     pub fn call_importScripts(instance: *runtime.Instance, urls: []const DOMString) anyerror!void {
+        
         return try WorkerGlobalScopeImpl.call_importScripts(instance, urls);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+        
         return try WorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+        
         return try WorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-
+        
         return try WorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
     }
+
 };

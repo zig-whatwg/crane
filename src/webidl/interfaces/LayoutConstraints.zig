@@ -1,11 +1,12 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const LayoutConstraintsImpl = @import("impls").LayoutConstraints;
 const mixins = @import("mixins");
 const BlockFragmentationType = @import("enums").BlockFragmentationType;
@@ -21,10 +22,10 @@ pub const LayoutConstraints = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "LayoutWorklet" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .LayoutWorklet = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "availableInlineSize", "get_availableInlineSize", null },
@@ -37,16 +38,19 @@ pub const LayoutConstraints = struct {
             .{ "blockFragmentationType", "get_blockFragmentationType", null },
             .{ "data", "get_data", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "availableInlineSize", "get_availableInlineSize", null },
@@ -59,10 +63,11 @@ pub const LayoutConstraints = struct {
             .{ "blockFragmentationType", "get_blockFragmentationType", null },
             .{ "data", "get_data", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -78,12 +83,13 @@ pub const LayoutConstraints = struct {
             percentageBlockSize: f64 = undefined,
             blockFragmentationOffset: ?f64 = null,
             blockFragmentationType: BlockFragmentationType = undefined,
-            data: *const anyopaque = undefined,
+            data: v8.JSValue = undefined,
             _internal: ?*LayoutConstraintsImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_availableBlockSize = &get_availableBlockSize,
         .get_availableInlineSize = &get_availableInlineSize,
         .get_blockFragmentationOffset = &get_blockFragmentationOffset,
@@ -140,7 +146,8 @@ pub const LayoutConstraints = struct {
         return try LayoutConstraintsImpl.get_blockFragmentationType(instance);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try LayoutConstraintsImpl.get_data(instance);
     }
+
 };

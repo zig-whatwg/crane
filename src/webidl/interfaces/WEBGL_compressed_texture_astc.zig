@@ -1,11 +1,12 @@
 //! Generated from: WEBGL_compressed_texture_astc.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WEBGL_compressed_texture_astcImpl = @import("impls").WEBGL_compressed_texture_astc;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;
@@ -23,21 +24,22 @@ pub const WEBGL_compressed_texture_astc = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "LegacyNoInterfaceObject" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getSupportedProfiles", "call_getSupportedProfiles", 0 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "COMPRESSED_RGBA_ASTC_4x4_KHR", "get_COMPRESSED_RGBA_ASTC_4x4_KHR" },
@@ -69,21 +71,24 @@ pub const WEBGL_compressed_texture_astc = struct {
             .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR" },
             .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getSupportedProfiles",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -240,6 +245,7 @@ pub const WEBGL_compressed_texture_astc = struct {
     }
 
     const delegates = .{
+
         .get_COMPRESSED_RGBA_ASTC_10x10_KHR = &get_COMPRESSED_RGBA_ASTC_10x10_KHR,
         .get_COMPRESSED_RGBA_ASTC_10x5_KHR = &get_COMPRESSED_RGBA_ASTC_10x5_KHR,
         .get_COMPRESSED_RGBA_ASTC_10x6_KHR = &get_COMPRESSED_RGBA_ASTC_10x6_KHR,
@@ -288,4 +294,5 @@ pub const WEBGL_compressed_texture_astc = struct {
     pub fn call_getSupportedProfiles(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WEBGL_compressed_texture_astcImpl.call_getSupportedProfiles(instance);
     }
+
 };

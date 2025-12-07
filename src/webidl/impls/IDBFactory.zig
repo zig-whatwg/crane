@@ -105,7 +105,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbfactory-open
 ///
 /// Returns an IDBOpenDBRequest that will eventually contain the database connection.
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: webidl.Opt(u64)) ImplError!*runtime.Instance {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -150,7 +150,7 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
 /// Returns a Promise that resolves to a sequence of IDBDatabaseInfo dictionaries.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbfactory-databases
-pub fn call_databases(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_databases(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -175,7 +175,7 @@ pub fn call_databases(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbfactory-deletedatabase
 ///
 /// Returns an IDBOpenDBRequest that fires success when the database is deleted.
-pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -213,7 +213,7 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
 /// -  1 if first > second
 /// - -1 if first < second
 /// -  0 if first == second
-pub fn call_cmp(instance: *runtime.Instance, first: *const anyopaque, second: *const anyopaque) ImplError!i16 {
+pub fn call_cmp(instance: *runtime.Instance, first: v8.JSValue, second: v8.JSValue) anyerror!i16 {
     const state = instance.getState(State);
     _ = state.own._internal orelse return error.InvalidState;
 

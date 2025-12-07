@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -416,7 +417,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!*const anyopaque {
 }
 
 /// Operation: getStartDate
-pub fn call_getStartDate(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getStartDate(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

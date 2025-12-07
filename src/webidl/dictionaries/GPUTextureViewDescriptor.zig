@@ -3,19 +3,22 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUTextureViewDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    format: ?*const anyopaque = null,
-    dimension: ?*const anyopaque = null,
-    usage: ?*const anyopaque = null,
-    aspect: ?*const anyopaque = null,
-    baseMipLevel: ?*const anyopaque = null,
-    mipLevelCount: ?*const anyopaque = null,
-    baseArrayLayer: ?*const anyopaque = null,
-    arrayLayerCount: ?*const anyopaque = null,
+    format: ?enums.GPUTextureFormat = null,
+    dimension: ?enums.GPUTextureViewDimension = null,
+    usage: ?typedefs.GPUTextureUsageFlags = null,
+    aspect: ?enums.GPUTextureAspect = null,
+    baseMipLevel: ?typedefs.GPUIntegerCoordinate = null,
+    mipLevelCount: ?typedefs.GPUIntegerCoordinate = null,
+    baseArrayLayer: ?typedefs.GPUIntegerCoordinate = null,
+    arrayLayerCount: ?typedefs.GPUIntegerCoordinate = null,
     swizzle: ?runtime.DOMString = null,
 };

@@ -1,11 +1,12 @@
 //! Generated from: css-fonts.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSFontPaletteValuesRuleImpl = @import("impls").CSSFontPaletteValuesRule;
 const mixins = @import("mixins");
 const CSSRule = @import("interfaces").CSSRule;
@@ -25,10 +26,10 @@ pub const CSSFontPaletteValuesRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
@@ -36,16 +37,19 @@ pub const CSSFontPaletteValuesRule = struct {
             .{ "basePalette", "get_basePalette", null },
             .{ "overrideColors", "get_overrideColors", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
@@ -53,10 +57,11 @@ pub const CSSFontPaletteValuesRule = struct {
             .{ "basePalette", "get_basePalette", null },
             .{ "overrideColors", "get_overrideColors", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -73,6 +78,7 @@ pub const CSSFontPaletteValuesRule = struct {
     );
 
     const delegates = .{
+
         .get_basePalette = &get_basePalette,
         .get_fontFamily = &get_fontFamily,
         .get_name = &get_name,
@@ -107,4 +113,5 @@ pub const CSSFontPaletteValuesRule = struct {
     pub fn get_overrideColors(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontPaletteValuesRuleImpl.get_overrideColors(instance);
     }
+
 };

@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -46,7 +47,7 @@ pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for anticipatedRemoval
-pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!?v8.JSValue {
     _ = instance;
     return null;
 }
@@ -76,7 +77,7 @@ pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -3,7 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const dictionaries = @import("dictionaries");
+const v8 = @import("v8");
 
 pub const ConstrainPoint2D = union(enum) {
     point2d_sequence: []const dictionaries.Point2D,

@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const HIDReportItem = struct {
     isAbsolute: ?bool = null,
@@ -15,13 +18,13 @@ pub const HIDReportItem = struct {
     hasNull: ?bool = null,
     hasPreferredState: ?bool = null,
     wrap: ?bool = null,
-    usages: ?*const anyopaque = null,
+    usages: ?[]const u32 = null,
     usageMinimum: ?u32 = null,
     usageMaximum: ?u32 = null,
     reportSize: ?u16 = null,
     reportCount: ?u16 = null,
     unitExponent: ?i8 = null,
-    unitSystem: ?*const anyopaque = null,
+    unitSystem: ?enums.HIDUnitSystem = null,
     unitFactorLengthExponent: ?i8 = null,
     unitFactorMassExponent: ?i8 = null,
     unitFactorTimeExponent: ?i8 = null,
@@ -32,5 +35,5 @@ pub const HIDReportItem = struct {
     logicalMaximum: ?i32 = null,
     physicalMinimum: ?i32 = null,
     physicalMaximum: ?i32 = null,
-    strings: ?*const anyopaque = null,
+    strings: ?[]const runtime.DOMString = null,
 };

@@ -3,8 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const AuthenticationExtensionsPRFValues = @import("AuthenticationExtensionsPRFValues.zig").AuthenticationExtensionsPRFValues;
 
 pub const AuthenticationExtensionsPRFInputs = struct {
-    eval: ?*const anyopaque = null,
-    evalByCredential: ?*const anyopaque = null,
+    eval: ?AuthenticationExtensionsPRFValues = null,
+    evalByCredential: ?[]const struct { key: runtime.DOMString, value: AuthenticationExtensionsPRFValues } = null,
 };

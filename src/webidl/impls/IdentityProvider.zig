@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -41,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: resolve
-pub fn call_resolve(instance: *runtime.Instance, token: *const anyopaque, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
+pub fn call_resolve(instance: *runtime.Instance, token: v8.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = token;
     _ = options;

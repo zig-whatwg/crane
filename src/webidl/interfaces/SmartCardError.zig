@@ -1,11 +1,12 @@
 //! Generated from: web-smart-card.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SmartCardErrorImpl = @import("impls").SmartCardError;
 const mixins = @import("mixins");
 const DOMException = @import("interfaces").DOMException;
@@ -27,36 +28,40 @@ pub const SmartCardError = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .SharedWorker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "responseCode", "get_responseCode", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "responseCode", "get_responseCode", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -70,6 +75,7 @@ pub const SmartCardError = struct {
     );
 
     const delegates = .{
+
         .get_responseCode = &get_responseCode,
 
         .deinit = &deinit,
@@ -95,4 +101,5 @@ pub const SmartCardError = struct {
     pub fn get_responseCode(instance: *runtime.Instance) anyerror!SmartCardResponseCode {
         return try SmartCardErrorImpl.get_responseCode(instance);
     }
+
 };

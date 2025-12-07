@@ -1,11 +1,12 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ExtendableMessageEventImpl = @import("impls").ExtendableMessageEvent;
 const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
@@ -32,10 +33,10 @@ pub const ExtendableMessageEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", null },
@@ -44,13 +45,15 @@ pub const ExtendableMessageEvent = struct {
             .{ "source", "get_source", null },
             .{ "ports", "get_ports", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -60,7 +63,7 @@ pub const ExtendableMessageEvent = struct {
             "initEvent",
             "waitUntil",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", null },
@@ -69,10 +72,11 @@ pub const ExtendableMessageEvent = struct {
             .{ "source", "get_source", null },
             .{ "ports", "get_ports", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -80,7 +84,7 @@ pub const ExtendableMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: *const anyopaque = undefined,
+            data: v8.JSValue = undefined,
             origin: runtime.USVString = undefined,
             lastEventId: runtime.DOMString = undefined,
             source: ?union(enum) {
@@ -99,6 +103,7 @@ pub const ExtendableMessageEvent = struct {
     );
 
     const delegates = .{
+
         .get_data = &get_data,
         .get_lastEventId = &get_lastEventId,
         .get_origin = &get_origin,
@@ -125,7 +130,7 @@ pub const ExtendableMessageEvent = struct {
         return try ExtendableMessageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try ExtendableMessageEventImpl.get_data(instance);
     }
 
@@ -152,4 +157,5 @@ pub const ExtendableMessageEvent = struct {
     pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try ExtendableMessageEventImpl.get_ports(instance);
     }
+
 };

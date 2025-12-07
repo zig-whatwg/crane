@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -96,7 +97,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Getter for detail
 /// Spec: https://dom.spec.whatwg.org/#dom-customevent-detail
 /// Returns the value it was initialized with.
-pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
     const state = instance.getState(State);
     return state.own.detail;
 }
@@ -108,7 +109,7 @@ pub fn get_detail(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// 1. If this's dispatch flag is set, then return.
 /// 2. Initialize this with type, bubbles, and cancelable.
 /// 3. Set this's detail attribute to detail.
-pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(v8.JSValue)) anyerror!void {
     // Step 1: Check dispatch flag
     // Note: Would check via Event's dispatch flag, but we don't have direct access
     // For now, proceed with initialization

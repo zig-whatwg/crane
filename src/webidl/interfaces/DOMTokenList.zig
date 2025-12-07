@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DOMTokenListImpl = @import("impls").DOMTokenList;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -21,16 +22,16 @@ pub const DOMTokenList = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
             .{ "value", "get_value", "set_value" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
@@ -43,7 +44,7 @@ pub const DOMTokenList = struct {
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "item",
@@ -55,21 +56,23 @@ pub const DOMTokenList = struct {
             "supports",
             "forEach",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
             .{ "value", "get_value", "set_value" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
-
+        
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.DOMString",
@@ -88,6 +91,7 @@ pub const DOMTokenList = struct {
     );
 
     const delegates = .{
+
         .get_length = &get_length,
         .get_value = &get_value,
 
@@ -130,11 +134,12 @@ pub const DOMTokenList = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try DOMTokenListImpl.set_value(instance, value);
     }
 
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
+        
         return try DOMTokenListImpl.call_item(instance, index);
     }
 
@@ -143,11 +148,13 @@ pub const DOMTokenList = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DOMTokenListImpl.call_replace(instance, token, newToken);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+        
         return try DOMTokenListImpl.call_forEach(instance, callback);
     }
 
@@ -156,11 +163,13 @@ pub const DOMTokenList = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DOMTokenListImpl.call_toggle(instance, token, force);
     }
 
     pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {
+        
         return try DOMTokenListImpl.call_contains(instance, token);
     }
 
@@ -169,7 +178,8 @@ pub const DOMTokenList = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DOMTokenListImpl.call_add(instance, tokens);
     }
 
@@ -178,11 +188,14 @@ pub const DOMTokenList = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DOMTokenListImpl.call_remove(instance, tokens);
     }
 
     pub fn call_supports(instance: *runtime.Instance, token: DOMString) anyerror!bool {
+        
         return try DOMTokenListImpl.call_supports(instance, token);
     }
+
 };

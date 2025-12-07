@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const AudioWorkletProcessorConstructor = *const fn (options: *const anyopaque) *const anyopaque;
+pub const AudioWorkletProcessorConstructor = *const fn (options: v8.JSValue) *const anyopaque;

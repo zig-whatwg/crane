@@ -1,11 +1,12 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const BluetoothRemoteGATTServerImpl = @import("impls").BluetoothRemoteGATTServer;
 const mixins = @import("mixins");
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
@@ -24,16 +25,16 @@ pub const BluetoothRemoteGATTServer = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "device", "get_device", null },
             .{ "connected", "get_connected", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "connect", "call_connect", 0 },
@@ -41,7 +42,7 @@ pub const BluetoothRemoteGATTServer = struct {
             .{ "getPrimaryService", "call_getPrimaryService", 1 },
             .{ "getPrimaryServices", "call_getPrimaryServices", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "connect",
@@ -49,19 +50,21 @@ pub const BluetoothRemoteGATTServer = struct {
             "getPrimaryService",
             "getPrimaryServices",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "device", "get_device", null },
             .{ "connected", "get_connected", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -77,6 +80,7 @@ pub const BluetoothRemoteGATTServer = struct {
     );
 
     const delegates = .{
+
         .get_connected = &get_connected,
         .get_device = &get_device,
 
@@ -120,6 +124,7 @@ pub const BluetoothRemoteGATTServer = struct {
     }
 
     pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
+        
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service);
     }
 
@@ -128,6 +133,8 @@ pub const BluetoothRemoteGATTServer = struct {
     }
 
     pub fn call_getPrimaryService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+        
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryService(instance, service);
     }
+
 };

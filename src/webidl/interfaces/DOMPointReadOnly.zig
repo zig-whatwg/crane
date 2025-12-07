@@ -1,11 +1,12 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-12-05T20:30:44Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DOMPointReadOnlyImpl = @import("impls").DOMPointReadOnly;
 const mixins = @import("mixins");
 const DOMPoint = @import("interfaces").DOMPoint;
@@ -24,13 +25,13 @@ pub const DOMPointReadOnly = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "x", "get_x", null },
@@ -38,28 +39,29 @@ pub const DOMPointReadOnly = struct {
             .{ "z", "get_z", null },
             .{ "w", "get_w", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "matrixTransform", "call_matrixTransform", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "fromPoint", "call_fromPoint", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fromPoint",
             "matrixTransform",
             "toJSON",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "x", "get_x", null },
@@ -67,10 +69,11 @@ pub const DOMPointReadOnly = struct {
             .{ "z", "get_z", null },
             .{ "w", "get_w", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -87,6 +90,7 @@ pub const DOMPointReadOnly = struct {
     );
 
     const delegates = .{
+
         .get_w = &get_w,
         .get_x = &get_x,
         .get_y = &get_y,
@@ -132,21 +136,22 @@ pub const DOMPointReadOnly = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try DOMPointReadOnlyImpl.call_toJSON(instance);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_matrixTransform(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMPointReadOnlyImpl.call_matrixTransform(instance, matrix);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMPointReadOnlyImpl.call_fromPoint(instance, other);
     }
+
 };

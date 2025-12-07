@@ -3,11 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const RsaOtherPrimesInfo = @import("RsaOtherPrimesInfo.zig").RsaOtherPrimesInfo;
 
 pub const JsonWebKey = struct {
     kty: ?runtime.DOMString = null,
     use: ?runtime.DOMString = null,
-    key_ops: ?*const anyopaque = null,
+    key_ops: ?[]const runtime.DOMString = null,
     alg: ?runtime.DOMString = null,
     ext: ?bool = null,
     crv: ?runtime.DOMString = null,
@@ -21,6 +24,8 @@ pub const JsonWebKey = struct {
     dp: ?runtime.DOMString = null,
     dq: ?runtime.DOMString = null,
     qi: ?runtime.DOMString = null,
-    oth: ?*const anyopaque = null,
+    oth: ?[]const RsaOtherPrimesInfo = null,
     k: ?runtime.DOMString = null,
+    @"pub": ?runtime.DOMString = null,
+    priv: ?runtime.DOMString = null,
 };

@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const CatchCallback = *const fn (value: *const anyopaque) *const anyopaque;
+pub const CatchCallback = *const fn (value: v8.JSValue) v8.JSValue;

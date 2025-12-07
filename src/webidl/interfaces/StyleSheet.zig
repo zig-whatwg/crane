@@ -1,11 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const StyleSheetImpl = @import("impls").StyleSheet;
 const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
@@ -28,10 +29,10 @@ pub const StyleSheet = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -49,16 +50,19 @@ pub const StyleSheet = struct {
             .{ "title", "get_title", null },
             .{ "media", "get_media", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -76,10 +80,11 @@ pub const StyleSheet = struct {
             .{ "title", "get_title", null },
             .{ "media", "get_media", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -87,7 +92,7 @@ pub const StyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: CSSOMString = undefined,
+            @"type": CSSOMString = undefined,
             href: ?runtime.USVString = null,
             ownerNode: ?union(enum) {
                 Element: Element,
@@ -103,6 +108,7 @@ pub const StyleSheet = struct {
     );
 
     const delegates = .{
+
         .get_disabled = &get_disabled,
         .get_href = &get_href,
         .get_media = &get_media,
@@ -166,4 +172,5 @@ pub const StyleSheet = struct {
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         try StyleSheetImpl.set_disabled(instance, value);
     }
+
 };

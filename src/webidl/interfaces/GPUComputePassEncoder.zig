@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUComputePassEncoderImpl = @import("impls").GPUComputePassEncoder;
 const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
@@ -38,18 +39,18 @@ pub const GPUComputePassEncoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setPipeline", "call_setPipeline", 1 },
@@ -62,7 +63,7 @@ pub const GPUComputePassEncoder = struct {
             .{ "setBindGroup", "call_setBindGroup", 2 },
             .{ "setBindGroup", "call_setBindGroup", 5 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setPipeline",
@@ -75,18 +76,20 @@ pub const GPUComputePassEncoder = struct {
             "setBindGroup",
             "setBindGroup",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -100,6 +103,7 @@ pub const GPUComputePassEncoder = struct {
     );
 
     const delegates = .{
+
         .get_label = &get_label,
 
         .set_label = &set_label,
@@ -136,6 +140,7 @@ pub const GPUComputePassEncoder = struct {
     }
 
     pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: GPUSize32, workgroupCountY: webidl.Opt(GPUSize32), workgroupCountZ: webidl.Opt(GPUSize32)) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_dispatchWorkgroups(instance, workgroupCountX, workgroupCountY, workgroupCountZ);
     }
 
@@ -144,18 +149,22 @@ pub const GPUComputePassEncoder = struct {
     }
 
     pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
     pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_dispatchWorkgroupsIndirect(instance, indirectBuffer, indirectOffset);
     }
 
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
     pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
@@ -164,6 +173,8 @@ pub const GPUComputePassEncoder = struct {
     }
 
     pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
+        
         return try GPUComputePassEncoderImpl.call_setPipeline(instance, pipeline);
     }
+
 };

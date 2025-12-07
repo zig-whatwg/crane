@@ -1,11 +1,12 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WebGLContextEventImpl = @import("impls").WebGLContextEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -27,24 +28,26 @@ pub const WebGLContextEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "statusMessage", "get_statusMessage", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -53,15 +56,16 @@ pub const WebGLContextEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "statusMessage", "get_statusMessage", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -75,6 +79,7 @@ pub const WebGLContextEvent = struct {
     );
 
     const delegates = .{
+
         .get_statusMessage = &get_statusMessage,
 
         .deinit = &deinit,
@@ -100,4 +105,5 @@ pub const WebGLContextEvent = struct {
     pub fn get_statusMessage(instance: *runtime.Instance) anyerror!DOMString {
         return try WebGLContextEventImpl.get_statusMessage(instance);
     }
+
 };

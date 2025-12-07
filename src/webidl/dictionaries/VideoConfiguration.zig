@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const VideoConfiguration = struct {
     contentType: runtime.DOMString,
@@ -11,9 +14,9 @@ pub const VideoConfiguration = struct {
     bitrate: u64,
     framerate: f64,
     hasAlphaChannel: ?bool = null,
-    hdrMetadataType: ?*const anyopaque = null,
-    colorGamut: ?*const anyopaque = null,
-    transferFunction: ?*const anyopaque = null,
+    hdrMetadataType: ?enums.HdrMetadataType = null,
+    colorGamut: ?enums.ColorGamut = null,
+    transferFunction: ?enums.TransferFunction = null,
     scalabilityMode: ?runtime.DOMString = null,
     spatialScalability: ?bool = null,
 };

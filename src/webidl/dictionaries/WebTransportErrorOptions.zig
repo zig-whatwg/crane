@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const WebTransportErrorOptions = struct {
-    source: ?*const anyopaque = null,
+    source: ?enums.WebTransportErrorSource = null,
     streamErrorCode: ?u32 = null,
 };

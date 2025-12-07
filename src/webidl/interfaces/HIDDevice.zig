@@ -1,11 +1,12 @@
 //! Generated from: webhid.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const HIDDeviceImpl = @import("impls").HIDDevice;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -33,14 +34,14 @@ pub const HIDDevice = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "ServiceWorker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .ServiceWorker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "oninputreport", "get_oninputreport", "set_oninputreport" },
@@ -50,7 +51,7 @@ pub const HIDDevice = struct {
             .{ "productName", "get_productName", null },
             .{ "collections", "get_collections", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 0 },
@@ -60,7 +61,7 @@ pub const HIDDevice = struct {
             .{ "sendFeatureReport", "call_sendFeatureReport", 2 },
             .{ "receiveFeatureReport", "call_receiveFeatureReport", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -70,7 +71,7 @@ pub const HIDDevice = struct {
             "sendFeatureReport",
             "receiveFeatureReport",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -78,7 +79,7 @@ pub const HIDDevice = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "oninputreport", "get_oninputreport", "set_oninputreport" },
@@ -88,10 +89,11 @@ pub const HIDDevice = struct {
             .{ "productName", "get_productName", null },
             .{ "collections", "get_collections", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -110,6 +112,7 @@ pub const HIDDevice = struct {
     );
 
     const delegates = .{
+
         .get_collections = &get_collections,
         .get_oninputreport = &get_oninputreport,
         .get_opened = &get_opened,
@@ -179,7 +182,7 @@ pub const HIDDevice = struct {
     pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
+        
         return try HIDDeviceImpl.call_sendFeatureReport(instance, reportId, data);
     }
 
@@ -190,14 +193,15 @@ pub const HIDDevice = struct {
     pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!*const anyopaque {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
+        
         return try HIDDeviceImpl.call_receiveFeatureReport(instance, reportId);
     }
 
     pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
+        
         return try HIDDeviceImpl.call_sendReport(instance, reportId, data);
     }
+
 };

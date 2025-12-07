@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NodeIteratorImpl = @import("impls").NodeIterator;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -22,10 +23,10 @@ pub const NodeIterator = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "root", "get_root", null },
@@ -34,24 +35,25 @@ pub const NodeIterator = struct {
             .{ "whatToShow", "get_whatToShow", null },
             .{ "filter", "get_filter", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "nextNode", "call_nextNode", 0 },
             .{ "previousNode", "call_previousNode", 0 },
             .{ "detach", "call_detach", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "nextNode",
             "previousNode",
             "detach",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "root", "get_root", null },
@@ -60,10 +62,11 @@ pub const NodeIterator = struct {
             .{ "whatToShow", "get_whatToShow", null },
             .{ "filter", "get_filter", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -82,6 +85,7 @@ pub const NodeIterator = struct {
     );
 
     const delegates = .{
+
         .get_filter = &get_filter,
         .get_pointerBeforeReferenceNode = &get_pointerBeforeReferenceNode,
         .get_referenceNode = &get_referenceNode,
@@ -145,4 +149,5 @@ pub const NodeIterator = struct {
     pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NodeIteratorImpl.call_previousNode(instance);
     }
+
 };

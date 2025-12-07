@@ -1,11 +1,12 @@
 //! Generated from: css-mixins.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSFunctionRuleImpl = @import("impls").CSSFunctionRule;
 const mixins = @import("mixins");
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
@@ -28,41 +29,42 @@ pub const CSSFunctionRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "returnType", "get_returnType", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getParameters", "call_getParameters", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getParameters",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "insertRule",
             "deleteRule",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "returnType", "get_returnType", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -77,6 +79,7 @@ pub const CSSFunctionRule = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
         .get_returnType = &get_returnType,
 
@@ -107,4 +110,5 @@ pub const CSSFunctionRule = struct {
     pub fn call_getParameters(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try CSSFunctionRuleImpl.call_getParameters(instance);
     }
+
 };

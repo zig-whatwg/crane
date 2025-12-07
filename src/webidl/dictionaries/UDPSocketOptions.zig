@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const UDPSocketOptions = struct {
     remoteAddress: ?runtime.DOMString = null,
@@ -11,7 +14,7 @@ pub const UDPSocketOptions = struct {
     localPort: ?u16 = null,
     sendBufferSize: ?u32 = null,
     receiveBufferSize: ?u32 = null,
-    dnsQueryType: ?*const anyopaque = null,
+    dnsQueryType: ?enums.SocketDnsQueryType = null,
     ipv6Only: ?bool = null,
     multicastTimeToLive: ?u8 = null,
     multicastLoopback: ?bool = null,

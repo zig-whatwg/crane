@@ -3,12 +3,14 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const ImageBitmapOptions = struct {
-    imageOrientation: ?*const anyopaque = null,
-    premultiplyAlpha: ?*const anyopaque = null,
-    colorSpaceConversion: ?*const anyopaque = null,
+    imageOrientation: ?enums.ImageOrientation = null,
+    premultiplyAlpha: ?enums.PremultiplyAlpha = null,
+    colorSpaceConversion: ?enums.ColorSpaceConversion = null,
     resizeWidth: ?u32 = null,
     resizeHeight: ?u32 = null,
-    resizeQuality: ?*const anyopaque = null,
+    resizeQuality: ?enums.ResizeQuality = null,
 };

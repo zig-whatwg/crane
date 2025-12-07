@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const CreateScriptURLCallback = *const fn (input: runtime.DOMString, arguments: []const *const anyopaque) runtime.USVString;
+pub const CreateScriptURLCallback = *const fn (input: runtime.DOMString, arguments: []const v8.JSValue) runtime.USVString;

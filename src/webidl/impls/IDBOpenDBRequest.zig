@@ -72,28 +72,28 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for onblocked event handler
-pub fn get_onblocked(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onblocked(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onblocked_handler orelse return error.InvalidState;
 }
 
 /// Getter for onupgradeneeded event handler
-pub fn get_onupgradeneeded(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onupgradeneeded(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.onupgradeneeded_handler orelse return error.InvalidState;
 }
 
 /// Setter for onblocked event handler
-pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onblocked(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onblocked_handler = value;
 }
 
 /// Setter for onupgradeneeded event handler
-pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onupgradeneeded(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     internal.onupgradeneeded_handler = value;

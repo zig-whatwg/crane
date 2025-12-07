@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -107,7 +108,7 @@ pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(*const anyopaque)) anyerror!?typedefs.OffscreenRenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(v8.JSValue)) anyerror!?typedefs.OffscreenRenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;

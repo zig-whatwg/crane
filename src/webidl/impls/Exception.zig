@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -69,7 +70,7 @@ pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) any
 }
 
 /// Operation: getArg
-pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!*const anyopaque {
+pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!v8.JSValue {
     _ = instance;
     _ = index;
     return error.NotImplemented;

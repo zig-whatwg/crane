@@ -510,7 +510,7 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 ///
 /// Note: Layout-dependent granularities (line, lineboundary) require a LayoutBackend.
 /// This implementation supports character and word granularity without layout.
-pub fn call_modify(instance: *runtime.Instance, alter_opt: webidl.Opt(runtime.DOMString), direction_opt: webidl.Opt(runtime.DOMString), granularity_opt: webidl.Opt(runtime.DOMString)) anyerror!void {
+pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Must have a selection to modify

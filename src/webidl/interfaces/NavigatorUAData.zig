@@ -1,11 +1,12 @@
 //! Generated from: ua-client-hints.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NavigatorUADataImpl = @import("impls").NavigatorUAData;
 const mixins = @import("mixins");
 const UADataValues = @import("dictionaries").UADataValues;
@@ -24,45 +25,47 @@ pub const NavigatorUAData = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "brands", "get_brands", null },
             .{ "mobile", "get_mobile", null },
             .{ "platform", "get_platform", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getHighEntropyValues", "call_getHighEntropyValues", 1 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getHighEntropyValues",
             "toJSON",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "brands", "get_brands", null },
             .{ "mobile", "get_mobile", null },
             .{ "platform", "get_platform", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -78,6 +81,7 @@ pub const NavigatorUAData = struct {
     );
 
     const delegates = .{
+
         .get_brands = &get_brands,
         .get_mobile = &get_mobile,
         .get_platform = &get_platform,
@@ -112,10 +116,12 @@ pub const NavigatorUAData = struct {
     }
 
     pub fn call_getHighEntropyValues(instance: *runtime.Instance, hints: *const anyopaque) anyerror!*const anyopaque {
+        
         return try NavigatorUADataImpl.call_getHighEntropyValues(instance, hints);
     }
 
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!UALowEntropyJSON {
         return try NavigatorUADataImpl.call_toJSON(instance);
     }
+
 };

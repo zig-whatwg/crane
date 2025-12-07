@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -446,7 +447,7 @@ pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.Eve
 }
 
 /// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
+pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
     _ = instance;
     _ = e;
     return error.NotImplemented;
@@ -536,7 +537,7 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 /// https://html.spec.whatwg.org/#dom-setinterval
 ///
 /// Sets a repeating timer that fires at the specified interval.
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.event_loop) |event_loop| {
@@ -618,7 +619,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 /// 1. Let serialized be ? StructuredSerializeWithTransfer(value, options["transfer"]).
 /// 2. Let deserializeRecord be ? StructuredDeserializeWithTransfer(serialized, this's relevant Realm).
 /// 3. Return deserializeRecord.[[Deserialized]]."
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!v8.JSValue {
     // Get allocator from instance
     const state = instance.getState(State);
     if (state.own._internal == null) {
@@ -747,7 +748,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// https://html.spec.whatwg.org/#dom-settimeout
 ///
 /// Sets a one-shot timer that fires after the specified delay.
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.event_loop) |event_loop| {

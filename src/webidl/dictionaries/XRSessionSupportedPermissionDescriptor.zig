@@ -3,11 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const PermissionDescriptor = @import("PermissionDescriptor.zig").PermissionDescriptor;
 
 pub const XRSessionSupportedPermissionDescriptor = struct {
     // Inherited from PermissionDescriptor
     base: PermissionDescriptor,
 
-    mode: ?*const anyopaque = null,
+    mode: ?enums.XRSessionMode = null,
 };

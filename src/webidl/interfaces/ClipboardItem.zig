@@ -1,11 +1,12 @@
 //! Generated from: clipboard-apis.idl
-//! Generated at: 2025-12-05T20:30:44Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ClipboardItemImpl = @import("impls").ClipboardItem;
 const mixins = @import("mixins");
 const ClipboardItemOptions = @import("dictionaries").ClipboardItemOptions;
@@ -25,44 +26,46 @@ pub const ClipboardItem = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "presentationStyle", "get_presentationStyle", null },
             .{ "types", "get_types", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getType", "call_getType", 1 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_supports", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getType",
             "supports",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "presentationStyle", "get_presentationStyle", null },
             .{ "types", "get_types", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -77,6 +80,7 @@ pub const ClipboardItem = struct {
     );
 
     const delegates = .{
+
         .get_presentationStyle = &get_presentationStyle,
         .get_types = &get_types,
 
@@ -111,10 +115,13 @@ pub const ClipboardItem = struct {
     }
 
     pub fn call_getType(instance: *runtime.Instance, @"type": DOMString) anyerror!*const anyopaque {
+        
         return try ClipboardItemImpl.call_getType(instance, @"type");
     }
 
     pub fn call_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+        
         return try ClipboardItemImpl.call_supports(instance, @"type");
     }
+
 };

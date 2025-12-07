@@ -3,11 +3,20 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const FlacEncoderConfig = @import("FlacEncoderConfig.zig").FlacEncoderConfig;
+const OpusEncoderConfig = @import("OpusEncoderConfig.zig").OpusEncoderConfig;
+const AacEncoderConfig = @import("AacEncoderConfig.zig").AacEncoderConfig;
 
 pub const AudioEncoderConfig = struct {
     codec: runtime.DOMString,
     sampleRate: u32,
     numberOfChannels: u32,
     bitrate: ?u64 = null,
-    bitrateMode: ?*const anyopaque = null,
+    bitrateMode: ?enums.BitrateMode = null,
+    aac: ?AacEncoderConfig = null,
+    flac: ?FlacEncoderConfig = null,
+    opus: ?OpusEncoderConfig = null,
 };

@@ -1,11 +1,12 @@
 //! Generated from: mediastream-recording.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MediaRecorderImpl = @import("impls").MediaRecorder;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -34,10 +35,10 @@ pub const MediaRecorder = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "stream", "get_stream", null },
@@ -53,7 +54,7 @@ pub const MediaRecorder = struct {
             .{ "audioBitsPerSecond", "get_audioBitsPerSecond", null },
             .{ "audioBitrateMode", "get_audioBitrateMode", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
@@ -62,12 +63,12 @@ pub const MediaRecorder = struct {
             .{ "resume", "call_resume", 0 },
             .{ "requestData", "call_requestData", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isTypeSupported", "call_isTypeSupported", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
@@ -77,7 +78,7 @@ pub const MediaRecorder = struct {
             "requestData",
             "isTypeSupported",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -85,7 +86,7 @@ pub const MediaRecorder = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "stream", "get_stream", null },
@@ -101,10 +102,11 @@ pub const MediaRecorder = struct {
             .{ "audioBitsPerSecond", "get_audioBitsPerSecond", null },
             .{ "audioBitrateMode", "get_audioBitrateMode", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -129,6 +131,7 @@ pub const MediaRecorder = struct {
     );
 
     const delegates = .{
+
         .get_audioBitrateMode = &get_audioBitrateMode,
         .get_audioBitsPerSecond = &get_audioBitsPerSecond,
         .get_mimeType = &get_mimeType,
@@ -256,10 +259,12 @@ pub const MediaRecorder = struct {
     }
 
     pub fn call_start(instance: *runtime.Instance, timeslice: webidl.Opt(u32)) anyerror!void {
+        
         return try MediaRecorderImpl.call_start(instance, timeslice);
     }
 
     pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+        
         return try MediaRecorderImpl.call_isTypeSupported(instance, @"type");
     }
 
@@ -270,4 +275,5 @@ pub const MediaRecorder = struct {
     pub fn call_pause(instance: *runtime.Instance) anyerror!void {
         return try MediaRecorderImpl.call_pause(instance);
     }
+
 };

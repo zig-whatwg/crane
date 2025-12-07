@@ -1,11 +1,12 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const PortalActivateEventImpl = @import("impls").PortalActivateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -28,25 +29,25 @@ pub const PortalActivateEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "adoptPredecessor", "call_adoptPredecessor", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "adoptPredecessor",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -55,15 +56,16 @@ pub const PortalActivateEvent = struct {
             "preventDefault",
             "initEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -71,12 +73,13 @@ pub const PortalActivateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: *const anyopaque = undefined,
+            data: v8.JSValue = undefined,
             _internal: ?*PortalActivateEventImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_data = &get_data,
 
         .call_adoptPredecessor = &call_adoptPredecessor,
@@ -101,11 +104,12 @@ pub const PortalActivateEvent = struct {
         return try PortalActivateEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try PortalActivateEventImpl.get_data(instance);
     }
 
     pub fn call_adoptPredecessor(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PortalActivateEventImpl.call_adoptPredecessor(instance);
     }
+
 };

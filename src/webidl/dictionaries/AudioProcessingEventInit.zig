@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const AudioProcessingEventInit = struct {
@@ -10,6 +11,6 @@ pub const AudioProcessingEventInit = struct {
     base: EventInit,
 
     playbackTime: f64,
-    inputBuffer: *const anyopaque,
-    outputBuffer: *const anyopaque,
+    inputBuffer: *runtime.Instance,
+    outputBuffer: *runtime.Instance,
 };

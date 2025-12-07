@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -86,7 +87,7 @@ pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(*const anyopaque)) anyerror!?typedefs.RenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(v8.JSValue)) anyerror!?typedefs.RenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
@@ -94,7 +95,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString
 }
 
 /// Operation: toDataURL
-pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!runtime.USVString {
+pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(v8.JSValue)) anyerror!runtime.USVString {
     _ = instance;
     _ = @"type";
     _ = quality;
@@ -102,7 +103,7 @@ pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.D
 }
 
 /// Operation: toBlob
-pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(v8.JSValue)) anyerror!void {
     _ = instance;
     _ = _callback;
     _ = @"type";

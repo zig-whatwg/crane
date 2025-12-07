@@ -1,11 +1,12 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-12-05T20:30:49Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RTCRtpScriptTransformerImpl = @import("impls").RTCRtpScriptTransformer;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -32,10 +33,10 @@ pub const RTCRtpScriptTransformer = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "DedicatedWorker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .DedicatedWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "readable", "get_readable", null },
@@ -43,19 +44,19 @@ pub const RTCRtpScriptTransformer = struct {
             .{ "onkeyframerequest", "get_onkeyframerequest", "set_onkeyframerequest" },
             .{ "options", "get_options", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "generateKeyFrame", "call_generateKeyFrame", 0 },
             .{ "sendKeyFrameRequest", "call_sendKeyFrameRequest", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "generateKeyFrame",
             "sendKeyFrameRequest",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -63,7 +64,7 @@ pub const RTCRtpScriptTransformer = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "readable", "get_readable", null },
@@ -71,10 +72,11 @@ pub const RTCRtpScriptTransformer = struct {
             .{ "onkeyframerequest", "get_onkeyframerequest", "set_onkeyframerequest" },
             .{ "options", "get_options", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -85,12 +87,13 @@ pub const RTCRtpScriptTransformer = struct {
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
             onkeyframerequest: EventHandler = undefined,
-            options: *const anyopaque = undefined,
+            options: v8.JSValue = undefined,
             _internal: ?*RTCRtpScriptTransformerImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_onkeyframerequest = &get_onkeyframerequest,
         .get_options = &get_options,
         .get_readable = &get_readable,
@@ -131,7 +134,7 @@ pub const RTCRtpScriptTransformer = struct {
         try RTCRtpScriptTransformerImpl.set_onkeyframerequest(instance, value);
     }
 
-    pub fn get_options(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_options(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try RTCRtpScriptTransformerImpl.get_options(instance);
     }
 
@@ -140,6 +143,8 @@ pub const RTCRtpScriptTransformer = struct {
     }
 
     pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!*const anyopaque {
+        
         return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid);
     }
+
 };

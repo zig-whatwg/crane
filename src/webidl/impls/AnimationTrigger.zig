@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -66,25 +67,25 @@ pub fn get_behavior(instance: *runtime.Instance) anyerror!enums.AnimationTrigger
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeStart
-pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeEnd
-pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -104,28 +105,28 @@ pub fn set_behavior(instance: *runtime.Instance, value: enums.AnimationTriggerBe
 }
 
 /// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_rangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_rangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeStart
-pub fn set_exitRangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_exitRangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeEnd
-pub fn set_exitRangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_exitRangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

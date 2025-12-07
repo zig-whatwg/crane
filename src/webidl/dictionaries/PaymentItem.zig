@@ -3,9 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const PaymentCurrencyAmount = @import("PaymentCurrencyAmount.zig").PaymentCurrencyAmount;
 
 pub const PaymentItem = struct {
     label: runtime.DOMString,
-    amount: *const anyopaque,
+    amount: PaymentCurrencyAmount,
     pending: ?bool = null,
 };

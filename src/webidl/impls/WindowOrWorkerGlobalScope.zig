@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -95,7 +96,7 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerror!void {
+pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
     _ = instance;
     _ = e;
     return error.NotImplemented;
@@ -114,7 +115,7 @@ pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerr
 /// 2. Store in interval registry with Global handle
 /// 3. Dispose Global handle when interval is cleared via clearInterval
 /// 4. Handle repeating invocation pattern
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -169,7 +170,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!*const anyopaque {
+pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!v8.JSValue {
     _ = instance;
     _ = value;
     _ = options;
@@ -189,7 +190,7 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 /// 2. Store in timer registry with Global handle
 /// 3. Dispose Global handle when timer fires or is cleared via clearTimeout
 /// 4. Handle one-shot invocation (unlike setInterval)
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;

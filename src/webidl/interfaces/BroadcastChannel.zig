@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const BroadcastChannelImpl = @import("impls").BroadcastChannel;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -30,32 +31,32 @@ pub const BroadcastChannel = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 1 },
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "postMessage",
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -63,17 +64,18 @@ pub const BroadcastChannel = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -89,6 +91,7 @@ pub const BroadcastChannel = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
@@ -143,7 +146,9 @@ pub const BroadcastChannel = struct {
         return try BroadcastChannelImpl.call_close(instance);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue) anyerror!void {
+        
         return try BroadcastChannelImpl.call_postMessage(instance, message);
     }
+
 };

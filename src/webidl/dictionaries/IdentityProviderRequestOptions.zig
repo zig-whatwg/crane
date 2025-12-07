@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const IdentityProviderConfig = @import("IdentityProviderConfig.zig").IdentityProviderConfig;
 
 pub const IdentityProviderRequestOptions = struct {
@@ -11,6 +13,6 @@ pub const IdentityProviderRequestOptions = struct {
 
     loginHint: ?runtime.DOMString = null,
     domainHint: ?runtime.DOMString = null,
-    fields: ?*const anyopaque = null,
-    params: ?*const anyopaque = null,
+    fields: ?[]const runtime.USVString = null,
+    params: ?v8.JSValue = null,
 };

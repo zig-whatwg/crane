@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -257,7 +258,7 @@ pub fn get_responseType(instance: *runtime.Instance) anyerror!enums.XMLHttpReque
 
 /// Getter for response
 /// TODO: Implement full response object handling
-pub fn get_response(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_response(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

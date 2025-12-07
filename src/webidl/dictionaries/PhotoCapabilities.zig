@@ -3,10 +3,13 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
+const MediaSettingsRange = @import("MediaSettingsRange.zig").MediaSettingsRange;
 
 pub const PhotoCapabilities = struct {
-    redEyeReduction: ?*const anyopaque = null,
-    imageHeight: ?*const anyopaque = null,
-    imageWidth: ?*const anyopaque = null,
-    fillLightMode: ?*const anyopaque = null,
+    redEyeReduction: ?enums.RedEyeReduction = null,
+    imageHeight: ?MediaSettingsRange = null,
+    imageWidth: ?MediaSettingsRange = null,
+    fillLightMode: ?[]const enums.FillLightMode = null,
 };

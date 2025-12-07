@@ -1,11 +1,12 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SVGTransformImpl = @import("impls").SVGTransform;
 const mixins = @import("mixins");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
@@ -22,17 +23,17 @@ pub const SVGTransform = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
             .{ "matrix", "get_matrix", null },
             .{ "angle", "get_angle", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setMatrix", "call_setMatrix", 0 },
@@ -42,7 +43,7 @@ pub const SVGTransform = struct {
             .{ "setSkewX", "call_setSkewX", 1 },
             .{ "setSkewY", "call_setSkewY", 1 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "SVG_TRANSFORM_UNKNOWN", "get_SVG_TRANSFORM_UNKNOWN" },
@@ -53,7 +54,7 @@ pub const SVGTransform = struct {
             .{ "SVG_TRANSFORM_SKEWX", "get_SVG_TRANSFORM_SKEWX" },
             .{ "SVG_TRANSFORM_SKEWY", "get_SVG_TRANSFORM_SKEWY" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setMatrix",
@@ -63,20 +64,22 @@ pub const SVGTransform = struct {
             "setSkewX",
             "setSkewY",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "matrix", "get_matrix", null },
             .{ "angle", "get_angle", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -84,7 +87,7 @@ pub const SVGTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: u16 = undefined,
+            @"type": u16 = undefined,
             matrix: *runtime.Instance = undefined,
             angle: f32 = undefined,
             cached_matrix: ?*runtime.Instance = null,
@@ -132,6 +135,7 @@ pub const SVGTransform = struct {
     }
 
     const delegates = .{
+
         .get_SVG_TRANSFORM_MATRIX = &get_SVG_TRANSFORM_MATRIX,
         .get_SVG_TRANSFORM_ROTATE = &get_SVG_TRANSFORM_ROTATE,
         .get_SVG_TRANSFORM_SCALE = &get_SVG_TRANSFORM_SCALE,
@@ -185,26 +189,33 @@ pub const SVGTransform = struct {
     }
 
     pub fn call_setSkewX(instance: *runtime.Instance, angle: f32) anyerror!void {
+        
         return try SVGTransformImpl.call_setSkewX(instance, angle);
     }
 
     pub fn call_setMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
+        
         return try SVGTransformImpl.call_setMatrix(instance, matrix);
     }
 
     pub fn call_setRotate(instance: *runtime.Instance, angle: f32, cx: f32, cy: f32) anyerror!void {
+        
         return try SVGTransformImpl.call_setRotate(instance, angle, cx, cy);
     }
 
     pub fn call_setSkewY(instance: *runtime.Instance, angle: f32) anyerror!void {
+        
         return try SVGTransformImpl.call_setSkewY(instance, angle);
     }
 
     pub fn call_setTranslate(instance: *runtime.Instance, tx: f32, ty: f32) anyerror!void {
+        
         return try SVGTransformImpl.call_setTranslate(instance, tx, ty);
     }
 
     pub fn call_setScale(instance: *runtime.Instance, sx: f32, sy: f32) anyerror!void {
+        
         return try SVGTransformImpl.call_setScale(instance, sx, sy);
     }
+
 };

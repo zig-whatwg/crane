@@ -3,13 +3,15 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const SanitizerConfig = struct {
-    elements: ?*const anyopaque = null,
-    removeElements: ?*const anyopaque = null,
-    replaceWithChildrenElements: ?*const anyopaque = null,
-    attributes: ?*const anyopaque = null,
-    removeAttributes: ?*const anyopaque = null,
+    elements: ?[]const typedefs.SanitizerElementWithAttributes = null,
+    removeElements: ?[]const typedefs.SanitizerElement = null,
+    replaceWithChildrenElements: ?[]const typedefs.SanitizerElement = null,
+    attributes: ?[]const typedefs.SanitizerAttribute = null,
+    removeAttributes: ?[]const typedefs.SanitizerAttribute = null,
     comments: ?bool = null,
     dataAttributes: ?bool = null,
 };

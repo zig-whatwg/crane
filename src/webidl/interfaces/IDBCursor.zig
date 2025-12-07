@@ -1,11 +1,12 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IDBCursorImpl = @import("impls").IDBCursor;
 const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
@@ -24,13 +25,13 @@ pub const IDBCursor = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "source", "get_source", null },
@@ -39,7 +40,7 @@ pub const IDBCursor = struct {
             .{ "primaryKey", "get_primaryKey", null },
             .{ "request", "get_request", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "advance", "call_advance", 1 },
@@ -48,7 +49,7 @@ pub const IDBCursor = struct {
             .{ "update", "call_update", 1 },
             .{ "delete", "call_delete", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "advance",
@@ -57,10 +58,11 @@ pub const IDBCursor = struct {
             "update",
             "delete",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "source", "get_source", null },
@@ -69,10 +71,11 @@ pub const IDBCursor = struct {
             .{ "primaryKey", "get_primaryKey", null },
             .{ "request", "get_request", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -85,8 +88,8 @@ pub const IDBCursor = struct {
                 IDBIndex: IDBIndex,
             } = undefined,
             direction: IDBCursorDirection = undefined,
-            key: *const anyopaque = undefined,
-            primaryKey: *const anyopaque = undefined,
+            key: v8.JSValue = undefined,
+            primaryKey: v8.JSValue = undefined,
             request: *runtime.Instance = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*IDBCursorImpl.InternalState = null,
@@ -94,6 +97,7 @@ pub const IDBCursor = struct {
     );
 
     const delegates = .{
+
         .get_direction = &get_direction,
         .get_key = &get_key,
         .get_primaryKey = &get_primaryKey,
@@ -128,11 +132,11 @@ pub const IDBCursor = struct {
         return try IDBCursorImpl.get_direction(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try IDBCursorImpl.get_key(instance);
     }
 
-    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try IDBCursorImpl.get_primaryKey(instance);
     }
 
@@ -154,25 +158,28 @@ pub const IDBCursor = struct {
         return try IDBCursorImpl.call_delete(instance);
     }
 
-    pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(v8.JSValue)) anyerror!void {
+        
         return try IDBCursorImpl.call_continue(instance, key);
     }
 
-    pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaque, primaryKey: *const anyopaque) anyerror!void {
+    pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: v8.JSValue, primaryKey: v8.JSValue) anyerror!void {
+        
         return try IDBCursorImpl.call_continuePrimaryKey(instance, key, primaryKey);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_update(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBCursorImpl.call_update(instance, value);
     }
 
     pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
-
+        
         return try IDBCursorImpl.call_advance(instance, count);
     }
+
 };

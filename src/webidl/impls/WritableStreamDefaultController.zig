@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -237,7 +238,7 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// 1. Let state = this.[[stream]].[[state]]
 /// 2. If state is not "writable", return
 /// 3. Perform WritableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

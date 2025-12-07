@@ -311,11 +311,7 @@ pub fn call_entries(instance: *runtime.Instance) anyerror!*const anyopaque {
 
 /// Operation: navigate(url, options)
 /// HTML Standard §7.2.6.4: Navigate to a new URL
-pub fn call_navigate(
-    instance: *runtime.Instance,
-    url: runtime.USVString,
-    options: webidl.Opt(dictionaries.NavigationNavigateOptions),
-) anyerror!dictionaries.NavigationResult {
+pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const traversable = internal.traversable orelse return error.InvalidStateError;
 
@@ -353,10 +349,7 @@ pub fn call_navigate(
 
 /// Operation: reload(options)
 /// HTML Standard §7.2.6.4: Reload the current entry
-pub fn call_reload(
-    instance: *runtime.Instance,
-    options: webidl.Opt(dictionaries.NavigationReloadOptions),
-) anyerror!dictionaries.NavigationResult {
+pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationReloadOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const traversable = internal.traversable orelse return error.InvalidStateError;
 
@@ -385,11 +378,7 @@ pub fn call_reload(
 
 /// Operation: traverseTo(key, options)
 /// HTML Standard §7.2.6.4: Navigate to a specific entry by key
-pub fn call_traverseTo(
-    instance: *runtime.Instance,
-    key: runtime.DOMString,
-    options: webidl.Opt(dictionaries.NavigationOptions),
-) anyerror!dictionaries.NavigationResult {
+pub fn call_traverseTo(instance: *runtime.Instance, key: runtime.DOMString, options: webidl.Opt(dictionaries.NavigationOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const traversable = internal.traversable orelse return error.InvalidStateError;
     const history = getSessionHistory(internal) orelse return error.InvalidStateError;
@@ -423,10 +412,7 @@ pub fn call_traverseTo(
 
 /// Operation: back(options)
 /// HTML Standard §7.2.6.4: Navigate back one entry
-pub fn call_back(
-    instance: *runtime.Instance,
-    options: webidl.Opt(dictionaries.NavigationOptions),
-) anyerror!dictionaries.NavigationResult {
+pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const traversable = internal.traversable orelse return error.InvalidStateError;
 
@@ -454,10 +440,7 @@ pub fn call_back(
 
 /// Operation: forward(options)
 /// HTML Standard §7.2.6.4: Navigate forward one entry
-pub fn call_forward(
-    instance: *runtime.Instance,
-    options: webidl.Opt(dictionaries.NavigationOptions),
-) anyerror!dictionaries.NavigationResult {
+pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NavigationOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const traversable = internal.traversable orelse return error.InvalidStateError;
 
@@ -485,10 +468,7 @@ pub fn call_forward(
 
 /// Operation: updateCurrentEntry(options)
 /// HTML Standard §7.2.6.4: Update the state of the current entry
-pub fn call_updateCurrentEntry(
-    instance: *runtime.Instance,
-    options: dictionaries.NavigationUpdateCurrentEntryOptions,
-) anyerror!void {
+pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionaries.NavigationUpdateCurrentEntryOptions) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const entry = getCurrentEntry(internal) orelse return error.InvalidStateError;
 

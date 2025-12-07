@@ -1,11 +1,12 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MouseEventImpl = @import("impls").MouseEvent;
 const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;
@@ -30,10 +31,10 @@ pub const MouseEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "screenX", "get_screenX", null },
@@ -62,19 +63,19 @@ pub const MouseEvent = struct {
             .{ "offsetX", "get_offsetX", null },
             .{ "offsetY", "get_offsetY", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getModifierState", "call_getModifierState", 1 },
             .{ "initMouseEvent", "call_initMouseEvent", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getModifierState",
             "initMouseEvent",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -84,7 +85,7 @@ pub const MouseEvent = struct {
             "initEvent",
             "initUIEvent",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "screenX", "get_screenX", null },
@@ -113,10 +114,11 @@ pub const MouseEvent = struct {
             .{ "offsetX", "get_offsetX", null },
             .{ "offsetY", "get_offsetY", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -150,6 +152,7 @@ pub const MouseEvent = struct {
     );
 
     const delegates = .{
+
         .get_altKey = &get_altKey,
         .get_button = &get_button,
         .get_buttons = &get_buttons,
@@ -280,10 +283,13 @@ pub const MouseEvent = struct {
     }
 
     pub fn call_initMouseEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32), screenXArg: webidl.Opt(i32), screenYArg: webidl.Opt(i32), clientXArg: webidl.Opt(i32), clientYArg: webidl.Opt(i32), ctrlKeyArg: webidl.Opt(bool), altKeyArg: webidl.Opt(bool), shiftKeyArg: webidl.Opt(bool), metaKeyArg: webidl.Opt(bool), buttonArg: webidl.Opt(i16), relatedTargetArg: webidl.Opt(?*runtime.Instance)) anyerror!void {
+        
         return try MouseEventImpl.call_initMouseEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, detailArg, screenXArg, screenYArg, clientXArg, clientYArg, ctrlKeyArg, altKeyArg, shiftKeyArg, metaKeyArg, buttonArg, relatedTargetArg);
     }
 
     pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {
+        
         return try MouseEventImpl.call_getModifierState(instance, keyArg);
     }
+
 };

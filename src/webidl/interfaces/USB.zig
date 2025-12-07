@@ -1,11 +1,12 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const USBImpl = @import("impls").USB;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -33,31 +34,31 @@ pub const USB = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Worker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onconnect", "get_onconnect", "set_onconnect" },
             .{ "ondisconnect", "get_ondisconnect", "set_ondisconnect" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getDevices", "call_getDevices", 0 },
             .{ "requestDevice", "call_requestDevice", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getDevices",
             "requestDevice",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -65,16 +66,17 @@ pub const USB = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onconnect", "get_onconnect", "set_onconnect" },
             .{ "ondisconnect", "get_ondisconnect", "set_ondisconnect" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -89,6 +91,7 @@ pub const USB = struct {
     );
 
     const delegates = .{
+
         .get_onconnect = &get_onconnect,
         .get_ondisconnect = &get_ondisconnect,
 
@@ -134,6 +137,8 @@ pub const USB = struct {
 
     /// Extended attributes: [Exposed=Window]
     pub fn call_requestDevice(instance: *runtime.Instance, options: USBDeviceRequestOptions) anyerror!*const anyopaque {
+        
         return try USBImpl.call_requestDevice(instance, options);
     }
+
 };

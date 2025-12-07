@@ -1,11 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSRuleImpl = @import("impls").CSSRule;
 const mixins = @import("mixins");
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
@@ -23,10 +24,10 @@ pub const CSSRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "cssText", "get_cssText", "set_cssText" },
@@ -38,10 +39,11 @@ pub const CSSRule = struct {
             .{ "parentStyleSheet", "get_parentStyleSheet", null },
             .{ "parentRule", "get_parentRule", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "STYLE_RULE", "get_STYLE_RULE" },
@@ -59,13 +61,15 @@ pub const CSSRule = struct {
             .{ "COUNTER_STYLE_RULE", "get_COUNTER_STYLE_RULE" },
             .{ "FONT_FEATURE_VALUES_RULE", "get_FONT_FEATURE_VALUES_RULE" },
         };
-
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "cssText", "get_cssText", "set_cssText" },
@@ -77,10 +81,11 @@ pub const CSSRule = struct {
             .{ "parentStyleSheet", "get_parentStyleSheet", null },
             .{ "parentRule", "get_parentRule", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -91,7 +96,7 @@ pub const CSSRule = struct {
             cssText: CSSOMString = undefined,
             parentRule: ?*runtime.Instance = null,
             parentStyleSheet: ?*runtime.Instance = null,
-            type: u16 = undefined,
+            @"type": u16 = undefined,
             _internal: ?*CSSRuleImpl.InternalState = null,
         },
     );
@@ -171,6 +176,7 @@ pub const CSSRule = struct {
     }
 
     const delegates = .{
+
         .get_CHARSET_RULE = &get_CHARSET_RULE,
         .get_COUNTER_STYLE_RULE = &get_COUNTER_STYLE_RULE,
         .get_FONT_FACE_RULE = &get_FONT_FACE_RULE,
@@ -225,4 +231,5 @@ pub const CSSRule = struct {
     pub fn get_type(instance: *runtime.Instance) anyerror!u16 {
         return try CSSRuleImpl.get_type(instance);
     }
+
 };

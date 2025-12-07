@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const LayoutOptions = struct {
-    childDisplay: ?*const anyopaque = null,
-    sizing: ?*const anyopaque = null,
+    childDisplay: ?enums.ChildDisplayType = null,
+    sizing: ?enums.LayoutSizingMode = null,
 };

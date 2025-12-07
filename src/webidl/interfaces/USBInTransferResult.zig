@@ -1,11 +1,12 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const USBInTransferResultImpl = @import("impls").USBInTransferResult;
 const mixins = @import("mixins");
 const USBTransferStatus = @import("enums").USBTransferStatus;
@@ -22,37 +23,41 @@ pub const USBInTransferResult = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Worker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "data", "get_data", null },
             .{ "status", "get_status", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "data", "get_data", null },
             .{ "status", "get_status", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -67,6 +72,7 @@ pub const USBInTransferResult = struct {
     );
 
     const delegates = .{
+
         .get_data = &get_data,
         .get_status = &get_status,
 
@@ -97,4 +103,5 @@ pub const USBInTransferResult = struct {
     pub fn get_status(instance: *runtime.Instance) anyerror!USBTransferStatus {
         return try USBInTransferResultImpl.get_status(instance);
     }
+
 };

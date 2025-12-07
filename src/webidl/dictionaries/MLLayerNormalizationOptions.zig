@@ -3,14 +3,15 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const MLOperatorOptions = @import("MLOperatorOptions.zig").MLOperatorOptions;
 
 pub const MLLayerNormalizationOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    scale: ?*const anyopaque = null,
-    bias: ?*const anyopaque = null,
-    axes: ?*const anyopaque = null,
+    scale: ?*runtime.Instance = null,
+    bias: ?*runtime.Instance = null,
+    axes: ?[]const *const anyopaque = null,
     epsilon: ?f64 = null,
 };

@@ -3,13 +3,17 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const MediaKeySystemMediaCapability = @import("MediaKeySystemMediaCapability.zig").MediaKeySystemMediaCapability;
 
 pub const MediaKeySystemConfiguration = struct {
     label: ?runtime.DOMString = null,
-    initDataTypes: ?*const anyopaque = null,
-    audioCapabilities: ?*const anyopaque = null,
-    videoCapabilities: ?*const anyopaque = null,
-    distinctiveIdentifier: ?*const anyopaque = null,
-    persistentState: ?*const anyopaque = null,
-    sessionTypes: ?*const anyopaque = null,
+    initDataTypes: ?[]const runtime.DOMString = null,
+    audioCapabilities: ?[]const MediaKeySystemMediaCapability = null,
+    videoCapabilities: ?[]const MediaKeySystemMediaCapability = null,
+    distinctiveIdentifier: ?enums.MediaKeysRequirement = null,
+    persistentState: ?enums.MediaKeysRequirement = null,
+    sessionTypes: ?[]const runtime.DOMString = null,
 };

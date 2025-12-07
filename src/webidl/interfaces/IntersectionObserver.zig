@@ -1,11 +1,12 @@
 //! Generated from: intersection-observer.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IntersectionObserverImpl = @import("impls").IntersectionObserver;
 const mixins = @import("mixins");
 const Document = @import("interfaces").Document;
@@ -26,10 +27,10 @@ pub const IntersectionObserver = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "root", "get_root", null },
@@ -39,7 +40,7 @@ pub const IntersectionObserver = struct {
             .{ "delay", "get_delay", null },
             .{ "trackVisibility", "get_trackVisibility", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "observe", "call_observe", 1 },
@@ -47,7 +48,7 @@ pub const IntersectionObserver = struct {
             .{ "disconnect", "call_disconnect", 0 },
             .{ "takeRecords", "call_takeRecords", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "observe",
@@ -55,10 +56,11 @@ pub const IntersectionObserver = struct {
             "disconnect",
             "takeRecords",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "root", "get_root", null },
@@ -68,10 +70,11 @@ pub const IntersectionObserver = struct {
             .{ "delay", "get_delay", null },
             .{ "trackVisibility", "get_trackVisibility", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -93,6 +96,7 @@ pub const IntersectionObserver = struct {
     );
 
     const delegates = .{
+
         .get_delay = &get_delay,
         .get_root = &get_root,
         .get_rootMargin = &get_rootMargin,
@@ -150,10 +154,12 @@ pub const IntersectionObserver = struct {
     }
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
+        
         return try IntersectionObserverImpl.call_observe(instance, target);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
+        
         return try IntersectionObserverImpl.call_unobserve(instance, target);
     }
 
@@ -164,4 +170,5 @@ pub const IntersectionObserver = struct {
     pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try IntersectionObserverImpl.call_takeRecords(instance);
     }
+
 };

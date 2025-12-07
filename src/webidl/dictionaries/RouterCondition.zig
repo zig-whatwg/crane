@@ -3,13 +3,16 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 
 pub const RouterCondition = struct {
-    urlPattern: ?*const anyopaque = null,
+    urlPattern: ?typedefs.URLPatternCompatible = null,
     requestMethod: ?runtime.ByteString = null,
-    requestMode: ?*const anyopaque = null,
-    requestDestination: ?*const anyopaque = null,
-    runningStatus: ?*const anyopaque = null,
-    _or: ?*const anyopaque = null,
-    not: ?*const anyopaque = null,
+    requestMode: ?enums.RequestMode = null,
+    requestDestination: ?enums.RequestDestination = null,
+    runningStatus: ?enums.RunningStatus = null,
+    _or: ?[]const RouterCondition = null,
+    not: ?RouterCondition = null,
 };

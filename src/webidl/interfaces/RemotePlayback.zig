@@ -1,11 +1,12 @@
 //! Generated from: remote-playback.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RemotePlaybackImpl = @import("impls").RemotePlayback;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -32,10 +33,10 @@ pub const RemotePlayback = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "state", "get_state", null },
@@ -43,21 +44,21 @@ pub const RemotePlayback = struct {
             .{ "onconnect", "get_onconnect", "set_onconnect" },
             .{ "ondisconnect", "get_ondisconnect", "set_ondisconnect" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "watchAvailability", "call_watchAvailability", 1 },
             .{ "cancelWatchAvailability", "call_cancelWatchAvailability", 0 },
             .{ "prompt", "call_prompt", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "watchAvailability",
             "cancelWatchAvailability",
             "prompt",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -65,7 +66,7 @@ pub const RemotePlayback = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "state", "get_state", null },
@@ -73,10 +74,11 @@ pub const RemotePlayback = struct {
             .{ "onconnect", "get_onconnect", "set_onconnect" },
             .{ "ondisconnect", "get_ondisconnect", "set_ondisconnect" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -93,6 +95,7 @@ pub const RemotePlayback = struct {
     );
 
     const delegates = .{
+
         .get_onconnect = &get_onconnect,
         .get_onconnecting = &get_onconnecting,
         .get_ondisconnect = &get_ondisconnect,
@@ -149,14 +152,17 @@ pub const RemotePlayback = struct {
     }
 
     pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
+        
         return try RemotePlaybackImpl.call_watchAvailability(instance, callback);
     }
 
     pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
+        
         return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
     }
 
     pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RemotePlaybackImpl.call_prompt(instance);
     }
+
 };

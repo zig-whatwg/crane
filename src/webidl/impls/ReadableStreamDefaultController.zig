@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -167,7 +168,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
 ///
 /// Steps:
 /// 1. Perform ! ReadableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -418,7 +419,7 @@ pub fn cancelStepsWithOptReason(controller: *runtime.Instance, reason: ?*anyopaq
 /// Steps:
 /// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false, throw TypeError
 /// 2. Perform ? ReadableStreamDefaultControllerEnqueue(this, chunk)
-pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(v8.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

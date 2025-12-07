@@ -126,7 +126,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 /// Getter for readyState
 ///
 /// Returns the current state: EMPTY (0), LOADING (1), or DONE (2)
-pub fn get_readyState(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     const internal = getInternal(instance) orelse {
         const state = instance.getState(State);
         return state.own.readyState;
@@ -137,7 +137,7 @@ pub fn get_readyState(instance: *runtime.Instance) ImplError!u16 {
 /// Getter for result
 ///
 /// Returns the file's contents (string or ArrayBuffer) or null
-pub fn get_result(instance: *runtime.Instance) ImplError!?*const anyopaque {
+pub fn get_result(instance: *runtime.Instance) anyerror!?*const anyopaque {
     const internal = getInternal(instance) orelse return null;
 
     return switch (internal.reader_data.result) {
@@ -150,7 +150,7 @@ pub fn get_result(instance: *runtime.Instance) ImplError!?*const anyopaque {
 /// Getter for error
 ///
 /// Returns a DOMException if an error occurred, null otherwise
-pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
     // If there's an error, we should return a DOMException
@@ -167,73 +167,73 @@ pub fn get_error(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 // ============================================================================
 
 /// Getter for onloadstart
-pub fn get_onloadstart(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onloadstart(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onloadstart;
 }
 
 /// Setter for onloadstart
-pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onloadstart(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onloadstart = value;
 }
 
 /// Getter for onprogress
-pub fn get_onprogress(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onprogress(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onprogress;
 }
 
 /// Setter for onprogress
-pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onprogress = value;
 }
 
 /// Getter for onload
-pub fn get_onload(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onload(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onload;
 }
 
 /// Setter for onload
-pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onload(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onload = value;
 }
 
 /// Getter for onabort
-pub fn get_onabort(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onabort;
 }
 
 /// Setter for onabort
-pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onabort = value;
 }
 
 /// Getter for onerror
-pub fn get_onerror(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onerror;
 }
 
 /// Setter for onerror
-pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onerror = value;
 }
 
 /// Getter for onloadend
-pub fn get_onloadend(instance: *runtime.Instance) ImplError!typedefs.EventHandler {
+pub fn get_onloadend(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
     return internal.onloadend;
 }
 
 /// Setter for onloadend
-pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) ImplError!void {
+pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.onloadend = value;
 }
@@ -248,7 +248,7 @@ pub fn set_onloadend(instance: *runtime.Instance, value: typedefs.EventHandler) 
 ///
 /// Starts reading the Blob as an ArrayBuffer. When complete, the result
 /// attribute contains an ArrayBuffer representing the file's data.
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const blob_internal = BlobImpl.getInternal(blob) orelse return error.InvalidStateError;
 
@@ -275,7 +275,7 @@ pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instan
 ///
 /// Starts reading the Blob as a binary string. When complete, the result
 /// attribute contains the raw binary data from the file as a string.
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const blob_internal = BlobImpl.getInternal(blob) orelse return error.InvalidStateError;
 
@@ -302,7 +302,7 @@ pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Insta
 ///
 /// Starts reading the Blob as a data URL. When complete, the result
 /// attribute contains a data: URL representing the file's data.
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!void {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const blob_internal = BlobImpl.getInternal(blob) orelse return error.InvalidStateError;
 
@@ -329,7 +329,7 @@ pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) 
 ///
 /// Starts reading the Blob as text with the specified encoding (defaults
 /// to UTF-8). When complete, the result attribute contains a string.
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) ImplError!void {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const blob_internal = BlobImpl.getInternal(blob) orelse return error.InvalidStateError;
 
@@ -363,7 +363,7 @@ pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, enc
 /// If the readyState is EMPTY or DONE, sets result to null and returns.
 /// If readyState is LOADING, sets it to DONE, result to null, fires abort
 /// and loadend events.
-pub fn call_abort(instance: *runtime.Instance) ImplError!void {
+pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
 
     file.algorithms.abortReadOperation(internal.reader_data);

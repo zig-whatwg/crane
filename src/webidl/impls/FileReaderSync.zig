@@ -104,7 +104,7 @@ fn getBlobInternal(blob: *runtime.Instance) ?*BlobImpl.InternalState {
 ///
 /// Synchronously reads the entire Blob contents as an ArrayBuffer.
 /// This method blocks until the read completes.
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 
@@ -130,7 +130,7 @@ pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instan
 ///
 /// Synchronously reads the entire Blob contents as a binary string.
 /// Each byte becomes a character with code point equal to the byte value.
-pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 
@@ -156,7 +156,7 @@ pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Insta
 ///
 /// Synchronously reads the entire Blob contents as a data URL.
 /// Returns a data: URL with base64-encoded blob data.
-pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 
@@ -186,7 +186,7 @@ pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) 
 /// Parameters:
 /// - blob: The blob to read
 /// - encoding: Optional encoding label (default "UTF-8")
-pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) ImplError!runtime.DOMString {
+pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(runtime.DOMString)) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 

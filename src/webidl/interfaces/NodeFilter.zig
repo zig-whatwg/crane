@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NodeFilterImpl = @import("impls").NodeFilter;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -21,18 +22,19 @@ pub const NodeFilter = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "acceptNode", "call_acceptNode", 1 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "FILTER_ACCEPT", "get_FILTER_ACCEPT" },
@@ -52,21 +54,24 @@ pub const NodeFilter = struct {
             .{ "SHOW_DOCUMENT_FRAGMENT", "get_SHOW_DOCUMENT_FRAGMENT" },
             .{ "SHOW_NOTATION", "get_SHOW_NOTATION" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "acceptNode",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -163,6 +168,7 @@ pub const NodeFilter = struct {
     }
 
     const delegates = .{
+
         .get_FILTER_ACCEPT = &get_FILTER_ACCEPT,
         .get_FILTER_REJECT = &get_FILTER_REJECT,
         .get_FILTER_SKIP = &get_FILTER_SKIP,
@@ -197,6 +203,8 @@ pub const NodeFilter = struct {
     }
 
     pub fn call_acceptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!u16 {
+        
         return try NodeFilterImpl.call_acceptNode(instance, node);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const IDBObjectStoreImpl = @import("impls").IDBObjectStore;
 const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
@@ -29,13 +30,13 @@ pub const IDBObjectStore = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
@@ -44,7 +45,7 @@ pub const IDBObjectStore = struct {
             .{ "transaction", "get_transaction", null },
             .{ "autoIncrement", "get_autoIncrement", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "put", "call_put", 1 },
@@ -63,7 +64,7 @@ pub const IDBObjectStore = struct {
             .{ "createIndex", "call_createIndex", 2 },
             .{ "deleteIndex", "call_deleteIndex", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "put",
@@ -82,10 +83,11 @@ pub const IDBObjectStore = struct {
             "createIndex",
             "deleteIndex",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
@@ -94,10 +96,11 @@ pub const IDBObjectStore = struct {
             .{ "transaction", "get_transaction", null },
             .{ "autoIncrement", "get_autoIncrement", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -106,7 +109,7 @@ pub const IDBObjectStore = struct {
         Meta.MixinTypes,
         struct {
             name: runtime.DOMString = undefined,
-            keyPath: *const anyopaque = undefined,
+            keyPath: v8.JSValue = undefined,
             indexNames: *runtime.Instance = undefined,
             transaction: *runtime.Instance = undefined,
             autoIncrement: bool = undefined,
@@ -116,6 +119,7 @@ pub const IDBObjectStore = struct {
     );
 
     const delegates = .{
+
         .get_autoIncrement = &get_autoIncrement,
         .get_indexNames = &get_indexNames,
         .get_keyPath = &get_keyPath,
@@ -162,7 +166,7 @@ pub const IDBObjectStore = struct {
         try IDBObjectStoreImpl.set_name(instance, value);
     }
 
-    pub fn get_keyPath(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_keyPath(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try IDBObjectStoreImpl.get_keyPath(instance);
     }
 
@@ -187,47 +191,49 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_delete(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_delete(instance, query);
     }
 
     pub fn call_deleteIndex(instance: *runtime.Instance, name: DOMString) anyerror!void {
+        
         return try IDBObjectStoreImpl.call_deleteIndex(instance, name);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
-
+        
         return try IDBObjectStoreImpl.call_getAll(instance, queryOrOptions, count);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
+    pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
     }
 
     pub fn call_index(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
+        
         return try IDBObjectStoreImpl.call_index(instance, name);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_count(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_add(instance, value, key);
     }
 
@@ -238,53 +244,54 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
+    pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_openCursor(instance, query, direction);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
-
+        
         return try IDBObjectStoreImpl.call_getAllKeys(instance, queryOrOptions, count);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_put(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_put(instance, value, key);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_getAllRecords(instance, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_getKey(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_get(instance, query);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createIndex(instance: *runtime.Instance, name: DOMString, keyPath: *const anyopaque, options: webidl.Opt(IDBIndexParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try IDBObjectStoreImpl.call_createIndex(instance, name, keyPath, options);
     }
+
 };

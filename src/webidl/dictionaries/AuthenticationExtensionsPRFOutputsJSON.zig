@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const AuthenticationExtensionsPRFValuesJSON = @import("AuthenticationExtensionsPRFValuesJSON.zig").AuthenticationExtensionsPRFValuesJSON;
 
 pub const AuthenticationExtensionsPRFOutputsJSON = struct {
     enabled: ?bool = null,
-    results: ?*const anyopaque = null,
+    results: ?AuthenticationExtensionsPRFValuesJSON = null,
 };

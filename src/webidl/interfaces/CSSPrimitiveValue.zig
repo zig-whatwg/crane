@@ -1,11 +1,12 @@
 //! Generated from: DOM-Style.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSPrimitiveValueImpl = @import("impls").CSSPrimitiveValue;
 const mixins = @import("mixins");
 const CSSValue = @import("interfaces").CSSValue;
@@ -24,12 +25,12 @@ pub const CSSPrimitiveValue = struct {
         pub const ParentInterface = CSSValue;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "primitiveType", "get_primitiveType", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setFloatValue", "call_setFloatValue", 2 },
@@ -40,7 +41,7 @@ pub const CSSPrimitiveValue = struct {
             .{ "getRectValue", "call_getRectValue", 0 },
             .{ "getRGBColorValue", "call_getRGBColorValue", 0 },
         };
-
+        
         /// Constants binding hints for V8Interface (JS name, getter fn name)
         pub const constants = .{
             .{ "CSS_UNKNOWN", "get_CSS_UNKNOWN" },
@@ -70,7 +71,7 @@ pub const CSSPrimitiveValue = struct {
             .{ "CSS_RECT", "get_CSS_RECT" },
             .{ "CSS_RGBCOLOR", "get_CSS_RGBCOLOR" },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setFloatValue",
@@ -81,18 +82,20 @@ pub const CSSPrimitiveValue = struct {
             "getRectValue",
             "getRGBColorValue",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "primitiveType", "get_primitiveType", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -240,6 +243,7 @@ pub const CSSPrimitiveValue = struct {
     }
 
     const delegates = .{
+
         .get_CSS_ATTR = &get_CSS_ATTR,
         .get_CSS_CM = &get_CSS_CM,
         .get_CSS_COUNTER = &get_CSS_COUNTER,
@@ -295,10 +299,12 @@ pub const CSSPrimitiveValue = struct {
     }
 
     pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringValue: DOMString) anyerror!void {
+        
         return try CSSPrimitiveValueImpl.call_setStringValue(instance, stringType, stringValue);
     }
 
     pub fn call_getFloatValue(instance: *runtime.Instance, unitType: u16) anyerror!f32 {
+        
         return try CSSPrimitiveValueImpl.call_getFloatValue(instance, unitType);
     }
 
@@ -307,6 +313,7 @@ pub const CSSPrimitiveValue = struct {
     }
 
     pub fn call_setFloatValue(instance: *runtime.Instance, unitType: u16, floatValue: f32) anyerror!void {
+        
         return try CSSPrimitiveValueImpl.call_setFloatValue(instance, unitType, floatValue);
     }
 
@@ -321,4 +328,5 @@ pub const CSSPrimitiveValue = struct {
     pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPrimitiveValueImpl.call_getCounterValue(instance);
     }
+
 };

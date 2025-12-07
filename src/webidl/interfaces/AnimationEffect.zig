@@ -1,11 +1,12 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const AnimationEffectImpl = @import("impls").AnimationEffect;
 const mixins = @import("mixins");
 const GroupEffect = @import("interfaces").GroupEffect;
@@ -24,17 +25,17 @@ pub const AnimationEffect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "parent", "get_parent", null },
             .{ "previousSibling", "get_previousSibling", null },
             .{ "nextSibling", "get_nextSibling", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getTiming", "call_getTiming", 0 },
@@ -45,7 +46,7 @@ pub const AnimationEffect = struct {
             .{ "replace", "call_replace", 1 },
             .{ "remove", "call_remove", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getTiming",
@@ -56,20 +57,22 @@ pub const AnimationEffect = struct {
             "replace",
             "remove",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "parent", "get_parent", null },
             .{ "previousSibling", "get_previousSibling", null },
             .{ "nextSibling", "get_nextSibling", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -85,6 +88,7 @@ pub const AnimationEffect = struct {
     );
 
     const delegates = .{
+
         .get_nextSibling = &get_nextSibling,
         .get_parent = &get_parent,
         .get_previousSibling = &get_previousSibling,
@@ -124,18 +128,22 @@ pub const AnimationEffect = struct {
     }
 
     pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(OptionalEffectTiming)) anyerror!void {
+        
         return try AnimationEffectImpl.call_updateTiming(instance, timing);
     }
 
     pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
         return try AnimationEffectImpl.call_replace(instance, effects);
     }
 
     pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
         return try AnimationEffectImpl.call_before(instance, effects);
     }
 
     pub fn call_after(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
         return try AnimationEffectImpl.call_after(instance, effects);
     }
 
@@ -150,4 +158,5 @@ pub const AnimationEffect = struct {
     pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!ComputedEffectTiming {
         return try AnimationEffectImpl.call_getComputedTiming(instance);
     }
+
 };

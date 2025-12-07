@@ -9,6 +9,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -84,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for name
-pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -92,7 +93,7 @@ pub fn get_name(instance: *runtime.Instance) ImplError!runtime.DOMString {
 }
 
 /// Getter for keyPath
-pub fn get_keyPath(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn get_keyPath(instance: *runtime.Instance) anyerror!v8.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -107,7 +108,7 @@ pub fn get_keyPath(instance: *runtime.Instance) ImplError!*const anyopaque {
 }
 
 /// Getter for indexNames
-pub fn get_indexNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_indexNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -118,14 +119,14 @@ pub fn get_indexNames(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Getter for transaction
-pub fn get_transaction(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_transaction(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.transaction orelse error.InvalidState;
 }
 
 /// Getter for autoIncrement
-pub fn get_autoIncrement(instance: *runtime.Instance) ImplError!bool {
+pub fn get_autoIncrement(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -133,7 +134,7 @@ pub fn get_autoIncrement(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Setter for name
-pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError!void {
+pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -145,7 +146,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) ImplError
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+pub fn call_put(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -175,7 +176,7 @@ pub fn call_put(instance: *runtime.Instance, value: *const anyopaque, key: webid
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -202,7 +203,7 @@ pub fn call_add(instance: *runtime.Instance, value: *const anyopaque, key: webid
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_delete(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -226,7 +227,7 @@ pub fn call_delete(instance: *runtime.Instance, query: *const anyopaque) ImplErr
 }
 
 /// Operation: clear
-pub fn call_clear(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clear(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -248,7 +249,7 @@ pub fn call_clear(instance: *runtime.Instance) ImplError!*runtime.Instance {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -271,7 +272,7 @@ pub fn call_get(instance: *runtime.Instance, query: *const anyopaque) ImplError!
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplError!*runtime.Instance {
+pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -294,7 +295,7 @@ pub fn call_getKey(instance: *runtime.Instance, query: *const anyopaque) ImplErr
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -311,7 +312,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*cons
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*const anyopaque), count: webidl.Opt(u32)) ImplError!*runtime.Instance {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -327,7 +328,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(*
 }
 
 /// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) ImplError!*runtime.Instance {
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -342,7 +343,7 @@ pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dicti
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque)) ImplError!*runtime.Instance {
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -365,7 +366,7 @@ pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(*const anyopaqu
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -397,7 +398,7 @@ pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(*const any
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const anyopaque), direction: webidl.Opt(enums.IDBCursorDirection)) ImplError!*runtime.Instance {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -414,7 +415,7 @@ pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(*const 
 }
 
 /// Operation: index
-pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplError!*runtime.Instance {
+pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -438,7 +439,7 @@ pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) ImplErro
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) ImplError!*runtime.Instance {
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -470,7 +471,7 @@ pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, ke
 }
 
 /// Operation: deleteIndex
-pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) ImplError!void {
+pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;

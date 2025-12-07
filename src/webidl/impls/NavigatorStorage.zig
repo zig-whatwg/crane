@@ -63,7 +63,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for storage - returns the StorageManager for this navigator
-pub fn get_storage(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -1,11 +1,12 @@
 //! Generated from: webaudio.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const AudioContextImpl = @import("impls").AudioContext;
 const mixins = @import("mixins");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -66,10 +67,10 @@ pub const AudioContext = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "baseLatency", "get_baseLatency", null },
@@ -78,7 +79,7 @@ pub const AudioContext = struct {
             .{ "onsinkchange", "get_onsinkchange", "set_onsinkchange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getOutputTimestamp", "call_getOutputTimestamp", 0 },
@@ -91,7 +92,7 @@ pub const AudioContext = struct {
             .{ "createMediaStreamTrackSource", "call_createMediaStreamTrackSource", 1 },
             .{ "createMediaStreamDestination", "call_createMediaStreamDestination", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getOutputTimestamp",
@@ -104,7 +105,7 @@ pub const AudioContext = struct {
             "createMediaStreamTrackSource",
             "createMediaStreamDestination",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -131,7 +132,7 @@ pub const AudioContext = struct {
             "createWaveShaper",
             "decodeAudioData",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "baseLatency", "get_baseLatency", null },
@@ -140,10 +141,11 @@ pub const AudioContext = struct {
             .{ "onsinkchange", "get_onsinkchange", "set_onsinkchange" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -164,6 +166,7 @@ pub const AudioContext = struct {
     );
 
     const delegates = .{
+
         .get_baseLatency = &get_baseLatency,
         .get_onerror = &get_onerror,
         .get_onsinkchange = &get_onsinkchange,
@@ -233,6 +236,7 @@ pub const AudioContext = struct {
     }
 
     pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
+        
         return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
     }
 
@@ -249,10 +253,12 @@ pub const AudioContext = struct {
     }
 
     pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) anyerror!*runtime.Instance {
+        
         return try AudioContextImpl.call_createMediaStreamTrackSource(instance, mediaStreamTrack);
     }
 
     pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: *runtime.Instance) anyerror!*runtime.Instance {
+        
         return try AudioContextImpl.call_createMediaElementSource(instance, mediaElement);
     }
 
@@ -266,6 +272,8 @@ pub const AudioContext = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_setSinkId(instance: *runtime.Instance, sinkId: *const anyopaque) anyerror!*const anyopaque {
+        
         return try AudioContextImpl.call_setSinkId(instance, sinkId);
     }
+
 };

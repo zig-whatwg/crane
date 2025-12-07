@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 const RTCStats = @import("RTCStats.zig").RTCStats;
 
 pub const RTCIceCandidatePairStats = struct {
@@ -12,14 +15,14 @@ pub const RTCIceCandidatePairStats = struct {
     transportId: runtime.DOMString,
     localCandidateId: runtime.DOMString,
     remoteCandidateId: runtime.DOMString,
-    state: *const anyopaque,
+    state: enums.RTCStatsIceCandidatePairState,
     nominated: ?bool = null,
     packetsSent: ?u64 = null,
     packetsReceived: ?u64 = null,
     bytesSent: ?u64 = null,
     bytesReceived: ?u64 = null,
-    lastPacketSentTimestamp: ?*const anyopaque = null,
-    lastPacketReceivedTimestamp: ?*const anyopaque = null,
+    lastPacketSentTimestamp: ?typedefs.DOMHighResTimeStamp = null,
+    lastPacketReceivedTimestamp: ?typedefs.DOMHighResTimeStamp = null,
     totalRoundTripTime: ?f64 = null,
     currentRoundTripTime: ?f64 = null,
     availableOutgoingBitrate: ?f64 = null,

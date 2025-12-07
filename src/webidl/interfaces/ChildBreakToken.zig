@@ -1,11 +1,12 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ChildBreakTokenImpl = @import("impls").ChildBreakToken;
 const mixins = @import("mixins");
 const BreakType = @import("enums").BreakType;
@@ -22,34 +23,38 @@ pub const ChildBreakToken = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "LayoutWorklet" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .LayoutWorklet = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "breakType", "get_breakType", null },
             .{ "child", "get_child", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "breakType", "get_breakType", null },
             .{ "child", "get_child", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -64,6 +69,7 @@ pub const ChildBreakToken = struct {
     );
 
     const delegates = .{
+
         .get_breakType = &get_breakType,
         .get_child = &get_child,
 
@@ -88,4 +94,5 @@ pub const ChildBreakToken = struct {
     pub fn get_child(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ChildBreakTokenImpl.get_child(instance);
     }
+
 };

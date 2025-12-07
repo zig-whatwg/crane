@@ -1,11 +1,12 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const TableImpl = @import("impls").Table;
 const mixins = @import("mixins");
 const AddressValue = @import("typedefs").AddressValue;
@@ -23,40 +24,42 @@ pub const Table = struct {
             .{ .name = "LegacyNamespace", .value = .{ .identifier = "WebAssembly" } },
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "grow", "call_grow", 1 },
             .{ "get", "call_get", 1 },
             .{ "set", "call_set", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "grow",
             "get",
             "set",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "length", "get_length", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -70,6 +73,7 @@ pub const Table = struct {
     );
 
     const delegates = .{
+
         .get_length = &get_length,
 
         .call_get = &call_get,
@@ -91,7 +95,7 @@ pub const Table = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(v8.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TableImpl.call_constructor(allocator, ctx, descriptor, value);
     }
@@ -100,15 +104,19 @@ pub const Table = struct {
         return try TableImpl.get_length(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!v8.JSValue {
+        
         return try TableImpl.call_get(instance, index);
     }
 
-    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!AddressValue {
+    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!AddressValue {
+        
         return try TableImpl.call_grow(instance, delta, value);
     }
 
-    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!void {
+        
         return try TableImpl.call_set(instance, index, value);
     }
+
 };

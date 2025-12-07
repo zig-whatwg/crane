@@ -3,11 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const XRLayerInit = @import("XRLayerInit.zig").XRLayerInit;
 
 pub const XRCubeLayerInit = struct {
     // Inherited from XRLayerInit
     base: XRLayerInit,
 
-    orientation: ?*const anyopaque = null,
+    orientation: ?*runtime.Instance = null,
 };

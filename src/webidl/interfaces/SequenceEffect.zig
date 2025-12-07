@@ -1,11 +1,12 @@
 //! Generated from: web-animations-2.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SequenceEffectImpl = @import("impls").SequenceEffect;
 const mixins = @import("mixins");
 const GroupEffect = @import("interfaces").GroupEffect;
@@ -25,35 +26,38 @@ pub const SequenceEffect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "clone",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "prepend",
             "append",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -66,6 +70,7 @@ pub const SequenceEffect = struct {
     );
 
     const delegates = .{
+
         .call_clone = &call_clone,
 
         .deinit = &deinit,
@@ -91,4 +96,5 @@ pub const SequenceEffect = struct {
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SequenceEffectImpl.call_clone(instance);
     }
+
 };

@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const TextFormatInit = struct {
     rangeStart: ?u32 = null,
     rangeEnd: ?u32 = null,
-    underlineStyle: ?*const anyopaque = null,
-    underlineThickness: ?*const anyopaque = null,
+    underlineStyle: ?enums.UnderlineStyle = null,
+    underlineThickness: ?enums.UnderlineThickness = null,
 };

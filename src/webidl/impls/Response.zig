@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -193,7 +194,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
 
 // === Static Methods ===
 
-pub fn call_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     // (instance is just a template for context/allocator access)
     const allocator = instance.ctx.allocator;
@@ -209,7 +210,7 @@ pub fn call_error(instance: *runtime.Instance) ImplError!*runtime.Instance {
     return error_instance;
 }
 
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) ImplError!*runtime.Instance {
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
     // Unwrap Opt for status (default to 302 per spec)
     const status_val = if (status.wasPassed()) status.value else 302;
     if (status_val != 301 and status_val != 302 and status_val != 303 and status_val != 307 and status_val != 308) {
@@ -255,7 +256,7 @@ pub fn call_json_static(instance: *runtime.Instance, data: *const anyopaque, ini
 
 // === Property Getters ===
 
-pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.ResponseType {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -269,7 +270,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!enums.ResponseType {
     };
 }
 
-pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
+pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -281,31 +282,31 @@ pub fn get_url(instance: *runtime.Instance) ImplError!runtime.USVString {
     return "";
 }
 
-pub fn get_redirected(instance: *runtime.Instance) ImplError!bool {
+pub fn get_redirected(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.response.url_list.items.len > 1;
 }
 
-pub fn get_status(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_status(instance: *runtime.Instance) anyerror!u16 {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.response.status;
 }
 
-pub fn get_ok(instance: *runtime.Instance) ImplError!bool {
+pub fn get_ok(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.response.status >= 200 and internal.response.status <= 299;
 }
 
-pub fn get_statusText(instance: *runtime.Instance) ImplError!runtime.ByteString {
+pub fn get_statusText(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
     return internal.response.status_message;
 }
 
-pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -335,7 +336,7 @@ pub fn get_headers(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Note: Currently returns cached stream if available, otherwise attempts to
 /// create a ReadableStream from internal body data. Falls back to null if
 /// stream creation is not possible (e.g., no event loop).
-pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -387,7 +388,7 @@ pub fn get_body(instance: *runtime.Instance) ImplError!?*runtime.Instance {
 
 /// Get bodyUsed
 /// Per Fetch spec: true if body has been read/disturbed
-pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
+pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -402,7 +403,7 @@ pub fn get_bodyUsed(instance: *runtime.Instance) ImplError!bool {
 
 /// clone() - Clones the Response
 /// Spec: https://fetch.spec.whatwg.org/#dom-response-clone
-pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -435,7 +436,7 @@ pub fn call_clone(instance: *runtime.Instance) ImplError!*runtime.Instance {
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
 ///
 /// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.ArrayBuffer) {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -492,7 +493,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!runtime.Promise(r
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
-pub fn call_blob(instance: *runtime.Instance) ImplError!runtime.Promise(*runtime.Instance) {
+pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -574,7 +575,7 @@ pub fn call_blob(instance: *runtime.Instance) ImplError!runtime.Promise(*runtime
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
 ///
 /// Uses the engine abstraction layer for Promise and Uint8Array creation.
-pub fn call_bytes(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.Uint8Array) {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -631,7 +632,7 @@ pub fn call_bytes(instance: *runtime.Instance) ImplError!runtime.Promise(runtime
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
-pub fn call_formData(instance: *runtime.Instance) ImplError!runtime.Promise(*runtime.Instance) {
+pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -800,7 +801,7 @@ pub fn call_formData(instance: *runtime.Instance) ImplError!runtime.Promise(*run
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
-pub fn call_json(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.Any) {
+pub fn call_json(instance: *runtime.Instance, data: v8.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -862,7 +863,7 @@ pub fn call_json(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-text
 ///
 /// Uses the engine abstraction layer for Promise creation and string creation.
-pub fn call_text(instance: *runtime.Instance) ImplError!runtime.Promise(runtime.USVString) {
+pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

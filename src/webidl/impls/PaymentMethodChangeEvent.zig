@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -61,7 +62,7 @@ pub fn get_methodName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for methodDetails
-pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?v8.JSValue {
     _ = instance;
     return null;
 }

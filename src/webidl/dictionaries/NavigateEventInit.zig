@@ -3,21 +3,24 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
 const EventInit = @import("EventInit.zig").EventInit;
 
 pub const NavigateEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    navigationType: ?*const anyopaque = null,
-    destination: *const anyopaque,
+    navigationType: ?enums.NavigationType = null,
+    destination: *runtime.Instance,
     canIntercept: ?bool = null,
     userInitiated: ?bool = null,
     hashChange: ?bool = null,
-    signal: *const anyopaque,
-    formData: ?*const anyopaque = null,
+    signal: *runtime.Instance,
+    formData: ?*runtime.Instance = null,
     downloadRequest: ?runtime.DOMString = null,
-    info: ?*const anyopaque = null,
+    info: ?v8.JSValue = null,
     hasUAVisualTransition: ?bool = null,
-    sourceElement: ?*const anyopaque = null,
+    sourceElement: ?*runtime.Instance = null,
 };

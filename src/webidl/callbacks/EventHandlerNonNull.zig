@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
-pub const EventHandlerNonNull = *const fn (event: *const anyopaque) *const anyopaque;
+pub const EventHandlerNonNull = *const fn (event: *const anyopaque) v8.JSValue;

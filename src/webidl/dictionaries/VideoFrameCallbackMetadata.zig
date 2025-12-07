@@ -3,16 +3,18 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const VideoFrameCallbackMetadata = struct {
-    presentationTime: *const anyopaque,
-    expectedDisplayTime: *const anyopaque,
+    presentationTime: typedefs.DOMHighResTimeStamp,
+    expectedDisplayTime: typedefs.DOMHighResTimeStamp,
     width: u32,
     height: u32,
     mediaTime: f64,
     presentedFrames: u32,
     processingDuration: ?f64 = null,
-    captureTime: ?*const anyopaque = null,
-    receiveTime: ?*const anyopaque = null,
+    captureTime: ?typedefs.DOMHighResTimeStamp = null,
+    receiveTime: ?typedefs.DOMHighResTimeStamp = null,
     rtpTimestamp: ?u32 = null,
 };

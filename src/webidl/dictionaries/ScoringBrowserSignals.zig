@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const ScoringBrowserSignals = struct {
     topWindowHostname: runtime.DOMString,
@@ -10,11 +12,11 @@ pub const ScoringBrowserSignals = struct {
     renderURL: runtime.USVString,
     biddingDurationMsec: u32,
     bidCurrency: runtime.DOMString,
-    renderSize: ?*const anyopaque = null,
+    renderSize: ?[]const struct { key: runtime.DOMString, value: runtime.DOMString } = null,
     dataVersion: ?u32 = null,
     crossOriginDataVersion: ?u32 = null,
-    adComponents: ?*const anyopaque = null,
+    adComponents: ?[]const runtime.USVString = null,
     forDebuggingOnlyInCooldownOrLockout: ?bool = null,
     creativeScanningMetadata: ?runtime.USVString = null,
-    adComponentsCreativeScanningMetadata: ?*const anyopaque = null,
+    adComponentsCreativeScanningMetadata: ?[]const *const anyopaque = null,
 };

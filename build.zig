@@ -590,6 +590,14 @@ pub fn build(b: *std.Build) void {
     dictionaries_mod.addImport("typedefs", typedefs_mod);
     dictionaries_mod.addImport("enums", enums_mod);
 
+    // WebIDL modules need v8 for JSValue type (any/object WebIDL types)
+    callbacks_mod.addImport("v8", v8_mod);
+    dictionaries_mod.addImport("v8", v8_mod);
+    typedefs_mod.addImport("v8", v8_mod);
+    interfaces_mod.addImport("v8", v8_mod);
+    namespaces_mod.addImport("v8", v8_mod);
+    // Note: impls also needs "v8" for JSValue types in generated signatures
+
     // DOM module
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),

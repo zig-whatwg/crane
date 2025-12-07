@@ -151,7 +151,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for href
 /// Per spec §7.1.3: Returns the URL serialization of this Location's URL.
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_href(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -164,7 +164,7 @@ pub fn get_href(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for origin
 /// Per spec §7.1.3: Returns the serialization of this Location's origin.
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -181,7 +181,7 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for protocol
 /// Per spec §7.1.3: Returns the scheme of this Location's URL, followed by ":".
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -198,7 +198,7 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for host
 /// Per spec §7.1.3: Returns this Location's URL host and port (if different from default).
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_host(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -234,7 +234,7 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for hostname
 /// Per spec §7.1.3: Returns this Location's URL host, serialized.
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -252,7 +252,7 @@ pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for port
 /// Per spec §7.1.3: Returns this Location's URL port, serialized.
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_port(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -270,7 +270,7 @@ pub fn get_port(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for pathname
 /// Per spec §7.1.3: Returns the URL path serialized.
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -307,7 +307,7 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for search
 /// Per spec §7.1.3: Returns this Location's URL query (includes "?").
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_search(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -327,7 +327,7 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for hash
 /// Per spec §7.1.3: Returns this Location's URL fragment (includes "#").
 /// Returns DOMString with owned memory that caller must free.
-pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 

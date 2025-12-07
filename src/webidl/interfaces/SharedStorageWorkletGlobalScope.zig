@@ -1,11 +1,12 @@
 //! Generated from: shared-storage.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SharedStorageWorkletGlobalScopeImpl = @import("impls").SharedStorageWorkletGlobalScope;
 const mixins = @import("mixins");
 const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
@@ -28,42 +29,44 @@ pub const SharedStorageWorkletGlobalScope = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "SharedStorageWorklet" } },
             .{ .name = "Global", .value = .{ .identifier = "SharedStorageWorklet" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .SharedStorageWorklet = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sharedStorage", "get_sharedStorage", null },
             .{ "privateAggregation", "get_privateAggregation", null },
             .{ "navigator", "get_navigator", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "register", "call_register", 2 },
             .{ "interestGroups", "call_interestGroups", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "register",
             "interestGroups",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sharedStorage", "get_sharedStorage", null },
             .{ "privateAggregation", "get_privateAggregation", null },
             .{ "navigator", "get_navigator", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -79,6 +82,7 @@ pub const SharedStorageWorkletGlobalScope = struct {
     );
 
     const delegates = .{
+
         .get_navigator = &get_navigator,
         .get_privateAggregation = &get_privateAggregation,
         .get_sharedStorage = &get_sharedStorage,
@@ -117,6 +121,8 @@ pub const SharedStorageWorkletGlobalScope = struct {
     }
 
     pub fn call_register(instance: *runtime.Instance, name: DOMString, operationCtor: Function) anyerror!void {
+        
         return try SharedStorageWorkletGlobalScopeImpl.call_register(instance, name, operationCtor);
     }
+
 };

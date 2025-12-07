@@ -1,11 +1,12 @@
 //! Generated from: webusb.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const USBEndpointImpl = @import("impls").USBEndpoint;
 const mixins = @import("mixins");
 const USBEndpointType = @import("enums").USBEndpointType;
@@ -24,13 +25,13 @@ pub const USBEndpoint = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Worker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "endpointNumber", "get_endpointNumber", null },
@@ -38,16 +39,19 @@ pub const USBEndpoint = struct {
             .{ "type", "get_type", null },
             .{ "packetSize", "get_packetSize", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "endpointNumber", "get_endpointNumber", null },
@@ -55,10 +59,11 @@ pub const USBEndpoint = struct {
             .{ "type", "get_type", null },
             .{ "packetSize", "get_packetSize", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -68,13 +73,14 @@ pub const USBEndpoint = struct {
         struct {
             endpointNumber: u8 = undefined,
             direction: USBDirection = undefined,
-            type: USBEndpointType = undefined,
+            @"type": USBEndpointType = undefined,
             packetSize: u32 = undefined,
             _internal: ?*USBEndpointImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_direction = &get_direction,
         .get_endpointNumber = &get_endpointNumber,
         .get_packetSize = &get_packetSize,
@@ -115,4 +121,5 @@ pub const USBEndpoint = struct {
     pub fn get_packetSize(instance: *runtime.Instance) anyerror!u32 {
         return try USBEndpointImpl.get_packetSize(instance);
     }
+
 };

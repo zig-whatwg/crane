@@ -1,11 +1,12 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DocumentFragmentImpl = @import("impls").DocumentFragment;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -40,10 +41,10 @@ pub const DocumentFragment = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "children", "get_children", null },
@@ -51,7 +52,7 @@ pub const DocumentFragment = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementById", "call_getElementById", 1 },
@@ -62,7 +63,7 @@ pub const DocumentFragment = struct {
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getElementById",
@@ -73,7 +74,7 @@ pub const DocumentFragment = struct {
             "querySelector",
             "querySelectorAll",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -96,7 +97,7 @@ pub const DocumentFragment = struct {
             "replaceChild",
             "removeChild",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "children", "get_children", null },
@@ -104,10 +105,11 @@ pub const DocumentFragment = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -125,6 +127,7 @@ pub const DocumentFragment = struct {
     );
 
     const delegates = .{
+
         .get_childElementCount = &get_childElementCount,
         .get_children = &get_children,
         .get_firstElementChild = &get_firstElementChild,
@@ -187,7 +190,8 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentFragmentImpl.call_append(instance, nodes);
     }
 
@@ -196,7 +200,8 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentFragmentImpl.call_replaceChildren(instance, nodes);
     }
 
@@ -205,7 +210,8 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentFragmentImpl.call_moveBefore(instance, node, child);
     }
 
@@ -214,22 +220,26 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
+        
         return try DocumentFragmentImpl.call_prepend(instance, nodes);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+        
         return try DocumentFragmentImpl.call_querySelector(instance, selectors);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DocumentFragmentImpl.call_querySelectorAll(instance, selectors);
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
+        
         return try DocumentFragmentImpl.call_getElementById(instance, elementId);
     }
+
 };

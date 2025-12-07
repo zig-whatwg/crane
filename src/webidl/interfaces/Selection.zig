@@ -1,11 +1,12 @@
 //! Generated from: selection-api.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SelectionImpl = @import("impls").Selection;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -25,10 +26,10 @@ pub const Selection = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "anchorNode", "get_anchorNode", null },
@@ -40,7 +41,7 @@ pub const Selection = struct {
             .{ "type", "get_type", null },
             .{ "direction", "get_direction", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRangeAt", "call_getRangeAt", 1 },
@@ -60,7 +61,7 @@ pub const Selection = struct {
             .{ "deleteFromDocument", "call_deleteFromDocument", 0 },
             .{ "containsNode", "call_containsNode", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRangeAt",
@@ -80,10 +81,11 @@ pub const Selection = struct {
             "deleteFromDocument",
             "containsNode",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "anchorNode", "get_anchorNode", null },
@@ -95,10 +97,11 @@ pub const Selection = struct {
             .{ "type", "get_type", null },
             .{ "direction", "get_direction", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -112,13 +115,14 @@ pub const Selection = struct {
             focusOffset: u32 = undefined,
             isCollapsed: bool = undefined,
             rangeCount: u32 = undefined,
-            type: runtime.DOMString = undefined,
+            @"type": runtime.DOMString = undefined,
             direction: runtime.DOMString = undefined,
             _internal: ?*SelectionImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_anchorNode = &get_anchorNode,
         .get_anchorOffset = &get_anchorOffset,
         .get_direction = &get_direction,
@@ -192,6 +196,7 @@ pub const Selection = struct {
     }
 
     pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
+        
         return try SelectionImpl.call_setPosition(instance, node, offset);
     }
 
@@ -200,6 +205,7 @@ pub const Selection = struct {
     }
 
     pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
+        
         return try SelectionImpl.call_selectAllChildren(instance, node);
     }
 
@@ -208,7 +214,7 @@ pub const Selection = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         return try SelectionImpl.call_deleteFromDocument(instance);
     }
 
@@ -221,14 +227,17 @@ pub const Selection = struct {
     }
 
     pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(GetComposedRangesOptions)) anyerror!*const anyopaque {
+        
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }
 
     pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
+        
         return try SelectionImpl.call_collapse(instance, node, offset);
     }
 
     pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
+        
         return try SelectionImpl.call_extend(instance, node, offset);
     }
 
@@ -237,26 +246,33 @@ pub const Selection = struct {
     }
 
     pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
+        
         return try SelectionImpl.call_addRange(instance, range);
     }
 
     pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
+        
         return try SelectionImpl.call_setBaseAndExtent(instance, anchorNode, anchorOffset, focusNode, focusOffset);
     }
 
     pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
         return try SelectionImpl.call_getRangeAt(instance, index);
     }
 
     pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(DOMString), direction: webidl.Opt(DOMString), granularity: webidl.Opt(DOMString)) anyerror!void {
+        
         return try SelectionImpl.call_modify(instance, alter, direction, granularity);
     }
 
     pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) anyerror!bool {
+        
         return try SelectionImpl.call_containsNode(instance, node, allowPartialContainment);
     }
 
     pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
+        
         return try SelectionImpl.call_removeRange(instance, range);
     }
+
 };

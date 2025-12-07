@@ -14,6 +14,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WritableStream = interfaces.WritableStream;
 const v8_engine = @import("v8");
+const v8 = v8_engine;
 
 // Type-safe V8 value system
 const StoredError = v8_engine.stored_error.StoredError;
@@ -996,7 +997,7 @@ pub fn invokePendingStartCallback(
     }
 
     // Import V8 FFI for direct function invocation
-    const v8 = @import("v8").ffi;
+    const v8_ffi = v8.ffi;
 
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));

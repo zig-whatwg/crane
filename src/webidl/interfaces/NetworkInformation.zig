@@ -1,11 +1,12 @@
 //! Generated from: netinfo.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NetworkInformationImpl = @import("impls").NetworkInformation;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -37,13 +38,13 @@ pub const NetworkInformation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -54,13 +55,15 @@ pub const NetworkInformation = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "saveData", "get_saveData", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -68,7 +71,7 @@ pub const NetworkInformation = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -79,10 +82,11 @@ pub const NetworkInformation = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
             .{ "saveData", "get_saveData", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -90,7 +94,7 @@ pub const NetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: ConnectionType = undefined,
+            @"type": ConnectionType = undefined,
             effectiveType: EffectiveConnectionType = undefined,
             downlinkMax: Megabit = undefined,
             downlink: Megabit = undefined,
@@ -103,6 +107,7 @@ pub const NetworkInformation = struct {
     );
 
     const delegates = .{
+
         .get_downlink = &get_downlink,
         .get_downlinkMax = &get_downlinkMax,
         .get_effectiveType = &get_effectiveType,
@@ -166,4 +171,5 @@ pub const NetworkInformation = struct {
         state.own.cached_saveData = value;
         return value;
     }
+
 };

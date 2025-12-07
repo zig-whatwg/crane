@@ -280,7 +280,7 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
     } else if (std.mem.eql(u8, type_str, "void") or std.mem.eql(u8, type_str, "undefined")) {
         try writer.writeAll("void");
     } else if (std.mem.eql(u8, type_str, "any") or std.mem.eql(u8, type_str, "object")) {
-        try writer.writeAll("*const anyopaque");
+        try writer.writeAll("v8.JSValue");
     } else if (std.mem.eql(u8, type_str, "DOMString") or std.mem.eql(u8, type_str, "USVString") or std.mem.eql(u8, type_str, "ByteString")) {
         try writer.print("runtime.{s}", .{type_str});
     } else if (std.mem.eql(u8, type_str, "ArrayBuffer") or std.mem.eql(u8, type_str, "ArrayBufferView")) {

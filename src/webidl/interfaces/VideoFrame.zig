@@ -1,11 +1,12 @@
 //! Generated from: webcodecs.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const VideoFrameImpl = @import("impls").VideoFrame;
 const mixins = @import("mixins");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
@@ -31,13 +32,13 @@ pub const VideoFrame = struct {
             .{ .name = "Serializable" },
             .{ .name = "Transferable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "format", "get_format", null },
@@ -53,7 +54,7 @@ pub const VideoFrame = struct {
             .{ "timestamp", "get_timestamp", null },
             .{ "colorSpace", "get_colorSpace", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "metadata", "call_metadata", 0 },
@@ -62,7 +63,7 @@ pub const VideoFrame = struct {
             .{ "clone", "call_clone", 0 },
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "metadata",
@@ -71,10 +72,11 @@ pub const VideoFrame = struct {
             "clone",
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "format", "get_format", null },
@@ -90,10 +92,11 @@ pub const VideoFrame = struct {
             .{ "timestamp", "get_timestamp", null },
             .{ "colorSpace", "get_colorSpace", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -118,6 +121,7 @@ pub const VideoFrame = struct {
     );
 
     const delegates = .{
+
         .get_codedHeight = &get_codedHeight,
         .get_codedRect = &get_codedRect,
         .get_codedWidth = &get_codedWidth,
@@ -206,10 +210,12 @@ pub const VideoFrame = struct {
     }
 
     pub fn call_allocationSize(instance: *runtime.Instance, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!u32 {
+        
         return try VideoFrameImpl.call_allocationSize(instance, options);
     }
 
     pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!*const anyopaque {
+        
         return try VideoFrameImpl.call_copyTo(instance, destination, options);
     }
 
@@ -224,4 +230,5 @@ pub const VideoFrame = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try VideoFrameImpl.call_close(instance);
     }
+
 };

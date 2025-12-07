@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUCompilationMessageImpl = @import("impls").GPUCompilationMessage;
 const mixins = @import("mixins");
 const GPUCompilationMessageType = @import("enums").GPUCompilationMessageType;
@@ -24,13 +25,13 @@ pub const GPUCompilationMessage = struct {
             .{ .name = "Serializable" },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "message", "get_message", null },
@@ -40,16 +41,19 @@ pub const GPUCompilationMessage = struct {
             .{ "offset", "get_offset", null },
             .{ "length", "get_length", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "message", "get_message", null },
@@ -59,10 +63,11 @@ pub const GPUCompilationMessage = struct {
             .{ "offset", "get_offset", null },
             .{ "length", "get_length", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -71,7 +76,7 @@ pub const GPUCompilationMessage = struct {
         Meta.MixinTypes,
         struct {
             message: runtime.DOMString = undefined,
-            type: GPUCompilationMessageType = undefined,
+            @"type": GPUCompilationMessageType = undefined,
             lineNum: u64 = undefined,
             linePos: u64 = undefined,
             offset: u64 = undefined,
@@ -81,6 +86,7 @@ pub const GPUCompilationMessage = struct {
     );
 
     const delegates = .{
+
         .get_length = &get_length,
         .get_lineNum = &get_lineNum,
         .get_linePos = &get_linePos,
@@ -125,4 +131,5 @@ pub const GPUCompilationMessage = struct {
     pub fn get_length(instance: *runtime.Instance) anyerror!u64 {
         return try GPUCompilationMessageImpl.get_length(instance);
     }
+
 };

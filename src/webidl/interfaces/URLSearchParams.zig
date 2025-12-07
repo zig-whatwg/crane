@@ -1,15 +1,16 @@
 //! Generated from: url.idl
-//! Generated at: 2025-11-29T11:15:57Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const URLSearchParamsImpl = @import("impls").URLSearchParams;
 const mixins = @import("mixins");
-const sequence = @import("interfaces").sequence;
 const record = @import("interfaces").record;
+const sequence = @import("interfaces").sequence;
 const USVString = @import("interfaces").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -24,15 +25,15 @@ pub const URLSearchParams = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "size", "get_size", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "append", "call_append", 2 },
@@ -44,9 +45,8 @@ pub const URLSearchParams = struct {
             .{ "sort", "call_sort", 0 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
-            .{ "toString", "call_toString", 0 }, // stringifier
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
@@ -57,22 +57,23 @@ pub const URLSearchParams = struct {
             "set",
             "sort",
             "forEach",
-            "toString", // stringifier
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "size", "get_size", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
-
+        
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -90,6 +91,7 @@ pub const URLSearchParams = struct {
     );
 
     const delegates = .{
+
         .get_size = &get_size,
 
         .call_append = &call_append,
@@ -100,7 +102,8 @@ pub const URLSearchParams = struct {
         .call_has = &call_has,
         .call_set = &call_set,
         .call_sort = &call_sort,
-        .call_toString = &call_toString,
+
+        .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
@@ -125,30 +128,37 @@ pub const URLSearchParams = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!void {
+        
         return try URLSearchParamsImpl.call_delete(instance, name, value);
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
         return try URLSearchParamsImpl.call_append(instance, name, value);
     }
 
     pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+        
         return try URLSearchParamsImpl.call_getAll(instance, name);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
+        
         return try URLSearchParamsImpl.call_has(instance, name, value);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+        
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
         return try URLSearchParamsImpl.call_set(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
+        
         return try URLSearchParamsImpl.call_get(instance, name);
     }
 
@@ -156,7 +166,10 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_sort(instance);
     }
 
-    pub fn call_toString(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try URLSearchParamsImpl.call_toString(instance);
+    /// Get entries for pair iterable support (used by V8 for iteration)
+    /// Returns slice of entries with .name and .value fields
+    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const URLSearchParamsImpl.IterableEntry {
+        return URLSearchParamsImpl.getEntriesInternal(instance);
     }
+
 };

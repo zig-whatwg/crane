@@ -1,11 +1,12 @@
 //! Generated from: generic-sensor.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SensorImpl = @import("impls").Sensor;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -32,13 +33,13 @@ pub const Sensor = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "Window" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .DedicatedWorker = true,
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "activated", "get_activated", null },
@@ -48,19 +49,19 @@ pub const Sensor = struct {
             .{ "onactivate", "get_onactivate", "set_onactivate" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
             .{ "stop", "call_stop", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
             "stop",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -68,7 +69,7 @@ pub const Sensor = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "activated", "get_activated", null },
@@ -78,10 +79,11 @@ pub const Sensor = struct {
             .{ "onactivate", "get_onactivate", "set_onactivate" },
             .{ "onerror", "get_onerror", "set_onerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -100,6 +102,7 @@ pub const Sensor = struct {
     );
 
     const delegates = .{
+
         .get_activated = &get_activated,
         .get_hasReading = &get_hasReading,
         .get_onactivate = &get_onactivate,
@@ -171,4 +174,5 @@ pub const Sensor = struct {
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try SensorImpl.call_start(instance);
     }
+
 };

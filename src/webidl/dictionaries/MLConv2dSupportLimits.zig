@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const MLTensorLimits = @import("MLTensorLimits.zig").MLTensorLimits;
 
 pub const MLConv2dSupportLimits = struct {
-    input: ?*const anyopaque = null,
-    filter: ?*const anyopaque = null,
-    bias: ?*const anyopaque = null,
-    output: ?*const anyopaque = null,
+    input: ?MLTensorLimits = null,
+    filter: ?MLTensorLimits = null,
+    bias: ?MLTensorLimits = null,
+    output: ?MLTensorLimits = null,
 };

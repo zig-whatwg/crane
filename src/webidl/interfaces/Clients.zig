@@ -1,11 +1,12 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const ClientsImpl = @import("impls").Clients;
 const mixins = @import("mixins");
 const WindowClient = @import("interfaces").WindowClient;
@@ -24,13 +25,14 @@ pub const Clients = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
@@ -38,7 +40,7 @@ pub const Clients = struct {
             .{ "openWindow", "call_openWindow", 1 },
             .{ "claim", "call_claim", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
@@ -46,16 +48,19 @@ pub const Clients = struct {
             "openWindow",
             "claim",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -68,6 +73,7 @@ pub const Clients = struct {
     );
 
     const delegates = .{
+
         .call_claim = &call_claim,
         .call_get = &call_get,
         .call_matchAll = &call_matchAll,
@@ -90,21 +96,21 @@ pub const Clients = struct {
     /// Extended attributes: [NewObject]
     pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-
+        
         return try ClientsImpl.call_get(instance, id);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(ClientQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-
+        
         return try ClientsImpl.call_matchAll(instance, options);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-
+        
         return try ClientsImpl.call_openWindow(instance, url);
     }
 
@@ -113,4 +119,5 @@ pub const Clients = struct {
         // [NewObject] - Caller owns the returned object
         return try ClientsImpl.call_claim(instance);
     }
+
 };

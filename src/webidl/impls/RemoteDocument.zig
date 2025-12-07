@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -64,7 +65,7 @@ pub fn get_contextUrl(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for document
-pub fn get_document(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_document(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -82,7 +83,7 @@ pub fn get_profile(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Setter for document
-pub fn set_document(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_document(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

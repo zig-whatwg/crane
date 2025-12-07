@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
 pub const MediaTrackSupportedConstraints = struct {
     width: ?bool = null,
@@ -21,4 +22,26 @@ pub const MediaTrackSupportedConstraints = struct {
     deviceId: ?bool = null,
     groupId: ?bool = null,
     backgroundBlur: ?bool = null,
+    whiteBalanceMode: ?bool = null,
+    exposureMode: ?bool = null,
+    focusMode: ?bool = null,
+    pointsOfInterest: ?bool = null,
+    exposureCompensation: ?bool = null,
+    exposureTime: ?bool = null,
+    colorTemperature: ?bool = null,
+    iso: ?bool = null,
+    brightness: ?bool = null,
+    contrast: ?bool = null,
+    pan: ?bool = null,
+    saturation: ?bool = null,
+    sharpness: ?bool = null,
+    focusDistance: ?bool = null,
+    tilt: ?bool = null,
+    zoom: ?bool = null,
+    torch: ?bool = null,
+    displaySurface: ?bool = null,
+    logicalSurface: ?bool = null,
+    cursor: ?bool = null,
+    restrictOwnAudio: ?bool = null,
+    suppressLocalAudioPlayback: ?bool = null,
 };

@@ -3,10 +3,12 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const PrivateToken = struct {
-    version: *const anyopaque,
-    operation: *const anyopaque,
-    refreshPolicy: ?*const anyopaque = null,
-    issuers: ?*const anyopaque = null,
+    version: enums.TokenVersion,
+    operation: enums.OperationType,
+    refreshPolicy: ?enums.RefreshPolicy = null,
+    issuers: ?[]const runtime.USVString = null,
 };

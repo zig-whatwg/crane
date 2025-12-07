@@ -3,8 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 
 pub const GPUBindGroupEntry = struct {
-    binding: *const anyopaque,
-    resource: *const anyopaque,
+    binding: typedefs.GPUIndex32,
+    resource: typedefs.GPUBindingResource,
 };

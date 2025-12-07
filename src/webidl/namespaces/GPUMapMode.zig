@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUMapMode_impl = @import("impls").GPUMapMode;
 
 pub const GPUMapMode = struct {
@@ -12,13 +13,15 @@ pub const GPUMapMode = struct {
         pub const is_namespace = true;
         pub const BaseType = ?*anyopaque;
         pub const MixinTypes = &.{};
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name)
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         pub const has_constructor = false;
         pub const properties = .{};
     };
 
     pub const State = struct {};
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: cssom.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const CSSPageDescriptorsImpl = @import("impls").CSSPageDescriptors;
 const mixins = @import("mixins");
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
@@ -26,10 +27,10 @@ pub const CSSPageDescriptors = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "margin", "get_margin", "set_margin" },
@@ -47,13 +48,15 @@ pub const CSSPageDescriptors = struct {
             .{ "marks", "get_marks", "set_marks" },
             .{ "bleed", "get_bleed", "set_bleed" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "item",
@@ -68,7 +71,7 @@ pub const CSSPageDescriptors = struct {
             "setProperty",
             "item",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "margin", "get_margin", "set_margin" },
@@ -86,10 +89,11 @@ pub const CSSPageDescriptors = struct {
             .{ "marks", "get_marks", "set_marks" },
             .{ "bleed", "get_bleed", "set_bleed" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -116,6 +120,7 @@ pub const CSSPageDescriptors = struct {
     );
 
     const delegates = .{
+
         .get_bleed = &get_bleed,
         .get_margin = &get_margin,
         .get_marginBottom = &get_marginBottom,
@@ -299,4 +304,5 @@ pub const CSSPageDescriptors = struct {
     pub fn set_bleed(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try CSSPageDescriptorsImpl.set_bleed(instance, value);
     }
+
 };

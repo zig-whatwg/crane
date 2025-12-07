@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const NavigationImpl = @import("impls").Navigation;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -39,10 +40,10 @@ pub const Navigation = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "currentEntry", "get_currentEntry", null },
@@ -55,7 +56,7 @@ pub const Navigation = struct {
             .{ "onnavigateerror", "get_onnavigateerror", "set_onnavigateerror" },
             .{ "oncurrententrychange", "get_oncurrententrychange", "set_oncurrententrychange" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "entries", "call_entries", 0 },
@@ -66,7 +67,7 @@ pub const Navigation = struct {
             .{ "back", "call_back", 0 },
             .{ "forward", "call_forward", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "entries",
@@ -77,7 +78,7 @@ pub const Navigation = struct {
             "back",
             "forward",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -85,7 +86,7 @@ pub const Navigation = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "currentEntry", "get_currentEntry", null },
@@ -98,10 +99,11 @@ pub const Navigation = struct {
             .{ "onnavigateerror", "get_onnavigateerror", "set_onnavigateerror" },
             .{ "oncurrententrychange", "get_oncurrententrychange", "set_oncurrententrychange" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -123,6 +125,7 @@ pub const Navigation = struct {
     );
 
     const delegates = .{
+
         .get_activation = &get_activation,
         .get_canGoBack = &get_canGoBack,
         .get_canGoForward = &get_canGoForward,
@@ -213,10 +216,12 @@ pub const Navigation = struct {
     }
 
     pub fn call_reload(instance: *runtime.Instance, options: webidl.Opt(NavigationReloadOptions)) anyerror!NavigationResult {
+        
         return try NavigationImpl.call_reload(instance, options);
     }
 
     pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
+        
         return try NavigationImpl.call_back(instance, options);
     }
 
@@ -225,18 +230,23 @@ pub const Navigation = struct {
     }
 
     pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!NavigationResult {
+        
         return try NavigationImpl.call_navigate(instance, url, options);
     }
 
     pub fn call_traverseTo(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
+        
         return try NavigationImpl.call_traverseTo(instance, key, options);
     }
 
     pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
+        
         return try NavigationImpl.call_forward(instance, options);
     }
 
     pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: NavigationUpdateCurrentEntryOptions) anyerror!void {
+        
         return try NavigationImpl.call_updateCurrentEntry(instance, options);
     }
+
 };

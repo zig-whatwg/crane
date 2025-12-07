@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const WorkerImpl = @import("impls").Worker;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -39,35 +40,35 @@ pub const Worker = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
             .SharedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "terminate", "call_terminate", 0 },
             .{ "postMessage", "call_postMessage", 2 },
             .{ "postMessage", "call_postMessage", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "terminate",
             "postMessage",
             "postMessage",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,17 +76,18 @@ pub const Worker = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -101,6 +103,7 @@ pub const Worker = struct {
     );
 
     const delegates = .{
+
         .get_onerror = &get_onerror,
         .get_onmessage = &get_onmessage,
         .get_onmessageerror = &get_onmessageerror,
@@ -160,7 +163,9 @@ pub const Worker = struct {
         return try WorkerImpl.call_terminate(instance);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: *const anyopaque, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+        
         return try WorkerImpl.call_postMessage(instance, message, transfer);
     }
+
 };

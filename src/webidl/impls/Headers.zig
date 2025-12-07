@@ -165,7 +165,7 @@ fn initHeaders(
 }
 
 /// append(name, value)
-pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -187,7 +187,7 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value:
 }
 
 /// delete(name)
-pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -206,7 +206,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) ImplEr
 }
 
 /// get(name) -> ByteString?
-pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) ImplError!?runtime.ByteString {
+pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -224,7 +224,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) ImplError
 }
 
 /// getSetCookie() -> sequence<ByteString>
-pub fn call_getSetCookie(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -240,7 +240,7 @@ pub fn call_getSetCookie(instance: *runtime.Instance) ImplError!*const anyopaque
 }
 
 /// has(name) -> boolean
-pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -253,7 +253,7 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) ImplError
 }
 
 /// set(name, value)
-pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -276,7 +276,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: ru
 
 /// forEach(callback)
 /// Iterator support - called by V8 for Symbol.iterator
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

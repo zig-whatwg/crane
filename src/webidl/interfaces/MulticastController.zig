@@ -1,11 +1,12 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MulticastControllerImpl = @import("impls").MulticastController;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -23,41 +24,43 @@ pub const MulticastController = struct {
             .{ .name = "SecureContext" },
             .{ .name = "IsolatedContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "joinedGroups", "get_joinedGroups", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "joinGroup", "call_joinGroup", 1 },
             .{ "leaveGroup", "call_leaveGroup", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "joinGroup",
             "leaveGroup",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "joinedGroups", "get_joinedGroups", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -71,6 +74,7 @@ pub const MulticastController = struct {
     );
 
     const delegates = .{
+
         .get_joinedGroups = &get_joinedGroups,
 
         .call_joinGroup = &call_joinGroup,
@@ -95,10 +99,13 @@ pub const MulticastController = struct {
     }
 
     pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
+        
         return try MulticastControllerImpl.call_joinGroup(instance, ipAddress);
     }
 
     pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
+        
         return try MulticastControllerImpl.call_leaveGroup(instance, ipAddress);
     }
+
 };

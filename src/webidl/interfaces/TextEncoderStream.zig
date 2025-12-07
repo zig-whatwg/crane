@@ -1,11 +1,12 @@
 //! Generated from: encoding.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const TextEncoderStreamImpl = @import("impls").TextEncoderStream;
 const mixins = @import("mixins");
 const TextEncoderCommon = @import("interfaces").TextEncoderCommon;
@@ -28,36 +29,40 @@ pub const TextEncoderStream = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "encoding", "get_encoding", null },
             .{ "readable", "get_readable", null },
             .{ "writable", "get_writable", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "encoding", "get_encoding", null },
             .{ "readable", "get_readable", null },
             .{ "writable", "get_writable", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -73,6 +78,7 @@ pub const TextEncoderStream = struct {
     );
 
     const delegates = .{
+
         .get_encoding = &get_encoding,
         .get_readable = &get_readable,
         .get_writable = &get_writable,
@@ -108,4 +114,5 @@ pub const TextEncoderStream = struct {
     pub fn get_writable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TextEncoderStreamImpl.get_writable(instance);
     }
+
 };

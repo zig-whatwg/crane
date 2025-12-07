@@ -3,16 +3,20 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const VideoColorSpaceInit = @import("VideoColorSpaceInit.zig").VideoColorSpaceInit;
 
 pub const VideoDecoderConfig = struct {
     codec: runtime.DOMString,
-    description: ?*const anyopaque = null,
+    description: ?typedefs.AllowSharedBufferSource = null,
     codedWidth: ?u32 = null,
     codedHeight: ?u32 = null,
     displayAspectWidth: ?u32 = null,
     displayAspectHeight: ?u32 = null,
-    colorSpace: ?*const anyopaque = null,
-    hardwareAcceleration: ?*const anyopaque = null,
+    colorSpace: ?VideoColorSpaceInit = null,
+    hardwareAcceleration: ?enums.HardwareAcceleration = null,
     optimizeForLatency: ?bool = null,
     rotation: ?f64 = null,
     flip: ?bool = null,

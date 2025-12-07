@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const Algorithm = @import("Algorithm.zig").Algorithm;
 
 pub const CShakeParams = struct {
@@ -10,6 +12,6 @@ pub const CShakeParams = struct {
     base: Algorithm,
 
     length: u32,
-    functionName: ?*const anyopaque = null,
-    customization: ?*const anyopaque = null,
+    functionName: ?typedefs.BufferSource = null,
+    customization: ?typedefs.BufferSource = null,
 };

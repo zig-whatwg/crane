@@ -3,6 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const HevcEncoderConfig = @import("HevcEncoderConfig.zig").HevcEncoderConfig;
+const AvcEncoderConfig = @import("AvcEncoderConfig.zig").AvcEncoderConfig;
 
 pub const VideoEncoderConfig = struct {
     codec: runtime.DOMString,
@@ -12,10 +17,12 @@ pub const VideoEncoderConfig = struct {
     displayHeight: ?u32 = null,
     bitrate: ?u64 = null,
     framerate: ?f64 = null,
-    hardwareAcceleration: ?*const anyopaque = null,
-    alpha: ?*const anyopaque = null,
+    hardwareAcceleration: ?enums.HardwareAcceleration = null,
+    alpha: ?enums.AlphaOption = null,
     scalabilityMode: ?runtime.DOMString = null,
-    bitrateMode: ?*const anyopaque = null,
-    latencyMode: ?*const anyopaque = null,
+    bitrateMode: ?enums.VideoEncoderBitrateMode = null,
+    latencyMode: ?enums.LatencyMode = null,
     contentHint: ?runtime.DOMString = null,
+    hevc: ?HevcEncoderConfig = null,
+    avc: ?AvcEncoderConfig = null,
 };

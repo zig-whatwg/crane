@@ -1,11 +1,12 @@
 //! Generated from: mediaqueries-5.idl
-//! Generated at: 2025-12-05T20:30:44Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const PreferenceManagerImpl = @import("impls").PreferenceManager;
 const mixins = @import("mixins");
 const PreferenceObject = @import("interfaces").PreferenceObject;
@@ -22,10 +23,10 @@ pub const PreferenceManager = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "colorScheme", "get_colorScheme", null },
@@ -34,16 +35,19 @@ pub const PreferenceManager = struct {
             .{ "reducedTransparency", "get_reducedTransparency", null },
             .{ "reducedData", "get_reducedData", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "colorScheme", "get_colorScheme", null },
@@ -52,10 +56,11 @@ pub const PreferenceManager = struct {
             .{ "reducedTransparency", "get_reducedTransparency", null },
             .{ "reducedData", "get_reducedData", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -73,6 +78,7 @@ pub const PreferenceManager = struct {
     );
 
     const delegates = .{
+
         .get_colorScheme = &get_colorScheme,
         .get_contrast = &get_contrast,
         .get_reducedData = &get_reducedData,
@@ -112,4 +118,5 @@ pub const PreferenceManager = struct {
     pub fn get_reducedData(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try PreferenceManagerImpl.get_reducedData(instance);
     }
+
 };

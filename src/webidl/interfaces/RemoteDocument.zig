@@ -1,11 +1,12 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RemoteDocumentImpl = @import("impls").RemoteDocument;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -21,10 +22,10 @@ pub const RemoteDocument = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "JsonLd" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .JsonLd = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "contentType", "get_contentType", null },
@@ -33,16 +34,19 @@ pub const RemoteDocument = struct {
             .{ "documentUrl", "get_documentUrl", null },
             .{ "profile", "get_profile", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "contentType", "get_contentType", null },
@@ -51,10 +55,11 @@ pub const RemoteDocument = struct {
             .{ "documentUrl", "get_documentUrl", null },
             .{ "profile", "get_profile", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -64,7 +69,7 @@ pub const RemoteDocument = struct {
         struct {
             contentType: runtime.USVString = undefined,
             contextUrl: runtime.USVString = undefined,
-            document: *const anyopaque = undefined,
+            document: v8.JSValue = undefined,
             documentUrl: runtime.USVString = undefined,
             profile: runtime.USVString = undefined,
             _internal: ?*RemoteDocumentImpl.InternalState = null,
@@ -72,6 +77,7 @@ pub const RemoteDocument = struct {
     );
 
     const delegates = .{
+
         .get_contentType = &get_contentType,
         .get_contextUrl = &get_contextUrl,
         .get_document = &get_document,
@@ -108,11 +114,11 @@ pub const RemoteDocument = struct {
         return try RemoteDocumentImpl.get_contextUrl(instance);
     }
 
-    pub fn get_document(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_document(instance: *runtime.Instance) anyerror!v8.JSValue {
         return try RemoteDocumentImpl.get_document(instance);
     }
 
-    pub fn set_document(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_document(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
         try RemoteDocumentImpl.set_document(instance, value);
     }
 
@@ -123,4 +129,5 @@ pub const RemoteDocument = struct {
     pub fn get_profile(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try RemoteDocumentImpl.get_profile(instance);
     }
+
 };

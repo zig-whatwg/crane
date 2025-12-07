@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const GPUObjectDescriptorBase = @import("GPUObjectDescriptorBase.zig").GPUObjectDescriptorBase;
 
 pub const GPUExternalTextureDescriptor = struct {
@@ -10,5 +12,5 @@ pub const GPUExternalTextureDescriptor = struct {
     base: GPUObjectDescriptorBase,
 
     source: *const anyopaque,
-    colorSpace: ?*const anyopaque = null,
+    colorSpace: ?enums.PredefinedColorSpace = null,
 };

@@ -3,6 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const PaymentItem = @import("PaymentItem.zig").PaymentItem;
 const PaymentDetailsBase = @import("PaymentDetailsBase.zig").PaymentDetailsBase;
 
 pub const PaymentDetailsInit = struct {
@@ -10,5 +13,5 @@ pub const PaymentDetailsInit = struct {
     base: PaymentDetailsBase,
 
     id: ?runtime.DOMString = null,
-    total: *const anyopaque,
+    total: PaymentItem,
 };

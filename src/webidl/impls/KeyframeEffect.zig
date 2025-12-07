@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -106,7 +107,7 @@ pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.Iteratio
 }
 
 /// Operation: setKeyframes
-pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?*const anyopaque) anyerror!void {
+pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?v8.JSValue) anyerror!void {
     _ = instance;
     _ = keyframes;
     return error.NotImplemented;

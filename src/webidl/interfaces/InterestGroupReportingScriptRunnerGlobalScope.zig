@@ -1,11 +1,12 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const InterestGroupReportingScriptRunnerGlobalScopeImpl = @import("impls").InterestGroupReportingScriptRunnerGlobalScope;
 const mixins = @import("mixins");
 const InterestGroupScriptRunnerGlobalScope = @import("interfaces").InterestGroupScriptRunnerGlobalScope;
@@ -27,36 +28,40 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "InterestGroupReportingScriptRunnerGlobalScope" } },
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "InterestGroupScriptRunnerGlobalScope", "InterestGroupReportingScriptRunnerGlobalScope" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .InterestGroupReportingScriptRunnerGlobalScope = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "sendReportTo", "call_sendReportTo", 1 },
             .{ "registerAdBeacon", "call_registerAdBeacon", 1 },
             .{ "registerAdMacro", "call_registerAdMacro", 2 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "sendReportTo",
             "registerAdBeacon",
             "registerAdMacro",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -69,6 +74,7 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
     );
 
     const delegates = .{
+
         .call_registerAdBeacon = &call_registerAdBeacon,
         .call_registerAdMacro = &call_registerAdMacro,
         .call_sendReportTo = &call_sendReportTo,
@@ -88,14 +94,18 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
     }
 
     pub fn call_registerAdMacro(instance: *runtime.Instance, name: DOMString, value: runtime.USVString) anyerror!void {
+        
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdMacro(instance, name, value);
     }
 
     pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) anyerror!void {
+        
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdBeacon(instance, map);
     }
 
     pub fn call_sendReportTo(instance: *runtime.Instance, url: DOMString) anyerror!void {
+        
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_sendReportTo(instance, url);
     }
+
 };

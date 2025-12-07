@@ -3,9 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
 
 pub const AudioBufferSourceOptions = struct {
-    buffer: ?*const anyopaque = null,
+    buffer: ?*runtime.Instance = null,
     detune: ?f32 = null,
     loop: ?bool = null,
     loopEnd: ?f64 = null,

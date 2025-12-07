@@ -122,7 +122,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-append
 /// Appends a new value to an existing key, or adds the key if it doesn't exist.
-pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
+pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.appendString(name, value);
 }
@@ -235,7 +235,7 @@ pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, va
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-delete
 /// Removes all values associated with a given key.
-pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplError!void {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     internal.form_data.delete(name);
 }
@@ -244,7 +244,7 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-get
 /// Returns the first value associated with a given key.
-pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!?typedefs.FormDataEntryValue {
+pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?typedefs.FormDataEntryValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     const entry = internal.form_data.get(name) orelse return null;
@@ -260,7 +260,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) ImplError!
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-getall
 /// Returns all values associated with a given key.
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplError!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     const values = try internal.form_data.getAll(internal.allocator, name);
@@ -310,7 +310,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) ImplErr
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-has
 /// Returns whether a FormData object contains a certain key.
-pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) ImplError!bool {
+pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidState;
     return internal.form_data.has(name);
 }
@@ -320,7 +320,7 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString) ImplError!
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-set
 /// Sets a new value for an existing key, or adds the key if it doesn't exist.
 /// Replaces all existing values.
-pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) ImplError!void {
+pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     try internal.form_data.setString(name, value);
 }
@@ -329,7 +329,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata
 /// Iterates over all entries in the FormData.
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) ImplError!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Callback is a function pointer from V8

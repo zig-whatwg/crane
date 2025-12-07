@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 
 pub const VideoFrameRequestCallback = *const fn (now: *const anyopaque, metadata: *const anyopaque) void;

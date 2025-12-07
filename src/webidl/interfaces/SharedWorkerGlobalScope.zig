@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SharedWorkerGlobalScopeImpl = @import("impls").SharedWorkerGlobalScope;
 const mixins = @import("mixins");
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
@@ -53,26 +54,26 @@ pub const SharedWorkerGlobalScope = struct {
             .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "SharedWorker" } } },
             .{ .name = "Exposed", .value = .{ .identifier = "SharedWorker" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .SharedWorker = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "onconnect", "get_onconnect", "set_onconnect" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -93,16 +94,17 @@ pub const SharedWorkerGlobalScope = struct {
             "structuredClone",
             "fetch",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "onconnect", "get_onconnect", "set_onconnect" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -117,6 +119,7 @@ pub const SharedWorkerGlobalScope = struct {
     );
 
     const delegates = .{
+
         .get_name = &get_name,
         .get_onconnect = &get_onconnect,
 
@@ -154,4 +157,5 @@ pub const SharedWorkerGlobalScope = struct {
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try SharedWorkerGlobalScopeImpl.call_close(instance);
     }
+
 };

@@ -1,11 +1,12 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DataTransferImpl = @import("impls").DataTransfer;
 const mixins = @import("mixins");
 const Element = @import("interfaces").Element;
@@ -24,10 +25,10 @@ pub const DataTransfer = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "dropEffect", "get_dropEffect", "set_dropEffect" },
@@ -36,7 +37,7 @@ pub const DataTransfer = struct {
             .{ "types", "get_types", null },
             .{ "files", "get_files", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setDragImage", "call_setDragImage", 3 },
@@ -44,7 +45,7 @@ pub const DataTransfer = struct {
             .{ "setData", "call_setData", 2 },
             .{ "clearData", "call_clearData", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setDragImage",
@@ -52,10 +53,11 @@ pub const DataTransfer = struct {
             "setData",
             "clearData",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "dropEffect", "get_dropEffect", "set_dropEffect" },
@@ -64,10 +66,11 @@ pub const DataTransfer = struct {
             .{ "types", "get_types", null },
             .{ "files", "get_files", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -87,6 +90,7 @@ pub const DataTransfer = struct {
     );
 
     const delegates = .{
+
         .get_dropEffect = &get_dropEffect,
         .get_effectAllowed = &get_effectAllowed,
         .get_files = &get_files,
@@ -166,18 +170,23 @@ pub const DataTransfer = struct {
     }
 
     pub fn call_getData(instance: *runtime.Instance, format: DOMString) anyerror!DOMString {
+        
         return try DataTransferImpl.call_getData(instance, format);
     }
 
     pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(DOMString)) anyerror!void {
+        
         return try DataTransferImpl.call_clearData(instance, format);
     }
 
     pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
+        
         return try DataTransferImpl.call_setDragImage(instance, image, x, y);
     }
 
     pub fn call_setData(instance: *runtime.Instance, format: DOMString, data: DOMString) anyerror!void {
+        
         return try DataTransferImpl.call_setData(instance, format, data);
     }
+
 };

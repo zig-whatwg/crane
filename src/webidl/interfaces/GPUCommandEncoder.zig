@@ -1,11 +1,12 @@
 //! Generated from: webgpu.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:00Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const GPUCommandEncoderImpl = @import("impls").GPUCommandEncoder;
 const mixins = @import("mixins");
 const GPUObjectBase = @import("interfaces").GPUObjectBase;
@@ -42,18 +43,18 @@ pub const GPUCommandEncoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "beginRenderPass", "call_beginRenderPass", 1 },
@@ -70,7 +71,7 @@ pub const GPUCommandEncoder = struct {
             .{ "popDebugGroup", "call_popDebugGroup", 0 },
             .{ "insertDebugMarker", "call_insertDebugMarker", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "beginRenderPass",
@@ -87,18 +88,20 @@ pub const GPUCommandEncoder = struct {
             "popDebugGroup",
             "insertDebugMarker",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "label", "get_label", "set_label" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -112,6 +115,7 @@ pub const GPUCommandEncoder = struct {
     );
 
     const delegates = .{
+
         .get_label = &get_label,
 
         .set_label = &set_label,
@@ -152,14 +156,17 @@ pub const GPUCommandEncoder = struct {
     }
 
     pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(GPUSize64)) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
     }
 
     pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, copySize: GPUExtent3D) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_copyTextureToBuffer(instance, source, destination, copySize);
     }
 
     pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_copyBufferToTexture(instance, source, destination, copySize);
     }
 
@@ -168,34 +175,43 @@ pub const GPUCommandEncoder = struct {
     }
 
     pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_copyTextureToTexture(instance, source, destination, copySize);
     }
 
     pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: GPUSize32, queryCount: GPUSize32, destination: *runtime.Instance, destinationOffset: GPUSize64) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_resolveQuerySet(instance, querySet, firstQuery, queryCount, destination, destinationOffset);
     }
 
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
     pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
     pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
+        
         return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
     }
 
     pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(GPUComputePassDescriptor)) anyerror!*runtime.Instance {
+        
         return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor);
     }
 
     pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: GPURenderPassDescriptor) anyerror!*runtime.Instance {
+        
         return try GPUCommandEncoderImpl.call_beginRenderPass(instance, descriptor);
     }
 
     pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
+        
         return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
     }
+
 };

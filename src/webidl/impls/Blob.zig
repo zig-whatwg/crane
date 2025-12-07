@@ -202,7 +202,7 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-size
 /// Returns the size of the byte sequence in number of bytes.
-pub fn get_size(instance: *runtime.Instance) ImplError!u64 {
+pub fn get_size(instance: *runtime.Instance) anyerror!u64 {
     const internal = getInternal(instance) orelse return 0;
     return internal.blob_data.size();
 }
@@ -211,7 +211,7 @@ pub fn get_size(instance: *runtime.Instance) ImplError!u64 {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dfn-type
 /// Returns ASCII-encoded string in lower case representing the media type.
-pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const type_str = internal.blob_data.getType();
     if (type_str.len == 0) {
@@ -224,7 +224,7 @@ pub fn get_type(instance: *runtime.Instance) ImplError!runtime.DOMString {
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#slice-method-algo
 /// Returns a new Blob object with bytes from start to end and optional contentType.
-pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(runtime.DOMString)) ImplError!*runtime.Instance {
+pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
     const ctx = instance.ctx;
@@ -270,7 +270,7 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise with UTF-8 decode.
-pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
@@ -304,7 +304,7 @@ pub fn call_text(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// 1. Create a new ReadableStream with byte reading support
 /// 2. Pull algorithm reads chunks from blob bytes
 /// 3. Returns stream that yields all blob bytes
-pub fn call_stream(instance: *runtime.Instance) ImplError!*runtime.Instance {
+pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
     const ctx = instance.ctx;
@@ -433,7 +433,7 @@ fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise to create Uint8Array from bytes.
-pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
@@ -464,7 +464,7 @@ pub fn call_bytes(instance: *runtime.Instance) ImplError!*const anyopaque {
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise to create ArrayBuffer from bytes.
-pub fn call_arrayBuffer(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 

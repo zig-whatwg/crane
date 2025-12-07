@@ -83,14 +83,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for resultType
-pub fn get_resultType(instance: *runtime.Instance) ImplError!u16 {
+pub fn get_resultType(instance: *runtime.Instance) anyerror!u16 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.result_type;
 }
 
 /// Getter for numberValue
-pub fn get_numberValue(instance: *runtime.Instance) ImplError!f64 {
+pub fn get_numberValue(instance: *runtime.Instance) anyerror!f64 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     if (internal.result_type != ResultType.NUMBER_TYPE) {
@@ -100,7 +100,7 @@ pub fn get_numberValue(instance: *runtime.Instance) ImplError!f64 {
 }
 
 /// Getter for stringValue
-pub fn get_stringValue(instance: *runtime.Instance) ImplError!runtime.DOMString {
+pub fn get_stringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     if (internal.result_type != ResultType.STRING_TYPE) {
@@ -110,7 +110,7 @@ pub fn get_stringValue(instance: *runtime.Instance) ImplError!runtime.DOMString 
 }
 
 /// Getter for booleanValue
-pub fn get_booleanValue(instance: *runtime.Instance) ImplError!bool {
+pub fn get_booleanValue(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     if (internal.result_type != ResultType.BOOLEAN_TYPE) {
@@ -120,7 +120,7 @@ pub fn get_booleanValue(instance: *runtime.Instance) ImplError!bool {
 }
 
 /// Getter for singleNodeValue
-pub fn get_singleNodeValue(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn get_singleNodeValue(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -136,14 +136,14 @@ pub fn get_singleNodeValue(instance: *runtime.Instance) ImplError!?*runtime.Inst
 }
 
 /// Getter for invalidIteratorState
-pub fn get_invalidIteratorState(instance: *runtime.Instance) ImplError!bool {
+pub fn get_invalidIteratorState(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return internal.invalid_iterator_state;
 }
 
 /// Getter for snapshotLength
-pub fn get_snapshotLength(instance: *runtime.Instance) ImplError!u32 {
+pub fn get_snapshotLength(instance: *runtime.Instance) anyerror!u32 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -158,7 +158,7 @@ pub fn get_snapshotLength(instance: *runtime.Instance) ImplError!u32 {
 }
 
 /// Operation: snapshotItem
-pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) ImplError!?*runtime.Instance {
+pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = index;
@@ -175,7 +175,7 @@ pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) ImplError!?*ru
 }
 
 /// Operation: iterateNext
-pub fn call_iterateNext(instance: *runtime.Instance) ImplError!?*runtime.Instance {
+pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

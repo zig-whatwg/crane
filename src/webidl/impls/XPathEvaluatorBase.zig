@@ -54,11 +54,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// createExpression - Creates a compiled XPath expression
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-createexpression
-pub fn call_createExpression(
-    instance: *runtime.Instance,
-    expression: runtime.DOMString,
-    resolver: webidl.Opt(??*runtime.CallbackWrapper),
-) anyerror!*runtime.Instance {
+pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DOMString, resolver: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = resolver;
@@ -70,10 +66,7 @@ pub fn call_createExpression(
 
 /// createNSResolver - Creates an XPathNSResolver from a node
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-creatensresolver
-pub fn call_createNSResolver(
-    instance: *runtime.Instance,
-    node_resolver: *runtime.Instance,
-) anyerror!*runtime.Instance {
+pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     _ = node_resolver;
 
@@ -83,14 +76,7 @@ pub fn call_createNSResolver(
 
 /// evaluate - Evaluates an XPath expression
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-evaluate
-pub fn call_evaluate(
-    instance: *runtime.Instance,
-    expression: runtime.DOMString,
-    context_node: *runtime.Instance,
-    resolver: webidl.Opt(??*runtime.CallbackWrapper),
-    result_type: webidl.Opt(u16),
-    result: webidl.Opt(?*runtime.Instance),
-) anyerror!*runtime.Instance {
+pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     _ = instance;
     _ = expression;
     _ = context_node;

@@ -1,11 +1,12 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-12-05T20:30:46Z
+//! Generated at: 2025-12-07T19:32:59Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const MediaSessionImpl = @import("impls").MediaSession;
 const mixins = @import("mixins");
 const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
@@ -25,16 +26,16 @@ pub const MediaSession = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "metadata", "get_metadata", "set_metadata" },
             .{ "playbackState", "get_playbackState", "set_playbackState" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setActionHandler", "call_setActionHandler", 2 },
@@ -43,7 +44,7 @@ pub const MediaSession = struct {
             .{ "setCameraActive", "call_setCameraActive", 1 },
             .{ "setScreenshareActive", "call_setScreenshareActive", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setActionHandler",
@@ -52,19 +53,21 @@ pub const MediaSession = struct {
             "setCameraActive",
             "setScreenshareActive",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "metadata", "get_metadata", "set_metadata" },
             .{ "playbackState", "get_playbackState", "set_playbackState" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -79,6 +82,7 @@ pub const MediaSession = struct {
     );
 
     const delegates = .{
+
         .get_metadata = &get_metadata,
         .get_playbackState = &get_playbackState,
 
@@ -122,22 +126,28 @@ pub const MediaSession = struct {
     }
 
     pub fn call_setMicrophoneActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+        
         return try MediaSessionImpl.call_setMicrophoneActive(instance, active);
     }
 
     pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+        
         return try MediaSessionImpl.call_setCameraActive(instance, active);
     }
 
     pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
+        
         return try MediaSessionImpl.call_setPositionState(instance, state);
     }
 
     pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+        
         return try MediaSessionImpl.call_setScreenshareActive(instance, active);
     }
 
     pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: ?MediaSessionActionHandler) anyerror!void {
+        
         return try MediaSessionImpl.call_setActionHandler(instance, action, handler);
     }
+
 };

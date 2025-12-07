@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -42,7 +43,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: dictionaries.TableDescriptor, value: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: dictionaries.TableDescriptor, value: webidl.Opt(v8.JSValue)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Table.vtable, ctx);
     errdefer deinit(instance);
@@ -61,14 +62,14 @@ pub fn get_length(instance: *runtime.Instance) anyerror!typedefs.AddressValue {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, index: typedefs.AddressValue) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, index: typedefs.AddressValue) anyerror!v8.JSValue {
     _ = instance;
     _ = index;
     return error.NotImplemented;
 }
 
 /// Operation: grow
-pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!typedefs.AddressValue {
+pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!typedefs.AddressValue {
     _ = instance;
     _ = delta;
     _ = value;
@@ -76,7 +77,7 @@ pub fn call_grow(instance: *runtime.Instance, delta: typedefs.AddressValue, valu
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, index: typedefs.AddressValue, value: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_set(instance: *runtime.Instance, index: typedefs.AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!void {
     _ = instance;
     _ = index;
     _ = value;

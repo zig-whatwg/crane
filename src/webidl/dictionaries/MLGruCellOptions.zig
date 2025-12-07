@@ -3,15 +3,17 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const enums = @import("enums");
 const MLOperatorOptions = @import("MLOperatorOptions.zig").MLOperatorOptions;
 
 pub const MLGruCellOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    bias: ?*const anyopaque = null,
-    recurrentBias: ?*const anyopaque = null,
+    bias: ?*runtime.Instance = null,
+    recurrentBias: ?*runtime.Instance = null,
     resetAfter: ?bool = null,
-    layout: ?*const anyopaque = null,
-    activations: ?*const anyopaque = null,
+    layout: ?enums.MLGruWeightLayout = null,
+    activations: ?[]const enums.MLRecurrentNetworkActivation = null,
 };

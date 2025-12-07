@@ -1,11 +1,12 @@
 //! Generated from: storage-buckets.idl
-//! Generated at: 2025-12-05T20:30:49Z
+//! Generated at: 2025-12-07T19:33:02Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const StorageBucketImpl = @import("impls").StorageBucket;
 const mixins = @import("mixins");
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
@@ -27,20 +28,20 @@ pub const StorageBucket = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "caches", "get_caches", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "persist", "call_persist", 0 },
@@ -50,7 +51,7 @@ pub const StorageBucket = struct {
             .{ "expires", "call_expires", 0 },
             .{ "getDirectory", "call_getDirectory", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "persist",
@@ -60,20 +61,22 @@ pub const StorageBucket = struct {
             "expires",
             "getDirectory",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "caches", "get_caches", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -91,6 +94,7 @@ pub const StorageBucket = struct {
     );
 
     const delegates = .{
+
         .get_caches = &get_caches,
         .get_indexedDB = &get_indexedDB,
         .get_name = &get_name,
@@ -158,6 +162,7 @@ pub const StorageBucket = struct {
     }
 
     pub fn call_setExpires(instance: *runtime.Instance, expires: DOMHighResTimeStamp) anyerror!*const anyopaque {
+        
         return try StorageBucketImpl.call_setExpires(instance, expires);
     }
 
@@ -168,4 +173,5 @@ pub const StorageBucket = struct {
     pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try StorageBucketImpl.call_persisted(instance);
     }
+
 };

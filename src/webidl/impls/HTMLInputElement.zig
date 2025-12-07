@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -263,7 +264,7 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for valueAsDate
-pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?v8.JSValue {
     _ = instance;
     return null;
 }
@@ -596,7 +597,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for valueAsDate
-pub fn set_valueAsDate(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_valueAsDate(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -53,13 +54,13 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!enums.IDBCursorDirect
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryKey
-pub fn get_primaryKey(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,14 +78,14 @@ pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: continue
-pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(v8.JSValue)) anyerror!void {
     _ = instance;
     _ = key;
     return error.NotImplemented;
 }
 
 /// Operation: continuePrimaryKey
-pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaque, primaryKey: *const anyopaque) anyerror!void {
+pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: v8.JSValue, primaryKey: v8.JSValue) anyerror!void {
     _ = instance;
     _ = key;
     _ = primaryKey;
@@ -92,7 +93,7 @@ pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: *const anyopaqu
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, value: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_update(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;

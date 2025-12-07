@@ -1,11 +1,12 @@
 //! Generated from: webrtc.idl
-//! Generated at: 2025-12-05T20:30:48Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const RTCRtpTransceiverImpl = @import("impls").RTCRtpTransceiver;
 const mixins = @import("mixins");
 const RTCRtpCodec = @import("dictionaries").RTCRtpCodec;
@@ -25,10 +26,10 @@ pub const RTCRtpTransceiver = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mid", "get_mid", null },
@@ -37,22 +38,23 @@ pub const RTCRtpTransceiver = struct {
             .{ "direction", "get_direction", "set_direction" },
             .{ "currentDirection", "get_currentDirection", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "stop", "call_stop", 0 },
             .{ "setCodecPreferences", "call_setCodecPreferences", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "stop",
             "setCodecPreferences",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mid", "get_mid", null },
@@ -61,10 +63,11 @@ pub const RTCRtpTransceiver = struct {
             .{ "direction", "get_direction", "set_direction" },
             .{ "currentDirection", "get_currentDirection", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -84,6 +87,7 @@ pub const RTCRtpTransceiver = struct {
     );
 
     const delegates = .{
+
         .get_currentDirection = &get_currentDirection,
         .get_direction = &get_direction,
         .get_mid = &get_mid,
@@ -150,10 +154,12 @@ pub const RTCRtpTransceiver = struct {
     }
 
     pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: *const anyopaque) anyerror!void {
+        
         return try RTCRtpTransceiverImpl.call_setCodecPreferences(instance, codecs);
     }
 
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try RTCRtpTransceiverImpl.call_stop(instance);
     }
+
 };

@@ -3,6 +3,11 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
+const AddressErrors = @import("AddressErrors.zig").AddressErrors;
+const PayerErrors = @import("PayerErrors.zig").PayerErrors;
+const PaymentItem = @import("PaymentItem.zig").PaymentItem;
 const PaymentDetailsBase = @import("PaymentDetailsBase.zig").PaymentDetailsBase;
 
 pub const PaymentDetailsUpdate = struct {
@@ -10,8 +15,8 @@ pub const PaymentDetailsUpdate = struct {
     base: PaymentDetailsBase,
 
     @"error": ?runtime.DOMString = null,
-    total: ?*const anyopaque = null,
-    shippingAddressErrors: ?*const anyopaque = null,
-    payerErrors: ?*const anyopaque = null,
-    paymentMethodErrors: ?*const anyopaque = null,
+    total: ?PaymentItem = null,
+    shippingAddressErrors: ?AddressErrors = null,
+    payerErrors: ?PayerErrors = null,
+    paymentMethodErrors: ?v8.JSValue = null,
 };

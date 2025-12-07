@@ -3,6 +3,8 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const v8 = @import("v8");
+const typedefs = @import("typedefs");
 const KeyAlgorithm = @import("KeyAlgorithm.zig").KeyAlgorithm;
 
 pub const RsaKeyAlgorithm = struct {
@@ -10,5 +12,5 @@ pub const RsaKeyAlgorithm = struct {
     base: KeyAlgorithm,
 
     modulusLength: u32,
-    publicExponent: *const anyopaque,
+    publicExponent: typedefs.BigInteger,
 };

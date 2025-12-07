@@ -1,11 +1,12 @@
 //! Generated from: SVG.idl
-//! Generated at: 2025-12-05T20:30:45Z
+//! Generated at: 2025-12-07T19:32:58Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const SVGAnimatedRectImpl = @import("impls").SVGAnimatedRect;
 const mixins = @import("mixins");
 const DOMRect = @import("interfaces").DOMRect;
@@ -22,34 +23,38 @@ pub const SVGAnimatedRect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "baseVal", "get_baseVal", null },
             .{ "animVal", "get_animVal", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "baseVal", "get_baseVal", null },
             .{ "animVal", "get_animVal", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -66,6 +71,7 @@ pub const SVGAnimatedRect = struct {
     );
 
     const delegates = .{
+
         .get_animVal = &get_animVal,
         .get_baseVal = &get_baseVal,
 
@@ -106,4 +112,5 @@ pub const SVGAnimatedRect = struct {
         state.own.cached_animVal = value;
         return value;
     }
+
 };

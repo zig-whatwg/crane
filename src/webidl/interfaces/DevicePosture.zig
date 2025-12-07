@@ -1,11 +1,12 @@
 //! Generated from: device-posture.idl
-//! Generated at: 2025-12-05T20:30:47Z
+//! Generated at: 2025-12-07T19:33:01Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
+const v8 = @import("v8");
 const DevicePostureImpl = @import("impls").DevicePosture;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -30,26 +31,28 @@ pub const DevicePosture = struct {
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{"Window"} } },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{};
-
+        pub const own_methods = .{
+        };
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -57,16 +60,17 @@ pub const DevicePosture = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -74,13 +78,14 @@ pub const DevicePosture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: DevicePostureType = undefined,
+            @"type": DevicePostureType = undefined,
             onchange: EventHandler = undefined,
             _internal: ?*DevicePostureImpl.InternalState = null,
         },
     );
 
     const delegates = .{
+
         .get_onchange = &get_onchange,
         .get_type = &get_type,
 
@@ -111,4 +116,5 @@ pub const DevicePosture = struct {
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try DevicePostureImpl.set_onchange(instance, value);
     }
+
 };
