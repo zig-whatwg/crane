@@ -88,42 +88,42 @@ fn printConsoleValues(ctx: runtime.Context, data: []const runtime.ConsoleValue) 
 /// console.log(data...)
 ///
 /// WHATWG Console Standard: Logger("log", data)
-pub fn call_log(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     printConsoleValues(ctx, data);
 }
 
 /// console.info(data...)
 ///
 /// WHATWG Console Standard: Logger("info", data)
-pub fn call_info(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_info(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     printConsoleValues(ctx, data);
 }
 
 /// console.debug(data...)
 ///
 /// WHATWG Console Standard: Logger("debug", data)
-pub fn call_debug(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_debug(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     printConsoleValues(ctx, data);
 }
 
 /// console.warn(data...)
 ///
 /// WHATWG Console Standard: Logger("warn", data)
-pub fn call_warn(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_warn(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     printConsoleValues(ctx, data);
 }
 
 /// console.error(data...)
 ///
 /// WHATWG Console Standard: Logger("error", data)
-pub fn call_error(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     printConsoleValues(ctx, data);
 }
 
 /// console.trace(data...)
 ///
 /// WHATWG Console Standard: Log with stack trace
-pub fn call_trace(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_trace(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     if (data.len > 0) {
         printConsoleValues(ctx, data);
     } else {
@@ -135,7 +135,7 @@ pub fn call_trace(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void 
 /// console.assert(condition, data...)
 ///
 /// WHATWG Console Standard: If !condition, Logger("assert", data)
-pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const v8.JSValue) anyerror!void {
+pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const runtime.JSValue) anyerror!void {
     const cond = if (condition.wasPassed()) condition.value else true;
     if (!cond) {
         const indent = getIndent(ctx);
@@ -160,7 +160,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
 /// console.group(data...)
 ///
 /// WHATWG Console Standard: Push new group onto stack
-pub fn call_group(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     // Print group header with data
     if (data.len > 0) {
         printConsoleValues(ctx, data);
@@ -174,7 +174,7 @@ pub fn call_group(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void 
 /// console.groupCollapsed(data...)
 ///
 /// WHATWG Console Standard: Same as group() but collapsed by default
-pub fn call_groupCollapsed(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_groupCollapsed(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     // Same implementation as group (collapsed state is UI concern)
     return call_group(ctx, data);
 }
@@ -210,7 +210,7 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
 /// console.timeLog(label, data...)
 ///
 /// WHATWG Console Standard: Log elapsed time for label
-pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const v8.JSValue) anyerror!void {
+pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const runtime.JSValue) anyerror!void {
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     if (ctx.console_state.timer_table.get(label_str)) |start_time| {
@@ -303,7 +303,7 @@ pub fn call_clear(ctx: runtime.Context) anyerror!void {
 /// console.table(tabularData, properties)
 ///
 /// WHATWG Console Standard: Display tabular data
-pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(v8.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = tabularData; // TODO: Format as ASCII table
     _ = properties;
     printIndented(ctx, "(table)", .{});
@@ -312,7 +312,7 @@ pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(v8.JSValue), pro
 /// console.dir(item, options)
 ///
 /// WHATWG Console Standard: Display object properties
-pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(v8.JSValue), options: webidl.Opt(?v8.JSValue)) anyerror!void {
+pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = item; // TODO: Inspect object properties
     _ = options;
     printIndented(ctx, "(dir)", .{});
@@ -321,7 +321,7 @@ pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(v8.JSValue), options: web
 /// console.dirxml(data...)
 ///
 /// WHATWG Console Standard: Display XML/HTML representation
-pub fn call_dirxml(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     _ = data; // TODO: Format as XML/HTML
     printIndented(ctx, "(dirxml)", .{});
 }

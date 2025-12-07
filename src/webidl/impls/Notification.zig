@@ -176,7 +176,7 @@ pub fn get_requireInteraction(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

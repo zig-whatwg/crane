@@ -77,7 +77,7 @@ pub fn call_beginQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, 
 }
 
 /// Operation: getQueryObjectEXT
-pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = query;
     _ = pname;
@@ -85,7 +85,7 @@ pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Insta
 }
 
 /// Operation: getQueryEXT
-pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getQueryEXT(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = target;
     _ = pname;

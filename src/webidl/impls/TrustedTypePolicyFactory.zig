@@ -122,7 +122,7 @@ pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMStr
 
 /// Operation: isHTML
 /// Per spec: "boolean isHTML(any value)"
-pub fn call_isHTML(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+pub fn call_isHTML(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
     _ = instance;
     // Check if value is a TrustedHTML instance
     // In JS integration, this would check the internal slot
@@ -133,7 +133,7 @@ pub fn call_isHTML(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool
 
 /// Operation: isScript
 /// Per spec: "boolean isScript(any value)"
-pub fn call_isScript(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+pub fn call_isScript(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
     _ = instance;
     _ = value;
     return false;
@@ -141,7 +141,7 @@ pub fn call_isScript(instance: *runtime.Instance, value: v8.JSValue) anyerror!bo
 
 /// Operation: isScriptURL
 /// Per spec: "boolean isScriptURL(any value)"
-pub fn call_isScriptURL(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+pub fn call_isScriptURL(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
     _ = instance;
     _ = value;
     return false;

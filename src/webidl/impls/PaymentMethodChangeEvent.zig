@@ -62,7 +62,7 @@ pub fn get_methodName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for methodDetails
-pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?v8.JSValue {
+pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

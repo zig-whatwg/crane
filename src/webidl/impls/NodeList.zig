@@ -172,7 +172,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// Operation: forEach(callback)
 /// Spec: https://webidl.spec.whatwg.org/#es-forEach
 /// Calls callback for each node in the list
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return;
     _ = callback;
 

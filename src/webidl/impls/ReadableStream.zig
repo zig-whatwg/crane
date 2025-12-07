@@ -148,7 +148,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///    2. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 ///    3. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 ///    4. Perform ? SetUpReadableStreamDefaultControllerFromUnderlyingSource(...)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(*const anyopaque), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Get event loop from context (required for async operations)
     const loop = try ctx.getEventLoop();
 
@@ -689,7 +689,7 @@ pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
 /// 4. Let cancelAlgorithm = steps that call IteratorReturn
 /// 5. SetUpReadableStreamDefaultController with pullAlgorithm and cancelAlgorithm
 /// 6. Return stream
-pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
     const allocator = instance.ctx.getAllocator();
 
     // Step 1: Create new ReadableStream instance
@@ -911,7 +911,7 @@ fn unwrapV8Instance(v8_ptr: *const anyopaque) !?*runtime.Instance {
 /// 6. If reader is not undefined and reader implements ReadableStreamBYOBReader, [handle BYOB]
 /// 7. Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
 /// 8. Return result of reacting to sourceCancelPromise with fulfillment step that returns undefined
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

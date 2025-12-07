@@ -66,7 +66,7 @@ pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

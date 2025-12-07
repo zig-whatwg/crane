@@ -417,7 +417,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!*const anyopaque {
 }
 
 /// Operation: getStartDate
-pub fn call_getStartDate(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_getStartDate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

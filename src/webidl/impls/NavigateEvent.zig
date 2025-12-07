@@ -275,7 +275,7 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 
 /// Getter for info
 /// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
-pub fn get_info(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.info orelse error.InvalidStateError;
 }

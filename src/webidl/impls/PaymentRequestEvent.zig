@@ -80,7 +80,7 @@ pub fn get_methodData(instance: *runtime.Instance) anyerror!*const anyopaque {
 }
 
 /// Getter for total
-pub fn get_total(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_total(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -92,7 +92,7 @@ pub fn get_modifiers(instance: *runtime.Instance) anyerror!*const anyopaque {
 }
 
 /// Getter for paymentOptions
-pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?v8.JSValue {
+pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -104,7 +104,7 @@ pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!?*const anyopaq
 }
 
 /// Operation: changePaymentMethod
-pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime.DOMString, methodDetails: webidl.Opt(?v8.JSValue)) anyerror!*const anyopaque {
+pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: runtime.DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!*const anyopaque {
     _ = instance;
     _ = methodName;
     _ = methodDetails;

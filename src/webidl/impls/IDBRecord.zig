@@ -41,19 +41,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryKey
-pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

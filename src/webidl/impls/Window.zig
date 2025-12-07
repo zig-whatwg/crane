@@ -482,7 +482,7 @@ pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
 
 /// Getter for opener
 /// Per spec: Returns the WindowProxy of the opener browsing context.
-pub fn get_opener(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If disowned, return null (represented as NotImplemented for non-nullable pointer)
@@ -1785,7 +1785,7 @@ pub fn set_status(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 ///
 /// Note: Per spec, setting to non-null values is allowed but has no effect
 /// (the attribute is marked as settable but browsers ignore non-null assignments)
-pub fn set_opener(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if value represents null
@@ -2765,7 +2765,7 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
     _ = instance;
     _ = message;
     _ = targetOrigin;
@@ -2837,7 +2837,7 @@ pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 }
 
 /// Operation: setTimeout
-pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;
@@ -3020,7 +3020,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
-pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!v8.JSValue {
+pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     _ = options;
@@ -3213,7 +3213,7 @@ pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMS
 }
 
 /// Operation: reportError
-pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
+pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = e;
     return error.NotImplemented;
@@ -3235,7 +3235,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 }
 
 /// Operation: setInterval
-pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
     _ = instance;
     _ = handler;
     _ = timeout;

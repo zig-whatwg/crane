@@ -89,7 +89,7 @@ pub fn get_blockFragmentationType(instance: *runtime.Instance) anyerror!enums.Bl
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

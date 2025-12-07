@@ -801,7 +801,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
-pub fn call_json(instance: *runtime.Instance, data: v8.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
+pub fn call_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
     _ = data;
     _ = init_data;
     const state = instance.getState(State);

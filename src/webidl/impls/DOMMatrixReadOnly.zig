@@ -316,7 +316,7 @@ pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*ru
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

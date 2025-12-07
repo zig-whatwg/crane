@@ -238,7 +238,7 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// 1. Let state = this.[[stream]].[[state]]
 /// 2. If state is not "writable", return
 /// 3. Perform WritableStreamDefaultControllerError(this, e)
-pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

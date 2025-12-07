@@ -77,7 +77,7 @@ pub fn get_interactionId(instance: *runtime.Instance) anyerror!u64 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

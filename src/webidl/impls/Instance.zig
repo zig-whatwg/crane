@@ -43,7 +43,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &Instance.vtable, ctx);
     errdefer deinit(instance);
@@ -56,7 +56,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, modu
 }
 
 /// Getter for exports
-pub fn get_exports(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_exports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for token
-pub fn get_token(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_token(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

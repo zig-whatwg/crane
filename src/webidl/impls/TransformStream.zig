@@ -94,7 +94,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 6.1 "The new TransformStream(transformer, writableStrategy, readableStrategy) constructor steps"
 ///
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(v8.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(runtime.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &TransformStream.vtable, ctx);
     errdefer deinit(instance);

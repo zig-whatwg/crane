@@ -47,7 +47,7 @@ pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

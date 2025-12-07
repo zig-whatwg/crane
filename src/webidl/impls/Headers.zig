@@ -276,7 +276,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: ru
 
 /// forEach(callback)
 /// Iterator support - called by V8 for Symbol.iterator
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

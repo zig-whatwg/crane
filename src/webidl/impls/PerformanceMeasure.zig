@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for detail
-pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

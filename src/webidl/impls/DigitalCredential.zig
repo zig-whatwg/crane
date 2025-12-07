@@ -47,13 +47,13 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

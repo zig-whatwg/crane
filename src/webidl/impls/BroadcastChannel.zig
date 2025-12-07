@@ -92,7 +92,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = message;
     return error.NotImplemented;

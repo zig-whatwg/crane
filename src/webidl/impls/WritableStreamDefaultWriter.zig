@@ -174,7 +174,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -198,7 +198,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) a
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

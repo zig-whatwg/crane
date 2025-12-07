@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;

@@ -58,7 +58,7 @@ pub fn get_usableWithDarkBackground(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

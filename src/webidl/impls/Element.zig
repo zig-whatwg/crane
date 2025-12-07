@@ -2894,7 +2894,7 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(d
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
 ///
 /// Note: Returns null - requires Web Animations API and rendering engine
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;

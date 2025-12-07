@@ -60,7 +60,7 @@ pub fn get_onkeyframerequest(instance: *runtime.Instance) anyerror!typedefs.Even
 }
 
 /// Getter for options
-pub fn get_options(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_options(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

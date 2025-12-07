@@ -258,7 +258,7 @@ pub fn get_responseType(instance: *runtime.Instance) anyerror!enums.XMLHttpReque
 
 /// Getter for response
 /// TODO: Implement full response object handling
-pub fn get_response(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

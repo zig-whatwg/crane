@@ -203,7 +203,7 @@ pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
 ///        It must initially be initialized to undefined."
 /// Note: Returns a pointer or null, represented as an anyopaque pointer.
 ///       Null is represented by returning a special "undefined" marker pointer.
-pub fn get_error(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse {
         // Return a marker for "undefined" - caller must handle this
         return @as(*const anyopaque, @ptrCast(&undefined_marker));

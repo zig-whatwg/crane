@@ -119,7 +119,7 @@ pub fn get_activationStart(instance: *runtime.Instance) anyerror!typedefs.DOMHig
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

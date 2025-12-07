@@ -56,7 +56,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

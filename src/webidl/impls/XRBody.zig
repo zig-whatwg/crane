@@ -53,7 +53,7 @@ pub fn call_get(instance: *runtime.Instance, key: enums.XRBodyJoint) anyerror!*r
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

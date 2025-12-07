@@ -169,7 +169,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 /// 6. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 /// 7. Perform ? SetUpWritableStreamDefaultControllerFromUnderlyingSink(...)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(*const anyopaque), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
@@ -291,7 +291,7 @@ pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Steps:
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. Return ! WritableStreamAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -43,7 +43,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?*const anyopaque), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: runtime.DOMString, effects: webidl.Opt(?*const anyopaque), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &WorkletAnimation.vtable, ctx);
     errdefer deinit(instance);

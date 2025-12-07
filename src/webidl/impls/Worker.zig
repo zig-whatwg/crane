@@ -241,7 +241,7 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 ///
 /// The message is serialized using the structured clone algorithm and
 /// sent to the worker's message queue.
-pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.terminated) {

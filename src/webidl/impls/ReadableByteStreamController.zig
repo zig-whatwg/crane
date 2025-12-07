@@ -357,7 +357,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView
 /// Operation: error
 ///
 /// Spec: § 4.7.3 "The error(e) method steps are:"
-pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

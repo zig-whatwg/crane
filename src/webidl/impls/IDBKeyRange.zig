@@ -85,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for lower
 ///
 /// Returns the lower bound of the range, or undefined if no lower bound.
-pub fn get_lower(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_lower(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -101,7 +101,7 @@ pub fn get_lower(instance: *runtime.Instance) anyerror!v8.JSValue {
 /// Getter for upper
 ///
 /// Returns the upper bound of the range, or undefined if no upper bound.
-pub fn get_upper(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_upper(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -137,7 +137,7 @@ pub fn get_upperOpen(instance: *runtime.Instance) anyerror!bool {
 /// Creates a key range containing only a single key.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-only
-pub fn call_only(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -163,7 +163,7 @@ pub fn call_only(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runti
 /// Returns true if the given key is within this range.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-includes
-pub fn call_includes(instance: *runtime.Instance, key: v8.JSValue) anyerror!bool {
+pub fn call_includes(instance: *runtime.Instance, key: runtime.JSValue) anyerror!bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -178,7 +178,7 @@ pub fn call_includes(instance: *runtime.Instance, key: v8.JSValue) anyerror!bool
 /// Creates a key range with both lower and upper bounds.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-bound
-pub fn call_bound(instance: *runtime.Instance, lower: v8.JSValue, upper: v8.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
+pub fn call_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -212,7 +212,7 @@ pub fn call_bound(instance: *runtime.Instance, lower: v8.JSValue, upper: v8.JSVa
 /// Creates a key range with only an upper bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-upperbound
-pub fn call_upperBound(instance: *runtime.Instance, upper: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+pub fn call_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
@@ -239,7 +239,7 @@ pub fn call_upperBound(instance: *runtime.Instance, upper: v8.JSValue, open: web
 /// Creates a key range with only a lower bound.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbkeyrange-lowerbound
-pub fn call_lowerBound(instance: *runtime.Instance, lower: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+pub fn call_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 

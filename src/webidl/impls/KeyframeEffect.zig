@@ -107,7 +107,7 @@ pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.Iteratio
 }
 
 /// Operation: setKeyframes
-pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?v8.JSValue) anyerror!void {
+pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = keyframes;
     return error.NotImplemented;

@@ -67,25 +67,25 @@ pub fn get_behavior(instance: *runtime.Instance) anyerror!enums.AnimationTrigger
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeStart
-pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_exitRangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for exitRangeEnd
-pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_exitRangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,28 +105,28 @@ pub fn set_behavior(instance: *runtime.Instance, value: enums.AnimationTriggerBe
 }
 
 /// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeStart
-pub fn set_exitRangeStart(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_exitRangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for exitRangeEnd
-pub fn set_exitRangeEnd(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_exitRangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

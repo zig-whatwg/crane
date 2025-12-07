@@ -454,7 +454,7 @@ pub fn call_sort(instance: *runtime.Instance) anyerror!void {
 
 /// forEach method
 /// Spec: WebIDL iterable forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = callback;
 

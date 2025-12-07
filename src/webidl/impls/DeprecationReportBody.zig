@@ -47,7 +47,7 @@ pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for anticipatedRemoval
-pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!?v8.JSValue {
+pub fn get_anticipatedRemoval(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -77,7 +77,7 @@ pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

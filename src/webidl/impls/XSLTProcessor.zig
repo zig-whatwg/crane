@@ -147,7 +147,7 @@ pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.In
 
 /// Operation: setParameter
 /// Sets a parameter for the XSLT transformation
-pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: v8.JSValue) anyerror!void {
+pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -166,7 +166,7 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
 
 /// Operation: getParameter
 /// Gets a parameter value
-pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!v8.JSValue {
+pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

@@ -151,7 +151,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// - Returns a DOMString if binaryType is "blob" and message was text
 /// - Returns a Blob if binaryType is "blob" and message was binary
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
-pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     return state.own.data;
 }
@@ -201,7 +201,7 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
 ///
 /// This is a legacy method for initializing MessageEvent.
 /// New code should use the constructor instead.
-pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(v8.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
     const state = instance.getState(State);
 
     // Update event properties (Event fields in state.base.own)

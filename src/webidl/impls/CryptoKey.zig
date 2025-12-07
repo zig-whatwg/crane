@@ -53,13 +53,13 @@ pub fn get_extractable(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for algorithm
-pub fn get_algorithm(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for usages
-pub fn get_usages(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

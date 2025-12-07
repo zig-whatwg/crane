@@ -192,7 +192,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// Operation: cancel
 ///
 /// Spec: § 4.5.3 "The cancel(reason) method steps are:"
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

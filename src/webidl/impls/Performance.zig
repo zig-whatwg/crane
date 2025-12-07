@@ -202,7 +202,7 @@ pub fn call_now(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeSta
 ///
 /// Returns a JSON representation with timeOrigin.
 /// Note: Returns anyopaque for now, V8 bindings will convert to proper JSON.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // For now, return a placeholder. The V8 bindings will need to
     // construct a proper JSON object with { timeOrigin: <value> }
     // TODO: Implement proper JSON serialization when V8 bindings support it

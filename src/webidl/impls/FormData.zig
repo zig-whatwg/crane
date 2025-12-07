@@ -329,7 +329,7 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata
 /// Iterates over all entries in the FormData.
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Callback is a function pointer from V8

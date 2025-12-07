@@ -53,7 +53,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

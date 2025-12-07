@@ -67,7 +67,7 @@ pub fn get_keyID(instance: *runtime.Instance) anyerror!?typedefs.CryptoKeyID {
 }
 
 /// Getter for frame
-pub fn get_frame(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_frame(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

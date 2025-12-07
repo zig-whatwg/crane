@@ -70,7 +70,7 @@ pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) any
 }
 
 /// Operation: getArg
-pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!v8.JSValue {
+pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!runtime.JSValue {
     _ = instance;
     _ = index;
     return error.NotImplemented;

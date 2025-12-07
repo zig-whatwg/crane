@@ -54,13 +54,13 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!enums.IDBCursorDirect
 }
 
 /// Getter for key
-pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for primaryKey
-pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -78,14 +78,14 @@ pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: continue
-pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(v8.JSValue)) anyerror!void {
+pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = key;
     return error.NotImplemented;
 }
 
 /// Operation: continuePrimaryKey
-pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: v8.JSValue, primaryKey: v8.JSValue) anyerror!void {
+pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: runtime.JSValue, primaryKey: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = key;
     _ = primaryKey;
@@ -93,7 +93,7 @@ pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: v8.JSValue, pri
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_update(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;

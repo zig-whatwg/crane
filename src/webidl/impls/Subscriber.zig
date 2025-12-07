@@ -53,7 +53,7 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: error
-pub fn call_error(instance: *runtime.Instance, @"error": v8.JSValue) anyerror!void {
+pub fn call_error(instance: *runtime.Instance, @"error": runtime.JSValue) anyerror!void {
     _ = instance;
     _ = @"error";
     return error.NotImplemented;
@@ -73,7 +73,7 @@ pub fn call_addTeardown(instance: *runtime.Instance, teardown: callbacks.VoidFun
 }
 
 /// Operation: next
-pub fn call_next(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn call_next(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

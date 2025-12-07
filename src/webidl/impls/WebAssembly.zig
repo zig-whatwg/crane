@@ -14,7 +14,7 @@ pub fn call_compile(ctx: runtime.Context, bytes: *const anyopaque, options: webi
     return error.NotImplemented;
 }
 
-pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: webidl.Opt(v8.JSValue), options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = ctx;
     _ = bytes;
     _ = importObject;
@@ -22,7 +22,7 @@ pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runti
     return error.NotImplemented;
 }
 
-pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
     _ = ctx;
     _ = moduleObject;
     _ = importObject;

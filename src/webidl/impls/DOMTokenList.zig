@@ -351,7 +351,7 @@ pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anye
 
 /// Operation: forEach(callback)
 /// Spec: https://webidl.spec.whatwg.org/#es-forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return;
     _ = callback;
 

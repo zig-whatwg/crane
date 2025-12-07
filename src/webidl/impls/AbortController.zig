@@ -100,7 +100,7 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Operation: abort
 ///
 /// Spec: § 3.2.3 "The abort(reason) method steps are to signal abort on this's signal with reason"
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!void {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

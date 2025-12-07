@@ -54,7 +54,7 @@ pub fn get_methodName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for details
-pub fn get_details(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_details(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -111,7 +111,7 @@ pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.Payme
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

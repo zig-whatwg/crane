@@ -65,7 +65,7 @@ pub fn get_contextUrl(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for document
-pub fn get_document(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_document(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,7 +83,7 @@ pub fn get_profile(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Setter for document
-pub fn set_document(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_document(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

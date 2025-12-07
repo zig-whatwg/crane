@@ -93,7 +93,7 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for keyPath
-pub fn get_keyPath(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -146,7 +146,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 }
 
 /// Operation: put
-pub fn call_put(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+pub fn call_put(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -176,7 +176,7 @@ pub fn call_put(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+pub fn call_add(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -203,7 +203,7 @@ pub fn call_add(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_delete(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -249,7 +249,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_get(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -272,7 +272,7 @@ pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtim
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -295,7 +295,7 @@ pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*run
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -312,7 +312,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JS
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;
@@ -343,7 +343,7 @@ pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dicti
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -366,7 +366,7 @@ pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) an
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
@@ -398,7 +398,7 @@ pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal.store orelse return error.InvalidState;

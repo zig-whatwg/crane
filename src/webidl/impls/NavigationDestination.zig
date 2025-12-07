@@ -218,7 +218,7 @@ pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
 
 /// Operation: getState()
 /// HTML Standard §7.2.6.5: Returns the state that will be set on the entry
-pub fn call_getState(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return the state pointer, or sentinel for undefined

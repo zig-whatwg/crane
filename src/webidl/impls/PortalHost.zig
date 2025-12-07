@@ -68,7 +68,7 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, options: webidl.Opt(dictionaries.PostMessageOptions)) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.PostMessageOptions)) anyerror!void {
     _ = instance;
     _ = message;
     _ = options;

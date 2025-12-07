@@ -54,7 +54,7 @@ pub fn get_objectStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for keyPath
-pub fn get_keyPath(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -79,7 +79,7 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -87,7 +87,7 @@ pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JS
 }
 
 /// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;
@@ -102,28 +102,28 @@ pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dicti
 }
 
 /// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+pub fn call_get(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = query;
     return error.NotImplemented;
 }
 
 /// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
     _ = instance;
     _ = queryOrOptions;
     _ = count;
@@ -131,7 +131,7 @@ pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v
 }
 
 /// Operation: openCursor
-pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
+pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
     _ = instance;
     _ = query;
     _ = direction;

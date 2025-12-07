@@ -264,7 +264,7 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for valueAsDate
-pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?v8.JSValue {
+pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -597,7 +597,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for valueAsDate
-pub fn set_valueAsDate(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+pub fn set_valueAsDate(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

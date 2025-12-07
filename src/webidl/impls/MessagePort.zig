@@ -192,7 +192,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 ///
 /// Posts a message to the entangled port. For Streams transfer, we use
 /// simplified messages with type and value.
-pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
     _ = transfer; // Transfer semantics simplified for now
 
     const state = instance.getState(State);

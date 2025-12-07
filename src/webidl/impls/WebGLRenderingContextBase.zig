@@ -176,7 +176,7 @@ pub fn call_blendFunc(instance: *runtime.Instance, sfactor: typedefs.GLenum, dfa
 }
 
 /// Operation: getFramebufferAttachmentParameter
-pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: typedefs.GLenum, attachment: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = target;
     _ = attachment;
@@ -319,7 +319,7 @@ pub fn call_isShader(instance: *runtime.Instance, shader: ?*runtime.Instance) an
 }
 
 /// Operation: getParameter
-pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = pname;
     return error.NotImplemented;
@@ -371,7 +371,7 @@ pub fn call_renderbufferStorage(instance: *runtime.Instance, target: typedefs.GL
 }
 
 /// Operation: getVertexAttrib
-pub fn call_getVertexAttrib(instance: *runtime.Instance, index: typedefs.GLuint, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getVertexAttrib(instance: *runtime.Instance, index: typedefs.GLuint, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = index;
     _ = pname;
@@ -504,7 +504,7 @@ pub fn call_useProgram(instance: *runtime.Instance, program: ?*runtime.Instance)
 }
 
 /// Operation: getTexParameter
-pub fn call_getTexParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getTexParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -606,7 +606,7 @@ pub fn call_checkFramebufferStatus(instance: *runtime.Instance, target: typedefs
 }
 
 /// Operation: getRenderbufferParameter
-pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -768,7 +768,7 @@ pub fn call_uniform1f(instance: *runtime.Instance, location: ?*runtime.Instance,
 }
 
 /// Operation: getExtension
-pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?v8.JSValue {
+pub fn call_getExtension(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
     _ = instance;
     _ = name;
     return null;
@@ -828,7 +828,7 @@ pub fn call_getAttribLocation(instance: *runtime.Instance, program: *runtime.Ins
 }
 
 /// Operation: getProgramParameter
-pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = program;
     _ = pname;
@@ -920,7 +920,7 @@ pub fn call_getVertexAttribOffset(instance: *runtime.Instance, index: typedefs.G
 }
 
 /// Operation: getShaderParameter
-pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = shader;
     _ = pname;
@@ -983,7 +983,7 @@ pub fn call_getShaderPrecisionFormat(instance: *runtime.Instance, shadertype: ty
 }
 
 /// Operation: getBufferParameter
-pub fn call_getBufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!v8.JSValue {
+pub fn call_getBufferParameter(instance: *runtime.Instance, target: typedefs.GLenum, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = target;
     _ = pname;
@@ -1038,7 +1038,7 @@ pub fn call_attachShader(instance: *runtime.Instance, program: *runtime.Instance
 }
 
 /// Operation: getUniform
-pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!v8.JSValue {
+pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = program;
     _ = location;

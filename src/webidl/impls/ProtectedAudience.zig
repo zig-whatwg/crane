@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: queryFeatureSupport
-pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!v8.JSValue {
+pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = feature;
     return error.NotImplemented;

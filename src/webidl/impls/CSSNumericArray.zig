@@ -46,7 +46,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {
+pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = callback;
     return error.NotImplemented;

@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: resolve
-pub fn call_resolve(instance: *runtime.Instance, token: v8.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
+pub fn call_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = token;
     _ = options;

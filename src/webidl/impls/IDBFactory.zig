@@ -213,7 +213,7 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
 /// -  1 if first > second
 /// - -1 if first < second
 /// -  0 if first == second
-pub fn call_cmp(instance: *runtime.Instance, first: v8.JSValue, second: v8.JSValue) anyerror!i16 {
+pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: runtime.JSValue) anyerror!i16 {
     const state = instance.getState(State);
     _ = state.own._internal orelse return error.InvalidState;
 

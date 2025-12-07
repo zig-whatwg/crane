@@ -1046,7 +1046,7 @@ pub fn closest(
 
 /// prepend - Inserts nodes before the first child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1066,7 +1066,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) an
 
 /// append - Inserts nodes after the last child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1081,7 +1081,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) any
 
 /// replaceChildren - Replaces all children with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document

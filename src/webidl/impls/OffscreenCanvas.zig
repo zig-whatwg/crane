@@ -108,7 +108,7 @@ pub fn set_oncontextrestored(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: getContext
-pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(v8.JSValue)) anyerror!?typedefs.OffscreenRenderingContext {
+pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRenderingContextId, options: webidl.Opt(runtime.JSValue)) anyerror!?typedefs.OffscreenRenderingContext {
     _ = instance;
     _ = contextId;
     _ = options;
