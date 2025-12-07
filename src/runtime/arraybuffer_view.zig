@@ -9,6 +9,7 @@
 const std = @import("std");
 const v8_mod = @import("v8");
 const ffi = v8_mod.ffi;
+const pointer_tag = v8_mod.pointer_tag;
 
 /// Simple ArrayBuffer representation for Streams BYOB operations
 ///
@@ -113,7 +114,8 @@ fn getViewTypeFromV8(value: *ffi.Value) ?ViewType {
 ///
 /// This function introspects the view using V8 APIs.
 pub fn getViewMetadata(view: *const anyopaque) !ViewMetadata {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // Determine view type
     const view_type = getViewTypeFromV8(v8_value) orelse return error.TypeError;
@@ -151,7 +153,8 @@ pub fn getViewMetadata(view: *const anyopaque) !ViewMetadata {
 ///
 /// Spec: Used in ReadableByteStreamController algorithms
 pub fn getViewElementSize(view: *const anyopaque) u64 {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
     const view_type = getViewTypeFromV8(v8_value) orelse return 1;
     return view_type.elementSize();
 }
@@ -161,7 +164,8 @@ pub fn getViewElementSize(view: *const anyopaque) u64 {
 /// Spec: TypedArray.prototype.byteOffset
 ///       DataView.prototype.byteOffset
 pub fn getViewByteOffset(view: *const anyopaque) u64 {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
     const offset = ffi.v8_TypedArray_ByteOffset(v8_value);
     return @intCast(offset);
 }
@@ -171,7 +175,8 @@ pub fn getViewByteOffset(view: *const anyopaque) u64 {
 /// Spec: TypedArray.prototype.byteLength
 ///       DataView.prototype.byteLength
 pub fn getViewByteLength(view: *const anyopaque) u64 {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
     const length = ffi.v8_TypedArray_ByteLength(v8_value);
     return @intCast(length);
 }
@@ -180,7 +185,8 @@ pub fn getViewByteLength(view: *const anyopaque) u64 {
 ///
 /// Spec: IsDetachedBuffer abstract operation
 pub fn isViewDetached(view: *const anyopaque) bool {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // Get buffer and check if detached
     const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return true;
@@ -193,7 +199,8 @@ pub fn isViewDetached(view: *const anyopaque) bool {
 ///
 /// Spec: ArrayBuffer.prototype.byteLength (of the viewed buffer)
 pub fn getViewBufferByteLength(view: *const anyopaque) u64 {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // Get buffer
     const buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse return 0;
@@ -206,7 +213,8 @@ pub fn getViewBufferByteLength(view: *const anyopaque) u64 {
 ///
 /// Returns the ViewType enum identifying which TypedArray or DataView this is.
 pub fn getViewConstructor(view: *const anyopaque) ViewType {
-    const v8_value: *ffi.Value = @ptrCast(@alignCast(@constCast(view)));
+    const untagged = pointer_tag.untagPointer(view);
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
     return getViewTypeFromV8(v8_value) orelse .uint8_array;
 }
 
