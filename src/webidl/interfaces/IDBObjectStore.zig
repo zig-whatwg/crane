@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBObjectStoreImpl = @import("impls").IDBObjectStore;
 const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
@@ -109,7 +107,7 @@ pub const IDBObjectStore = struct {
         Meta.MixinTypes,
         struct {
             name: runtime.DOMString = undefined,
-            keyPath: v8.JSValue = undefined,
+            keyPath: runtime.JSValue = undefined,
             indexNames: *runtime.Instance = undefined,
             transaction: *runtime.Instance = undefined,
             autoIncrement: bool = undefined,
@@ -166,7 +164,7 @@ pub const IDBObjectStore = struct {
         try IDBObjectStoreImpl.set_name(instance, value);
     }
 
-    pub fn get_keyPath(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBObjectStoreImpl.get_keyPath(instance);
     }
 
@@ -191,7 +189,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_delete(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_delete(instance, query);
@@ -203,7 +201,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -212,7 +210,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
+    pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
@@ -224,14 +222,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_count(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_add(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_add(instance, value, key);
@@ -244,14 +242,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(v8.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
+    pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_openCursor(instance, query, direction);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(v8.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on count
         if (!runtime.isInRange(u32, count)) return error.TypeError;
@@ -260,7 +258,7 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_put(instance: *runtime.Instance, value: v8.JSValue, key: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_put(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_put(instance, value, key);
@@ -274,14 +272,14 @@ pub const IDBObjectStore = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getKey(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_getKey(instance, query);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, query: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_get(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBObjectStoreImpl.call_get(instance, query);

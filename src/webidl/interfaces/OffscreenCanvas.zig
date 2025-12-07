@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const OffscreenCanvasImpl = @import("impls").OffscreenCanvas;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -173,7 +171,7 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(v8.JSValue)) anyerror!?OffscreenRenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(runtime.JSValue)) anyerror!?OffscreenRenderingContext {
         
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }

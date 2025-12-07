@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CustomEventImpl = @import("impls").CustomEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -72,7 +70,7 @@ pub const CustomEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: v8.JSValue = undefined,
+            detail: runtime.JSValue = undefined,
             _internal: ?*CustomEventImpl.InternalState = null,
         },
     );
@@ -103,11 +101,11 @@ pub const CustomEvent = struct {
         return try CustomEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CustomEventImpl.get_detail(instance);
     }
 
-    pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try CustomEventImpl.call_initCustomEvent(instance, @"type", bubbles, cancelable, detail);
     }

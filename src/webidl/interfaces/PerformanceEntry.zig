@@ -1,12 +1,10 @@
 //! Generated from: performance-timeline.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PerformanceEntryImpl = @import("impls").PerformanceEntry;
 const mixins = @import("mixins");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -135,7 +133,7 @@ pub const PerformanceEntry = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceEntryImpl.call_toJSON(instance);
     }
 

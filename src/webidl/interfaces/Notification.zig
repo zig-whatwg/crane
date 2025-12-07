@@ -1,12 +1,10 @@
 //! Generated from: notifications.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const NotificationImpl = @import("impls").Notification;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -151,10 +149,10 @@ pub const Notification = struct {
             renotify: bool = undefined,
             silent: ?bool = null,
             requireInteraction: bool = undefined,
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             actions: runtime.FrozenArray(NotificationAction) = undefined,
             cached_vibrate: ?runtime.FrozenArray(unsignedlong) = null,
-            cached_data: ?v8.JSValue = null,
+            cached_data: ?runtime.JSValue = null,
             cached_actions: ?runtime.FrozenArray(NotificationAction) = null,
             _internal: ?*NotificationImpl.InternalState = null,
         },
@@ -317,7 +315,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_data) |cached| {

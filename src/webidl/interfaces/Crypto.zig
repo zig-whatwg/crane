@@ -1,12 +1,10 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CryptoImpl = @import("impls").Crypto;
 const mixins = @import("mixins");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;

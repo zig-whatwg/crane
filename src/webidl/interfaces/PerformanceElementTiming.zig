@@ -1,12 +1,10 @@
 //! Generated from: element-timing.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PerformanceElementTimingImpl = @import("impls").PerformanceElementTiming;
 const mixins = @import("mixins");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
@@ -180,7 +178,7 @@ pub const PerformanceElementTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceElementTimingImpl.call_toJSON(instance);
     }
 

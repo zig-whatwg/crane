@@ -1,12 +1,10 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WebGLRenderingContextImpl = @import("impls").WebGLRenderingContext;
 const mixins = @import("mixins");
 const WebGLRenderingContextBase = @import("interfaces").WebGLRenderingContextBase;
@@ -2746,7 +2744,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_blendFunc(instance, sfactor, dfactor);
     }
 
-    pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: GLenum, attachment: GLenum, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getFramebufferAttachmentParameter(instance: *runtime.Instance, target: GLenum, attachment: GLenum, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getFramebufferAttachmentParameter(instance, target, attachment, pname);
     }
@@ -2859,7 +2857,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_isShader(instance, shader);
     }
 
-    pub fn call_getParameter(instance: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getParameter(instance: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getParameter(instance, pname);
     }
@@ -2899,7 +2897,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_renderbufferStorage(instance, target, internalformat, width, height);
     }
 
-    pub fn call_getVertexAttrib(instance: *runtime.Instance, index: GLuint, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getVertexAttrib(instance: *runtime.Instance, index: GLuint, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getVertexAttrib(instance, index, pname);
     }
@@ -3003,7 +3001,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_bufferData(instance, target, size, usage);
     }
 
-    pub fn call_getTexParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getTexParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getTexParameter(instance, target, pname);
     }
@@ -3070,7 +3068,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_checkFramebufferStatus(instance, target);
     }
 
-    pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getRenderbufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getRenderbufferParameter(instance, target, pname);
     }
@@ -3186,7 +3184,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniformMatrix3fv(instance, location, transpose, value);
     }
 
-    pub fn call_getExtension(instance: *runtime.Instance, name: DOMString) anyerror!?v8.JSValue {
+    pub fn call_getExtension(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getExtension(instance, name);
     }
@@ -3226,7 +3224,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getAttribLocation(instance, program, name);
     }
 
-    pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getProgramParameter(instance: *runtime.Instance, program: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getProgramParameter(instance, program, pname);
     }
@@ -3286,7 +3284,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getVertexAttribOffset(instance, index, pname);
     }
 
-    pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getShaderParameter(instance: *runtime.Instance, shader: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getShaderParameter(instance, shader, pname);
     }
@@ -3327,7 +3325,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getShaderPrecisionFormat(instance, shadertype, precisiontype);
     }
 
-    pub fn call_getBufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getBufferParameter(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getBufferParameter(instance, target, pname);
     }
@@ -3367,7 +3365,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_uniform2iv(instance, location, v);
     }
 
-    pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, location: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getUniform(instance, program, location);
     }

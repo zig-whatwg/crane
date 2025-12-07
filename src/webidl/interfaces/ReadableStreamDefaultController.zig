@@ -1,12 +1,10 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ReadableStreamDefaultControllerImpl = @import("impls").ReadableStreamDefaultController;
 const mixins = @import("mixins");
 
@@ -95,7 +93,7 @@ pub const ReadableStreamDefaultController = struct {
         return try ReadableStreamDefaultControllerImpl.get_desiredSize(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try ReadableStreamDefaultControllerImpl.call_error(instance, e);
     }
@@ -104,7 +102,7 @@ pub const ReadableStreamDefaultController = struct {
         return try ReadableStreamDefaultControllerImpl.call_close(instance);
     }
 
-    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }

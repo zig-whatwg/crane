@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const HTMLCanvasElementImpl = @import("impls").HTMLCanvasElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -304,17 +302,17 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
     }
 
-    pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(v8.JSValue)) anyerror!?RenderingContext {
+    pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?RenderingContext {
         
         return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }
 
-    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(v8.JSValue)) anyerror!runtime.USVString {
+    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
         
         return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
 
-    pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
     }

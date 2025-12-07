@@ -1,12 +1,10 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const SubscriberImpl = @import("impls").Subscriber;
 const mixins = @import("mixins");
 const AbortSignal = @import("interfaces").AbortSignal;
@@ -108,7 +106,7 @@ pub const Subscriber = struct {
         return try SubscriberImpl.get_signal(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, @"error": v8.JSValue) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, @"error": runtime.JSValue) anyerror!void {
         
         return try SubscriberImpl.call_error(instance, @"error");
     }
@@ -122,7 +120,7 @@ pub const Subscriber = struct {
         return try SubscriberImpl.call_addTeardown(instance, teardown);
     }
 
-    pub fn call_next(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn call_next(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         
         return try SubscriberImpl.call_next(instance, value);
     }

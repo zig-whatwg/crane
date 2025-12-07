@@ -1,12 +1,10 @@
 //! Generated from: EXT_color_buffer_half_float.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const EXT_color_buffer_half_floatImpl = @import("impls").EXT_color_buffer_half_float;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;

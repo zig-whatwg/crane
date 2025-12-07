@@ -1,12 +1,10 @@
 //! Generated from: mediasession.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const MediaMetadataImpl = @import("impls").MediaMetadata;
 const mixins = @import("mixins");
 const MediaMetadataInit = @import("dictionaries").MediaMetadataInit;
@@ -72,7 +70,7 @@ pub const MediaMetadata = struct {
             title: runtime.DOMString = undefined,
             artist: runtime.DOMString = undefined,
             album: runtime.DOMString = undefined,
-            artwork: runtime.FrozenArray(v8.JSValue) = undefined,
+            artwork: runtime.FrozenArray(runtime.JSValue) = undefined,
             chapterInfo: runtime.FrozenArray(ChapterInformation) = undefined,
             cached_chapterInfo: ?runtime.FrozenArray(ChapterInformation) = null,
             _internal: ?*MediaMetadataImpl.InternalState = null,

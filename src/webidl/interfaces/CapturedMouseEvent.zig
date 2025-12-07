@@ -1,12 +1,10 @@
 //! Generated from: captured-mouse-events.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CapturedMouseEventImpl = @import("impls").CapturedMouseEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;

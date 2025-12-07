@@ -1,12 +1,10 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ReadableStreamImpl = @import("impls").ReadableStream;
 const mixins = @import("mixins");
 const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
@@ -83,7 +81,7 @@ pub const ReadableStream = struct {
         
         /// Async iterable declaration (for Symbol.asyncIterator support)
         pub const async_iterable = .{
-            .value_type = "v8.JSValue",
+            .value_type = "runtime.JSValue",
             .key_type = null,
             .options_type = "ReadableStreamIteratorOptions",
         };
@@ -125,7 +123,7 @@ pub const ReadableStream = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(v8.JSValue), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSource: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try ReadableStreamImpl.call_constructor(allocator, ctx, underlyingSource, strategy);
     }
@@ -144,7 +142,7 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
     }
 
-    pub fn call_from(instance: *runtime.Instance, asyncIterable: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
         
         return try ReadableStreamImpl.call_from(instance, asyncIterable);
     }
@@ -153,7 +151,7 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_tee(instance);
     }
 
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_cancel(instance, reason);
     }

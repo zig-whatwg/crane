@@ -1,12 +1,10 @@
 //! Generated from: payment-handler.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PaymentRequestEventImpl = @import("impls").PaymentRequestEvent;
 const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
@@ -108,9 +106,9 @@ pub const PaymentRequestEvent = struct {
             paymentRequestOrigin: runtime.USVString = undefined,
             paymentRequestId: runtime.DOMString = undefined,
             methodData: runtime.FrozenArray(PaymentMethodData) = undefined,
-            total: v8.JSValue = undefined,
+            total: runtime.JSValue = undefined,
             modifiers: runtime.FrozenArray(PaymentDetailsModifier) = undefined,
-            paymentOptions: ?v8.JSValue = null,
+            paymentOptions: ?runtime.JSValue = null,
             shippingOptions: ?runtime.FrozenArray(PaymentShippingOption) = null,
             _internal: ?*PaymentRequestEventImpl.InternalState = null,
         },
@@ -169,7 +167,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_methodData(instance);
     }
 
-    pub fn get_total(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_total(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.get_total(instance);
     }
 
@@ -177,7 +175,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_modifiers(instance);
     }
 
-    pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?v8.JSValue {
+    pub fn get_paymentOptions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try PaymentRequestEventImpl.get_paymentOptions(instance);
     }
 
@@ -185,7 +183,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_shippingOptions(instance);
     }
 
-    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?v8.JSValue)) anyerror!*const anyopaque {
+    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!*const anyopaque {
         
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }

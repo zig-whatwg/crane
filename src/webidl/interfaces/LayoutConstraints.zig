@@ -1,12 +1,10 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const LayoutConstraintsImpl = @import("impls").LayoutConstraints;
 const mixins = @import("mixins");
 const BlockFragmentationType = @import("enums").BlockFragmentationType;
@@ -83,7 +81,7 @@ pub const LayoutConstraints = struct {
             percentageBlockSize: f64 = undefined,
             blockFragmentationOffset: ?f64 = null,
             blockFragmentationType: BlockFragmentationType = undefined,
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             _internal: ?*LayoutConstraintsImpl.InternalState = null,
         },
     );
@@ -146,7 +144,7 @@ pub const LayoutConstraints = struct {
         return try LayoutConstraintsImpl.get_blockFragmentationType(instance);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try LayoutConstraintsImpl.get_data(instance);
     }
 

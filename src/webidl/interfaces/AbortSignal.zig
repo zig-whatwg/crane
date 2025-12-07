@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const AbortSignalImpl = @import("impls").AbortSignal;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -89,7 +87,7 @@ pub const AbortSignal = struct {
         Meta.MixinTypes,
         struct {
             aborted: bool = undefined,
-            reason: v8.JSValue = undefined,
+            reason: runtime.JSValue = undefined,
             onabort: EventHandler = undefined,
             _internal: ?*AbortSignalImpl.InternalState = null,
         },
@@ -123,7 +121,7 @@ pub const AbortSignal = struct {
         return try AbortSignalImpl.get_aborted(instance);
     }
 
-    pub fn get_reason(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try AbortSignalImpl.get_reason(instance);
     }
 
@@ -143,7 +141,7 @@ pub const AbortSignal = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try AbortSignalImpl.call_abort(instance, reason);

@@ -1,12 +1,10 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PortalHostImpl = @import("impls").PortalHost;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -123,7 +121,7 @@ pub const PortalHost = struct {
         try PortalHostImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
         
         return try PortalHostImpl.call_postMessage(instance, message, options);
     }

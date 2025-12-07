@@ -1,12 +1,10 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PaymentResponseImpl = @import("impls").PaymentResponse;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -101,7 +99,7 @@ pub const PaymentResponse = struct {
         struct {
             requestId: runtime.DOMString = undefined,
             methodName: runtime.DOMString = undefined,
-            details: v8.JSValue = undefined,
+            details: runtime.JSValue = undefined,
             shippingAddress: ?*runtime.Instance = null,
             shippingOption: ?runtime.DOMString = null,
             payerName: ?runtime.DOMString = null,
@@ -152,7 +150,7 @@ pub const PaymentResponse = struct {
         return try PaymentResponseImpl.get_methodName(instance);
     }
 
-    pub fn get_details(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_details(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentResponseImpl.get_details(instance);
     }
 
@@ -192,7 +190,7 @@ pub const PaymentResponse = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentResponseImpl.call_toJSON(instance);
     }
 

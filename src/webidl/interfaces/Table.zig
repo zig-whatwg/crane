@@ -1,12 +1,10 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const TableImpl = @import("impls").Table;
 const mixins = @import("mixins");
 const AddressValue = @import("typedefs").AddressValue;
@@ -95,7 +93,7 @@ pub const Table = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: TableDescriptor, value: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try TableImpl.call_constructor(allocator, ctx, descriptor, value);
     }
@@ -104,17 +102,17 @@ pub const Table = struct {
         return try TableImpl.get_length(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!v8.JSValue {
+    pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!runtime.JSValue {
         
         return try TableImpl.call_get(instance, index);
     }
 
-    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!AddressValue {
+    pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(runtime.JSValue)) anyerror!AddressValue {
         
         return try TableImpl.call_grow(instance, delta, value);
     }
 
-    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try TableImpl.call_set(instance, index, value);
     }

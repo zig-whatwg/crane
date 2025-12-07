@@ -1,12 +1,10 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-12-07T20:02:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const RTCRtpScriptTransformerImpl = @import("impls").RTCRtpScriptTransformer;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -87,7 +85,7 @@ pub const RTCRtpScriptTransformer = struct {
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
             onkeyframerequest: EventHandler = undefined,
-            options: v8.JSValue = undefined,
+            options: runtime.JSValue = undefined,
             _internal: ?*RTCRtpScriptTransformerImpl.InternalState = null,
         },
     );
@@ -134,7 +132,7 @@ pub const RTCRtpScriptTransformer = struct {
         try RTCRtpScriptTransformerImpl.set_onkeyframerequest(instance, value);
     }
 
-    pub fn get_options(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_options(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCRtpScriptTransformerImpl.get_options(instance);
     }
 

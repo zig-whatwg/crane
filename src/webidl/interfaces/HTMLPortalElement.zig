@@ -1,12 +1,10 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const HTMLPortalElementImpl = @import("impls").HTMLPortalElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -321,7 +319,7 @@ pub const HTMLPortalElement = struct {
         return try HTMLPortalElementImpl.call_activate(instance, options);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
         
         return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }

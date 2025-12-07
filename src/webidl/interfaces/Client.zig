@@ -1,12 +1,10 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ClientImpl = @import("impls").Client;
 const mixins = @import("mixins");
 const FrameType = @import("enums").FrameType;
@@ -129,7 +127,7 @@ pub const Client = struct {
         return try ClientImpl.get_lifecycleState(instance);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try ClientImpl.call_postMessage(instance, message, transfer);
     }

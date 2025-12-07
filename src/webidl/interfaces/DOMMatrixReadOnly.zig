@@ -1,12 +1,10 @@
 //! Generated from: geometry.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const DOMMatrixReadOnlyImpl = @import("impls").DOMMatrixReadOnly;
 const mixins = @import("mixins");
 const DOMPoint = @import("interfaces").DOMPoint;
@@ -450,7 +448,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DOMMatrixReadOnlyImpl.call_toJSON(instance);
     }
 

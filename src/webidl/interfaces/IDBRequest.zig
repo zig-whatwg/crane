@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBRequestImpl = @import("impls").IDBRequest;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -93,7 +91,7 @@ pub const IDBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            result: v8.JSValue = undefined,
+            result: runtime.JSValue = undefined,
             @"error": ?*runtime.Instance = null,
             source: ?union(enum) {
                 IDBObjectStore: IDBObjectStore,
@@ -135,7 +133,7 @@ pub const IDBRequest = struct {
         IDBRequestImpl.deinit(instance);
     }
 
-    pub fn get_result(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_result(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBRequestImpl.get_result(instance);
     }
 

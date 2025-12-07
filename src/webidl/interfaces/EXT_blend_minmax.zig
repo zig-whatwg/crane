@@ -1,12 +1,10 @@
 //! Generated from: EXT_blend_minmax.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const EXT_blend_minmaxImpl = @import("impls").EXT_blend_minmax;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;

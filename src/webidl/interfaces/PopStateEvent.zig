@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PopStateEventImpl = @import("impls").PopStateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -72,7 +70,7 @@ pub const PopStateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: v8.JSValue = undefined,
+            state: runtime.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             _internal: ?*PopStateEventImpl.InternalState = null,
         },
@@ -103,7 +101,7 @@ pub const PopStateEvent = struct {
         return try PopStateEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_state(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PopStateEventImpl.get_state(instance);
     }
 

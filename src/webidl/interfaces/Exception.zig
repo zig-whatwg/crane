@@ -1,12 +1,10 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ExceptionImpl = @import("impls").Exception;
 const mixins = @import("mixins");
 const ExceptionOptions = @import("dictionaries").ExceptionOptions;
@@ -114,7 +112,7 @@ pub const Exception = struct {
         return try ExceptionImpl.call_is(instance, exceptionTag);
     }
 
-    pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!v8.JSValue {
+    pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!runtime.JSValue {
         // [EnforceRange] on index
         if (!runtime.isInRange(u32, index)) return error.TypeError;
         

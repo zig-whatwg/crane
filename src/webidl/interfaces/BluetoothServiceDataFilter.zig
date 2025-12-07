@@ -1,12 +1,10 @@
 //! Generated from: web-bluetooth-scanning.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const BluetoothServiceDataFilterImpl = @import("impls").BluetoothServiceDataFilter;
 const mixins = @import("mixins");
 
@@ -82,7 +80,7 @@ pub const BluetoothServiceDataFilter = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try BluetoothServiceDataFilterImpl.call_constructor(allocator, ctx, init_data);
     }

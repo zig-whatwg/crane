@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ElementImpl = @import("impls").Element;
 const mixins = @import("mixins");
 const Node = @import("interfaces").Node;
@@ -2005,7 +2003,7 @@ pub const Element = struct {
         return try ElementImpl.call_requestFullscreen(instance, options);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_animate(instance, keyframes, options);
     }

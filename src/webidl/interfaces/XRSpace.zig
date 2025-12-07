@@ -1,12 +1,10 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XRSpaceImpl = @import("impls").XRSpace;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;

@@ -1,12 +1,10 @@
 //! Generated from: web-animations.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const AnimatableImpl = @import("impls").Animatable;
 const mixins = @import("mixins");
 const Animation = @import("interfaces").Animation;
@@ -81,7 +79,7 @@ pub const Animatable = struct {
         AnimatableImpl.deinit(instance);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?v8.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
         
         return try AnimatableImpl.call_animate(instance, keyframes, options);
     }

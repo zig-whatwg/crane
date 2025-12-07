@@ -62,7 +62,6 @@ fn isNodeOrDOMStringUnion(union_types: []const types.IDLType) bool {
 /// ```zig
 /// //! Generated from: dom.json
 /// //! Specification: https://dom.spec.whatwg.org/
-/// //! Generated at: 2025-11-16T12:00:00Z
 /// //!
 /// //! This file is AUTO-GENERATED. Do not edit manually.
 /// ```
@@ -71,33 +70,12 @@ pub fn writeHeader(
     source_file: []const u8,
     spec_url: ?[]const u8,
 ) !void {
-    // Get current timestamp
-    const timestamp = std.time.timestamp();
-    const epoch_seconds = @as(u64, @intCast(timestamp));
-    const epoch_day = std.time.epoch.EpochDay{ .day = @intCast(@divFloor(epoch_seconds, std.time.s_per_day)) };
-    const year_day = epoch_day.calculateYearDay();
-    const month_day = year_day.calculateMonthDay();
-
     // Write header comment
     try writer.print("//! Generated from: {s}\n", .{source_file});
 
     if (spec_url) |url| {
         try writer.print("//! Specification: {s}\n", .{url});
     }
-
-    // Write timestamp in ISO 8601 format
-    try writer.print("//! Generated at: {d:0>4}-{d:0>2}-{d:0>2}T", .{
-        year_day.year,
-        month_day.month.numeric(),
-        month_day.day_index + 1,
-    });
-
-    const day_seconds = @as(u64, @intCast(@mod(epoch_seconds, std.time.s_per_day)));
-    const hours = @divFloor(day_seconds, std.time.s_per_hour);
-    const minutes = @divFloor(@mod(day_seconds, std.time.s_per_hour), std.time.s_per_min);
-    const seconds = @mod(day_seconds, std.time.s_per_min);
-
-    try writer.print("{d:0>2}:{d:0>2}:{d:0>2}Z\n", .{ hours, minutes, seconds });
 
     try writer.writeAll("//!\n");
     try writer.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
@@ -3040,8 +3018,8 @@ test "writeHeader writes basic header" {
     // Should contain auto-generated warning
     try testing.expect(std.mem.indexOf(u8, output, "AUTO-GENERATED") != null);
 
-    // Should contain timestamp
-    try testing.expect(std.mem.indexOf(u8, output, "Generated at:") != null);
+    // Should NOT contain timestamp (removed to avoid unnecessary git diffs)
+    try testing.expect(std.mem.indexOf(u8, output, "Generated at:") == null);
 }
 
 test "writeHeader includes spec URL" {
@@ -3058,7 +3036,7 @@ test "writeHeader includes spec URL" {
     try testing.expect(std.mem.indexOf(u8, output, "Specification: https://dom.spec.whatwg.org/") != null);
 }
 
-test "writeHeader formats timestamp correctly" {
+test "writeHeader does not include timestamp" {
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
@@ -3068,21 +3046,10 @@ test "writeHeader formats timestamp correctly" {
 
     const output = buffer.items;
 
-    // Timestamp should be in ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ
-    // Look for the pattern with regex-like check
-    const ts_start = std.mem.indexOf(u8, output, "Generated at: ") orelse return error.TestFailed;
-    const ts_line = output[ts_start..];
-    const ts_end = std.mem.indexOf(u8, ts_line, "\n") orelse return error.TestFailed;
-    const timestamp = ts_line[0..ts_end];
-
-    // Should contain date separators
-    try testing.expect(std.mem.indexOf(u8, timestamp, "-") != null);
-    // Should contain time separators
-    try testing.expect(std.mem.indexOf(u8, timestamp, ":") != null);
-    // Should contain T separator
-    try testing.expect(std.mem.indexOf(u8, timestamp, "T") != null);
-    // Should end with Z
-    try testing.expect(std.mem.endsWith(u8, timestamp, "Z"));
+    // Timestamp should NOT be present (removed to avoid unnecessary git diffs)
+    try testing.expect(std.mem.indexOf(u8, output, "Generated at:") == null);
+    // Should still have the AUTO-GENERATED notice
+    try testing.expect(std.mem.indexOf(u8, output, "AUTO-GENERATED") != null);
 }
 
 test "writeImports writes standard imports" {

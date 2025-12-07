@@ -1,12 +1,10 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ServiceWorkerImpl = @import("impls").ServiceWorker;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -150,7 +148,7 @@ pub const ServiceWorker = struct {
         try ServiceWorkerImpl.set_onerror(instance, value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try ServiceWorkerImpl.call_postMessage(instance, message, transfer);
     }

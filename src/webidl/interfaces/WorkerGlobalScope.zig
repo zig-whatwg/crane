@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WorkerGlobalScopeImpl = @import("impls").WorkerGlobalScope;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -370,7 +368,7 @@ pub const WorkerGlobalScope = struct {
         return value;
     }
 
-    pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
+    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
         
         return try WorkerGlobalScopeImpl.call_reportError(instance, e);
     }
@@ -385,7 +383,7 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.call_btoa(instance, data);
     }
 
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
         return try WorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
     }
@@ -405,7 +403,7 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!v8.JSValue {
+    pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
         
         return try WorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
@@ -420,7 +418,7 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
         return try WorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }

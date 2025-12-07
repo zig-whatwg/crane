@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBCursorWithValueImpl = @import("impls").IDBCursorWithValue;
 const mixins = @import("mixins");
 const IDBCursor = @import("interfaces").IDBCursor;
@@ -72,7 +70,7 @@ pub const IDBCursorWithValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: v8.JSValue = undefined,
+            value: runtime.JSValue = undefined,
             _internal: ?*IDBCursorWithValueImpl.InternalState = null,
         },
     );
@@ -95,7 +93,7 @@ pub const IDBCursorWithValue = struct {
         IDBCursorWithValueImpl.deinit(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBCursorWithValueImpl.get_value(instance);
     }
 

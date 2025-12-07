@@ -1,12 +1,10 @@
 //! Generated from: uievents.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const KeyboardEventImpl = @import("impls").KeyboardEvent;
 const mixins = @import("mixins");
 const UIEvent = @import("interfaces").UIEvent;

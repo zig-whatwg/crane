@@ -1,12 +1,10 @@
 //! Generated from: WEBGL_multi_draw_instanced_base_vertex_base_instance.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl = @import("impls").WEBGL_multi_draw_instanced_base_vertex_base_instance;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;

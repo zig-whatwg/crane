@@ -1,12 +1,10 @@
 //! Generated from: css-animation-worklet.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WorkletAnimationImpl = @import("impls").WorkletAnimation;
 const mixins = @import("mixins");
 const Animation = @import("interfaces").Animation;
@@ -114,7 +112,7 @@ pub const WorkletAnimation = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: DOMString, effects: webidl.Opt(?*const anyopaque), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, animatorName: DOMString, effects: webidl.Opt(?*const anyopaque), timeline: webidl.Opt(?*runtime.Instance), options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WorkletAnimationImpl.call_constructor(allocator, ctx, animatorName, effects, timeline, options);
     }

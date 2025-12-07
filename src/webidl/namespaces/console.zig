@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const console_impl = @import("impls").console;
 
 pub const console = struct {
@@ -43,15 +42,15 @@ pub const console = struct {
 
     pub const State = struct {};
 
-    pub fn call_info(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_info(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_info(ctx, data);
     }
 
-    pub fn call_group(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_group(ctx, data);
     }
 
-    pub fn call_groupCollapsed(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_groupCollapsed(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_groupCollapsed(ctx, data);
     }
 
@@ -59,11 +58,11 @@ pub const console = struct {
         return try console_impl.call_groupEnd(ctx);
     }
 
-    pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const v8.JSValue) anyerror!void {
+    pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_timeLog(ctx, label, data);
     }
 
-    pub fn call_trace(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_trace(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_trace(ctx, data);
     }
 
@@ -79,7 +78,7 @@ pub const console = struct {
         return try console_impl.call_time(ctx, label);
     }
 
-    pub fn call_warn(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_warn(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_warn(ctx, data);
     }
 
@@ -87,31 +86,31 @@ pub const console = struct {
         return try console_impl.call_clear(ctx);
     }
 
-    pub fn call_log(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_log(ctx, data);
     }
 
-    pub fn call_error(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_error(ctx, data);
     }
 
-    pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const v8.JSValue) anyerror!void {
+    pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_assert(ctx, condition, data);
     }
 
-    pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(v8.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
         return try console_impl.call_table(ctx, tabularData, properties);
     }
 
-    pub fn call_debug(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_debug(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_debug(ctx, data);
     }
 
-    pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(v8.JSValue), options: webidl.Opt(?v8.JSValue)) anyerror!void {
+    pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options: webidl.Opt(?runtime.JSValue)) anyerror!void {
         return try console_impl.call_dir(ctx, item, options);
     }
 
-    pub fn call_dirxml(ctx: runtime.Context, data: []const v8.JSValue) anyerror!void {
+    pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
         return try console_impl.call_dirxml(ctx, data);
     }
 

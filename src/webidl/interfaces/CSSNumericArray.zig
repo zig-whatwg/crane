@@ -1,12 +1,10 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CSSNumericArrayImpl = @import("impls").CSSNumericArray;
 const mixins = @import("mixins");
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
@@ -102,7 +100,7 @@ pub const CSSNumericArray = struct {
         return try CSSNumericArrayImpl.get_length(instance);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try CSSNumericArrayImpl.call_forEach(instance, callback);
     }

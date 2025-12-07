@@ -1,12 +1,10 @@
 //! Generated from: datacue.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const DataCueImpl = @import("impls").DataCue;
 const mixins = @import("mixins");
 const TextTrackCue = @import("interfaces").TextTrackCue;
@@ -75,7 +73,7 @@ pub const DataCue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: v8.JSValue = undefined,
+            value: runtime.JSValue = undefined,
             @"type": runtime.DOMString = undefined,
             _internal: ?*DataCueImpl.InternalState = null,
         },
@@ -103,16 +101,16 @@ pub const DataCue = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, startTime: f64, endTime: f64, value: v8.JSValue, @"type": webidl.Opt(DOMString)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, startTime: f64, endTime: f64, value: runtime.JSValue, @"type": webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try DataCueImpl.call_constructor(allocator, ctx, startTime, endTime, value, @"type");
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DataCueImpl.get_value(instance);
     }
 
-    pub fn set_value(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try DataCueImpl.set_value(instance, value);
     }
 

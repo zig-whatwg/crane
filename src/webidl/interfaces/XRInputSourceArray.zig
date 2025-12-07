@@ -1,12 +1,10 @@
 //! Generated from: webxr.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XRInputSourceArrayImpl = @import("impls").XRInputSourceArray;
 const mixins = @import("mixins");
 const XRInputSource = @import("interfaces").XRInputSource;
@@ -98,7 +96,7 @@ pub const XRInputSourceArray = struct {
         return try XRInputSourceArrayImpl.get_length(instance);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try XRInputSourceArrayImpl.call_forEach(instance, callback);
     }

@@ -1,12 +1,10 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const GlobalImpl = @import("impls").Global;
 const mixins = @import("mixins");
 const GlobalDescriptor = @import("dictionaries").GlobalDescriptor;
@@ -62,7 +60,7 @@ pub const Global = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: v8.JSValue = undefined,
+            value: runtime.JSValue = undefined,
             _internal: ?*GlobalImpl.InternalState = null,
         },
     );
@@ -90,20 +88,20 @@ pub const Global = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: GlobalDescriptor, v: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, descriptor: GlobalDescriptor, v: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try GlobalImpl.call_constructor(allocator, ctx, descriptor, v);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GlobalImpl.get_value(instance);
     }
 
-    pub fn set_value(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn set_value(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try GlobalImpl.set_value(instance, value);
     }
 
-    pub fn call_valueOf(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_valueOf(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GlobalImpl.call_valueOf(instance);
     }
 

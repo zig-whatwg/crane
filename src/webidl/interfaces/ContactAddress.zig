@@ -1,12 +1,10 @@
 //! Generated from: contact-picker.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ContactAddressImpl = @import("impls").ContactAddress;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -163,7 +161,7 @@ pub const ContactAddress = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ContactAddressImpl.call_toJSON(instance);
     }
 

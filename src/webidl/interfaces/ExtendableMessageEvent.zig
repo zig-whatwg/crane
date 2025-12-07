@@ -1,12 +1,10 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ExtendableMessageEventImpl = @import("impls").ExtendableMessageEvent;
 const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
@@ -84,7 +82,7 @@ pub const ExtendableMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
             lastEventId: runtime.DOMString = undefined,
             source: ?union(enum) {
@@ -130,7 +128,7 @@ pub const ExtendableMessageEvent = struct {
         return try ExtendableMessageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ExtendableMessageEventImpl.get_data(instance);
     }
 

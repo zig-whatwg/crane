@@ -1,12 +1,10 @@
 //! Generated from: webcrypto.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CryptoKeyImpl = @import("impls").CryptoKey;
 const mixins = @import("mixins");
 const KeyType = @import("enums").KeyType;
@@ -72,8 +70,8 @@ pub const CryptoKey = struct {
         struct {
             @"type": KeyType = undefined,
             extractable: bool = undefined,
-            algorithm: v8.JSValue = undefined,
-            usages: v8.JSValue = undefined,
+            algorithm: runtime.JSValue = undefined,
+            usages: runtime.JSValue = undefined,
             _internal: ?*CryptoKeyImpl.InternalState = null,
         },
     );
@@ -107,11 +105,11 @@ pub const CryptoKey = struct {
         return try CryptoKeyImpl.get_extractable(instance);
     }
 
-    pub fn get_algorithm(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CryptoKeyImpl.get_algorithm(instance);
     }
 
-    pub fn get_usages(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CryptoKeyImpl.get_usages(instance);
     }
 

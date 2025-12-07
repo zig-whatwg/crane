@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBFactoryImpl = @import("impls").IDBFactory;
 const mixins = @import("mixins");
 const IDBOpenDBRequest = @import("interfaces").IDBOpenDBRequest;
@@ -114,7 +112,7 @@ pub const IDBFactory = struct {
         return try IDBFactoryImpl.call_deleteDatabase(instance, name);
     }
 
-    pub fn call_cmp(instance: *runtime.Instance, first: v8.JSValue, second: v8.JSValue) anyerror!i16 {
+    pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: runtime.JSValue) anyerror!i16 {
         
         return try IDBFactoryImpl.call_cmp(instance, first, second);
     }

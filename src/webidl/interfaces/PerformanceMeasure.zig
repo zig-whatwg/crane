@@ -1,12 +1,10 @@
 //! Generated from: user-timing.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PerformanceMeasureImpl = @import("impls").PerformanceMeasure;
 const mixins = @import("mixins");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
@@ -66,7 +64,7 @@ pub const PerformanceMeasure = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: v8.JSValue = undefined,
+            detail: runtime.JSValue = undefined,
             _internal: ?*PerformanceMeasureImpl.InternalState = null,
         },
     );
@@ -89,7 +87,7 @@ pub const PerformanceMeasure = struct {
         PerformanceMeasureImpl.deinit(instance);
     }
 
-    pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceMeasureImpl.get_detail(instance);
     }
 

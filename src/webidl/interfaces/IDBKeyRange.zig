@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBKeyRangeImpl = @import("impls").IDBKeyRange;
 const mixins = @import("mixins");
 
@@ -81,8 +79,8 @@ pub const IDBKeyRange = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lower: v8.JSValue = undefined,
-            upper: v8.JSValue = undefined,
+            lower: runtime.JSValue = undefined,
+            upper: runtime.JSValue = undefined,
             lowerOpen: bool = undefined,
             upperOpen: bool = undefined,
             _internal: ?*IDBKeyRangeImpl.InternalState = null,
@@ -112,11 +110,11 @@ pub const IDBKeyRange = struct {
         IDBKeyRangeImpl.deinit(instance);
     }
 
-    pub fn get_lower(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_lower(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBKeyRangeImpl.get_lower(instance);
     }
 
-    pub fn get_upper(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_upper(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBKeyRangeImpl.get_upper(instance);
     }
 
@@ -129,33 +127,33 @@ pub const IDBKeyRange = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_only(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_only(instance, value);
     }
 
-    pub fn call_includes(instance: *runtime.Instance, key: v8.JSValue) anyerror!bool {
+    pub fn call_includes(instance: *runtime.Instance, key: runtime.JSValue) anyerror!bool {
         
         return try IDBKeyRangeImpl.call_includes(instance, key);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bound(instance: *runtime.Instance, lower: v8.JSValue, upper: v8.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    pub fn call_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_upperBound(instance: *runtime.Instance, upper: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    pub fn call_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_lowerBound(instance: *runtime.Instance, lower: v8.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    pub fn call_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);

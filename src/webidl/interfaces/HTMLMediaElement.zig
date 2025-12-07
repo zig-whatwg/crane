@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const HTMLMediaElementImpl = @import("impls").HTMLMediaElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -830,7 +828,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_play(instance);
     }
 
-    pub fn call_getStartDate(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_getStartDate(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HTMLMediaElementImpl.call_getStartDate(instance);
     }
 

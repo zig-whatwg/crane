@@ -1,12 +1,10 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const SFrameTransformErrorEventImpl = @import("impls").SFrameTransformErrorEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -81,7 +79,7 @@ pub const SFrameTransformErrorEvent = struct {
         struct {
             errorType: SFrameTransformErrorEventType = undefined,
             keyID: ?CryptoKeyID = null,
-            frame: v8.JSValue = undefined,
+            frame: runtime.JSValue = undefined,
             _internal: ?*SFrameTransformErrorEventImpl.InternalState = null,
         },
     );
@@ -120,7 +118,7 @@ pub const SFrameTransformErrorEvent = struct {
         return try SFrameTransformErrorEventImpl.get_keyID(instance);
     }
 
-    pub fn get_frame(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_frame(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SFrameTransformErrorEventImpl.get_frame(instance);
     }
 

@@ -1,12 +1,10 @@
 //! Generated from: fedcm.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IdentityCredentialImpl = @import("impls").IdentityCredential;
 const mixins = @import("mixins");
 const Credential = @import("interfaces").Credential;
@@ -76,7 +74,7 @@ pub const IdentityCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            token: v8.JSValue = undefined,
+            token: runtime.JSValue = undefined,
             isAutoSelected: bool = undefined,
             configURL: runtime.USVString = undefined,
             _internal: ?*IdentityCredentialImpl.InternalState = null,
@@ -103,7 +101,7 @@ pub const IdentityCredential = struct {
         IdentityCredentialImpl.deinit(instance);
     }
 
-    pub fn get_token(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_token(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IdentityCredentialImpl.get_token(instance);
     }
 

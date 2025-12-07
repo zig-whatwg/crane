@@ -1,12 +1,10 @@
 //! Generated from: webxr-hand-input.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XRHandImpl = @import("impls").XRHand;
 const mixins = @import("mixins");
 const XRJointSpace = @import("interfaces").XRJointSpace;
@@ -106,7 +104,7 @@ pub const XRHand = struct {
         return try XRHandImpl.call_get(instance, key);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try XRHandImpl.call_forEach(instance, callback);
     }

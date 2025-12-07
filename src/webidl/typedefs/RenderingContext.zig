@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 
 pub const RenderingContext = union(enum) {
     canvas_rendering_context2d: *runtime.Instance,

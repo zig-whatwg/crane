@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const DedicatedWorkerGlobalScopeImpl = @import("impls").DedicatedWorkerGlobalScope;
 const mixins = @import("mixins");
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
@@ -211,7 +209,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         return try DedicatedWorkerGlobalScopeImpl.call_close(instance);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }

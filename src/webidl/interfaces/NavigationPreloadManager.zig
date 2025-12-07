@@ -1,12 +1,10 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const NavigationPreloadManagerImpl = @import("impls").NavigationPreloadManager;
 const mixins = @import("mixins");
 const ByteString = @import("interfaces").ByteString;

@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const NavigateEventImpl = @import("impls").NavigateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -108,7 +106,7 @@ pub const NavigateEvent = struct {
             signal: *runtime.Instance = undefined,
             formData: ?*runtime.Instance = null,
             downloadRequest: ?runtime.DOMString = null,
-            info: v8.JSValue = undefined,
+            info: runtime.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             sourceElement: ?*runtime.Instance = null,
             _internal: ?*NavigateEventImpl.InternalState = null,
@@ -184,7 +182,7 @@ pub const NavigateEvent = struct {
         return try NavigateEventImpl.get_downloadRequest(instance);
     }
 
-    pub fn get_info(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigateEventImpl.get_info(instance);
     }
 

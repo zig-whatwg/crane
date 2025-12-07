@@ -1,12 +1,10 @@
 //! Generated from: css-font-loading.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const FontFacePaletteImpl = @import("impls").FontFacePalette;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -116,7 +114,7 @@ pub const FontFacePalette = struct {
         return try FontFacePaletteImpl.get_usableWithDarkBackground(instance);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try FontFacePaletteImpl.call_forEach(instance, callback);
     }

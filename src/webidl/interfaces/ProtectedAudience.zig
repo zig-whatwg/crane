@@ -1,12 +1,10 @@
 //! Generated from: turtledove.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ProtectedAudienceImpl = @import("impls").ProtectedAudience;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -82,7 +80,7 @@ pub const ProtectedAudience = struct {
         ProtectedAudienceImpl.deinit(instance);
     }
 
-    pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: DOMString) anyerror!v8.JSValue {
+    pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: DOMString) anyerror!runtime.JSValue {
         
         return try ProtectedAudienceImpl.call_queryFeatureSupport(instance, feature);
     }

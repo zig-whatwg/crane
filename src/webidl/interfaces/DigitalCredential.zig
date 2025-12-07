@@ -1,12 +1,10 @@
 //! Generated from: digital-credentials.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const DigitalCredentialImpl = @import("impls").DigitalCredential;
 const mixins = @import("mixins");
 const Credential = @import("interfaces").Credential;
@@ -76,8 +74,8 @@ pub const DigitalCredential = struct {
         Meta.MixinTypes,
         struct {
             protocol: runtime.DOMString = undefined,
-            data: v8.JSValue = undefined,
-            cached_data: ?v8.JSValue = null,
+            data: runtime.JSValue = undefined,
+            cached_data: ?runtime.JSValue = null,
             _internal: ?*DigitalCredentialImpl.InternalState = null,
         },
     );
@@ -108,7 +106,7 @@ pub const DigitalCredential = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_data) |cached| {
@@ -120,7 +118,7 @@ pub const DigitalCredential = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalCredentialImpl.call_toJSON(instance);
     }
 

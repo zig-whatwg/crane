@@ -1,12 +1,10 @@
 //! Generated from: direct-sockets.idl
-//! Generated at: 2025-12-07T20:02:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const MulticastControllerImpl = @import("impls").MulticastController;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;

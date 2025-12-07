@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const NavigationHistoryEntryImpl = @import("impls").NavigationHistoryEntry;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -150,7 +148,7 @@ pub const NavigationHistoryEntry = struct {
         try NavigationHistoryEntryImpl.set_ondispose(instance, value);
     }
 
-    pub fn call_getState(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigationHistoryEntryImpl.call_getState(instance);
     }
 

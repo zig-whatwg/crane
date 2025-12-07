@@ -1,12 +1,10 @@
 //! Generated from: json-ld-api.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const RemoteDocumentImpl = @import("impls").RemoteDocument;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -69,7 +67,7 @@ pub const RemoteDocument = struct {
         struct {
             contentType: runtime.USVString = undefined,
             contextUrl: runtime.USVString = undefined,
-            document: v8.JSValue = undefined,
+            document: runtime.JSValue = undefined,
             documentUrl: runtime.USVString = undefined,
             profile: runtime.USVString = undefined,
             _internal: ?*RemoteDocumentImpl.InternalState = null,
@@ -114,11 +112,11 @@ pub const RemoteDocument = struct {
         return try RemoteDocumentImpl.get_contextUrl(instance);
     }
 
-    pub fn get_document(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_document(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RemoteDocumentImpl.get_document(instance);
     }
 
-    pub fn set_document(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn set_document(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try RemoteDocumentImpl.set_document(instance, value);
     }
 

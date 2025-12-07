@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PromiseRejectionEventImpl = @import("impls").PromiseRejectionEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -72,8 +70,8 @@ pub const PromiseRejectionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            promise: v8.JSValue = undefined,
-            reason: v8.JSValue = undefined,
+            promise: runtime.JSValue = undefined,
+            reason: runtime.JSValue = undefined,
             _internal: ?*PromiseRejectionEventImpl.InternalState = null,
         },
     );
@@ -103,11 +101,11 @@ pub const PromiseRejectionEvent = struct {
         return try PromiseRejectionEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_promise(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_promise(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PromiseRejectionEventImpl.get_promise(instance);
     }
 
-    pub fn get_reason(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PromiseRejectionEventImpl.get_reason(instance);
     }
 

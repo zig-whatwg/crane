@@ -1,12 +1,10 @@
 //! Generated from: push-api.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PushMessageDataImpl = @import("impls").PushMessageData;
 const mixins = @import("mixins");
 const Blob = @import("interfaces").Blob;
@@ -103,7 +101,7 @@ pub const PushMessageData = struct {
         return try PushMessageDataImpl.call_text(instance);
     }
 
-    pub fn call_json(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PushMessageDataImpl.call_json(instance);
     }
 

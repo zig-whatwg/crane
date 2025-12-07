@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const HTMLInputElementImpl = @import("impls").HTMLInputElement;
 const mixins = @import("mixins");
 const HTMLElement = @import("interfaces").HTMLElement;
@@ -381,7 +379,7 @@ pub const HTMLInputElement = struct {
             @"type": runtime.DOMString = undefined,
             defaultValue: runtime.DOMString = undefined,
             value: runtime.DOMString = undefined,
-            valueAsDate: ?v8.JSValue = null,
+            valueAsDate: ?runtime.JSValue = null,
             valueAsNumber: f64 = undefined,
             width: u32 = undefined,
             willValidate: bool = undefined,
@@ -985,11 +983,11 @@ pub const HTMLInputElement = struct {
         try HTMLInputElementImpl.set_value(instance, value);
     }
 
-    pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?v8.JSValue {
+    pub fn get_valueAsDate(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try HTMLInputElementImpl.get_valueAsDate(instance);
     }
 
-    pub fn set_valueAsDate(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn set_valueAsDate(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try HTMLInputElementImpl.set_valueAsDate(instance, value);
     }
 

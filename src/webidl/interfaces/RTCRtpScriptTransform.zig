@@ -1,12 +1,10 @@
 //! Generated from: webrtc-encoded-transform.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const RTCRtpScriptTransformImpl = @import("impls").RTCRtpScriptTransform;
 const mixins = @import("mixins");
 const Worker = @import("interfaces").Worker;
@@ -78,7 +76,7 @@ pub const RTCRtpScriptTransform = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(v8.JSValue), transfer: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(*const anyopaque)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try RTCRtpScriptTransformImpl.call_constructor(allocator, ctx, worker, options, transfer);
     }

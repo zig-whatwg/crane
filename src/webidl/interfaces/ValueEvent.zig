@@ -1,12 +1,10 @@
 //! Generated from: web-bluetooth.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ValueEventImpl = @import("impls").ValueEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -71,7 +69,7 @@ pub const ValueEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: v8.JSValue = undefined,
+            value: runtime.JSValue = undefined,
             _internal: ?*ValueEventImpl.InternalState = null,
         },
     );
@@ -100,7 +98,7 @@ pub const ValueEvent = struct {
         return try ValueEventImpl.call_constructor(allocator, ctx, @"type", initDict);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ValueEventImpl.get_value(instance);
     }
 

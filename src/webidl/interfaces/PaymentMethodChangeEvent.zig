@@ -1,12 +1,10 @@
 //! Generated from: payment-request.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PaymentMethodChangeEventImpl = @import("impls").PaymentMethodChangeEvent;
 const mixins = @import("mixins");
 const PaymentRequestUpdateEvent = @import("interfaces").PaymentRequestUpdateEvent;
@@ -77,7 +75,7 @@ pub const PaymentMethodChangeEvent = struct {
         Meta.MixinTypes,
         struct {
             methodName: runtime.DOMString = undefined,
-            methodDetails: ?v8.JSValue = null,
+            methodDetails: ?runtime.JSValue = null,
             _internal: ?*PaymentMethodChangeEventImpl.InternalState = null,
         },
     );
@@ -111,7 +109,7 @@ pub const PaymentMethodChangeEvent = struct {
         return try PaymentMethodChangeEventImpl.get_methodName(instance);
     }
 
-    pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?v8.JSValue {
+    pub fn get_methodDetails(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try PaymentMethodChangeEventImpl.get_methodDetails(instance);
     }
 

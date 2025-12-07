@@ -1,12 +1,10 @@
 //! Generated from: permissions.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PermissionsImpl = @import("impls").Permissions;
 const mixins = @import("mixins");
 const PermissionStatus = @import("interfaces").PermissionStatus;
@@ -90,17 +88,17 @@ pub const Permissions = struct {
         PermissionsImpl.deinit(instance);
     }
 
-    pub fn call_revoke(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
+    pub fn call_revoke(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
         
         return try PermissionsImpl.call_revoke(instance, permissionDesc);
     }
 
-    pub fn call_request(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
+    pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
         
         return try PermissionsImpl.call_request(instance, permissionDesc);
     }
 
-    pub fn call_query(instance: *runtime.Instance, permissionDesc: v8.JSValue) anyerror!*const anyopaque {
+    pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
         
         return try PermissionsImpl.call_query(instance, permissionDesc);
     }

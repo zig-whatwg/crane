@@ -1,12 +1,10 @@
 //! Generated from: webnn.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const MLTensorImpl = @import("impls").MLTensor;
 const mixins = @import("mixins");
 const unsignedlong = @import("interfaces").unsignedlong;

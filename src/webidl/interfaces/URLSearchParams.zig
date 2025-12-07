@@ -1,12 +1,10 @@
 //! Generated from: url.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const URLSearchParamsImpl = @import("impls").URLSearchParams;
 const mixins = @import("mixins");
 const record = @import("interfaces").record;
@@ -147,7 +145,7 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_has(instance, name, value);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }

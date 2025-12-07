@@ -1,12 +1,10 @@
 //! Generated from: portals.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PortalActivateEventImpl = @import("impls").PortalActivateEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -73,7 +71,7 @@ pub const PortalActivateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             _internal: ?*PortalActivateEventImpl.InternalState = null,
         },
     );
@@ -104,7 +102,7 @@ pub const PortalActivateEvent = struct {
         return try PortalActivateEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PortalActivateEventImpl.get_data(instance);
     }
 

@@ -1,12 +1,10 @@
 //! Generated from: fetch.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ResponseImpl = @import("impls").Response;
 const mixins = @import("mixins");
 const Body = @import("interfaces").Body;
@@ -254,7 +252,7 @@ pub const Response = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance, data: v8.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
+    pub fn call_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ResponseImpl.call_json(instance, data, init_data);

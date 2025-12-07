@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const GPUTextureUsage_impl = @import("impls").GPUTextureUsage;
 
 pub const GPUTextureUsage = struct {

@@ -1,12 +1,10 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const FormDataImpl = @import("impls").FormData;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -143,7 +141,7 @@ pub const FormData = struct {
         return try FormDataImpl.call_has(instance, name);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try FormDataImpl.call_forEach(instance, callback);
     }

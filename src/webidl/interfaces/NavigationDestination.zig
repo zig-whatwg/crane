@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const NavigationDestinationImpl = @import("impls").NavigationDestination;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;
@@ -123,7 +121,7 @@ pub const NavigationDestination = struct {
         return try NavigationDestinationImpl.get_sameDocument(instance);
     }
 
-    pub fn call_getState(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigationDestinationImpl.call_getState(instance);
     }
 

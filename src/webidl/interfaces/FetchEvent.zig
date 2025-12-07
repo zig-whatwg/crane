@@ -1,12 +1,10 @@
 //! Generated from: service-workers.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const FetchEventImpl = @import("impls").FetchEvent;
 const mixins = @import("mixins");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
@@ -87,7 +85,7 @@ pub const FetchEvent = struct {
         Meta.MixinTypes,
         struct {
             request: *runtime.Instance = undefined,
-            preloadResponse: runtime.Promise(v8.JSValue) = undefined,
+            preloadResponse: runtime.Promise(runtime.JSValue) = undefined,
             clientId: runtime.DOMString = undefined,
             resultingClientId: runtime.DOMString = undefined,
             replacesClientId: runtime.DOMString = undefined,

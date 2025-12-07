@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XSLTProcessorImpl = @import("impls").XSLTProcessor;
 const mixins = @import("mixins");
 const DocumentFragment = @import("interfaces").DocumentFragment;
@@ -121,7 +119,7 @@ pub const XSLTProcessor = struct {
         return try XSLTProcessorImpl.call_transformToDocument(instance, source);
     }
 
-    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!v8.JSValue {
+    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!runtime.JSValue {
         
         return try XSLTProcessorImpl.call_getParameter(instance, namespaceURI, localName);
     }
@@ -131,7 +129,7 @@ pub const XSLTProcessor = struct {
         return try XSLTProcessorImpl.call_removeParameter(instance, namespaceURI, localName);
     }
 
-    pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: v8.JSValue) anyerror!void {
+    pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: runtime.JSValue) anyerror!void {
         
         return try XSLTProcessorImpl.call_setParameter(instance, namespaceURI, localName, value);
     }

@@ -1,12 +1,10 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const StylePropertyMapReadOnlyImpl = @import("impls").StylePropertyMapReadOnly;
 const mixins = @import("mixins");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
@@ -127,7 +125,7 @@ pub const StylePropertyMapReadOnly = struct {
         return try StylePropertyMapReadOnlyImpl.call_has(instance, property);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try StylePropertyMapReadOnlyImpl.call_forEach(instance, callback);
     }

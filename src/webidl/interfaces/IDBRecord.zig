@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBRecordImpl = @import("impls").IDBRecord;
 const mixins = @import("mixins");
 
@@ -65,9 +63,9 @@ pub const IDBRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: v8.JSValue = undefined,
-            primaryKey: v8.JSValue = undefined,
-            value: v8.JSValue = undefined,
+            key: runtime.JSValue = undefined,
+            primaryKey: runtime.JSValue = undefined,
+            value: runtime.JSValue = undefined,
             _internal: ?*IDBRecordImpl.InternalState = null,
         },
     );
@@ -92,15 +90,15 @@ pub const IDBRecord = struct {
         IDBRecordImpl.deinit(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBRecordImpl.get_key(instance);
     }
 
-    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBRecordImpl.get_primaryKey(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBRecordImpl.get_value(instance);
     }
 

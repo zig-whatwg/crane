@@ -1,12 +1,10 @@
 //! Generated from: real-world-meshing.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XRMeshImpl = @import("impls").XRMesh;
 const mixins = @import("mixins");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;

@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WindowImpl = @import("impls").Window;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -662,7 +660,7 @@ pub const Window = struct {
             frames: WindowProxy = undefined,
             length: u32 = undefined,
             top: ?WindowProxy = null,
-            opener: v8.JSValue = undefined,
+            opener: runtime.JSValue = undefined,
             parent: ?WindowProxy = null,
             frameElement: ?*runtime.Instance = null,
             navigator: *runtime.Instance = undefined,
@@ -1349,11 +1347,11 @@ pub const Window = struct {
         return try WindowImpl.get_top(instance);
     }
 
-    pub fn get_opener(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowImpl.get_opener(instance);
     }
 
-    pub fn set_opener(instance: *runtime.Instance, value: v8.JSValue) anyerror!void {
+    pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try WindowImpl.set_opener(instance, value);
     }
 
@@ -2710,7 +2708,7 @@ pub const Window = struct {
         return try WindowImpl.call_confirm(instance, message);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
@@ -2742,7 +2740,7 @@ pub const Window = struct {
         return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
         return try WindowImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
@@ -2805,7 +2803,7 @@ pub const Window = struct {
         return try WindowImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_structuredClone(instance: *runtime.Instance, value: v8.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!v8.JSValue {
+    pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
         
         return try WindowImpl.call_structuredClone(instance, value, options);
     }
@@ -2858,7 +2856,7 @@ pub const Window = struct {
         return try WindowImpl.call_prompt(instance, message, default);
     }
 
-    pub fn call_reportError(instance: *runtime.Instance, e: v8.JSValue) anyerror!void {
+    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
         
         return try WindowImpl.call_reportError(instance, e);
     }
@@ -2875,7 +2873,7 @@ pub const Window = struct {
         return try WindowImpl.call_getComputedStyle(instance, elt, pseudoElt);
     }
 
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const v8.JSValue) anyerror!i32 {
+    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
         return try WindowImpl.call_setInterval(instance, handler, timeout, arguments);
     }

@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const MessageEventImpl = @import("impls").MessageEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -87,7 +85,7 @@ pub const MessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
             lastEventId: runtime.DOMString = undefined,
             source: ?MessageEventSource = null,
@@ -126,7 +124,7 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MessageEventImpl.get_data(instance);
     }
 
@@ -146,7 +144,7 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_ports(instance);
     }
 
-    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(v8.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try MessageEventImpl.call_initMessageEvent(instance, @"type", bubbles, cancelable, data, origin, lastEventId, source, ports);
     }

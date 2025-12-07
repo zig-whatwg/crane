@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WorkerImpl = @import("impls").Worker;
 const mixins = @import("mixins");
 const EventTarget = @import("interfaces").EventTarget;
@@ -163,7 +161,7 @@ pub const Worker = struct {
         return try WorkerImpl.call_terminate(instance);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: v8.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try WorkerImpl.call_postMessage(instance, message, transfer);
     }

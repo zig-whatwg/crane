@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WebAssembly_impl = @import("impls").WebAssembly;
 
 pub const WebAssembly = struct {
@@ -32,11 +31,11 @@ pub const WebAssembly = struct {
         return try WebAssembly_impl.call_compile(ctx, bytes, options);
     }
 
-    pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: webidl.Opt(v8.JSValue), options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         return try WebAssembly_impl.call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx, bytes, importObject, options);
     }
 
-    pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+    pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         return try WebAssembly_impl.call_instantiate_Module_object(ctx, moduleObject, importObject);
     }
 

@@ -1,12 +1,10 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ReadableByteStreamControllerImpl = @import("impls").ReadableByteStreamController;
 const mixins = @import("mixins");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
@@ -105,7 +103,7 @@ pub const ReadableByteStreamController = struct {
         return try ReadableByteStreamControllerImpl.get_desiredSize(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try ReadableByteStreamControllerImpl.call_error(instance, e);
     }

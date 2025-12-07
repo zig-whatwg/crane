@@ -1,12 +1,10 @@
 //! Generated from: webgl1.idl
-//! Generated at: 2025-12-07T20:02:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WebGLObjectImpl = @import("impls").WebGLObject;
 const mixins = @import("mixins");
 const USVString = @import("interfaces").USVString;

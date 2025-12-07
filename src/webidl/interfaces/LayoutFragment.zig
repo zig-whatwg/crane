@@ -1,12 +1,10 @@
 //! Generated from: css-layout-api.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const LayoutFragmentImpl = @import("impls").LayoutFragment;
 const mixins = @import("mixins");
 const ChildBreakToken = @import("interfaces").ChildBreakToken;
@@ -73,7 +71,7 @@ pub const LayoutFragment = struct {
             blockSize: f64 = undefined,
             inlineOffset: f64 = undefined,
             blockOffset: f64 = undefined,
-            data: v8.JSValue = undefined,
+            data: runtime.JSValue = undefined,
             breakToken: ?*runtime.Instance = null,
             _internal: ?*LayoutFragmentImpl.InternalState = null,
         },
@@ -129,7 +127,7 @@ pub const LayoutFragment = struct {
         try LayoutFragmentImpl.set_blockOffset(instance, value);
     }
 
-    pub fn get_data(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try LayoutFragmentImpl.get_data(instance);
     }
 

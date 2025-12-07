@@ -1,12 +1,10 @@
 //! Generated from: css-typed-om.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const CSSUnparsedValueImpl = @import("impls").CSSUnparsedValue;
 const mixins = @import("mixins");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
@@ -114,7 +112,7 @@ pub const CSSUnparsedValue = struct {
         return try CSSUnparsedValueImpl.get_length(instance);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try CSSUnparsedValueImpl.call_forEach(instance, callback);
     }

@@ -1,12 +1,10 @@
 //! Generated from: trusted-types.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const TrustedTypePolicyFactoryImpl = @import("impls").TrustedTypePolicyFactory;
 const mixins = @import("mixins");
 const TrustedTypePolicyOptions = @import("dictionaries").TrustedTypePolicyOptions;
@@ -133,12 +131,12 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }
 
-    pub fn call_isScript(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+    pub fn call_isScript(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
         
         return try TrustedTypePolicyFactoryImpl.call_isScript(instance, value);
     }
 
-    pub fn call_isScriptURL(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+    pub fn call_isScriptURL(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
         
         return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
@@ -148,7 +146,7 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
     }
 
-    pub fn call_isHTML(instance: *runtime.Instance, value: v8.JSValue) anyerror!bool {
+    pub fn call_isHTML(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
         
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }

@@ -1,12 +1,10 @@
 //! Generated from: webgl2.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WebGL2RenderingContextBaseImpl = @import("impls").WebGL2RenderingContextBase;
 const mixins = @import("mixins");
 const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
@@ -2341,7 +2339,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_uniform2ui(instance, location, v0, v1);
     }
 
-    pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getSyncParameter(instance: *runtime.Instance, sync: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getSyncParameter(instance, sync, pname);
     }
@@ -2412,7 +2410,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_bindSampler(instance, unit, sampler);
     }
 
-    pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getSamplerParameter(instance: *runtime.Instance, sampler: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getSamplerParameter(instance, sampler, pname);
     }
@@ -2447,7 +2445,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_uniformMatrix4x2fv(instance, location, transpose, data, srcOffset, srcLength);
     }
 
-    pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: GLenum, internalformat: GLenum, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getInternalformatParameter(instance: *runtime.Instance, target: GLenum, internalformat: GLenum, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getInternalformatParameter(instance, target, internalformat, pname);
     }
@@ -2508,7 +2506,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_getFragDataLocation(instance, program, name);
     }
 
-    pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getQueryParameter(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getQueryParameter(instance, query, pname);
     }
@@ -2539,7 +2537,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_isSync(instance, sync);
     }
 
-    pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getActiveUniforms(instance, program, uniformIndices, pname);
     }
@@ -2594,7 +2592,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_uniform1ui(instance, location, v0);
     }
 
-    pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint, pname: GLenum) anyerror!v8.JSValue {
+    pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program: *runtime.Instance, uniformBlockIndex: GLuint, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getActiveUniformBlockParameter(instance, program, uniformBlockIndex, pname);
     }
@@ -2604,7 +2602,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_invalidateFramebuffer(instance, target, attachments);
     }
 
-    pub fn call_getIndexedParameter(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!v8.JSValue {
+    pub fn call_getIndexedParameter(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getIndexedParameter(instance, target, index);
     }

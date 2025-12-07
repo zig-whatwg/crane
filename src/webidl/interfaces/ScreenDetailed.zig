@@ -1,12 +1,10 @@
 //! Generated from: window-management.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ScreenDetailedImpl = @import("impls").ScreenDetailed;
 const mixins = @import("mixins");
 const Screen = @import("interfaces").Screen;

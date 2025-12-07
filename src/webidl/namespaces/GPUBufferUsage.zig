@@ -4,7 +4,6 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const GPUBufferUsage_impl = @import("impls").GPUBufferUsage;
 
 pub const GPUBufferUsage = struct {

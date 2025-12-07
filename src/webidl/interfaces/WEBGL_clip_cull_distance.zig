@@ -1,12 +1,10 @@
 //! Generated from: WEBGL_clip_cull_distance.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const WEBGL_clip_cull_distanceImpl = @import("impls").WEBGL_clip_cull_distance;
 const mixins = @import("mixins");
 const GLenum = @import("typedefs").GLenum;

@@ -1,12 +1,10 @@
 //! Generated from: streams.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ReadableStreamDefaultReaderImpl = @import("impls").ReadableStreamDefaultReader;
 const mixins = @import("mixins");
 const ReadableStreamGenericReader = @import("interfaces").ReadableStreamGenericReader;
@@ -114,7 +112,7 @@ pub const ReadableStreamDefaultReader = struct {
         return try ReadableStreamDefaultReaderImpl.call_releaseLock(instance);
     }
 
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*const anyopaque {
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         
         return try ReadableStreamDefaultReaderImpl.call_cancel(instance, reason);
     }

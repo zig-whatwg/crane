@@ -1,12 +1,10 @@
 //! Generated from: wasm-js-api.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const InstanceImpl = @import("impls").Instance;
 const mixins = @import("mixins");
 const Module = @import("interfaces").Module;
@@ -60,7 +58,7 @@ pub const Instance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            exports: v8.JSValue = undefined,
+            exports: runtime.JSValue = undefined,
             _internal: ?*InstanceImpl.InternalState = null,
         },
     );
@@ -84,12 +82,12 @@ pub const Instance = struct {
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: webidl.Opt(v8.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, module: *runtime.Instance, importObject: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try InstanceImpl.call_constructor(allocator, ctx, module, importObject);
     }
 
-    pub fn get_exports(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_exports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try InstanceImpl.get_exports(instance);
     }
 

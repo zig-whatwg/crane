@@ -1,12 +1,10 @@
 //! Generated from: user-timing.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const PerformanceMarkImpl = @import("impls").PerformanceMark;
 const mixins = @import("mixins");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
@@ -67,7 +65,7 @@ pub const PerformanceMark = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: v8.JSValue = undefined,
+            detail: runtime.JSValue = undefined,
             _internal: ?*PerformanceMarkImpl.InternalState = null,
         },
     );
@@ -96,7 +94,7 @@ pub const PerformanceMark = struct {
         return try PerformanceMarkImpl.call_constructor(allocator, ctx, markName, markOptions);
     }
 
-    pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceMarkImpl.get_detail(instance);
     }
 

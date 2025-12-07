@@ -1,12 +1,10 @@
 //! Generated from: html.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ErrorEventImpl = @import("impls").ErrorEvent;
 const mixins = @import("mixins");
 const Event = @import("interfaces").Event;
@@ -83,7 +81,7 @@ pub const ErrorEvent = struct {
             filename: runtime.USVString = undefined,
             lineno: u32 = undefined,
             colno: u32 = undefined,
-            @"error": v8.JSValue = undefined,
+            @"error": runtime.JSValue = undefined,
             _internal: ?*ErrorEventImpl.InternalState = null,
         },
     );
@@ -132,7 +130,7 @@ pub const ErrorEvent = struct {
         return try ErrorEventImpl.get_colno(instance);
     }
 
-    pub fn get_error(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ErrorEventImpl.get_error(instance);
     }
 

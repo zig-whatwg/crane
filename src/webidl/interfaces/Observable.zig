@@ -1,12 +1,10 @@
 //! Generated from: observable.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const ObservableImpl = @import("impls").Observable;
 const mixins = @import("mixins");
 const Mapper = @import("callbacks").Mapper;
@@ -186,7 +184,7 @@ pub const Observable = struct {
         return try ObservableImpl.call_first(instance, options);
     }
 
-    pub fn call_takeUntil(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_takeUntil(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_takeUntil(instance, value);
     }
@@ -226,7 +224,7 @@ pub const Observable = struct {
         return try ObservableImpl.call_toArray(instance, options);
     }
 
-    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(v8.JSValue), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
+    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(runtime.JSValue), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
     }
@@ -241,7 +239,7 @@ pub const Observable = struct {
         return try ObservableImpl.call_flatMap(instance, mapper);
     }
 
-    pub fn call_from(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         
         return try ObservableImpl.call_from(instance, value);
     }

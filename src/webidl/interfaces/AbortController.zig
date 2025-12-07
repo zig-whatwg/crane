@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const AbortControllerImpl = @import("impls").AbortController;
 const mixins = @import("mixins");
 const AbortSignal = @import("interfaces").AbortSignal;
@@ -105,7 +103,7 @@ pub const AbortController = struct {
         return value;
     }
 
-    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try AbortControllerImpl.call_abort(instance, reason);
     }

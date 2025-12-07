@@ -1,12 +1,10 @@
 //! Generated from: dom.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const DOMTokenListImpl = @import("impls").DOMTokenList;
 const mixins = @import("mixins");
 const DOMString = @import("typedefs").DOMString;
@@ -153,7 +151,7 @@ pub const DOMTokenList = struct {
         return try DOMTokenListImpl.call_replace(instance, token, newToken);
     }
 
-    pub fn call_forEach(instance: *runtime.Instance, callback: v8.JSValue) anyerror!void {
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try DOMTokenListImpl.call_forEach(instance, callback);
     }

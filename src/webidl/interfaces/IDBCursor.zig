@@ -1,12 +1,10 @@
 //! Generated from: IndexedDB.idl
-//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const IDBCursorImpl = @import("impls").IDBCursor;
 const mixins = @import("mixins");
 const IDBRequest = @import("interfaces").IDBRequest;
@@ -88,8 +86,8 @@ pub const IDBCursor = struct {
                 IDBIndex: IDBIndex,
             } = undefined,
             direction: IDBCursorDirection = undefined,
-            key: v8.JSValue = undefined,
-            primaryKey: v8.JSValue = undefined,
+            key: runtime.JSValue = undefined,
+            primaryKey: runtime.JSValue = undefined,
             request: *runtime.Instance = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*IDBCursorImpl.InternalState = null,
@@ -132,11 +130,11 @@ pub const IDBCursor = struct {
         return try IDBCursorImpl.get_direction(instance);
     }
 
-    pub fn get_key(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBCursorImpl.get_key(instance);
     }
 
-    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBCursorImpl.get_primaryKey(instance);
     }
 
@@ -158,18 +156,18 @@ pub const IDBCursor = struct {
         return try IDBCursorImpl.call_delete(instance);
     }
 
-    pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(v8.JSValue)) anyerror!void {
+    pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try IDBCursorImpl.call_continue(instance, key);
     }
 
-    pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: v8.JSValue, primaryKey: v8.JSValue) anyerror!void {
+    pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: runtime.JSValue, primaryKey: runtime.JSValue) anyerror!void {
         
         return try IDBCursorImpl.call_continuePrimaryKey(instance, key, primaryKey);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_update(instance: *runtime.Instance, value: v8.JSValue) anyerror!*runtime.Instance {
+    pub fn call_update(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBCursorImpl.call_update(instance, value);

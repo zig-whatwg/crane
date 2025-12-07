@@ -1,12 +1,10 @@
 //! Generated from: xhr.idl
-//! Generated at: 2025-12-07T20:02:42Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 const XMLHttpRequestImpl = @import("impls").XMLHttpRequest;
 const mixins = @import("mixins");
 const XMLHttpRequestEventTarget = @import("interfaces").XMLHttpRequestEventTarget;
@@ -144,7 +142,7 @@ pub const XMLHttpRequest = struct {
             status: u16 = undefined,
             statusText: runtime.ByteString = undefined,
             responseType: XMLHttpRequestResponseType = undefined,
-            response: v8.JSValue = undefined,
+            response: runtime.JSValue = undefined,
             responseText: runtime.USVString = undefined,
             responseXML: ?*runtime.Instance = null,
             cached_upload: ?*runtime.Instance = null,
@@ -296,7 +294,7 @@ pub const XMLHttpRequest = struct {
         try XMLHttpRequestImpl.set_responseType(instance, value);
     }
 
-    pub fn get_response(instance: *runtime.Instance) anyerror!v8.JSValue {
+    pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XMLHttpRequestImpl.get_response(instance);
     }
 
