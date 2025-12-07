@@ -67,9 +67,10 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
 }
 
 /// Entry type for pair iterable support
+/// Note: Using string types for V8 compatibility
 pub const IterableEntry = struct {
-    name: typedefs.BufferSource,
-    value: enums.MediaKeyStatus,
+    name: []const u8, // BufferSource as string
+    value: []const u8, // MediaKeyStatus as string
 };
 
 /// Get entries for pair iterable support (used by V8 for iteration)

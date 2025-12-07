@@ -60,9 +60,10 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
 }
 
 /// Entry type for pair iterable support
+/// Note: Using string types for V8 compatibility
 pub const IterableEntry = struct {
-    name: enums.XRBodyJoint,
-    value: *runtime.Instance, // XRJointSpace
+    name: []const u8,
+    value: []const u8, // XRJointSpace as string representation
 };
 
 /// Get entries for pair iterable support (used by V8 for iteration)
