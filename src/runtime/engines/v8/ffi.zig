@@ -250,7 +250,7 @@ pub const IndexedPropertyGetterCallback = *const fn (
 
 // ObjectTemplate functions
 pub extern fn v8_ObjectTemplate_New(isolate: *Isolate) *ObjectTemplate;
-pub extern fn v8_ObjectTemplate_NewInstance(self: *ObjectTemplate, context: *Context) *Object;
+pub extern fn v8_ObjectTemplate_NewInstance(self: *ObjectTemplate, context: *Context) ?*Object;
 pub extern fn v8_ObjectTemplate_SetInternalFieldCount(self: *ObjectTemplate, count: c_int) void;
 pub extern fn v8_ObjectTemplate_Set(
     self: *ObjectTemplate,
@@ -1277,6 +1277,60 @@ pub extern fn v8_Global_SetWeak(
 /// Arguments:
 ///   handle: The Global handle to make strong again
 pub extern fn v8_Global_ClearWeak(handle: *anyopaque) void;
+
+// ============================================================================
+// Global Handle Conversion API
+// ============================================================================
+//
+// These functions enable converting Local handles to Global handles for
+// cross-scope persistence. This is critical for storing JavaScript callbacks
+// (like stream start/write/close callbacks) that need to survive past the
+// HandleScope that created them.
+//
+// V8 Handle Lifecycle:
+// - Local<T>: Stack-bound, invalid after HandleScope ends
+// - Global<T>: Heap-allocated, persists until explicitly Reset()
+
+/// Convert a Local<Value> to a heap-allocated Global<Value>
+///
+/// The Local value comes from the current HandleScope. The returned Global
+/// pointer persists independently of any HandleScope and must be disposed
+/// with v8_Global_Dispose().
+///
+/// @param isolate - Current V8 isolate
+/// @param local - Local value pointer (from callback or conversion)
+/// @return New Global<Value>* or null if local is empty
+pub extern fn v8_Value_ToGlobal(isolate: *Isolate, local: *anyopaque) ?*Value;
+
+/// Dispose a Global<Value> handle
+///
+/// Releases the persistent reference, allowing the V8 value to be garbage
+/// collected if no other references exist.
+///
+/// @param global - Global handle to dispose (null-safe)
+pub extern fn v8_Global_Dispose(global: ?*Value) void;
+
+/// Check if a Global handle is empty or null
+///
+/// @param global - Global handle to check
+/// @return true if null or empty, false if valid
+pub extern fn v8_Global_IsEmpty(global: ?*Value) bool;
+
+/// Get a Local<Value> from a Global<Value>
+///
+/// Creates a new Local handle in the current HandleScope. The returned
+/// Local is valid only within the current HandleScope.
+///
+/// @param isolate - Current V8 isolate
+/// @param global - Global handle to dereference
+/// @return Local value pointer or null if global is empty
+pub extern fn v8_Global_Get(isolate: *Isolate, global: ?*Value) ?*anyopaque;
+
+/// Convert a Global<Value> to a Global<Function> if it contains a function
+///
+/// @param global - Global value handle
+/// @return The same pointer cast to Global<Function>* if it's a function, null otherwise
+pub extern fn v8_Global_ToFunction(global: ?*Value) ?*Function;
 
 // ============================================================================
 // Async Iterator Support

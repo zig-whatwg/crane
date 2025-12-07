@@ -161,6 +161,14 @@ pub const V8Script = handles.V8Script;
 pub const V8Module = handles.V8Module;
 pub const HandleBag = handles.HandleBag;
 
+/// Global Handle Management for cross-scope persistence
+/// Use GlobalHandle to store V8 callbacks that need to survive HandleScope destruction
+pub const global_handles = @import("global_handles.zig");
+pub const GlobalHandle = global_handles.GlobalHandle;
+pub const OptionalGlobalHandle = global_handles.OptionalGlobalHandle;
+pub const disposeOptionalGlobalHandle = global_handles.disposeOptional;
+pub const createOptionalGlobalHandle = global_handles.createOptional;
+
 /// Thread safety primitives for V8 isolate access
 pub const locker = @import("locker.zig");
 pub const IsolateLock = locker.IsolateLock;

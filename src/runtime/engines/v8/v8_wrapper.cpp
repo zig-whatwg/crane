@@ -1915,6 +1915,37 @@ Global<Value>* v8_FunctionCallbackInfo_GetArgument(const FunctionCallbackInfo<Va
 }
 
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
+    if (!value) {
+        // Null value passed - set undefined and log warning
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValue called with null value\n");
+        return;
+    }
+    
+    // Sanity checks for corrupted pointers
+    uintptr_t ptr_val = reinterpret_cast<uintptr_t>(value);
+    
+    // Check 1: Pointer should be in a reasonable address range (not small integers or negative values)
+    if (ptr_val < 0x1000 || ptr_val > 0x0000FFFFFFFFFFFF) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValue called with suspicious pointer: %p (out of range)\n", value);
+        // Don't try to access this pointer - it's clearly garbage
+        // Just return undefined instead
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Check 2: V8's Global handles should be aligned to at least 8 bytes on 64-bit
+    if ((ptr_val & 0x7) != 0) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValue called with misaligned pointer: %p (alignment=%lu)\n", value, ptr_val & 0x7);
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Check if the Global handle is empty (was Reset() called on it?)
+    if (value->IsEmpty()) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValue called with empty Global handle\n");
+        return;
+    }
+    
     Isolate* isolate = info->GetIsolate();
     Local<Value> val = value->Get(isolate);
     info->GetReturnValue().Set(val);
@@ -4022,6 +4053,112 @@ void v8_Unlocker_Dispose(void* unlocker) {
     if (unlocker) {
         delete static_cast<Unlocker*>(unlocker);
     }
+}
+
+// ============================================================================
+// Global Handle Conversion API
+// ============================================================================
+//
+// These functions enable converting Local handles to Global handles for
+// cross-scope persistence. This is critical for storing JavaScript callbacks
+// (like stream start/write/close callbacks) that need to survive past the
+// HandleScope that created them.
+//
+// V8 Handle Lifecycle:
+// - Local<T>: Stack-bound, invalid after HandleScope ends
+// - Global<T>: Heap-allocated, persists until explicitly Reset()
+//
+// Usage:
+// 1. When extracting callback from dictionary: call v8_Value_ToGlobal()
+// 2. When invoking callback: call v8_Global_Get() to get Local
+// 3. When done with callback: call v8_Global_Dispose()
+
+/// Convert a Local<Value> to a heap-allocated Global<Value>
+///
+/// The Local value comes from the current HandleScope. The returned Global
+/// pointer persists independently of any HandleScope and must be disposed
+/// with v8_Global_Dispose().
+///
+/// IMPORTANT: The 'local' parameter must be a valid Local<Value> internal pointer
+/// from within an active HandleScope. This function creates a Global that persists
+/// after the HandleScope ends.
+///
+/// @param isolate - Current V8 isolate
+/// @param local - Local value pointer (from callback or conversion)
+/// @return New Global<Value>* or nullptr if local is empty
+Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
+    if (!isolate || !local) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    
+    // Cast the void* back to Value* - this is the internal pointer from a Local<Value>
+    // We can construct a Local from this internal pointer using the internal API
+    Value* value_ptr = reinterpret_cast<Value*>(local);
+    
+    // Use internal::ValueHelper to construct a proper Local<Value>
+    // This mirrors how V8 internally handles the conversion
+    Local<Value> local_value = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    
+    if (local_value.IsEmpty()) return nullptr;
+    
+    return new Global<Value>(isolate, local_value);
+}
+
+/// Dispose a Global<Value> handle
+///
+/// Releases the persistent reference, allowing the V8 value to be garbage
+/// collected if no other references exist.
+///
+/// @param global - Global handle to dispose (null-safe)
+void v8_Global_Dispose(Global<Value>* global) {
+    if (global != nullptr) {
+        global->Reset();
+        delete global;
+    }
+}
+
+/// Check if a Global handle is empty or null
+///
+/// @param global - Global handle to check
+/// @return true if null or empty, false if valid
+bool v8_Global_IsEmpty(Global<Value>* global) {
+    return global == nullptr || global->IsEmpty();
+}
+
+/// Get a Local<Value> from a Global<Value>
+///
+/// Creates a new Local handle in the current HandleScope. The returned
+/// Local is valid only within the current HandleScope.
+///
+/// @param isolate - Current V8 isolate
+/// @param global - Global handle to dereference
+/// @return Local value pointer (as void*) or nullptr if global is empty
+void* v8_Global_Get(Isolate* isolate, Global<Value>* global) {
+    if (!isolate || !global || global->IsEmpty()) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    Local<Value> local = global->Get(isolate);
+    
+    // Return the internal pointer - caller must use within a HandleScope
+    return *reinterpret_cast<void**>(&local);
+}
+
+/// Convert a Global<Value> to a Global<Function> if it contains a function
+///
+/// @param global - Global value handle
+/// @return The same pointer cast to Global<Function>* if it's a function, nullptr otherwise
+Global<Function>* v8_Global_ToFunction(Global<Value>* global) {
+    if (!global || global->IsEmpty()) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> local = global->Get(isolate);
+    
+    if (!local->IsFunction()) return nullptr;
+    
+    // The Global<Value> and Global<Function> have the same internal representation
+    // when the value is actually a function, so we can safely cast
+    return reinterpret_cast<Global<Function>*>(global);
 }
 
 } // extern "C"
