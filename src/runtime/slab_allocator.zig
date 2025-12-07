@@ -92,9 +92,26 @@ pub const SlabAllocator = struct {
         };
     }
 
+    /// Error type for slab allocator operations
+    pub const SlabError = error{
+        /// The allocator was not initialized before use
+        NotInitialized,
+    };
+
     /// Get the global slab allocator instance
+    /// Panics if the allocator was not initialized - this is a programming error.
+    /// Use tryGet() for error-returning variant.
     pub fn get() *SlabAllocator {
         return &(global orelse @panic("SlabAllocator not initialized - call init() first"));
+    }
+
+    /// Get the global slab allocator instance, returning error if not initialized
+    /// Use this in contexts where you need to handle missing initialization gracefully.
+    pub fn tryGet() SlabError!*SlabAllocator {
+        if (global) |*g| {
+            return g;
+        }
+        return SlabError.NotInitialized;
     }
 
     /// Deinitialize the global allocator (free all slabs)

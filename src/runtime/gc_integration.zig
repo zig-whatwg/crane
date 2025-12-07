@@ -77,20 +77,29 @@ pub fn onGCSweep() callconv(.c) void {
     ArenaAllocator.get().reset();
 }
 
+/// Error type for GC integration operations
+pub const GCError = error{
+    /// registerCallbacks was called but no JS engine implementation is available
+    NotImplemented,
+};
+
 /// Register GC callbacks with JavaScript engine (engine-specific)
 ///
 /// This is a helper that would be called during engine initialization.
 /// The actual implementation depends on which JavaScript engine is used.
+///
+/// Returns error.NotImplemented if called without a specific JS engine binding.
+/// In practice, engine-specific bindings (V8, JSC) provide their own registration.
 ///
 /// Example for V8:
 ///   extern fn registerV8Callbacks(isolate: *v8.Isolate) void;
 ///
 /// Example for JavaScriptCore:
 ///   extern fn registerJSCCallbacks(ctx: *JSC.JSContextRef) void;
-pub fn registerCallbacks() void {
+pub fn registerCallbacks() GCError!void {
     // This is a placeholder - actual implementation depends on JS engine
     // In practice, this would be implemented in the JS engine binding layer
-    @panic("registerCallbacks must be implemented for specific JS engine");
+    return GCError.NotImplemented;
 }
 
 /// Statistics for GC integration

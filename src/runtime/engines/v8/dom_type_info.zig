@@ -42,8 +42,18 @@ const v8 = @import("ffi.zig");
 // ============================================================================
 
 fn placeholderInstall(_: *v8.Isolate) *v8.FunctionTemplate {
-    // This is a placeholder - real implementations will be generated
-    @panic("WrapperTypeInfo.install_template_fn called but not implemented");
+    // INTENTIONAL PANIC: This is a placeholder for codegen-generated implementations.
+    // If this code path is reached, it means:
+    // 1. Code is trying to use a DOM interface before codegen has run
+    // 2. Or the interface is being used but its template hasn't been generated yet
+    //
+    // This is a programming error, not a runtime error that should be recoverable.
+    // The correct fix is to run codegen to generate the real implementations.
+    //
+    // Note: We use @panic here instead of unreachable because unreachable in
+    // ReleaseFast is undefined behavior, while @panic always produces a crash
+    // with a clear message.
+    @panic("WrapperTypeInfo.install_template_fn called but not implemented - run codegen to generate implementations");
 }
 
 // ============================================================================

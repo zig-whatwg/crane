@@ -225,13 +225,23 @@ pub fn getTag(ptr: *const anyopaque) AnyopaqueTag {
     return @enumFromInt(addr & 0x3);
 }
 
+/// Error type for pointer tag validation
+pub const PointerTagError = error{
+    /// A tagged pointer was passed where an untagged pointer was expected
+    TaggedPointerAtFFIBoundary,
+};
+
 /// Assert that a pointer is untagged (has zero low bits).
 ///
 /// This is a debug-mode assertion to catch cases where tagged pointers
 /// are accidentally passed to FFI boundaries. In release builds, this
 /// function does nothing to avoid runtime overhead.
 ///
-/// Panics in Debug/ReleaseSafe if the pointer has non-zero tag bits.
+/// INTENTIONAL PANIC: Passing tagged pointers to V8 FFI functions causes
+/// undefined behavior or crashes. This panic is a fail-fast mechanism to
+/// catch programming errors early in development.
+///
+/// For code that needs error handling instead of panic, use checkUntagged().
 ///
 /// Usage:
 /// ```zig
@@ -249,11 +259,30 @@ pub fn assertUntagged(ptr: *const anyopaque) void {
     }
 }
 
+/// Check that a pointer is untagged, returning error if tagged.
+///
+/// This is the error-returning alternative to assertUntagged().
+/// Use this when you need to handle tagged pointers gracefully
+/// rather than panicking.
+///
+/// Returns the untagged pointer on success for convenience.
+pub fn checkUntagged(ptr: *const anyopaque) PointerTagError!*anyopaque {
+    if (isTagged(ptr)) {
+        return PointerTagError.TaggedPointerAtFFIBoundary;
+    }
+    return @constCast(ptr);
+}
+
 /// Assert that a pointer is untagged, or untag it and return the untagged pointer.
 ///
 /// This is a convenience function that:
 /// - In Debug/ReleaseSafe: panics if pointer is tagged (catches bugs early)
 /// - In ReleaseFast/ReleaseSmall: returns the untagged pointer silently
+///
+/// INTENTIONAL PANIC in debug mode: This is a fail-fast mechanism to catch
+/// programming errors. Passing tagged pointers to V8 causes crashes or UB.
+///
+/// For code that needs error handling, use checkUntaggedOrUntag().
 ///
 /// This is useful for FFI boundaries where you want to catch bugs in development
 /// but also want automatic untagging in production for resilience.
@@ -266,6 +295,24 @@ pub fn assertUntaggedOrUntag(ptr: *const anyopaque) *anyopaque {
         return @constCast(ptr);
     } else {
         // In release mode, silently untag for resilience
+        return untagPointer(ptr).ptr;
+    }
+}
+
+/// Check that a pointer is untagged, or untag it and return the result.
+///
+/// This is the error-returning alternative to assertUntaggedOrUntag().
+/// In Debug/ReleaseSafe mode, returns error if tagged.
+/// In ReleaseFast/ReleaseSmall mode, silently untags.
+///
+/// Use this when you need to handle tagged pointers gracefully.
+pub fn checkUntaggedOrUntag(ptr: *const anyopaque) PointerTagError!*anyopaque {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (isTagged(ptr)) {
+            return PointerTagError.TaggedPointerAtFFIBoundary;
+        }
+        return @constCast(ptr);
+    } else {
         return untagPointer(ptr).ptr;
     }
 }

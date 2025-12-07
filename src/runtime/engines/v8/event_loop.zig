@@ -266,9 +266,12 @@ pub const V8EventLoop = struct {
         // Allocate context for the microtask
         // This will be freed by the callback wrapper
         const ctx = self.allocator.create(MicrotaskContext) catch {
-            // If allocation fails, we have no choice but to panic
-            // V8's EnqueueMicrotask doesn't return errors
-            @panic("Out of memory allocating microtask context");
+            // If allocation fails, log and drop the microtask
+            // This is the safest option since V8's EnqueueMicrotask doesn't return errors
+            // and we can't propagate errors through the EventLoop interface.
+            // Dropping is better than crashing the entire runtime.
+            std.log.err("V8EventLoop: Failed to allocate microtask context (OOM), dropping microtask", .{});
+            return;
         };
 
         ctx.* = .{
@@ -292,7 +295,10 @@ pub const V8EventLoop = struct {
 
         // V8 doesn't have a native task queue, so we maintain our own
         self.tasks.append(self.allocator, task) catch {
-            @panic("Out of memory allocating task");
+            // If allocation fails, log and drop the task
+            // This is safer than crashing the runtime
+            std.log.err("V8EventLoop: Failed to allocate task (OOM), dropping task", .{});
+            return;
         };
     }
 

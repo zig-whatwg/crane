@@ -36,9 +36,26 @@ pub const ArenaAllocator = struct {
         };
     }
 
+    /// Error type for arena allocator operations
+    pub const ArenaError = error{
+        /// The allocator was not initialized before use
+        NotInitialized,
+    };
+
     /// Get the global arena allocator instance
+    /// Panics if the allocator was not initialized - this is a programming error.
+    /// Use tryGet() for error-returning variant.
     pub fn get() *ArenaAllocator {
         return &(global orelse @panic("ArenaAllocator not initialized - call init() first"));
+    }
+
+    /// Get the global arena allocator instance, returning error if not initialized
+    /// Use this in contexts where you need to handle missing initialization gracefully.
+    pub fn tryGet() ArenaError!*ArenaAllocator {
+        if (global) |*g| {
+            return g;
+        }
+        return ArenaError.NotInitialized;
     }
 
     /// Deinitialize the global allocator
