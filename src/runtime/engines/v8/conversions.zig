@@ -44,6 +44,9 @@ pub const ConversionError = error{
 
     /// Context is required but was null
     NullContext,
+
+    /// Failed to create a V8 Global handle for persistent storage
+    GlobalHandleCreationFailed,
 };
 
 // ============================================================================
