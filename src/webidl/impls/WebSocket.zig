@@ -21,6 +21,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -55,11 +56,21 @@ pub const InternalState = struct {
     /// Binary type preference
     binary_type: enums.BinaryType,
 
-    /// Event handlers
-    onopen: typedefs.EventHandler,
-    onerror: typedefs.EventHandler,
-    onclose: typedefs.EventHandler,
-    onmessage: typedefs.EventHandler,
+    /// Event handlers stored as V8 Global handles.
+    ///
+    /// These MUST be Global handles (not raw pointers) because:
+    /// 1. The JavaScript callback objects need to survive past the setter's HandleScope
+    /// 2. Local handles become invalid when the HandleScope that created them is destroyed
+    /// 3. Without Global handles, invoking event handlers would crash due to dangling pointers
+    ///
+    /// See: src/runtime/engines/v8/global_handles.zig for Global handle management.
+    onopen: v8_engine.OptionalGlobalHandle,
+    onerror: v8_engine.OptionalGlobalHandle,
+    onclose: v8_engine.OptionalGlobalHandle,
+    onmessage: v8_engine.OptionalGlobalHandle,
+
+    /// V8 isolate for creating/disposing Global handles
+    isolate: ?*v8_engine.ffi.Isolate,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -71,10 +82,17 @@ pub const InternalState = struct {
             .onerror = null,
             .onclose = null,
             .onmessage = null,
+            .isolate = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        // Dispose V8 Global handles to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.onopen);
+        v8_engine.disposeOptionalGlobalHandle(&self.onerror);
+        v8_engine.disposeOptionalGlobalHandle(&self.onclose);
+        v8_engine.disposeOptionalGlobalHandle(&self.onmessage);
+
         if (self.connection) |conn| {
             conn.deinit();
             self.connection = null;
@@ -180,6 +198,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
+
+    // Store V8 isolate for Global handle management
+    internal.isolate = @ptrCast(@alignCast(ctx.engine_ctx));
+
     state.own._internal = internal;
 
     // Create the WebSocket connection (starts in CONNECTING state)
@@ -240,21 +262,39 @@ pub fn get_bufferedAmount(instance: *runtime.Instance) anyerror!u64 {
 }
 
 /// Getter for onopen
+/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onopen(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
-    return internal.onopen;
+    const isolate = internal.isolate orelse return null;
+    if (internal.onopen) |global| {
+        // Use GlobalHandle's get() method to retrieve Local handle
+        return @ptrCast(@alignCast(global.get(isolate)));
+    }
+    return null;
 }
 
 /// Getter for onerror
+/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
-    return internal.onerror;
+    const isolate = internal.isolate orelse return null;
+    if (internal.onerror) |global| {
+        // Use GlobalHandle's get() method to retrieve Local handle
+        return @ptrCast(@alignCast(global.get(isolate)));
+    }
+    return null;
 }
 
 /// Getter for onclose
+/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
-    return internal.onclose;
+    const isolate = internal.isolate orelse return null;
+    if (internal.onclose) |global| {
+        // Use GlobalHandle's get() method to retrieve Local handle
+        return @ptrCast(@alignCast(global.get(isolate)));
+    }
+    return null;
 }
 
 /// Getter for extensions
@@ -284,9 +324,15 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for onmessage
+/// Returns the event handler by retrieving a Local handle from the Global handle.
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
     const internal = getInternal(instance) orelse return null;
-    return internal.onmessage;
+    const isolate = internal.isolate orelse return null;
+    if (internal.onmessage) |global| {
+        // Use GlobalHandle's get() method to retrieve Local handle
+        return @ptrCast(@alignCast(global.get(isolate)));
+    }
+    return null;
 }
 
 /// Getter for binaryType
@@ -300,35 +346,71 @@ pub fn get_binaryType(instance: *runtime.Instance) anyerror!enums.BinaryType {
 }
 
 /// Setter for onopen
+/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    internal.onopen = value;
-    const state = instance.getState(State);
-    state.own.onopen = value;
+    const isolate = internal.isolate orelse return;
+
+    // Dispose old Global handle first to prevent memory leaks
+    v8_engine.disposeOptionalGlobalHandle(&internal.onopen);
+
+    // Create new Global handle from the Local handle (value)
+    if (value) |handler| {
+        internal.onopen = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+    } else {
+        internal.onopen = null;
+    }
 }
 
 /// Setter for onerror
+/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    internal.onerror = value;
-    const state = instance.getState(State);
-    state.own.onerror = value;
+    const isolate = internal.isolate orelse return;
+
+    // Dispose old Global handle first to prevent memory leaks
+    v8_engine.disposeOptionalGlobalHandle(&internal.onerror);
+
+    // Create new Global handle from the Local handle (value)
+    if (value) |handler| {
+        internal.onerror = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+    } else {
+        internal.onerror = null;
+    }
 }
 
 /// Setter for onclose
+/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    internal.onclose = value;
-    const state = instance.getState(State);
-    state.own.onclose = value;
+    const isolate = internal.isolate orelse return;
+
+    // Dispose old Global handle first to prevent memory leaks
+    v8_engine.disposeOptionalGlobalHandle(&internal.onclose);
+
+    // Create new Global handle from the Local handle (value)
+    if (value) |handler| {
+        internal.onclose = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+    } else {
+        internal.onclose = null;
+    }
 }
 
 /// Setter for onmessage
+/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    internal.onmessage = value;
-    const state = instance.getState(State);
-    state.own.onmessage = value;
+    const isolate = internal.isolate orelse return;
+
+    // Dispose old Global handle first to prevent memory leaks
+    v8_engine.disposeOptionalGlobalHandle(&internal.onmessage);
+
+    // Create new Global handle from the Local handle (value)
+    if (value) |handler| {
+        internal.onmessage = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+    } else {
+        internal.onmessage = null;
+    }
 }
 
 /// Setter for binaryType
