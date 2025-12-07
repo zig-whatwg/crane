@@ -35,6 +35,11 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Static sentinel for representing "undefined" return values.
+/// Used instead of null to provide a valid pointer that represents
+/// undefined/empty results from operations that return *const anyopaque.
+var undefined_sentinel: u8 = 0;
+
 /// Internal state for Text implementation
 /// Text primarily uses CharacterData's data storage via inheritance
 /// Additional Text-specific state can be added here
@@ -267,12 +272,12 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-getboxquads
 ///
 /// Returns a sequence of DOMQuads representing the CSS boxes for this element.
-/// Note: Returns empty array - requires CSSOM/layout integration
+/// Note: Returns sentinel for empty array - requires CSSOM/layout integration
 pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
-    // Return empty array sentinel - layout engine required for actual box computation
-    return @ptrFromInt(1);
+    // Return sentinel for empty array - layout engine required for actual box computation
+    return &undefined_sentinel;
 }
 
 /// Operation: convertQuadFromNode (from GeometryUtils mixin)

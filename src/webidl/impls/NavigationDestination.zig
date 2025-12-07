@@ -31,6 +31,11 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
+/// Static sentinel for representing "undefined" return values.
+/// Used instead of null to provide a valid pointer that represents
+/// undefined/empty results from operations that return *const anyopaque.
+var undefined_sentinel: u8 = 0;
+
 /// Internal state for NavigationDestination implementation
 pub const InternalState = struct {
     /// Allocator for this destination's resources
@@ -215,11 +220,6 @@ pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
 pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return the state pointer (undefined if null)
-    if (internal.state) |s| {
-        return s;
-    }
-
-    // Return undefined representation
-    return @ptrFromInt(1); // Placeholder for undefined
+    // Return the state pointer, or sentinel for undefined
+    return internal.state orelse &undefined_sentinel;
 }

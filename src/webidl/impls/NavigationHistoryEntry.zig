@@ -34,6 +34,11 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
+/// Static sentinel for representing "undefined" return values.
+/// Used instead of null to provide a valid pointer that represents
+/// undefined/empty results from operations that return *const anyopaque.
+var undefined_sentinel: u8 = 0;
+
 /// Internal state for NavigationHistoryEntry implementation
 pub const InternalState = struct {
     /// Allocator for this entry's resources
@@ -207,10 +212,9 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
     // In full implementation, this would deserialize and return a clone
     const state = &entry.navigation_api_state;
 
-    // Check for undefined (initial state)
+    // Check for undefined (initial state) - return sentinel
     if (state.isUndefined()) {
-        // Return undefined representation
-        return @ptrFromInt(1); // Placeholder for undefined
+        return &undefined_sentinel;
     }
 
     // Return the state data pointer

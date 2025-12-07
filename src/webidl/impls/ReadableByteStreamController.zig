@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -1322,7 +1323,6 @@ fn commitPullIntoDescriptor(
     const filled_view: *anyopaque = blk: {
         // If we have V8 context, create a proper V8 TypedArray
         if (internal.isolate != null and internal.v8_context != null) {
-            const v8_engine = @import("v8");
             const v8_ffi = v8_engine.ffi;
             const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
 
@@ -1461,7 +1461,7 @@ fn fillReadRequestFromQueue(internal: *InternalState, stream: *runtime.Instance)
     const chunk: *anyopaque = blk: {
         // If we have V8 context, create a proper V8 Uint8Array
         if (internal.isolate != null and internal.v8_context != null) {
-            const v8_ffi = runtime.engines.v8.ffi;
+            const v8_ffi = v8_engine.ffi;
             const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
 
             // Create a V8 ArrayBuffer from our data

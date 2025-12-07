@@ -47,6 +47,11 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Static sentinel for representing "undefined" return values.
+/// Used instead of @ptrFromInt(1) to provide a valid pointer that represents
+/// undefined/empty results from operations that return *const anyopaque.
+var undefined_sentinel: u8 = 0;
+
 /// Custom element state per HTML spec
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
 pub const CustomElementState = enum {
@@ -811,11 +816,11 @@ pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 /// Spec: https://w3c.github.io/aria/#dom-ariamixin-ariacontrolselements
 ///
 /// Returns a frozen array of elements referenced by space-separated IDs in aria-controls.
-/// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
+/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaCurrent
@@ -829,11 +834,11 @@ pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 /// Spec: https://w3c.github.io/aria/#aria-describedby
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-describedby
-/// Note: Returns empty array - full implementation requires FrozenArray support
+/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaDescription
@@ -847,11 +852,11 @@ pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 /// Spec: https://w3c.github.io/aria/#aria-details
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-details
-/// Note: Returns empty array - full implementation requires FrozenArray support
+/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaDisabled
@@ -865,11 +870,11 @@ pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString
 /// Spec: https://w3c.github.io/aria/#aria-errormessage
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-errormessage
-/// Note: Returns empty array - full implementation requires FrozenArray support
+/// Note: Returns null - full implementation requires FrozenArray support
 pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaExpanded
@@ -883,11 +888,11 @@ pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString
 /// Spec: https://w3c.github.io/aria/#aria-flowto
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-flowto.
-/// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
+/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaHasPopup
@@ -925,11 +930,11 @@ pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// Spec: https://w3c.github.io/aria/#aria-labelledby
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-labelledby.
-/// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
+/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaLevel
@@ -973,11 +978,11 @@ pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 /// Spec: https://w3c.github.io/aria/#aria-owns
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-owns.
-/// Note: Returns empty array - full implementation requires FrozenArray support and ID resolution.
+/// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
 pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // Return empty array sentinel - full implementation requires resolving space-separated IDs
-    return @ptrFromInt(1);
+    // Return null - full implementation requires resolving space-separated IDs
+    return null;
 }
 
 /// Getter for ariaPlaceholder
@@ -2253,13 +2258,13 @@ pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Inst
 /// CSSOM View §5.1 - Scrolls the element to the given coordinates
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scroll
 ///
-/// Without a layout engine, this is a no-op (returns resolved promise with undefined)
+/// Without a layout engine, this is a no-op (returns sentinel for undefined)
 pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
     // TODO: Should return a resolved Promise<undefined>
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: getClientRects
@@ -2278,13 +2283,13 @@ pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instan
 /// CSSOM View §5.1 - Scrolls the element by the given amounts
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollby
 ///
-/// Without a layout engine, this is a no-op (returns resolved promise with undefined)
+/// Without a layout engine, this is a no-op (returns sentinel for undefined)
 pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
     // TODO: Should return a resolved Promise<undefined>
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: prepend
@@ -2463,13 +2468,13 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 /// CSSOM View §5.1 - Scrolls the element to the given coordinates (alias for scroll)
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollto
 ///
-/// Without a layout engine, this is a no-op (returns resolved promise with undefined)
+/// Without a layout engine, this is a no-op (returns sentinel for undefined)
 pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     // No-op without layout engine - returns sentinel for undefined
     // TODO: Should return a resolved Promise<undefined>
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: getElementsByTagNameNS
@@ -2529,35 +2534,35 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 /// CSS Regions §10.3 - Returns ranges for content in this region
 /// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-getregionflowranges
 ///
-/// Note: CSS Regions is deprecated - returns null (empty array)
+/// Note: CSS Regions is deprecated - returns null
 pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
     _ = instance;
-    // CSS Regions is deprecated - return empty array sentinel
-    return @ptrFromInt(1);
+    // CSS Regions is deprecated - return null
+    return null;
 }
 
 /// Operation: getBoxQuads
 /// CSSOM View §6 - Returns the element's CSS boxes as DOMQuads
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getboxquads
 ///
-/// Note: Returns empty array - requires layout engine
+/// Note: Returns sentinel for empty array - requires layout engine
 pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
-    // Requires layout engine - return empty array sentinel
-    return @ptrFromInt(1);
+    // Requires layout engine - return sentinel for empty array
+    return &undefined_sentinel;
 }
 
 /// Operation: focusableAreas
 /// CSS Spatial Navigation §5 - Returns focusable areas in specified direction
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-focusableareas
 ///
-/// Note: Returns empty array - spatial navigation not implemented
+/// Note: Returns sentinel for empty array - spatial navigation not implemented
 pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dictionaries.FocusableAreasOption)) anyerror!*const anyopaque {
     _ = instance;
     _ = option;
-    // Spatial navigation not implemented - return empty array sentinel
-    return @ptrFromInt(1);
+    // Spatial navigation not implemented - return sentinel for empty array
+    return &undefined_sentinel;
 }
 
 /// Operation: convertPointFromNode
@@ -2578,13 +2583,12 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 /// Web Animations §4.4.4 - Returns animations targeting this element
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
 ///
-/// Returns an empty array (no animations without rendering engine)
+/// Returns sentinel for empty array (no animations without rendering engine)
 pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
-    // Returns empty array - no animations without rendering engine
-    // Using sentinel value for empty array
-    return @ptrFromInt(1);
+    // Returns sentinel for empty array - no animations without rendering engine
+    return &undefined_sentinel;
 }
 
 /// Operation: getElementsByClassName
@@ -2875,13 +2879,13 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
 /// Fullscreen API §4.1 - Requests fullscreen mode for this element
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen
 ///
-/// Note: Returns rejected promise - fullscreen requires browser integration
+/// Note: Returns sentinel - fullscreen requires browser integration
 pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
-    // Fullscreen requires browser integration - return sentinel for rejected promise
+    // Fullscreen requires browser integration - return sentinel
     // TODO: Should return a rejected Promise with TypeError
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: animate
@@ -3023,13 +3027,13 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) 
 /// CSSOM View §5.1 - Scrolls this element into view
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview
 ///
-/// Without a layout engine, this is a no-op (returns resolved promise with undefined)
+/// Without a layout engine, this is a no-op (returns sentinel for undefined)
 pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
     _ = instance;
     _ = arg;
     // No-op without layout engine - returns sentinel for undefined
     // TODO: Should return a resolved Promise<undefined>
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: hasAttributes
@@ -3395,13 +3399,13 @@ fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
 /// Pointer Lock API §4.1 - Requests pointer lock on this element
 /// Spec: https://w3c.github.io/pointerlock/#dom-element-requestpointerlock
 ///
-/// Note: Returns rejected promise - pointer lock requires browser integration
+/// Note: Returns sentinel - pointer lock requires browser integration
 pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PointerLockOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
-    // Pointer lock requires browser integration - return sentinel for rejected promise
+    // Pointer lock requires browser integration - return sentinel
     // TODO: Should return a rejected Promise with SecurityError
-    return @ptrFromInt(1);
+    return &undefined_sentinel;
 }
 
 /// Operation: hasAttributeNS

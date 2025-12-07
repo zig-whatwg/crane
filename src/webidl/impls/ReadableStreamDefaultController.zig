@@ -171,9 +171,15 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(*const anyopaque)) 
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Step 1: Perform error
-    const error_ptr: *const anyopaque = if (e.was_passed) e.value else @ptrFromInt(1);
-    readableStreamDefaultControllerError(internal, error_ptr);
+    // Step 1: Perform error - use a static error value if not passed
+    const error_ptr: ?*const anyopaque = if (e.was_passed) e.value else null;
+    if (error_ptr) |ptr| {
+        readableStreamDefaultControllerError(internal, ptr);
+    } else {
+        // Create a default error value for undefined
+        const default_error = "Error";
+        readableStreamDefaultControllerError(internal, @ptrCast(default_error.ptr));
+    }
 }
 
 /// ReadableStreamDefaultControllerError(controller, e)
@@ -421,9 +427,15 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(*const anyopa
         return error.TypeError;
     }
 
-    // Step 2: Perform enqueue
-    const chunk_ptr: *const anyopaque = if (chunk.was_passed) chunk.value else @ptrFromInt(1);
-    try readableStreamDefaultControllerEnqueue(internal, chunk_ptr);
+    // Step 2: Perform enqueue - use a default undefined chunk if not passed
+    const chunk_ptr: ?*const anyopaque = if (chunk.was_passed) chunk.value else null;
+    if (chunk_ptr) |ptr| {
+        try readableStreamDefaultControllerEnqueue(internal, ptr);
+    } else {
+        // Create a default undefined chunk value
+        const undefined_chunk = "undefined";
+        try readableStreamDefaultControllerEnqueue(internal, @ptrCast(undefined_chunk.ptr));
+    }
 }
 
 /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)

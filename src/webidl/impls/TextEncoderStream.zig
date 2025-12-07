@@ -120,11 +120,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     // Step 1: Encoder is implicit (UTF-8 only)
 
     // Steps 2-6: Create the underlying transform stream
-    const empty_ptr: *const anyopaque = @ptrFromInt(1); // Non-null placeholder
+    // Use notPassed() for undefined transformer - the TransformStream constructor handles this
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        webidl.Opt(*const anyopaque).passed(empty_ptr),
+        webidl.Opt(*const anyopaque).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );

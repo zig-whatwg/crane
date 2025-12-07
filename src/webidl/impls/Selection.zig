@@ -31,6 +31,9 @@ const AbstractRange = interfaces.AbstractRange;
 
 pub const State = Selection.State;
 
+/// Static sentinel value for empty array - avoids using @ptrFromInt
+var empty_array_sentinel: u8 = 0;
+
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
@@ -949,10 +952,10 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 /// 4. Return array with a single StaticRange
 pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!*const anyopaque {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Step 1: If this is empty, return an empty array
+    // Step 1: If this is empty, return empty array
     if (internal.anchor_node == null or internal.focus_node == null) {
-        // Return empty array sentinel
-        return @ptrFromInt(1);
+        // Return pointer to static empty array
+        return @ptrCast(&empty_array_sentinel);
     }
 
     // Get allowed shadow roots from options
