@@ -27,15 +27,15 @@ pub const ReadableStream = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
             .{ .name = "Transferable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "locked", "get_locked", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "cancel", "call_cancel", 0 },
@@ -46,12 +46,12 @@ pub const ReadableStream = struct {
             .{ "values", "call_values", 0 },
             .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "from", "call_from", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "from",
@@ -63,20 +63,22 @@ pub const ReadableStream = struct {
             "values",
             "getAsyncIterator",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "locked", "get_locked", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
-
+        
         /// Async iterable declaration (for Symbol.asyncIterator support)
         pub const async_iterable = .{
             .value_type = "runtime.JSValue",
@@ -95,6 +97,7 @@ pub const ReadableStream = struct {
     );
 
     const delegates = .{
+
         .get_locked = &get_locked,
 
         .call_cancel = &call_cancel,
@@ -130,14 +133,17 @@ pub const ReadableStream = struct {
     }
 
     pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(StreamPipeOptions)) anyerror!*const anyopaque {
+        
         return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
     }
 
     pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: webidl.Opt(StreamPipeOptions)) anyerror!*runtime.Instance {
+        
         return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
     }
 
     pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
+        
         return try ReadableStreamImpl.call_from(instance, asyncIterable);
     }
 
@@ -146,40 +152,23 @@ pub const ReadableStream = struct {
     }
 
     pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+        
         return try ReadableStreamImpl.call_cancel(instance, reason);
     }
 
     pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamGetReaderOptions)) anyerror!ReadableStreamReader {
+        
         return try ReadableStreamImpl.call_getReader(instance, options);
     }
 
     pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
+        
         return try ReadableStreamImpl.call_values(instance, options);
     }
 
     pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
+        
         return try ReadableStreamImpl.call_getAsyncIterator(instance, options);
     }
 
-    /// Internal method for V8 promise callback invocation
-    /// Called from V8 interface layer after wrapper object is created
-    pub fn invokePendingByteStartCallback(
-        instance: *runtime.Instance,
-        controller_v8: *anyopaque,
-        v8_isolate: *anyopaque,
-        v8_context: *anyopaque,
-    ) void {
-        ReadableStreamImpl.invokePendingByteStartCallback(instance, controller_v8, v8_isolate, v8_context);
-    }
-
-    /// Internal method for V8 promise callback invocation
-    /// Called from V8 interface layer after wrapper object is created
-    pub fn invokePendingStartCallback(
-        instance: *runtime.Instance,
-        controller_v8: *anyopaque,
-        v8_isolate: *anyopaque,
-        v8_context: *anyopaque,
-    ) void {
-        ReadableStreamImpl.invokePendingStartCallback(instance, controller_v8, v8_isolate, v8_context);
-    }
 };

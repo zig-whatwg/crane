@@ -1017,7 +1017,7 @@ pub fn invokePendingStartCallback(
     };
 
     // Verify the value is a function before calling
-    if (!v8.ffi.v8_Value_IsFunction(v8_value)) {
+    if (!v8.v8_Value_IsFunction(v8_value)) {
         // Not a function - dispose and mark as started
         v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
         onWritableStartFulfilledImmediate(controller_internal);
@@ -1028,14 +1028,14 @@ pub fn invokePendingStartCallback(
 
     // Call the V8 function with the controller as argument
     // Use 'undefined' as 'this' since start() is not called as a method
-    const undefined_recv = v8.ffi.v8_Undefined(isolate) orelse {
+    const undefined_recv = v8.v8_Undefined(isolate) orelse {
         // Couldn't get undefined - dispose and mark as started
         v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
         onWritableStartFulfilledImmediate(controller_internal);
         return;
     };
     var args = [_]*v8.Value{@ptrCast(controller_obj)};
-    const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
+    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
 
     // Dispose the Global handle now that we've invoked it (start is only called once)
     v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
@@ -1057,10 +1057,10 @@ pub fn invokePendingStartCallback(
     const result_value: *v8.Value = result.?;
 
     // Check if result is a Promise
-    const is_promise = v8.ffi.v8_Value_IsPromise(result_value);
+    const is_promise = v8.v8_Value_IsPromise(result_value);
     if (is_promise) {
         // Result is a Promise - chain handlers to wait for it to settle
-        const promise: *v8.ffi.Promise = @ptrCast(result_value);
+        const promise: *v8.Promise = @ptrCast(result_value);
 
         // Create context for the callbacks (store pointers needed for completion)
         const callback_ctx = controller_internal.allocator.create(WritableStartCallbackContext) catch {
@@ -1075,7 +1075,7 @@ pub fn invokePendingStartCallback(
         };
 
         // Create fulfill handler
-        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
+        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
             context,
             onWritableStartPromiseFulfilled,
             callback_ctx,
@@ -1087,24 +1087,24 @@ pub fn invokePendingStartCallback(
         };
 
         // Create reject handler
-        const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
+        const reject_handler = v8.v8_CreateZigRejectHandler(
             context,
             onWritableStartPromiseRejected,
             callback_ctx,
         ) orelse {
             // Failed to create handler - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onWritableStartFulfilledImmediate(controller_internal);
             return;
         };
 
         // Chain handlers onto the promise
-        const chained = v8.ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
         if (chained == null) {
             // Failed to chain - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onWritableStartFulfilledImmediate(controller_internal);
             return;
