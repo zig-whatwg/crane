@@ -16,6 +16,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const v8_engine = @import("v8");
 const MutationObserver = interfaces.MutationObserver;
 
 pub const State = MutationObserver.State;
@@ -32,8 +33,11 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// Callback invoked when mutations are observed
-    /// TODO: Proper WebIDL callback support
-    callback: ?*anyopaque,
+    /// Uses V8 Global handle to persist across HandleScope boundaries
+    callback: v8_engine.OptionalGlobalHandle = null,
+
+    /// V8 isolate for Global handle operations
+    isolate: ?*v8_engine.ffi.Isolate = null,
 
     /// List of weak references to nodes being observed
     ///
@@ -58,6 +62,7 @@ pub const InternalState = struct {
         return .{
             .allocator = undefined,
             .callback = null,
+            .isolate = null,
             .node_list = .{},
             .record_queue = .{},
         };
@@ -67,12 +72,16 @@ pub const InternalState = struct {
         return .{
             .allocator = allocator,
             .callback = null,
+            .isolate = null,
             .node_list = .{},
             .record_queue = .{},
         };
     }
 
     pub fn deinit(self: *InternalState) void {
+        // Dispose Global handle for callback
+        v8_engine.disposeOptionalGlobalHandle(&self.callback);
+
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
 
@@ -132,9 +141,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
     const instance = try init(allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store the callback
+    // Store the callback using a Global handle for persistence
     const internal = getInternal(instance);
-    internal.callback = @ptrCast(@constCast(&callback));
+
+    // Get isolate from context and create Global handle
+    if (ctx.isolate) |isolate| {
+        internal.isolate = isolate;
+        // Create Global handle from the callback pointer
+        // The callback is a V8 Function passed as anyopaque
+        internal.callback = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(callback)));
+    }
 
     return instance;
 }
@@ -262,9 +278,17 @@ pub fn enqueueRecord(instance: *runtime.Instance, record: *runtime.Instance) Imp
 /// Get the callback for this observer
 ///
 /// Used by the notify mutation observers algorithm.
+/// Returns a Local handle from the stored Global handle.
 pub fn getCallback(instance: *runtime.Instance) ?*anyopaque {
     const internal = getInternal(instance);
-    return internal.callback;
+
+    // Retrieve Local handle from Global handle
+    if (internal.callback) |global| {
+        if (internal.isolate) |isolate| {
+            return global.asAnyopaque(isolate);
+        }
+    }
+    return null;
 }
 
 /// Get the node list for this observer
