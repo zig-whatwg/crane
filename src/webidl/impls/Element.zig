@@ -33,6 +33,9 @@ const ParentNode = mixins.ParentNode;
 const NonDocumentTypeChildNode = mixins.NonDocumentTypeChildNode;
 const ChildNode = mixins.ChildNode;
 
+// Import pointer_tag for V8 pointer untagging (via v8 module)
+const pointer_tag = @import("v8").pointer_tag;
+
 pub const State = Element.State;
 
 pub const ImplError = error{
@@ -2291,7 +2294,9 @@ pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionari
 /// Note: This is a simplified implementation that handles the common single-node case.
 pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // For simplified implementation, treat nodes as a single Node pointer
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    // Untag pointer from V8 before use
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Get first child
     const first_child = NodeImpl.getFirstChild(instance);
@@ -2319,7 +2324,9 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.Paren
     const parent = NodeImpl.getParent(instance) orelse return;
 
     // For simplified implementation, treat nodes as a single Node pointer
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    // Untag pointer from V8 before use
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Replace this with node using Node.replaceChild
     _ = interfaces.Node.call_replaceChild(parent, node, instance) catch {
@@ -2507,8 +2514,10 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 
     // Then append the new node(s)
     // For simplified implementation, treat nodes as a single Node pointer
+    // Untag pointer from V8 before use
     // Note: nodes being "empty" variadic is represented as a special marker, not null pointer
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Append the new node
     _ = interfaces.Node.call_appendChild(instance, node) catch {
@@ -2895,7 +2904,9 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: ?*const anyopaque, o
 /// Note: This is a simplified implementation that handles the common single-node case.
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // For simplified implementation, treat nodes as a single Node pointer
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    // Untag pointer from V8 before use
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Append as last child
     _ = interfaces.Node.call_appendChild(instance, node) catch {
@@ -3138,8 +3149,10 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode
     const parent = NodeImpl.getParent(instance) orelse return;
 
     // For simplified implementation, treat nodes as a single Node pointer
+    // Untag pointer from V8 before use
     // TODO: Handle variadic (Node or DOMString)... properly
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Insert node before this element
     _ = interfaces.Node.call_insertBefore(parent, node, instance) catch {
@@ -3157,7 +3170,9 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.
     const parent = NodeImpl.getParent(instance) orelse return;
 
     // For simplified implementation, treat nodes as a single Node pointer
-    const node: *runtime.Instance = @ptrCast(@alignCast(@constCast(nodes)));
+    // Untag pointer from V8 before use
+    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
+    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
 
     // Get next sibling
     const next_sibling = NodeImpl.getNextSibling(instance);
