@@ -78,11 +78,20 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         if (self.event_listener_list) |list| {
-            // Free any owned DOMStrings in event listeners
+            // Free any owned DOMStrings and clean up callbacks in event listeners
             const slice = list.toSliceMut();
             for (slice) |*listener| {
                 var @"type" = listener.type;
                 @"type".deinit(self.allocator);
+
+                // Clean up callback wrapper (disposes Global handles)
+                // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
+                if (listener.callback) |callback_instance| {
+                    // Get the CallbackWrapper and deinit it to dispose Global handles
+                    const v8_engine = @import("v8");
+                    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+                    callback_wrapper.deinit();
+                }
             }
             list.deinit();
             self.allocator.destroy(list);
@@ -292,6 +301,19 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
             callbackEquals(existing.callback, listener.callback))
         {
             existing.removed = true;
+
+            // Clean up the callback wrapper to dispose Global handles
+            // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
+            if (existing.callback) |callback_instance| {
+                const v8_engine = @import("v8");
+                const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+                callback_wrapper.deinit();
+            }
+
+            // Free the type DOMString
+            var existing_type = existing.type;
+            existing_type.deinit(internal.allocator);
+
             _ = list.remove(i) catch unreachable;
             return;
         }
