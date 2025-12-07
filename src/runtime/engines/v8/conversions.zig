@@ -926,71 +926,102 @@ pub fn fromV8Value(
     }
     if (T == runtime.Any) return fromV8Any(value);
     if (T == *const anyopaque) {
-        // For anyopaque parameters (WebIDL 'any' type), we need to handle V8 handle
-        // lifetimes correctly AND detect wrapped Zig interface instances.
+        // ============================================================================
+        // POINTER TAGGING DOCUMENTATION
+        // ============================================================================
         //
-        // CRITICAL: Dictionary fields typed as interfaces (e.g., ReadableWritablePair.writable)
-        // are declared as *const anyopaque in Zig. When these receive a V8 object that
-        // wraps a Zig runtime.Instance, we MUST extract the Instance pointer, NOT return
-        // a V8 pointer. Otherwise, callers that cast to *runtime.Instance will crash
-        // because they're interpreting V8 memory as Zig structs.
+        // ## Overview
         //
-        // Detection strategy:
-        // - V8 objects wrapping Zig instances have internal fields (field count > 0)
-        // - Internal field 0 contains the *runtime.Instance pointer
-        // - Plain JS objects (e.g., callbacks, dictionaries) have no internal fields
+        // This is the PRODUCER side of the pointer tagging contract. When converting
+        // V8 values to `*const anyopaque`, we tag the returned pointer so consumers
+        // can safely determine what type of pointer they received.
         //
-        // For V8 handle lifetimes:
-        // - Local<Value> handles are stack-bound to the current HandleScope
-        // - When HandleScope ends, Local handles become INVALID (dangling pointers)
-        // - For functions/objects (stored for later use), create Global handles
-        // - Primitives are safe as-is (V8 copies values internally)
+        // ## Why Tagging is Necessary
         //
-        // POINTER TAGGING:
-        // We tag the returned pointers so consumers can safely determine the type:
-        // - .runtime_instance: Pointer to *runtime.Instance (Zig object)
-        // - .global_handle: Pointer to V8 Global<Value>* (persisted JS value)
-        // - .local_value: Pointer to V8 Local<Value>* (temporary, primitives)
-        // - .untagged: Legacy untagged pointer (for backward compatibility)
+        // Dictionary fields and WebIDL 'any' type parameters are declared as
+        // `*const anyopaque` in Zig. Without tagging, consumers cannot distinguish:
+        // - A V8 Local<Value> handle (temporary, for primitives/strings)
+        // - A V8 Global<Value> handle (persisted, for functions/objects)
+        // - A Zig *runtime.Instance (wrapped interface, not a V8 pointer at all!)
         //
-        // Use untagPointer() to extract the type and original pointer.
+        // CRITICAL: If a V8 object wraps a Zig instance, we MUST return the Instance
+        // pointer, NOT the V8 pointer. Otherwise, callers casting to *runtime.Instance
+        // will crash by interpreting V8 memory as Zig structs.
+        //
+        // ## Tagging Contract
+        //
+        // **PRODUCER (here in fromV8Value):**
+        // - Tags ALL `*const anyopaque` return values using pointer_tag.tagPointer()
+        // - Detection logic:
+        //   1. If V8 object with internal fields → extract Instance, tag as .runtime_instance
+        //   2. If function/object needing persistence → create Global, tag as .global_handle
+        //   3. Otherwise → tag Local handle as .local_value
+        //
+        // **CONSUMERS (engine.zig, binding.zig, impl code):**
+        // - MUST call pointer_tag.untagPointer() before using the pointer
+        // - Check the tag to determine how to handle:
+        //   - .runtime_instance: Cast to *runtime.Instance, use directly
+        //   - .global_handle/.local_value: Cast to V8 FFI type, call V8 APIs
+        //   - .untagged: Legacy compatibility (assume V8 Local handle)
+        //
+        // ## V8 Handle Lifetimes
+        //
+        // - Local<Value>: Stack-bound to current HandleScope, becomes invalid when scope ends
+        // - Global<Value>: Persists until explicitly disposed, safe across scopes
+        // - Functions/objects stored for later callback MUST use Global handles
+        // - Primitives are safe as Local (V8 copies values internally)
+        //
+        // ## Example Consumer Code
+        //
+        // ```zig
+        // fn processAnyValue(tagged_ptr: *const anyopaque) void {
+        //     const untagged = pointer_tag.untagPointer(tagged_ptr);
+        //     switch (untagged.tag) {
+        //         .runtime_instance => {
+        //             const instance: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
+        //             // Use as Zig instance...
+        //         },
+        //         .global_handle, .local_value, .untagged => {
+        //             const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
+        //             // Call V8 FFI functions...
+        //         },
+        //     }
+        // }
+        // ```
+        //
+        // ============================================================================
 
         const pointer_tag_mod = @import("pointer_tag.zig");
 
-        // Check if this is a V8 object that wraps a Zig instance
+        // Step 1: Check if V8 object wraps a Zig instance
+        // Detection: Objects with internal fields store Zig instances in field 0
         if (v8.v8_Value_IsObject(value)) {
-            // Cast to Object to access internal fields
             const obj: *v8.Object = @ptrCast(value);
-
-            // Check if this object has internal fields (indicates it wraps a Zig instance)
             const field_count = v8.v8_Object_InternalFieldCount(obj);
             if (field_count > 0) {
-                // This is a wrapped Zig object - extract the runtime.Instance from field 0
                 if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
-                    // Return the runtime.Instance pointer, TAGGED as .runtime_instance
-                    // This allows callers to safely dispatch based on the tag
+                    // TAGGING: .runtime_instance - this is a Zig object, NOT a V8 handle
+                    // Consumer MUST NOT pass this to V8 FFI functions!
                     return pointer_tag_mod.tagPointer(internal_ptr, .runtime_instance);
                 }
-                // Internal field exists but is null - object not fully initialized
-                // Fall through to Global handle creation
+                // Internal field null - object not fully initialized, fall through
             }
         }
 
-        // Not a wrapped Zig object (or object access failed)
-        // For functions and objects, create Global handle for persistence
+        // Step 2: Create Global handle for functions/objects needing persistence
+        // NOTE: Local handles become invalid when HandleScope ends
         if (v8.v8_Value_IsFunction(value) or v8.v8_Value_IsObject(value)) {
-            // Create a Global handle so it survives after HandleScope ends
-            // Note: This creates a STRONG Global handle. Callers are responsible for
-            // disposing it when no longer needed.
             if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
-                // Return Global handle pointer, TAGGED as .global_handle
+                // TAGGING: .global_handle - V8 Global<Value>*, survives HandleScope
+                // Consumer: untag before V8 FFI, dispose when done
                 return pointer_tag_mod.tagPointer(global, .global_handle);
             }
-            // If Global creation fails (e.g., OOM), fall through to return raw pointer
+            // Global creation failed (OOM), fall through to Local
         }
 
-        // For primitives or if Global creation failed, return raw Local pointer
-        // TAG as .local_value to indicate it's a temporary V8 Local handle
+        // Step 3: Return Local handle for primitives
+        // TAGGING: .local_value - V8 Local<Value>*, temporary handle
+        // Consumer: untag before V8 FFI, only valid within current HandleScope
         return pointer_tag_mod.tagPointer(@ptrCast(@constCast(value)), .local_value);
     }
 
