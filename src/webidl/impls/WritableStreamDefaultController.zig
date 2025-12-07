@@ -43,32 +43,41 @@ pub const QueueValue = union(enum) {
 /// Internal state for WritableStreamDefaultController
 ///
 /// This mirrors the internal slots defined in WHATWG Streams spec § 4.5.4
+///
+/// ## V8 Handle Lifetime
+///
+/// Callbacks (write, close, abort, start, size) are stored as V8 Global handles
+/// to survive HandleScope destruction. When JavaScript code like
+/// `new WritableStream({ start: fn, write: fn })` executes, the callbacks are
+/// extracted as Local<Value> handles. Without Global handles, these become
+/// dangling pointers when the constructor's HandleScope ends.
+///
+/// See: src/runtime/engines/v8/global_handles.zig for implementation details.
 pub const InternalState = struct {
     /// [[stream]]: WritableStream instance this controller controls
     stream: ?*runtime.Instance,
 
-    /// [[writeAlgorithm]]: Underlying sink write callback
-    write_algorithm: ?*const anyopaque,
+    /// [[writeAlgorithm]]: Underlying sink write callback (V8 Global handle)
+    write_algorithm: v8_engine.OptionalGlobalHandle,
 
-    /// [[closeAlgorithm]]: Underlying sink close callback
-    close_algorithm: ?*const anyopaque,
+    /// [[closeAlgorithm]]: Underlying sink close callback (V8 Global handle)
+    close_algorithm: v8_engine.OptionalGlobalHandle,
 
-    /// [[abortAlgorithm]]: Underlying sink abort callback
-    abort_algorithm: ?*const anyopaque,
+    /// [[abortAlgorithm]]: Underlying sink abort callback (V8 Global handle)
+    abort_algorithm: v8_engine.OptionalGlobalHandle,
 
-    /// [[startAlgorithm]]: Underlying sink start callback (stored for deferred invocation)
-    /// This is the raw V8 function pointer that will be called when the stream is ready.
-    /// Set to null after invocation.
-    start_algorithm: ?*const anyopaque,
+    /// [[startAlgorithm]]: Underlying sink start callback (V8 Global handle)
+    /// Stored for deferred invocation. Set to null after invocation.
+    start_algorithm: v8_engine.OptionalGlobalHandle,
 
     /// [[strategyHWM]]: High water mark for backpressure
     strategy_hwm: f64,
 
-    /// [[strategySizeAlgorithm]]: Function to compute chunk size
-    strategy_size_algorithm: ?*const anyopaque,
+    /// [[strategySizeAlgorithm]]: Function to compute chunk size (V8 Global handle)
+    strategy_size_algorithm: v8_engine.OptionalGlobalHandle,
 
     /// V8 isolate (if running in V8 context) - for invoking callbacks
-    isolate: ?*anyopaque,
+    isolate: ?*v8_engine.ffi.Isolate,
 
     /// V8 context (if running in V8 context) - for invoking callbacks
     v8_context: ?*anyopaque,
@@ -90,6 +99,13 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Dispose V8 Global handles to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.write_algorithm);
+        v8_engine.disposeOptionalGlobalHandle(&self.close_algorithm);
+        v8_engine.disposeOptionalGlobalHandle(&self.abort_algorithm);
+        v8_engine.disposeOptionalGlobalHandle(&self.start_algorithm);
+        v8_engine.disposeOptionalGlobalHandle(&self.strategy_size_algorithm);
+
         // Clean up queue
         self.queue.deinit(allocator);
         allocator.destroy(self);
@@ -320,13 +336,19 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
     const stream_internal = stream_state.own._internal orelse return error.InvalidState;
 
     // 2. Calculate actual chunk size using strategy size algorithm
-    const chunk_size = if (internal.strategy_size_algorithm) |size_fn| blk: {
+    const chunk_size = if (internal.strategy_size_algorithm) |size_global| blk: {
         // Check if we have V8 context (runtime mode)
-        if (internal.isolate != null and internal.v8_context != null) {
-            // V8 runtime mode: invoke real JavaScript callback
-            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+        if (internal.isolate) |isolate| {
+            // Get Local from Global handle for this invocation
+            const size_value = size_global.get(isolate) orelse break :blk chunk_size_param;
+
+            // Verify it's a function
+            if (!v8_engine.ffi.v8_Value_IsFunction(size_value)) {
+                break :blk chunk_size_param;
+            }
+            const size_function: *v8_engine.ffi.Function = @ptrCast(size_value);
+
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
-            const size_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(size_fn)));
 
             // Convert chunk to V8 Value
             const chunk_v8 = v8_engine.conversions.chunkToV8Value(
@@ -506,13 +528,22 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
     stream_internal.in_flight_write_request = write_request;
 
     // 5. Invoke underlying sink write algorithm
-    if (internal.write_algorithm) |write_fn| {
+    if (internal.write_algorithm) |write_global| {
         // Check if we have V8 context (runtime mode)
-        if (internal.isolate != null and internal.v8_context != null) {
-            // V8 runtime mode: invoke real JavaScript callback
-            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+        if (internal.isolate) |isolate| {
+            // Get Local from Global handle for this invocation
+            const write_value = write_global.get(isolate) orelse {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            };
+
+            // Verify it's a function
+            if (!v8_engine.ffi.v8_Value_IsFunction(write_value)) {
+                writableStreamDefaultControllerError(controller, stream);
+                return;
+            }
+            const write_function: *v8_engine.ffi.Function = @ptrCast(write_value);
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
-            const write_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(write_fn)));
 
             // Convert chunk to V8 Value
             const chunk_v8 = v8_engine.conversions.chunkToV8Value(
@@ -656,72 +687,83 @@ fn writableStreamDefaultControllerProcessClose(controller: *runtime.Instance) vo
     }
 
     // Invoke underlying sink close algorithm
-    if (controller_internal.close_algorithm) |close_fn| {
+    if (controller_internal.close_algorithm) |close_global| {
         // Check if we have V8 context (runtime mode)
-        if (controller_internal.isolate != null and controller_internal.v8_context != null) {
-            // V8 runtime mode: invoke real JavaScript callback
-            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(controller_internal.isolate.?));
-            const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(controller_internal.v8_context.?));
-            const close_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(close_fn)));
+        if (controller_internal.isolate) |isolate| {
+            if (controller_internal.v8_context) |v8_ctx| {
+                // Get Local from Global handle for this invocation
+                const close_value = close_global.get(isolate) orelse {
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
 
-            // Invoke close_algorithm() → Promise<void>
-            var close_promise = v8_engine.streams_callbacks.invokeCloseAlgorithm(
-                isolate,
-                v8_context,
-                close_function,
-            ) catch {
-                // Invocation failed - just finish close anyway
-                writableStreamDefaultControllerFinishClose(stream);
+                // Verify it's a function
+                if (!v8_engine.ffi.v8_Value_IsFunction(close_value)) {
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                }
+                const close_function: *v8_engine.ffi.Function = @ptrCast(close_value);
+                const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(v8_ctx));
+
+                // Invoke close_algorithm() → Promise<void>
+                var close_promise = v8_engine.streams_callbacks.invokeCloseAlgorithm(
+                    isolate,
+                    v8_context,
+                    close_function,
+                ) catch {
+                    // Invocation failed - just finish close anyway
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
+                defer close_promise.deinit();
+
+                // Create callback context for promise handlers
+                const close_ctx = controller_internal.allocator.create(CloseCallbackContext) catch {
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
+                close_ctx.* = .{
+                    .stream = stream,
+                    .allocator = controller_internal.allocator,
+                };
+
+                // Create V8 callbacks for Promise handlers with context
+                const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+                    controller_internal.allocator,
+                    isolate,
+                    v8_context,
+                    onCloseFulfilled,
+                    close_ctx,
+                ) catch {
+                    controller_internal.allocator.destroy(close_ctx);
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
+                defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+
+                const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+                    controller_internal.allocator,
+                    isolate,
+                    v8_context,
+                    onCloseRejected,
+                    close_ctx,
+                ) catch {
+                    controller_internal.allocator.destroy(close_ctx);
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
+                defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+
+                // Chain Promise handlers
+                _ = close_promise.then(onFulfilled, onRejected) catch {
+                    controller_internal.allocator.destroy(close_ctx);
+                    writableStreamDefaultControllerFinishClose(stream);
+                    return;
+                };
+
+                // Promise will settle asynchronously - callbacks will handle completion
                 return;
-            };
-            defer close_promise.deinit();
-
-            // Create callback context for promise handlers
-            const close_ctx = controller_internal.allocator.create(CloseCallbackContext) catch {
-                writableStreamDefaultControllerFinishClose(stream);
-                return;
-            };
-            close_ctx.* = .{
-                .stream = stream,
-                .allocator = controller_internal.allocator,
-            };
-
-            // Create V8 callbacks for Promise handlers with context
-            const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
-                controller_internal.allocator,
-                isolate,
-                v8_context,
-                onCloseFulfilled,
-                close_ctx,
-            ) catch {
-                controller_internal.allocator.destroy(close_ctx);
-                writableStreamDefaultControllerFinishClose(stream);
-                return;
-            };
-            defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
-
-            const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
-                controller_internal.allocator,
-                isolate,
-                v8_context,
-                onCloseRejected,
-                close_ctx,
-            ) catch {
-                controller_internal.allocator.destroy(close_ctx);
-                writableStreamDefaultControllerFinishClose(stream);
-                return;
-            };
-            defer v8_engine.ffi.v8_Function_Dispose(onRejected);
-
-            // Chain Promise handlers
-            _ = close_promise.then(onFulfilled, onRejected) catch {
-                controller_internal.allocator.destroy(close_ctx);
-                writableStreamDefaultControllerFinishClose(stream);
-                return;
-            };
-
-            // Promise will settle asynchronously - callbacks will handle completion
-            return;
+            }
         }
     }
 
@@ -853,13 +895,29 @@ pub fn abortSteps(controller: *runtime.Instance, reason: *const anyopaque) !*Asy
     const event_loop = stream_internal.event_loop;
 
     // 1. Perform abort algorithm with reason
-    if (internal.abort_algorithm) |abort_fn| {
+    if (internal.abort_algorithm) |abort_global| {
         // Check if we have V8 context (runtime mode)
-        if (internal.isolate != null and internal.v8_context != null) {
-            // V8 runtime mode: invoke real JavaScript callback
-            const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
+        if (internal.isolate) |isolate| {
+            // Get Local from Global handle for this invocation
+            const abort_value = abort_global.get(isolate) orelse {
+                // Handle null - return rejected promise
+                const promise = try AsyncPromise(void).init(allocator, event_loop);
+                const exception = try webidl.errors.Exception.typeError(allocator, "Abort algorithm handle is invalid");
+                promise.reject(exception);
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return promise;
+            };
+
+            // Verify it's a function
+            if (!v8_engine.ffi.v8_Value_IsFunction(abort_value)) {
+                const promise = try AsyncPromise(void).init(allocator, event_loop);
+                const exception = try webidl.errors.Exception.typeError(allocator, "Abort algorithm is not a function");
+                promise.reject(exception);
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return promise;
+            }
+            const abort_function: *v8_engine.ffi.Function = @ptrCast(abort_value);
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
-            const abort_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(abort_fn)));
 
             // Convert reason to V8 Value (treat reason as raw V8 value pointer)
             const reason_v8: *v8_engine.ffi.Value = @ptrCast(@alignCast(@constCast(reason)));

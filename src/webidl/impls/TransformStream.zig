@@ -283,16 +283,23 @@ fn createWritableStreamForTransform(
     const controller_internal = try allocator.create(WritableControllerImpl.InternalState);
     errdefer allocator.destroy(controller_internal);
 
+    // Note: transform_stream is not stored in algorithms since they're now GlobalHandles.
+    // TransformStream uses internal delegation via v8_context = null signaling.
+    _ = transform_stream;
+
+    // TransformStream's writable side uses internal delegation, not V8 callbacks.
+    // The v8_context = null tells the controller to use the fallback path.
+    // Algorithms are set to null since they're not V8 GlobalHandles.
     controller_internal.* = WritableControllerImpl.InternalState{
         .stream = writable,
-        .write_algorithm = @ptrCast(transform_stream), // Store TransformStream for delegation
-        .close_algorithm = @ptrCast(transform_stream),
-        .abort_algorithm = @ptrCast(transform_stream),
+        .write_algorithm = null, // TransformStream uses internal delegation, not V8 callbacks
+        .close_algorithm = null,
+        .abort_algorithm = null,
         .start_algorithm = null, // TransformStream starts immediately, no deferred start
         .strategy_hwm = writable_hwm,
         .strategy_size_algorithm = null,
-        .isolate = ctx.engine_ctx,
-        .v8_context = null,
+        .isolate = @ptrCast(@alignCast(ctx.engine_ctx)),
+        .v8_context = null, // null v8_context signals internal mode (no JS callbacks)
         .started = true, // TransformStream starts immediately
         .queue = .{
             .items = &.{},
