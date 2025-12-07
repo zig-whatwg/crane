@@ -2172,9 +2172,18 @@ pub fn generateTypedef(
         try w.writeAll("const typedefs = @import(\"root.zig\");\n");
     }
 
-    // NOTE: We do NOT import enums or dictionaries in typedefs to avoid circular dependencies
-    // (dictionaries imports typedefs, so typedefs cannot import dictionaries)
-    // When a typedef references an enum or dictionary, we use *const anyopaque instead
+    // Check if typedef references dictionaries - if so, import dictionaries module
+    // This is needed for union types that include dictionary variants
+    const needs_dictionaries = typeReferencesDictionary(typedef.idlType, &ir.type_registry);
+    if (needs_dictionaries) {
+        try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+    }
+
+    // Check if typedef references enums - if so, import enums module
+    const needs_enums = typeReferencesEnum(typedef.idlType, &ir.type_registry);
+    if (needs_enums) {
+        try w.writeAll("const enums = @import(\"enums\");\n");
+    }
 
     try w.writeAll("\n");
 

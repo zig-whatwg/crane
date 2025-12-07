@@ -251,11 +251,40 @@ pub const IR = struct {
         if (self.dictionaries.getPtr(shared_key)) |existing| {
             if (dict.partial) {
                 // Partial dictionary - merge members into existing
-                // Create new members slice with combined members
-                const old_members = existing.members;
-                const new_members = try self.allocator.alloc(types.DictionaryMember, old_members.len + dict.members.len);
-                @memcpy(new_members[0..old_members.len], old_members);
-                @memcpy(new_members[old_members.len..], dict.members);
+                // Partial members OVERRIDE existing members with the same name
+                // This is how WebIDL partial dictionaries work (e.g., web-animations-2.idl
+                // redefines members from web-animations.idl with different types)
+
+                // Build a set of member names from the partial
+                var partial_member_names = std.StringHashMap(void).init(self.allocator);
+                defer partial_member_names.deinit();
+                for (dict.members) |member| {
+                    try partial_member_names.put(member.name, {});
+                }
+
+                // Count how many existing members are NOT overridden by partial
+                var non_overridden_count: usize = 0;
+                for (existing.members) |member| {
+                    if (!partial_member_names.contains(member.name)) {
+                        non_overridden_count += 1;
+                    }
+                }
+
+                // Create new members slice: non-overridden existing + all partial members
+                const new_members = try self.allocator.alloc(types.DictionaryMember, non_overridden_count + dict.members.len);
+
+                // Copy non-overridden existing members first
+                var idx: usize = 0;
+                for (existing.members) |member| {
+                    if (!partial_member_names.contains(member.name)) {
+                        new_members[idx] = member;
+                        idx += 1;
+                    }
+                }
+
+                // Then copy all partial members (these override or add)
+                @memcpy(new_members[idx..], dict.members);
+
                 existing.members = new_members;
                 // Track allocation for cleanup
                 try self.merged_dict_members.append(self.allocator, new_members);
@@ -278,10 +307,39 @@ pub const IR = struct {
                 }
             } else {
                 // Existing is partial-only, this is the base - merge existing partials into base
+                // Partial members OVERRIDE base members with the same name
                 const old_partial_members = existing.members;
-                const new_members = try self.allocator.alloc(types.DictionaryMember, dict.members.len + old_partial_members.len);
-                @memcpy(new_members[0..dict.members.len], dict.members);
-                @memcpy(new_members[dict.members.len..], old_partial_members);
+
+                // Build a set of member names from the partial
+                var partial_member_names = std.StringHashMap(void).init(self.allocator);
+                defer partial_member_names.deinit();
+                for (old_partial_members) |member| {
+                    try partial_member_names.put(member.name, {});
+                }
+
+                // Count how many base members are NOT overridden by partial
+                var non_overridden_count: usize = 0;
+                for (dict.members) |member| {
+                    if (!partial_member_names.contains(member.name)) {
+                        non_overridden_count += 1;
+                    }
+                }
+
+                // Create new members slice: non-overridden base + all partial members
+                const new_members = try self.allocator.alloc(types.DictionaryMember, non_overridden_count + old_partial_members.len);
+
+                // Copy non-overridden base members first
+                var idx: usize = 0;
+                for (dict.members) |member| {
+                    if (!partial_member_names.contains(member.name)) {
+                        new_members[idx] = member;
+                        idx += 1;
+                    }
+                }
+
+                // Then copy all partial members (these override or add)
+                @memcpy(new_members[idx..], old_partial_members);
+
                 var merged = dict;
                 merged.members = new_members;
                 merged.partial = false;
