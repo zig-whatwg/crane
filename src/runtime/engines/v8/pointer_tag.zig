@@ -1,57 +1,120 @@
-//! Pointer Tagging for Anyopaque Type Discrimination
+//! # Pointer Tagging for V8 FFI
 //!
-//! This module provides utilities for encoding type information in the low bits
-//! of pointers. Since all allocations are at least 4-byte aligned, the low 2 bits
-//! are always zero and can be used to store a type tag.
+//! This module implements pointer tagging to distinguish between different
+//! pointer types at the V8/Zig boundary. Tags are encoded in the low 2 bits
+//! of pointers, which are always zero due to alignment requirements.
 //!
-//! ## Problem Solved
+//! ## Why Tagging?
 //!
-//! After V8 type conversions, `*const anyopaque` values can be either:
-//! - Global handles (for JS functions/plain objects)
-//! - `*runtime.Instance` (for wrapped Zig interfaces)
-//! - Local values (for primitives that don't need persistence)
+//! When JavaScript calls Zig code with a value, the `fromV8Value` function in
+//! conversions.zig may return a `*const anyopaque` that represents one of:
+//! - A V8 Local handle to a primitive (string, number, etc.)
+//! - A V8 Global handle to a persistent object (function, callback)
+//! - A Zig runtime instance wrapped in a V8 object
 //!
-//! Without type information, code receiving these pointers can't safely dispatch
-//! to the correct handler and may crash by treating one type as another.
+//! Without type information encoded in the pointer, consumers cannot safely
+//! determine how to use the pointer, leading to crashes from:
+//! - Passing Zig instance pointers to V8 FFI functions
+//! - Casting V8 handles to Zig types
+//! - Alignment violations (tagged pointers are misaligned)
 //!
-//! ## Solution
+//! ## Tag Values
 //!
-//! Use the low 2 bits of pointers to encode the type:
+//! | Tag | Value | Meaning |
+//! |-----|-------|---------|
+//! | `.untagged` | 0 | Legacy untagged pointer (assume V8 Local) |
+//! | `.global_handle` | 1 | V8 Global<Value>* - persists beyond HandleScope |
+//! | `.runtime_instance` | 2 | Zig *runtime.Instance - NOT a V8 pointer! |
+//! | `.local_value` | 3 | V8 Local<Value>* - temporary, current scope only |
+//!
+//! ## Tagging Contract
+//!
+//! **PRODUCER** (conversions.zig `fromV8Value` for `*const anyopaque`):
+//! - Tags all returned pointers with appropriate tag
+//! - Determines tag by checking if V8 object wraps a Zig instance
+//!
+//! **CONSUMERS** (engine.zig, binding.zig, impl code):
+//! - MUST call `untagPointer()` before ANY use of the pointer
+//! - MUST NOT pass tagged pointers to V8 FFI functions (will crash!)
+//! - Use the returned tag to determine correct handling
+//!
+//! ## Implementation Details
+//!
+//! Pointer tagging exploits the fact that all allocations are at least 4-byte
+//! aligned, meaning the low 2 bits of any valid pointer are always zero:
 //!
 //! ```
 //! ┌──────────────────────────────────────────────────────┐
-//! │ Pointer address (62 bits)                        │Tag│
+//! │ Pointer address (62 bits on 64-bit)              │Tag│
 //! │ xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxx xxxx │XX │
 //! └──────────────────────────────────────────────────────┘
 //!                                                      ↑
 //!                                              2-bit type tag
 //! ```
 //!
-//! ## Usage
+//! - `tagPointer()`: ORs the tag into the low 2 bits
+//! - `untagPointer()`: ANDs out the tag, returns both pointer and tag
+//!
+//! ## Usage Examples
+//!
+//! ### Consuming a Potentially Tagged Pointer
 //!
 //! ```zig
-//! // When creating anyopaque from Global handle:
-//! const tagged = tagPointer(@ptrCast(global.rawPtr()), .global_handle);
+//! fn v8IsString(js_value: *const anyopaque) bool {
+//!     const pointer_tag = @import("pointer_tag.zig");
+//!     const untagged = pointer_tag.untagPointer(js_value);
 //!
-//! // When creating anyopaque from runtime.Instance:
-//! const tagged = tagPointer(@ptrCast(instance), .runtime_instance);
+//!     // SAFETY: Must check tag - runtime_instance is NOT a V8 value!
+//!     if (untagged.tag == .runtime_instance) {
+//!         return false; // Zig instances are not V8 strings
+//!     }
 //!
-//! // When consuming the tagged pointer:
-//! const untagged = untagPointer(tagged_ptr);
-//! switch (untagged.tag) {
-//!     .global_handle => {
-//!         const global_ptr: *v8.Value = @ptrCast(@alignCast(untagged.ptr));
-//!         // Use as Global handle...
-//!     },
-//!     .runtime_instance => {
-//!         const instance: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-//!         // Use as Instance...
-//!     },
-//!     .local_value, .untagged => {
-//!         // Handle legacy/primitive cases...
-//!     },
+//!     // Safe to use as V8 value now
+//!     const value: *ffi.Value = @ptrCast(untagged.ptr);
+//!     return ffi.v8_Value_IsString(value);
 //! }
 //! ```
+//!
+//! ### Dispatching Based on Tag
+//!
+//! ```zig
+//! fn processAnyValue(tagged_ptr: *const anyopaque) void {
+//!     const untagged = pointer_tag.untagPointer(tagged_ptr);
+//!     switch (untagged.tag) {
+//!         .runtime_instance => {
+//!             // Zig instance - use directly
+//!             const instance: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
+//!             instance.doSomething();
+//!         },
+//!         .global_handle => {
+//!             // V8 Global - survives HandleScope, remember to dispose
+//!             const global: *v8.Value = @ptrCast(untagged.ptr);
+//!             defer v8.v8_Value_Dispose(global);
+//!             // Use V8 value...
+//!         },
+//!         .local_value, .untagged => {
+//!             // V8 Local - only valid in current HandleScope
+//!             const local: *v8.Value = @ptrCast(untagged.ptr);
+//!             // Use V8 value...
+//!         },
+//!     }
+//! }
+//! ```
+//!
+//! ## Debugging Tips
+//!
+//! - **Alignment panic at 0x...3**: Pointer is tagged with .local_value (tag=3)
+//! - **Alignment panic at 0x...2**: Pointer is tagged with .runtime_instance (tag=2)
+//! - **Alignment panic at 0x...1**: Pointer is tagged with .global_handle (tag=1)
+//! - **SIGSEGV in V8 code**: Probably passed a .runtime_instance to V8 FFI
+//!
+//! Check for untagged pointer usage with: `isTagged(ptr)` or `getTag(ptr)`
+//!
+//! ## Assertion Helpers
+//!
+//! For catching bugs early:
+//! - `assertUntagged(ptr)`: Panics in debug if pointer is tagged
+//! - `assertUntaggedOrUntag(ptr)`: Debug panics, release untags silently
 
 const std = @import("std");
 const builtin = @import("builtin");
