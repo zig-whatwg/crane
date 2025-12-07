@@ -169,6 +169,16 @@ pub const OptionalGlobalHandle = global_handles.OptionalGlobalHandle;
 pub const disposeOptionalGlobalHandle = global_handles.disposeOptional;
 pub const createOptionalGlobalHandle = global_handles.createOptional;
 
+/// Pointer Tagging for anyopaque type discrimination
+/// Use when anyopaque values could be Global handles, runtime.Instance, or Local values
+pub const pointer_tag = @import("pointer_tag.zig");
+pub const AnyopaqueTag = pointer_tag.AnyopaqueTag;
+pub const tagPointer = pointer_tag.tagPointer;
+pub const tagConstPointer = pointer_tag.tagConstPointer;
+pub const untagPointer = pointer_tag.untagPointer;
+pub const isTaggedPointer = pointer_tag.isTagged;
+pub const getPointerTag = pointer_tag.getTag;
+
 /// Thread safety primitives for V8 isolate access
 pub const locker = @import("locker.zig");
 pub const IsolateLock = locker.IsolateLock;

@@ -101,20 +101,37 @@ pub const Algorithm = struct {
 /// WARNING: This stores a raw Local<Value> pointer which becomes invalid after
 /// the constructor's HandleScope is destroyed. Use jsCallbackAlgorithmGlobal
 /// for callbacks that need to survive HandleScope destruction.
+///
+/// Note: This function now handles tagged pointers from conversions.zig.
+/// - `.runtime_instance` tagged pointers return error.NotAFunction
+/// - Other tags are untagged and stored as-is (with lifetime risk)
 pub fn jsCallbackAlgorithm(
     allocator: Allocator,
     callback: *const anyopaque,
 ) !*Algorithm {
-    const vtable = &js_callback_vtable;
+    // Handle tagged pointers from conversions.zig
+    const untagged = v8_engine.untagPointer(callback);
 
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = @constCast(callback),
-        .vtable = vtable,
-        .allocator = allocator,
-    };
+    switch (untagged.tag) {
+        .runtime_instance => {
+            // Interface objects cannot be called as functions
+            return error.NotAFunction;
+        },
+        .global_handle, .local_value, .untagged => {
+            // For deprecated API, just store the untagged pointer
+            // (still unsafe after HandleScope ends!)
+            const vtable = &js_callback_vtable;
 
-    return algo;
+            const algo = try allocator.create(Algorithm);
+            algo.* = .{
+                .context = untagged.ptr,
+                .vtable = vtable,
+                .allocator = allocator,
+            };
+
+            return algo;
+        },
+    }
 }
 
 const js_callback_vtable = Algorithm.VTable{
@@ -136,10 +153,18 @@ const GlobalCallbackContext = struct {
 /// which persists beyond HandleScope destruction. This is the correct way to store
 /// callbacks from underlyingSource/underlyingSink that need to be invoked later.
 ///
+/// ## Pointer Tagging Support
+///
+/// After the conversions.zig update, callback pointers may be TAGGED to indicate their type:
+/// - `.global_handle`: Already a V8 Global handle (no conversion needed)
+/// - `.runtime_instance`: A Zig runtime.Instance (cannot be called as function - error)
+/// - `.local_value`: A V8 Local handle (needs Global conversion)
+/// - `.untagged`: Legacy untagged pointer (treated as Local, needs Global conversion)
+///
 /// Parameters:
 ///   allocator: Memory allocator for the Algorithm struct
-///   isolate: V8 isolate for creating the Global handle
-///   callback: Local<Value> pointer from dictionary extraction
+///   isolate: V8 isolate for creating the Global handle (if needed)
+///   callback: Potentially tagged pointer from dictionary extraction
 ///
 /// The Global handle is automatically disposed when the Algorithm is destroyed.
 pub fn jsCallbackAlgorithmGlobal(
@@ -147,29 +172,67 @@ pub fn jsCallbackAlgorithmGlobal(
     isolate: *v8_engine.ffi.Isolate,
     callback: *const anyopaque,
 ) !*Algorithm {
-    // Create Global handle from Local
-    const global_handle = v8_engine.GlobalHandle.create(isolate, @constCast(callback)) orelse {
-        // Failed to create Global - callback is invalid or empty
-        return error.InvalidCallback;
-    };
-    errdefer global_handle.dispose();
+    // Check if the pointer is tagged and handle based on type
+    const untagged = v8_engine.untagPointer(callback);
 
-    // Create context struct to hold Global handle and isolate
-    const ctx = try allocator.create(GlobalCallbackContext);
-    errdefer allocator.destroy(ctx);
-    ctx.* = .{
-        .global_handle = global_handle,
-        .isolate = isolate,
-    };
+    switch (untagged.tag) {
+        .runtime_instance => {
+            // This is a runtime.Instance pointer, NOT a JS function!
+            // Interface objects cannot be called as callbacks.
+            // This indicates a type mismatch in the calling code.
+            return error.NotAFunction;
+        },
 
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = ctx,
-        .vtable = &js_callback_global_vtable,
-        .allocator = allocator,
-    };
+        .global_handle => {
+            // Already a Global handle from conversions.zig
+            // Wrap it directly without creating a new Global
+            const global_ptr: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+            const global_handle = v8_engine.GlobalHandle{ .ptr = global_ptr };
 
-    return algo;
+            // Create context struct to hold Global handle and isolate
+            const ctx = try allocator.create(GlobalCallbackContext);
+            errdefer allocator.destroy(ctx);
+            ctx.* = .{
+                .global_handle = global_handle,
+                .isolate = isolate,
+            };
+
+            const algo = try allocator.create(Algorithm);
+            algo.* = .{
+                .context = ctx,
+                .vtable = &js_callback_global_vtable,
+                .allocator = allocator,
+            };
+
+            return algo;
+        },
+
+        .local_value, .untagged => {
+            // Local value or legacy untagged pointer - create Global handle from Local
+            const global_handle = v8_engine.GlobalHandle.create(isolate, untagged.ptr) orelse {
+                // Failed to create Global - callback is invalid or empty
+                return error.InvalidCallback;
+            };
+            errdefer global_handle.dispose();
+
+            // Create context struct to hold Global handle and isolate
+            const ctx = try allocator.create(GlobalCallbackContext);
+            errdefer allocator.destroy(ctx);
+            ctx.* = .{
+                .global_handle = global_handle,
+                .isolate = isolate,
+            };
+
+            const algo = try allocator.create(Algorithm);
+            algo.* = .{
+                .context = ctx,
+                .vtable = &js_callback_global_vtable,
+                .allocator = allocator,
+            };
+
+            return algo;
+        },
+    }
 }
 
 const js_callback_global_vtable = Algorithm.VTable{
