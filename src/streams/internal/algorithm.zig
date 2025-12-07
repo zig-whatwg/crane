@@ -1,12 +1,19 @@
 //! Algorithm abstraction for Streams
 //!
 //! Algorithms in WHATWG Streams represent operations that can be:
-//! - JavaScript callbacks from underlyingSource
+//! - JavaScript callbacks from underlyingSource (stored as V8 Global handles)
 //! - Native Zig closures with captured state (for ReadableStream.from, etc.)
 //! - No-op defaults (return undefined/resolved promise)
 //!
 //! This replaces the simple ?*const anyopaque function pointer approach
 //! with a vtable-based system supporting context and proper lifecycle.
+//!
+//! ## V8 Handle Lifetime
+//!
+//! JavaScript callbacks are stored as V8 Global handles to survive HandleScope
+//! destruction. When the JavaScript constructor returns, its HandleScope ends
+//! and all Local handles become invalid. Global handles persist until explicitly
+//! disposed.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,6 +21,7 @@ const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const webidl = @import("webidl");
+const v8_engine = @import("v8");
 
 /// Algorithm - Represents a stream operation (start/pull/cancel/etc.)
 ///
@@ -87,8 +95,12 @@ pub const Algorithm = struct {
     }
 };
 
-/// JavaScript Callback Algorithm
-/// Wraps a WebIDL callback function
+/// JavaScript Callback Algorithm (DEPRECATED - use jsCallbackAlgorithmGlobal)
+/// Wraps a WebIDL callback function using raw pointer (unsafe after HandleScope ends)
+///
+/// WARNING: This stores a raw Local<Value> pointer which becomes invalid after
+/// the constructor's HandleScope is destroyed. Use jsCallbackAlgorithmGlobal
+/// for callbacks that need to survive HandleScope destruction.
 pub fn jsCallbackAlgorithm(
     allocator: Allocator,
     callback: *const anyopaque,
@@ -110,6 +122,215 @@ const js_callback_vtable = Algorithm.VTable{
     .invoke_with_arg = jsCallbackInvokeWithArg,
     .destroy = jsCallbackDestroy,
 };
+
+/// Context for GlobalHandle-backed JavaScript callback algorithm
+/// Stores the V8 Global handle and isolate needed for invocation and cleanup
+const GlobalCallbackContext = struct {
+    global_handle: v8_engine.GlobalHandle,
+    isolate: *v8_engine.ffi.Isolate,
+};
+
+/// JavaScript Callback Algorithm with V8 Global Handle
+///
+/// Creates an algorithm that stores the JavaScript callback as a V8 Global handle,
+/// which persists beyond HandleScope destruction. This is the correct way to store
+/// callbacks from underlyingSource/underlyingSink that need to be invoked later.
+///
+/// Parameters:
+///   allocator: Memory allocator for the Algorithm struct
+///   isolate: V8 isolate for creating the Global handle
+///   callback: Local<Value> pointer from dictionary extraction
+///
+/// The Global handle is automatically disposed when the Algorithm is destroyed.
+pub fn jsCallbackAlgorithmGlobal(
+    allocator: Allocator,
+    isolate: *v8_engine.ffi.Isolate,
+    callback: *const anyopaque,
+) !*Algorithm {
+    // Create Global handle from Local
+    const global_handle = v8_engine.GlobalHandle.create(isolate, @constCast(callback)) orelse {
+        // Failed to create Global - callback is invalid or empty
+        return error.InvalidCallback;
+    };
+    errdefer global_handle.dispose();
+
+    // Create context struct to hold Global handle and isolate
+    const ctx = try allocator.create(GlobalCallbackContext);
+    errdefer allocator.destroy(ctx);
+    ctx.* = .{
+        .global_handle = global_handle,
+        .isolate = isolate,
+    };
+
+    const algo = try allocator.create(Algorithm);
+    algo.* = .{
+        .context = ctx,
+        .vtable = &js_callback_global_vtable,
+        .allocator = allocator,
+    };
+
+    return algo;
+}
+
+const js_callback_global_vtable = Algorithm.VTable{
+    .invoke = jsCallbackGlobalInvoke,
+    .invoke_with_arg = jsCallbackGlobalInvokeWithArg,
+    .destroy = jsCallbackGlobalDestroy,
+};
+
+fn jsCallbackGlobalInvoke(
+    controller: *runtime.Instance,
+    context: ?*anyopaque,
+) !*AsyncPromise(void) {
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    // Get the GlobalCallbackContext
+    const ctx: *GlobalCallbackContext = @ptrCast(@alignCast(context orelse {
+        // No callback stored - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    }));
+
+    // Get Local from Global handle for this invocation
+    const callback_local = ctx.global_handle.get(ctx.isolate) orelse {
+        // Global handle is empty or invalid - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    // Now invoke using the Local handle (same as jsCallbackInvoke but with resolved handle)
+    const engine = controller.ctx.getEngine() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const invoke_fn = engine.invokeStreamCallback orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const engine_ctx = controller.ctx.getEngineContext() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const controller_v8: ?*anyopaque = blk: {
+        const get_wrapper_fn = engine.getWrapperForInstance orelse break :blk null;
+        const cache_storage = controller.ctx.getV8WrapperCacheStorage() orelse break :blk null;
+        break :blk get_wrapper_fn(engine_ctx, cache_storage, @ptrCast(controller));
+    };
+
+    const result = invoke_fn(
+        engine_ctx,
+        callback_local,
+        controller_v8,
+        null,
+    ) catch {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream callback invocation failed",
+        } });
+        return promise;
+    };
+
+    if (result == null) {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream callback threw an exception",
+        } });
+        return promise;
+    }
+
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    try bridgeV8PromiseToAsync(engine, engine_ctx, result.?, promise, allocator);
+    return promise;
+}
+
+fn jsCallbackGlobalInvokeWithArg(
+    controller: *runtime.Instance,
+    context: ?*anyopaque,
+    arg: *const anyopaque,
+) !*AsyncPromise(void) {
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    // Get the GlobalCallbackContext
+    const ctx: *GlobalCallbackContext = @ptrCast(@alignCast(context orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    }));
+
+    // Get Local from Global handle for this invocation
+    const callback_local = ctx.global_handle.get(ctx.isolate) orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const engine = controller.ctx.getEngine() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const invoke_fn = engine.invokeStreamCallback orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const engine_ctx = controller.ctx.getEngineContext() orelse {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    };
+
+    const result = invoke_fn(
+        engine_ctx,
+        callback_local,
+        null,
+        arg,
+    ) catch {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback invocation failed",
+        } });
+        return promise;
+    };
+
+    if (result == null) {
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.reject(webidl.errors.Exception{ .simple = .{
+            .type = .TypeError,
+            .message = "Stream cancel callback threw an exception",
+        } });
+        return promise;
+    }
+
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    try bridgeV8PromiseToAsync(engine, engine_ctx, result.?, promise, allocator);
+    return promise;
+}
+
+fn jsCallbackGlobalDestroy(context: ?*anyopaque, allocator: Allocator) void {
+    const ctx: *GlobalCallbackContext = @ptrCast(@alignCast(context orelse return));
+
+    // Dispose the V8 Global handle
+    ctx.global_handle.dispose();
+
+    // Free the context struct
+    allocator.destroy(ctx);
+}
 
 /// Context structure for bridging V8 Promise to AsyncPromise
 /// This is passed to the V8 promise handlers and freed after settlement

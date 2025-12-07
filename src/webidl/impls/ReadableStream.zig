@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
+const v8_engine = @import("v8");
 
 // Import streams infrastructure
 const streams_common = @import("streams_common");
@@ -2028,6 +2029,13 @@ fn setUpReadableStreamDefaultControllerFromUnderlyingSource(
 ///     4. Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller)
 /// 12. Upon rejection of startPromise with reason r:
 ///     1. Perform ! ReadableStreamDefaultControllerError(controller, r)
+/// ## V8 Handle Lifetime
+///
+/// The callback parameters (start, pull, cancel) are Local<Value> handles
+/// extracted from the underlying source dictionary. These MUST be converted to
+/// Global handles before the constructor's HandleScope ends, or they become
+/// dangling pointers. We use jsCallbackAlgorithmGlobal which stores callbacks
+/// as V8 Global handles.
 fn setUpReadableStreamDefaultController(
     stream_instance: *runtime.Instance,
     stream_internal: *InternalState,
@@ -2040,34 +2048,47 @@ fn setUpReadableStreamDefaultController(
     const allocator = stream_internal.allocator;
     // Note: event_loop is available in stream_internal for future async operations
 
+    // Get V8 isolate for Global handle creation
+    const isolate: ?*v8_engine.ffi.Isolate = @ptrCast(@alignCast(stream_instance.ctx.engine_ctx));
+
     // Step 1: Assert controller is undefined (guaranteed by constructor)
 
     // Get controller state
     const controller_state = controller_instance.getState(interfaces.ReadableStreamDefaultController.State);
 
-    // Convert callbacks to Algorithms
-    const start_algo: ?*Algorithm = if (startAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    // Convert callbacks to Algorithms using Global handles for V8 handle persistence.
+    // If no isolate (testing mode), fall back to the unsafe raw pointer version.
+    const start_algo: ?*Algorithm = if (startAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (start_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);
     };
 
-    const pull_algo: ?*Algorithm = if (pullAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    const pull_algo: ?*Algorithm = if (pullAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (pull_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);
     };
 
-    const cancel_algo: ?*Algorithm = if (cancelAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    const cancel_algo: ?*Algorithm = if (cancelAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (cancel_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);
@@ -2334,6 +2355,13 @@ fn setUpReadableByteStreamControllerFromUnderlyingSource(
 /// 15. Let startPromise be a promise resolved with startResult
 /// 16. Upon fulfillment of startPromise: set started to true, call pull if needed
 /// 17. Upon rejection of startPromise: error the controller
+/// ## V8 Handle Lifetime
+///
+/// The callback parameters (start, pull, cancel) are Local<Value> handles
+/// extracted from the underlying source dictionary. These MUST be converted to
+/// Global handles before the constructor's HandleScope ends, or they become
+/// dangling pointers. We use jsCallbackAlgorithmGlobal which stores callbacks
+/// as V8 Global handles.
 fn setUpReadableByteStreamController(
     stream_instance: *runtime.Instance,
     stream_internal: *InternalState,
@@ -2347,6 +2375,9 @@ fn setUpReadableByteStreamController(
     const allocator = stream_internal.allocator;
     // Note: event_loop is available in stream_internal for future async operations
 
+    // Get V8 isolate for Global handle creation
+    const isolate: ?*v8_engine.ffi.Isolate = @ptrCast(@alignCast(stream_instance.ctx.engine_ctx));
+
     // Step 1: Assert controller is undefined (guaranteed by constructor)
     // Step 2: If autoAllocateChunkSize provided, it must be positive (checked in FromUnderlyingSource)
 
@@ -2356,21 +2387,27 @@ fn setUpReadableByteStreamController(
     // Import ReadableByteStreamController implementation
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
 
-    // Create algorithms using proper Algorithm type for JS callback invocation
-    // This allows proper V8 callback invocation via the engine interface
-    const pull_algo: ?*algorithm_mod.Algorithm = if (pullAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    // Create algorithms using Global handles for V8 handle persistence.
+    // If no isolate (testing mode), fall back to the unsafe raw pointer version.
+    const pull_algo: ?*algorithm_mod.Algorithm = if (pullAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (pull_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);
     };
 
-    const cancel_algo: ?*algorithm_mod.Algorithm = if (cancelAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    const cancel_algo: ?*algorithm_mod.Algorithm = if (cancelAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (cancel_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);
@@ -2378,10 +2415,13 @@ fn setUpReadableByteStreamController(
 
     // Create start algorithm using the same Algorithm type as default controller
     // This allows proper V8 callback invocation via invokePendingByteStartCallback
-    const start_algo: ?*algorithm_mod.Algorithm = if (startAlgorithm) |cb|
-        try algorithm_mod.jsCallbackAlgorithm(allocator, cb)
-    else
-        null;
+    const start_algo: ?*algorithm_mod.Algorithm = if (startAlgorithm) |cb| blk: {
+        if (isolate) |iso| {
+            break :blk algorithm_mod.jsCallbackAlgorithmGlobal(allocator, iso, cb) catch null;
+        } else {
+            break :blk try algorithm_mod.jsCallbackAlgorithm(allocator, cb);
+        }
+    } else null;
     errdefer if (start_algo) |algo| {
         algo.deinit();
         allocator.destroy(algo);

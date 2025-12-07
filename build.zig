@@ -1070,6 +1070,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "callbacks", .module = callbacks_mod },
             .{ .name = "async_promise", .module = streams_async_promise_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "v8", .module = v8_mod },
         },
     });
 
