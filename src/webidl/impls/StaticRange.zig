@@ -28,6 +28,9 @@ const AbstractRange = interfaces.AbstractRange;
 const NodeImpl = @import("Node.zig");
 const AbstractRangeImpl = @import("AbstractRange.zig");
 
+// Import pointer_tag for V8 pointer untagging (via v8 module)
+const pointer_tag = @import("v8").pointer_tag;
+
 pub const State = StaticRange.State;
 
 pub const ImplError = error{
@@ -128,9 +131,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.StaticRangeInit) !*runtime.Instance {
     // Step 1: Check for invalid node types (DocumentType=10, Attr=2)
     // The dictionary contains *const anyopaque which we cast to *runtime.Instance
-    // Need @alignCast because anyopaque has alignment 1, Instance has alignment 8
-    const start_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(init_data.startContainer)));
-    const end_instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(init_data.endContainer)));
+    // Untag pointers from V8 before use
+    const start_untagged = pointer_tag.untagPointer(init_data.startContainer);
+    const start_instance: *runtime.Instance = @ptrCast(@alignCast(start_untagged.ptr));
+    const end_untagged = pointer_tag.untagPointer(init_data.endContainer);
+    const end_instance: *runtime.Instance = @ptrCast(@alignCast(end_untagged.ptr));
 
     if (NodeImpl.getNodeType(start_instance)) |nt| {
         if (nt == NodeImpl.NodeType.DOCUMENT_TYPE_NODE or nt == NodeImpl.NodeType.ATTRIBUTE_NODE) {
