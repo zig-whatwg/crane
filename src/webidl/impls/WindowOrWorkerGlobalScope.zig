@@ -102,6 +102,18 @@ pub fn call_reportError(instance: *runtime.Instance, e: *const anyopaque) anyerr
 }
 
 /// Operation: setInterval
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
+///
+/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
+/// if handler.function is a JavaScript callback. See:
+/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
+/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
+///
+/// Implementation requirements:
+/// 1. For handler.function variant, create Global handle
+/// 2. Store in interval registry with Global handle
+/// 3. Dispose Global handle when interval is cleared via clearInterval
+/// 4. Handle repeating invocation pattern
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
     _ = instance;
     _ = handler;
@@ -140,6 +152,16 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 }
 
 /// Operation: queueMicrotask
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
+///
+/// TODO: When implementing, the callback MUST be stored as a V8 Global handle.
+/// Unlike setTimeout/setInterval, microtasks execute on the current event loop turn
+/// but still need Global handles since the callback must survive the caller's HandleScope.
+///
+/// Implementation requirements:
+/// 1. Create Global handle for the VoidFunction callback
+/// 2. Queue in microtask queue
+/// 3. Dispose Global handle after callback executes
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
     _ = instance;
     _ = callback;
@@ -155,6 +177,18 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: *const anyopaque
 }
 
 /// Operation: setTimeout
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
+///
+/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
+/// if handler.function is a JavaScript callback. See:
+/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
+/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
+///
+/// Implementation requirements:
+/// 1. For handler.function variant, create Global handle
+/// 2. Store in timer registry with Global handle
+/// 3. Dispose Global handle when timer fires or is cleared via clearTimeout
+/// 4. Handle one-shot invocation (unlike setInterval)
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const *const anyopaque) anyerror!i32 {
     _ = instance;
     _ = handler;

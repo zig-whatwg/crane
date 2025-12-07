@@ -3268,6 +3268,16 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
 
 /// Operation: requestAnimationFrame
 /// Per spec §8.14.2: Schedules a callback to be invoked before the next repaint.
+///
+/// TODO: When fully implementing, the callback MUST be stored as a V8 Global handle
+/// to survive past the caller's HandleScope. See:
+/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
+/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
+///
+/// Implementation requirements:
+/// 1. Create Global handle for the FrameRequestCallback
+/// 2. Store in animation frame registry with Global handle
+/// 3. Dispose Global handle when callback fires or is canceled
 pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbacks.FrameRequestCallback) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
