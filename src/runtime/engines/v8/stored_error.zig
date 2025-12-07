@@ -87,7 +87,8 @@ pub const StoredError = union(enum) {
     /// The handle will be disposed when `dispose()` or `clear()` is called.
     pub fn storeGlobalPtr(self: *StoredError, ptr: *anyopaque) void {
         self.dispose();
-        self.* = .{ .js_exception = .{ .ptr = ptr } };
+        // Cast to *v8.Value as required by GlobalHandle
+        self.* = .{ .js_exception = .{ .ptr = @ptrCast(@alignCast(ptr)) } };
     }
 
     /// Store a JavaScript value as an error (creates Global handle if needed)
@@ -150,7 +151,8 @@ pub const StoredError = union(enum) {
         self.dispose();
         if (ptr) |p| {
             // Assume it's a V8 Global handle (legacy behavior)
-            self.* = .{ .js_exception = .{ .ptr = p } };
+            // Cast to *v8.Value as required by GlobalHandle
+            self.* = .{ .js_exception = .{ .ptr = @ptrCast(@alignCast(p)) } };
         } else {
             self.* = .none;
         }

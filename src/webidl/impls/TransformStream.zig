@@ -349,7 +349,7 @@ fn createReadableStreamForTransform(
         .controller = controller,
         .reader = .none,
         .state = .readable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .detached = false,
         .disturbed = false,
         .event_loop = loop,

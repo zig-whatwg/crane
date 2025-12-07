@@ -16,6 +16,9 @@ const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
 const v8_engine = @import("v8");
 
+// Type-safe V8 value system
+const StoredError = v8_engine.stored_error.StoredError;
+
 // Import streams infrastructure
 const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
@@ -27,6 +30,12 @@ const IteratorRecord = @import("streams_iterator_record").IteratorRecord;
 const from_iterable = @import("streams_from_iterable_algorithm");
 
 pub const State = ReadableStream.State;
+
+/// Returns a pointer representing "undefined" for any type fields
+fn getUndefinedPtr() *const anyopaque {
+    const undefined_marker: *const usize = &@as(usize, 0);
+    return @ptrCast(undefined_marker);
+}
 
 pub const ImplError = error{
     NotImplemented,
@@ -67,7 +76,8 @@ pub const InternalState = struct {
     state: StreamState,
 
     /// [[storedError]]: any - stored error if state is "errored"
-    stored_error: ?*anyopaque,
+    /// Uses type-safe StoredError instead of raw anyopaque
+    stored_error: StoredError = .none,
 
     /// [[detached]]: boolean - transferred via postMessage
     detached: bool,
@@ -92,6 +102,9 @@ pub const InternalState = struct {
                 // Reader instances manage their own lifecycle
             },
         }
+
+        // Dispose stored error (frees V8 Global handle if present)
+        self.stored_error.dispose();
 
         // Free the internal state itself
         allocator.destroy(self);
@@ -230,7 +243,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         .controller = undefined, // Will be set by SetUp
         .reader = .none,
         .state = .readable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .detached = false,
         .disturbed = false,
         .event_loop = loop,
@@ -758,7 +771,7 @@ pub fn call_from(instance: *runtime.Instance, asyncIterable: *const anyopaque) a
         .controller = controller_instance,
         .reader = .none,
         .state = .readable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .detached = false,
         .disturbed = false,
         .event_loop = ev_loop,
@@ -922,7 +935,8 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(*const anyopa
     }
 
     // Step 2: Perform ReadableStreamCancel(this, reason)
-    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrFromInt(1);
+    // Use undefined marker pointer when reason is not passed
+    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else getUndefinedPtr();
     return readableStreamCancel(instance, internal, reason_ptr);
 }
 
@@ -955,10 +969,9 @@ fn readableStreamCancel(
             internal.event_loop,
         );
         // Reject with stream.[[storedError]]
-        // Note: storedError is *anyopaque but AsyncPromise.reject needs Exception
-        // For now, detect presence and create appropriate message
-        // Future: Store Exception directly or implement safe type conversion
-        const exception = if (internal.stored_error != null)
+        // Use type-safe StoredError API to check for error presence
+        // Future: Use StoredError.toV8() for proper error propagation
+        const exception = if (internal.stored_error.hasError())
             try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
         else
             try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
@@ -1031,7 +1044,8 @@ pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, re
             internal.allocator,
             internal.event_loop,
         ) catch return error.OutOfMemory;
-        const exception = if (internal.stored_error != null)
+        // Use type-safe StoredError API
+        const exception = if (internal.stored_error.hasError())
             webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)") catch return error.OutOfMemory
         else
             webidl.errors.Exception.typeError(internal.allocator, "Stream is errored") catch return error.OutOfMemory;
@@ -1083,6 +1097,10 @@ pub fn readableStreamClose(internal: *InternalState) void {
 
 /// ReadableStreamError algorithm
 /// Internal implementation of stream erroring
+///
+/// NOTE: This function accepts a raw pointer for compatibility with existing callers.
+/// The pointer is stored in StoredError as a V8 Global handle reference.
+/// Future work: Update all callers to pass JSValue or StoredError directly.
 pub fn readableStreamError(internal: *InternalState, e: *const anyopaque) void {
     // Assert: stream.[[state]] is "readable"
     std.debug.assert(internal.state == .readable);
@@ -1090,8 +1108,9 @@ pub fn readableStreamError(internal: *InternalState, e: *const anyopaque) void {
     // Set stream.[[state]] to "errored"
     internal.state = .errored;
 
-    // Store the error
-    internal.stored_error = @constCast(e);
+    // Store the error using type-safe StoredError
+    // The pointer is assumed to be a V8 Global handle (legacy compatibility)
+    internal.stored_error.storeRawPtr(@constCast(e));
 
     // Note: Reader operations (reject closedPromise, reject pending reads)
     // are handled by the reader when it detects stream state change
@@ -1863,7 +1882,7 @@ fn createTeeBranchStream(
         .controller = controller_instance,
         .reader = .none,
         .state = .readable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .detached = false,
         .disturbed = false,
         .event_loop = loop,
@@ -3033,10 +3052,12 @@ fn pipeLoop(pipe_state: *PipeState) void {
     // Check source state
     if (pipe_state.source_internal.state == .errored) {
         // Error propagation forward
+        // Extract raw pointer from StoredError for legacy pipeShutdown API
+        const error_ptr = pipe_state.source_internal.stored_error.toRawPtr();
         if (!pipe_state.prevent_abort) {
-            pipeShutdownWithAction(pipe_state, .abort_dest, pipe_state.source_internal.stored_error);
+            pipeShutdownWithAction(pipe_state, .abort_dest, error_ptr);
         } else {
-            pipeShutdown(pipe_state, pipe_state.source_internal.stored_error);
+            pipeShutdown(pipe_state, error_ptr);
         }
         return;
     }
@@ -3044,10 +3065,13 @@ fn pipeLoop(pipe_state: *PipeState) void {
     // Check destination state
     if (pipe_state.dest_internal.state == .errored) {
         // Error propagation backward
+        // NOTE: dest_internal is WritableStream which still uses ?*anyopaque for stored_error
+        // This will be migrated as part of issue whatwg-bgz0x
+        const error_ptr = pipe_state.dest_internal.stored_error;
         if (!pipe_state.prevent_cancel) {
-            pipeShutdownWithAction(pipe_state, .cancel_source, pipe_state.dest_internal.stored_error);
+            pipeShutdownWithAction(pipe_state, .cancel_source, error_ptr);
         } else {
-            pipeShutdown(pipe_state, pipe_state.dest_internal.stored_error);
+            pipeShutdown(pipe_state, error_ptr);
         }
         return;
     }

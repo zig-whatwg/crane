@@ -222,8 +222,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
         .errored => blk: {
             const promise = try AsyncPromise(void).init(allocator, event_loop);
             // Reject with stream.[[storedError]]
-            // Note: stored_error is *anyopaque but we need Exception (see ReadableStream.zig)
-            const exception = if (stream_internal.stored_error != null)
+            // Use type-safe StoredError API to check for error
+            const exception = if (stream_internal.stored_error.hasError())
                 try webidl.errors.Exception.typeError(allocator, "Stream errored (stored error)")
             else
                 try webidl.errors.Exception.typeError(allocator, "Stream is errored");
@@ -341,8 +341,8 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
         },
         .errored => {
             // Error steps: Reject with stream.[[storedError]]
-            // Note: stored_error is *anyopaque but we need Exception (see ReadableStream.zig)
-            const exception = if (stream_internal.stored_error != null)
+            // Use type-safe StoredError API to check for error
+            const exception = if (stream_internal.stored_error.hasError())
                 try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
             else
                 try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
