@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
-pub const Mapper = *const fn (value: v8.JSValue, index: u64) v8.JSValue;
+pub const Mapper = *const fn (value: runtime.JSValue, index: u64) runtime.JSValue;

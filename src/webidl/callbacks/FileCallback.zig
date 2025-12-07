@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
 pub const FileCallback = *const fn (file: *const anyopaque) void;

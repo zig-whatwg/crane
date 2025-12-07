@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const DeviceMotionEventRotationRateInit = @import("DeviceMotionEventRotationRateInit.zig").DeviceMotionEventRotationRateInit;
 const DeviceMotionEventAccelerationInit = @import("DeviceMotionEventAccelerationInit.zig").DeviceMotionEventAccelerationInit;
 const EventInit = @import("EventInit.zig").EventInit;

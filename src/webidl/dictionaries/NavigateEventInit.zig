@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const EventInit = @import("EventInit.zig").EventInit;
@@ -20,7 +19,7 @@ pub const NavigateEventInit = struct {
     signal: *runtime.Instance,
     formData: ?*runtime.Instance = null,
     downloadRequest: ?runtime.DOMString = null,
-    info: ?v8.JSValue = null,
+    info: ?runtime.JSValue = null,
     hasUAVisualTransition: ?bool = null,
     sourceElement: ?*runtime.Instance = null,
 };

@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
 pub const TransformerFlushCallback = *const fn (controller: *const anyopaque) *const anyopaque;

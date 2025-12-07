@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const AdAuctionOneSeller = @import("AdAuctionOneSeller.zig").AdAuctionOneSeller;
 const AdAuctionDataBuyerConfig = @import("AdAuctionDataBuyerConfig.zig").AdAuctionDataBuyerConfig;
 

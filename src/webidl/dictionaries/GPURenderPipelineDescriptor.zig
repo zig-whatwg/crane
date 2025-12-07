@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const GPUVertexState = @import("GPUVertexState.zig").GPUVertexState;
 const GPUMultisampleState = @import("GPUMultisampleState.zig").GPUMultisampleState;
 const GPUPrimitiveState = @import("GPUPrimitiveState.zig").GPUPrimitiveState;

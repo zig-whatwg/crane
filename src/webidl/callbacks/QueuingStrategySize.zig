@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
-pub const QueuingStrategySize = *const fn (chunk: v8.JSValue) f64;
+pub const QueuingStrategySize = *const fn (chunk: runtime.JSValue) f64;

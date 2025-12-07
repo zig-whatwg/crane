@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
-pub const AnimatorInstanceConstructor = *const fn (options: v8.JSValue, state: webidl.Opt(v8.JSValue)) v8.JSValue;
+pub const AnimatorInstanceConstructor = *const fn (options: runtime.JSValue, state: webidl.Opt(runtime.JSValue)) runtime.JSValue;

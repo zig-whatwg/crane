@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const AuthenticationExtensionsPaymentInputs = @import("AuthenticationExtensionsPaymentInputs.zig").AuthenticationExtensionsPaymentInputs;
 const AuthenticationExtensionsPRFInputs = @import("AuthenticationExtensionsPRFInputs.zig").AuthenticationExtensionsPRFInputs;

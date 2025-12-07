@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const AuctionAd = @import("AuctionAd.zig").AuctionAd;
 const AuctionAdInterestGroupSize = @import("AuctionAdInterestGroupSize.zig").AuctionAdInterestGroupSize;
@@ -23,7 +22,7 @@ pub const GenerateBidInterestGroup = struct {
     trustedBiddingSignalsSlotSizeMode: ?runtime.DOMString = null,
     maxTrustedBiddingSignalsURLLength: ?i32 = null,
     trustedBiddingSignalsCoordinator: ?runtime.USVString = null,
-    userBiddingSignals: ?v8.JSValue = null,
+    userBiddingSignals: ?runtime.JSValue = null,
     ads: ?[]const AuctionAd = null,
     adComponents: ?[]const AuctionAd = null,
     adSizes: ?[]const struct { key: runtime.DOMString, value: AuctionAdInterestGroupSize } = null,

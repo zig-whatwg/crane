@@ -4,6 +4,5 @@
 
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const v8 = @import("v8");
 
-pub const ObservableInspectorAbortHandler = *const fn (value: v8.JSValue) void;
+pub const ObservableInspectorAbortHandler = *const fn (value: runtime.JSValue) void;

@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const AttributionReportingRequestOptions = @import("AttributionReportingRequestOptions.zig").AttributionReportingRequestOptions;
@@ -24,7 +23,7 @@ pub const RequestInit = struct {
     signal: ?*runtime.Instance = null,
     duplex: ?enums.RequestDuplex = null,
     priority: ?enums.RequestPriority = null,
-    window: ?v8.JSValue = null,
+    window: ?runtime.JSValue = null,
     attributionReporting: ?AttributionReportingRequestOptions = null,
     browsingTopics: ?bool = null,
     adAuctionHeaders: ?bool = null,

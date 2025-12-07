@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const AddressErrors = @import("AddressErrors.zig").AddressErrors;
 const PayerErrors = @import("PayerErrors.zig").PayerErrors;
@@ -18,5 +17,5 @@ pub const PaymentDetailsUpdate = struct {
     total: ?PaymentItem = null,
     shippingAddressErrors: ?AddressErrors = null,
     payerErrors: ?PayerErrors = null,
-    paymentMethodErrors: ?v8.JSValue = null,
+    paymentMethodErrors: ?runtime.JSValue = null,
 };

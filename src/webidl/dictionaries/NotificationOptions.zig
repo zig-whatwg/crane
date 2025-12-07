@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const NotificationAction = @import("NotificationAction.zig").NotificationAction;
@@ -22,6 +21,6 @@ pub const NotificationOptions = struct {
     renotify: ?bool = null,
     silent: ?bool = null,
     requireInteraction: ?bool = null,
-    data: ?v8.JSValue = null,
+    data: ?runtime.JSValue = null,
     actions: ?[]const NotificationAction = null,
 };

@@ -3,11 +3,10 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 
 pub const PerformanceMeasureOptions = struct {
-    detail: ?v8.JSValue = null,
+    detail: ?runtime.JSValue = null,
     start: ?*const anyopaque = null,
     duration: ?typedefs.DOMHighResTimeStamp = null,
     end: ?*const anyopaque = null,

@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const GPUTextureBindingLayout = @import("GPUTextureBindingLayout.zig").GPUTextureBindingLayout;
 const GPUExternalTextureBindingLayout = @import("GPUExternalTextureBindingLayout.zig").GPUExternalTextureBindingLayout;

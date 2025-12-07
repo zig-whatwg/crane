@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const PaymentCurrencyAmount = @import("PaymentCurrencyAmount.zig").PaymentCurrencyAmount;
 const PublicKeyCredentialParameters = @import("PublicKeyCredentialParameters.zig").PublicKeyCredentialParameters;
 const PaymentCredentialInstrument = @import("PaymentCredentialInstrument.zig").PaymentCredentialInstrument;

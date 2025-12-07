@@ -3,7 +3,6 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const typedefs = @import("typedefs");
 const AdRender = @import("AdRender.zig").AdRender;
 
@@ -11,7 +10,7 @@ pub const GenerateBidOutput = struct {
     bid: ?f64 = null,
     bidCurrency: ?runtime.DOMString = null,
     render: ?*const anyopaque = null,
-    ad: ?v8.JSValue = null,
+    ad: ?runtime.JSValue = null,
     selectedBuyerAndSellerReportingId: ?runtime.USVString = null,
     adComponents: ?[]const *const anyopaque = null,
     adCost: ?f64 = null,
