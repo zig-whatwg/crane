@@ -1278,6 +1278,39 @@ pub extern fn v8_Global_SetWeak(
 ///   handle: The Global handle to make strong again
 pub extern fn v8_Global_ClearWeak(handle: *anyopaque) void;
 
+/// Check if a Global handle is weak
+///
+/// A weak handle allows V8 GC to collect the value when no strong references exist.
+/// When collected, the weak callback registered via SetWeak is invoked.
+///
+/// Arguments:
+///   handle: The Global handle to check
+///
+/// Returns:
+///   true if the handle is weak, false if strong or null
+pub extern fn v8_Global_IsWeak(handle: ?*anyopaque) bool;
+
+/// Create a weak Global<Value> handle from a Local<Value>
+///
+/// This creates a Global handle that is immediately weak. When V8 GC collects
+/// the value (no more strong references), the callback is invoked with user_data.
+/// This is more efficient than calling v8_Value_ToGlobal followed by v8_Global_SetWeak.
+///
+/// Arguments:
+///   isolate: Current V8 isolate
+///   local: Local value pointer (from within an active HandleScope)
+///   user_data: User data to pass to callback on GC (can be null)
+///   callback: Function to call when value is garbage collected (can be null for weak without callback)
+///
+/// Returns:
+///   New weak Global<Value>* or null if local is empty
+pub extern fn v8_Value_ToWeakGlobal(
+    isolate: *Isolate,
+    local: *anyopaque,
+    user_data: ?*anyopaque,
+    callback: ?WeakCallbackFn,
+) ?*Value;
+
 // ============================================================================
 // Global Handle Conversion API
 // ============================================================================

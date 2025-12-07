@@ -49,6 +49,12 @@ const ffi = @import("ffi.zig");
 ///
 /// GlobalHandle represents a persistent reference to a V8 value that survives
 /// HandleScope destruction. It must be explicitly disposed to avoid memory leaks.
+///
+/// Handles can be either strong (default) or weak:
+/// - Strong handles prevent V8 GC from collecting the value
+/// - Weak handles allow V8 GC to collect when no other strong references exist
+///
+/// When a weak handle's value is collected, an optional callback is invoked.
 pub const GlobalHandle = struct {
     /// The underlying V8 Global<Value>* pointer
     ptr: *ffi.Value,
@@ -56,7 +62,7 @@ pub const GlobalHandle = struct {
     /// Create a GlobalHandle from a Local value pointer.
     ///
     /// This converts a stack-bound Local<Value> to a heap-allocated Global<Value>
-    /// that persists independently of any HandleScope.
+    /// that persists independently of any HandleScope. The handle is strong by default.
     ///
     /// Parameters:
     ///   isolate: The current V8 isolate
@@ -66,6 +72,34 @@ pub const GlobalHandle = struct {
     ///   A GlobalHandle if successful, or null if the local value is empty/invalid
     pub fn create(isolate: *ffi.Isolate, local: *anyopaque) ?GlobalHandle {
         const global_ptr = ffi.v8_Value_ToGlobal(isolate, local);
+        if (global_ptr) |ptr| {
+            return GlobalHandle{ .ptr = ptr };
+        }
+        return null;
+    }
+
+    /// Create a weak GlobalHandle from a Local value pointer.
+    ///
+    /// This creates a Global handle that is immediately weak. When V8 GC collects
+    /// the value (no more strong references), the optional callback is invoked.
+    ///
+    /// This is more efficient than calling create() followed by makeWeak().
+    ///
+    /// Parameters:
+    ///   isolate: The current V8 isolate
+    ///   local: A Local<Value> pointer (from within an active HandleScope)
+    ///   user_data: User data to pass to callback on GC (can be null)
+    ///   callback: Function to call when value is garbage collected (can be null)
+    ///
+    /// Returns:
+    ///   A weak GlobalHandle if successful, or null if the local value is empty/invalid
+    pub fn createWeak(
+        isolate: *ffi.Isolate,
+        local: *anyopaque,
+        user_data: ?*anyopaque,
+        callback: ?ffi.WeakCallbackFn,
+    ) ?GlobalHandle {
+        const global_ptr = ffi.v8_Value_ToWeakGlobal(isolate, local, user_data, callback);
         if (global_ptr) |ptr| {
             return GlobalHandle{ .ptr = ptr };
         }
@@ -124,6 +158,34 @@ pub const GlobalHandle = struct {
     /// Check if this GlobalHandle is empty.
     pub fn isEmpty(self: GlobalHandle) bool {
         return ffi.v8_Global_IsEmpty(self.ptr);
+    }
+
+    /// Check if this GlobalHandle is weak.
+    ///
+    /// A weak handle allows V8 GC to collect the value when no strong references exist.
+    pub fn isWeak(self: GlobalHandle) bool {
+        return ffi.v8_Global_IsWeak(@ptrCast(self.ptr));
+    }
+
+    /// Make this handle weak with an optional GC callback.
+    ///
+    /// When the handle is weak and V8 GC determines there are no more strong
+    /// references to the value, the callback (if provided) is invoked and
+    /// the value may be collected.
+    ///
+    /// Parameters:
+    ///   user_data: User data to pass to callback on GC
+    ///   callback: Function to call when value is garbage collected
+    pub fn makeWeak(self: GlobalHandle, user_data: ?*anyopaque, callback: ffi.WeakCallbackFn) void {
+        ffi.v8_Global_SetWeak(@ptrCast(self.ptr), user_data, callback);
+    }
+
+    /// Clear the weak reference and restore this handle to strong.
+    ///
+    /// After calling this, V8 GC will not collect the value as long as
+    /// this GlobalHandle exists.
+    pub fn clearWeak(self: GlobalHandle) void {
+        ffi.v8_Global_ClearWeak(@ptrCast(self.ptr));
     }
 
     /// Get the raw pointer (for storage in fields that expect *ffi.Value)

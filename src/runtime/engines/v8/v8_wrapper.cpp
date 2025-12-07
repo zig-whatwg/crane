@@ -3394,6 +3394,55 @@ void v8_Global_ClearWeak(void* handle) {
     global->ClearWeak();
 }
 
+/// Check if a Global handle is weak
+///
+/// @param handle - Global handle to check
+/// @return true if the handle is weak, false otherwise
+bool v8_Global_IsWeak(void* handle) {
+    if (!handle) return false;
+    
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
+    return global->IsWeak();
+}
+
+/// Create a weak Global<Value> from a Local<Value>
+///
+/// This creates a Global handle that is immediately weak. When V8 GC collects
+/// the value (no more strong references), the callback is invoked with user_data.
+///
+/// @param isolate - Current V8 isolate
+/// @param local - Local value pointer (from within an active HandleScope)
+/// @param user_data - User data to pass to callback on GC
+/// @param callback - Function to call when value is garbage collected
+/// @return New weak Global<Value>* or nullptr if local is empty
+Global<Value>* v8_Value_ToWeakGlobal(
+    Isolate* isolate,
+    void* local,
+    void* user_data,
+    ZigWeakCallbackFn callback
+) {
+    if (!isolate || !local) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    
+    // Cast the void* back to Value* - this is the internal pointer from a Local<Value>
+    Value* value_ptr = reinterpret_cast<Value*>(local);
+    Local<Value> local_value = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    
+    if (local_value.IsEmpty()) return nullptr;
+    
+    // Create the Global handle
+    Global<Value>* global = new Global<Value>(isolate, local_value);
+    
+    // If callback is provided, make it weak immediately
+    if (callback != nullptr) {
+        WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data};
+        global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
+    }
+    
+    return global;
+}
+
 // ============================================================================
 // Async Iterator Support
 // ============================================================================
