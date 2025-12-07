@@ -422,9 +422,10 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .flushAlgorithm = streams_common.defaultFlushAlgorithm(),
         .cancelAlgorithm = streams_common.defaultCancelAlgorithm(),
         .finishPromise = null,
-        .isolate = ctx.engine_ctx,
+        .isolate = @ptrCast(@alignCast(ctx.engine_ctx)),
         .v8_context = null,
-        // V8 function pointers will be set by V8 integration layer when transformer callbacks are registered
+        // V8 Global handles will be set by V8 integration layer when transformer callbacks are registered
+        // Currently uses default algorithms until transformer callback extraction is implemented
         .flush_algorithm_v8 = null,
         .transform_algorithm_v8 = null,
         .cancel_algorithm_v8 = null,
@@ -704,84 +705,102 @@ pub fn defaultSinkCloseAlgorithm(instance: *runtime.Instance) !*AsyncPromise(voi
 
     // Spec step 3: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
     // Check if we have V8 context and a V8 flush function (runtime mode)
-    if (internal.isolate != null and internal.v8_context != null and controller_internal.flush_algorithm_v8 != null) {
-        // V8 runtime mode: invoke real JavaScript callback
-        const isolate: *v8_engine.ffi.Isolate = @ptrCast(@alignCast(internal.isolate.?));
-        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
-        const flush_function: *v8_engine.ffi.Function = @ptrCast(@alignCast(@constCast(controller_internal.flush_algorithm_v8.?)));
+    if (internal.isolate) |isolate| {
+        if (internal.v8_context) |v8_ctx| {
+            if (controller_internal.flush_algorithm_v8) |flush_global| {
+                // Get Local from Global handle for this invocation
+                const flush_value = flush_global.get(isolate) orelse {
+                    // Global handle is invalid - use default flush
+                    ControllerImpl.clearAlgorithms(controller);
+                    const promise = try AsyncPromise(void).init(allocator, event_loop);
+                    promise.fulfill({});
+                    return promise;
+                };
 
-        // Get controller as V8 object to pass to flush(controller)
-        // For now, pass undefined since flush() may not need controller
-        const controller_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse return error.InvalidState;
+                // Verify it's a function
+                if (!v8_engine.ffi.v8_Value_IsFunction(flush_value)) {
+                    ControllerImpl.clearAlgorithms(controller);
+                    const promise = try AsyncPromise(void).init(allocator, event_loop);
+                    promise.fulfill({});
+                    return promise;
+                }
+                const flush_function: *v8_engine.ffi.Function = @ptrCast(flush_value);
+                const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(v8_ctx));
 
-        // Invoke flush_algorithm(controller) → Promise<void>
-        var flush_promise = v8_engine.streams_callbacks.invokeFlushAlgorithm(
-            isolate,
-            v8_context,
-            flush_function,
-            @ptrCast(controller_v8),
-        ) catch {
-            // On error, clear algorithms and return rejected promise
-            ControllerImpl.clearAlgorithms(controller);
-            const promise = try AsyncPromise(void).init(allocator, event_loop);
-            const exception = try webidl.errors.Exception.typeError(allocator, "Flush algorithm invocation failed");
-            promise.reject(exception);
-            return promise;
-        };
-        defer flush_promise.deinit();
+                // Get controller as V8 object to pass to flush(controller)
+                // For now, pass undefined since flush() may not need controller
+                const controller_v8 = v8_engine.ffi.v8_Undefined(isolate) orelse return error.InvalidState;
 
-        // Create AsyncPromise to track result
-        const result_promise = try AsyncPromise(void).init(allocator, event_loop);
+                // Invoke flush_algorithm(controller) → Promise<void>
+                var flush_promise = v8_engine.streams_callbacks.invokeFlushAlgorithm(
+                    isolate,
+                    v8_context,
+                    flush_function,
+                    @ptrCast(controller_v8),
+                ) catch {
+                    // On error, clear algorithms and return rejected promise
+                    ControllerImpl.clearAlgorithms(controller);
+                    const promise = try AsyncPromise(void).init(allocator, event_loop);
+                    const exception = try webidl.errors.Exception.typeError(allocator, "Flush algorithm invocation failed");
+                    promise.reject(exception);
+                    return promise;
+                };
+                defer flush_promise.deinit();
 
-        // Create callback context
-        const flush_ctx = try allocator.create(FlushCallbackContext);
-        flush_ctx.* = .{
-            .stream = instance,
-            .controller = controller,
-            .readable = readable,
-            .result_promise = result_promise,
-            .allocator = allocator,
-        };
+                // Create AsyncPromise to track result
+                const result_promise = try AsyncPromise(void).init(allocator, event_loop);
 
-        // Create V8 callbacks for Promise handlers
-        const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
-            allocator,
-            isolate,
-            v8_context,
-            onFlushFulfilled,
-            flush_ctx,
-        ) catch {
-            allocator.destroy(flush_ctx);
-            ControllerImpl.clearAlgorithms(controller);
-            result_promise.fulfill({});
-            return result_promise;
-        };
-        defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
+                // Create callback context
+                const flush_ctx = try allocator.create(FlushCallbackContext);
+                flush_ctx.* = .{
+                    .stream = instance,
+                    .controller = controller,
+                    .readable = readable,
+                    .result_promise = result_promise,
+                    .allocator = allocator,
+                };
 
-        const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
-            allocator,
-            isolate,
-            v8_context,
-            onFlushRejected,
-            flush_ctx,
-        ) catch {
-            allocator.destroy(flush_ctx);
-            ControllerImpl.clearAlgorithms(controller);
-            result_promise.fulfill({});
-            return result_promise;
-        };
-        defer v8_engine.ffi.v8_Function_Dispose(onRejected);
+                // Create V8 callbacks for Promise handlers
+                const onFulfilled = v8_engine.zig_callbacks.createContextCallback(
+                    allocator,
+                    isolate,
+                    v8_context,
+                    onFlushFulfilled,
+                    flush_ctx,
+                ) catch {
+                    allocator.destroy(flush_ctx);
+                    ControllerImpl.clearAlgorithms(controller);
+                    result_promise.fulfill({});
+                    return result_promise;
+                };
+                defer v8_engine.ffi.v8_Function_Dispose(onFulfilled);
 
-        // Chain Promise handlers
-        _ = flush_promise.then(onFulfilled, onRejected) catch {
-            allocator.destroy(flush_ctx);
-            ControllerImpl.clearAlgorithms(controller);
-            result_promise.fulfill({});
-            return result_promise;
-        };
+                const onRejected = v8_engine.zig_callbacks.createContextCallbackWithArg(
+                    allocator,
+                    isolate,
+                    v8_context,
+                    onFlushRejected,
+                    flush_ctx,
+                ) catch {
+                    allocator.destroy(flush_ctx);
+                    ControllerImpl.clearAlgorithms(controller);
+                    result_promise.fulfill({});
+                    return result_promise;
+                };
+                defer v8_engine.ffi.v8_Function_Dispose(onRejected);
 
-        // Note: Don't clear algorithms here - let the callback do it after promise settles
-        return result_promise;
+                // Chain Promise handlers
+                _ = flush_promise.then(onFulfilled, onRejected) catch {
+                    allocator.destroy(flush_ctx);
+                    ControllerImpl.clearAlgorithms(controller);
+                    result_promise.fulfill({});
+                    return result_promise;
+                };
+
+                // Note: Don't clear algorithms here - let the callback do it after promise settles
+                return result_promise;
+            }
+        }
     }
 
     // Non-V8 mode: Use synchronous flush algorithm (testing/fallback mode)

@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const TransformStreamDefaultController = interfaces.TransformStreamDefaultController;
+const v8_engine = @import("v8");
 
 // Import streams infrastructure (via build system modules)
 const streams_common = @import("streams_common");
@@ -35,6 +36,14 @@ pub const ImplError = error{
 /// Internal state for TransformStreamDefaultController
 ///
 /// Spec: § 6.2.2 "Internal slots"
+///
+/// ## V8 Handle Lifetime
+///
+/// JavaScript callbacks (transform, flush, cancel) are stored as V8 Global handles
+/// to survive HandleScope destruction. When JavaScript code creates a TransformStream
+/// with callback functions, the callbacks are extracted as Local<Value> handles.
+/// Without Global handles, these become dangling pointers when the constructor's
+/// HandleScope ends.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
@@ -57,21 +66,28 @@ pub const InternalState = struct {
     /// Spec: § 6.2.2 Internal slots
     finishPromise: ?Promise(void),
 
+    /// V8 isolate for callback invocation
+    isolate: ?*v8_engine.ffi.Isolate,
+
     /// V8 context for callback invocation
-    isolate: ?*anyopaque,
     v8_context: ?*anyopaque,
 
-    /// Raw V8 function pointer for flush algorithm (for async V8 invocation)
+    /// V8 Global handle for flush algorithm callback
     /// When set, this takes precedence over flushAlgorithm for V8 runtime mode.
-    flush_algorithm_v8: ?*const anyopaque,
+    flush_algorithm_v8: v8_engine.OptionalGlobalHandle,
 
-    /// Raw V8 function pointer for transform algorithm (for async V8 invocation)
-    transform_algorithm_v8: ?*const anyopaque,
+    /// V8 Global handle for transform algorithm callback
+    transform_algorithm_v8: v8_engine.OptionalGlobalHandle,
 
-    /// Raw V8 function pointer for cancel algorithm (for async V8 invocation)
-    cancel_algorithm_v8: ?*const anyopaque,
+    /// V8 Global handle for cancel algorithm callback
+    cancel_algorithm_v8: v8_engine.OptionalGlobalHandle,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Dispose V8 Global handles to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.flush_algorithm_v8);
+        v8_engine.disposeOptionalGlobalHandle(&self.transform_algorithm_v8);
+        v8_engine.disposeOptionalGlobalHandle(&self.cancel_algorithm_v8);
+
         // Clean up algorithms
         self.transformAlgorithm.deinit();
         self.flushAlgorithm.deinit();
