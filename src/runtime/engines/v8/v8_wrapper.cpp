@@ -60,6 +60,41 @@ static Global<T>* trackHandle(Global<T>* handle) {
 }
 
 // ============================================================================
+// Debug Alignment Checks
+// ============================================================================
+//
+// V8 uses pointer tagging on some platforms (arm64). When Zig code receives
+// tagged pointers and casts them with @alignCast, it can trigger alignment
+// errors. These macros help detect misaligned pointers at the FFI boundary.
+//
+// Usage: CHECK_ALIGNMENT(ptr, Type) at the start of functions that receive
+// Global<T>* pointers from Zig.
+
+#ifdef NDEBUG
+// Release build: no-op
+#define CHECK_ALIGNMENT(ptr, type) ((void)0)
+#define CHECK_ALIGNMENT_LOG(ptr, type, func_name) ((void)0)
+#else
+// Debug build: check alignment and log errors
+#define CHECK_ALIGNMENT(ptr, type) \
+    do { \
+        if (ptr && (reinterpret_cast<uintptr_t>(ptr) & (alignof(type) - 1)) != 0) { \
+            fprintf(stderr, "V8_WRAPPER: Misaligned pointer %p for type %s (requires %zu-byte alignment, got %zu)\n", \
+                    static_cast<const void*>(ptr), #type, alignof(type), \
+                    reinterpret_cast<uintptr_t>(ptr) & (alignof(type) - 1)); \
+        } \
+    } while (0)
+
+#define CHECK_ALIGNMENT_LOG(ptr, type, func_name) \
+    do { \
+        if (ptr && (reinterpret_cast<uintptr_t>(ptr) & (alignof(type) - 1)) != 0) { \
+            fprintf(stderr, "V8_WRAPPER[%s]: Misaligned pointer %p for type %s (requires %zu-byte alignment)\n", \
+                    func_name, static_cast<const void*>(ptr), #type, alignof(type)); \
+        } \
+    } while (0)
+#endif
+
+// ============================================================================
 // Weak Callback Support (must be outside extern "C")
 // ============================================================================
 
@@ -1041,6 +1076,11 @@ Global<Object>* v8_Object_New(Isolate* isolate) {
 }
 
 bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Value>* key, Global<Value>* value) {
+    CHECK_ALIGNMENT_LOG(object, Global<Object>, "v8_Object_Set");
+    CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Set");
+    CHECK_ALIGNMENT_LOG(key, Global<Value>, "v8_Object_Set");
+    CHECK_ALIGNMENT_LOG(value, Global<Value>, "v8_Object_Set");
+    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
@@ -1073,6 +1113,10 @@ bool v8_Object_CreateDataProperty(Global<Object>* object, Global<Context>* conte
 }
 
 Global<Value>* v8_Object_Get(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    CHECK_ALIGNMENT_LOG(object, Global<Object>, "v8_Object_Get");
+    CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Get");
+    CHECK_ALIGNMENT_LOG(key, Global<Value>, "v8_Object_Get");
+    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
@@ -2396,6 +2440,10 @@ Global<Value>* v8_Object_GetPropertyWithSymbol(
     Global<Object>* obj,
     Global<Symbol>* symbol
 ) {
+    CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_GetPropertyWithSymbol");
+    CHECK_ALIGNMENT_LOG(obj, Global<Object>, "v8_Object_GetPropertyWithSymbol");
+    CHECK_ALIGNMENT_LOG(symbol, Global<Symbol>, "v8_Object_GetPropertyWithSymbol");
+    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
@@ -2434,6 +2482,10 @@ Global<Value>* v8_Function_CallWithReceiver(
     int argc,
     Global<Value>** argv
 ) {
+    CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Function_CallWithReceiver");
+    CHECK_ALIGNMENT_LOG(function, Global<Function>, "v8_Function_CallWithReceiver");
+    CHECK_ALIGNMENT_LOG(receiver, Global<Value>, "v8_Function_CallWithReceiver");
+    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
@@ -2444,6 +2496,7 @@ Global<Value>* v8_Function_CallWithReceiver(
     std::vector<Local<Value>> args;
     args.reserve(argc);
     for (int i = 0; i < argc; i++) {
+        CHECK_ALIGNMENT_LOG(argv[i], Global<Value>, "v8_Function_CallWithReceiver[argv]");
         args.push_back(argv[i]->Get(isolate));
     }
     
@@ -2527,6 +2580,10 @@ Global<Value>* v8_Function_Call(
     int argc,
     Global<Value>** argv
 ) {
+    CHECK_ALIGNMENT_LOG(function, Global<Function>, "v8_Function_Call");
+    CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Function_Call");
+    CHECK_ALIGNMENT_LOG(recv, Global<Value>, "v8_Function_Call");
+    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
@@ -2538,6 +2595,7 @@ Global<Value>* v8_Function_Call(
     // Convert argument array from Global to Local
     Local<Value>* local_argv = new Local<Value>[argc];
     for (int i = 0; i < argc; i++) {
+        CHECK_ALIGNMENT_LOG(argv[i], Global<Value>, "v8_Function_Call[argv]");
         local_argv[i] = argv[i]->Get(isolate);
     }
     
