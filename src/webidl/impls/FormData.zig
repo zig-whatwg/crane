@@ -169,8 +169,7 @@ pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString,
 
     // Not a Blob instance - convert to string
     // Get context for string conversion
-    const engine_ctx = instance.ctx.engine_ctx orelse return error.InvalidState;
-    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const context: *v8.ffi.Context = instance.ctx.getEngineContextAs(v8.ffi.Context) orelse return error.InvalidState;
 
     // Convert to string using V8's ToString
     if (v8.ffi.v8_Value_ToString(value, context)) |str| {
@@ -213,8 +212,7 @@ pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, va
     }
 
     // Not a Blob instance - convert to string
-    const engine_ctx = instance.ctx.engine_ctx orelse return error.InvalidState;
-    const context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const context: *v8.ffi.Context = instance.ctx.getEngineContextAs(v8.ffi.Context) orelse return error.InvalidState;
 
     if (v8.ffi.v8_Value_ToString(value, context)) |str| {
         const len = v8.ffi.v8_String_Utf8Length(str);

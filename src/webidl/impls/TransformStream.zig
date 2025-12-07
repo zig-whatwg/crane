@@ -298,7 +298,7 @@ fn createWritableStreamForTransform(
         .start_algorithm = null, // TransformStream starts immediately, no deferred start
         .strategy_hwm = writable_hwm,
         .strategy_size_algorithm = null,
-        .isolate = @ptrCast(@alignCast(ctx.engine_ctx)),
+        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
         .v8_context = null, // null v8_context signals internal mode (no JS callbacks)
         .started = true, // TransformStream starts immediately
         .queue = .{
@@ -420,7 +420,7 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .flushAlgorithm = streams_common.defaultFlushAlgorithm(),
         .cancelAlgorithm = streams_common.defaultCancelAlgorithm(),
         .finishPromise = null,
-        .isolate = @ptrCast(@alignCast(ctx.engine_ctx)),
+        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
         .v8_context = null,
         // Initialize V8 Global handles to null - will be set below if transformer has callbacks
         .flush_algorithm_v8 = null,

@@ -2097,7 +2097,7 @@ fn setUpReadableStreamDefaultController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = @ptrCast(@alignCast(stream_instance.ctx.engine_ctx));
+    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
 
@@ -2424,7 +2424,7 @@ fn setUpReadableByteStreamController(
     // Note: event_loop is available in stream_internal for future async operations
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = @ptrCast(@alignCast(stream_instance.ctx.engine_ctx));
+    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     // Step 1: Assert controller is undefined (guaranteed by constructor)
     // Step 2: If autoAllocateChunkSize provided, it must be positive (checked in FromUnderlyingSource)

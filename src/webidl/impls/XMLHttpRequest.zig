@@ -119,7 +119,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
     // Store V8 isolate for Global handle management
     const internal = getInternal(instance);
-    internal.isolate = @ptrCast(@alignCast(ctx.engine_ctx));
+    internal.isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     // Step 1: Set upload object (TODO: when XMLHttpRequestUpload is implemented)
     // For now, the XHR state is initialized in init()
@@ -441,8 +441,7 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
         const local_value = global.get(isolate) orelse return;
 
         // Get V8 context from the instance's runtime context
-        const engine_ctx = instance.ctx.engine_ctx orelse return;
-        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+        const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
 
         // Check if it's a function and invoke it
         if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {

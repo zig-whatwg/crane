@@ -200,7 +200,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     internal.* = InternalState.init(allocator);
 
     // Store V8 isolate for Global handle management
-    internal.isolate = @ptrCast(@alignCast(ctx.engine_ctx));
+    internal.isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     state.own._internal = internal;
 

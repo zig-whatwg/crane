@@ -723,7 +723,7 @@ fn setUpWritableStreamDefaultController(
     const allocator = stream_internal.allocator;
 
     // Get V8 isolate for Global handle creation
-    const isolate: ?*v8_engine.ffi.Isolate = @ptrCast(@alignCast(stream_instance.ctx.engine_ctx));
+    const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     // Get controller state
     const controller_state = controller_instance.getState(interfaces.WritableStreamDefaultController.State);

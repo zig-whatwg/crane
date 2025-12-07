@@ -340,6 +340,20 @@ pub const ContextData = struct {
         return self.engine_ctx;
     }
 
+    /// Get the JS engine context as a specific type (type-safe cast)
+    ///
+    /// This is a convenience method for getting the engine context as a typed pointer,
+    /// avoiding the need for @ptrCast(@alignCast(...)) at call sites.
+    ///
+    /// Usage:
+    /// ```zig
+    /// const v8_ctx = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return error.NoEngineContext;
+    /// ```
+    pub fn getEngineContextAs(self: *const Self, comptime T: type) ?*T {
+        const ptr = self.engine_ctx orelse return null;
+        return @ptrCast(@alignCast(ptr));
+    }
+
     /// Get the allocator for this context
     pub fn getAllocator(self: *const Self) std.mem.Allocator {
         return self.allocator;
