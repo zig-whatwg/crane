@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const dictionaries = @import("dictionaries");
 
 pub const ConstrainDouble = union(enum) {
     double: f64,

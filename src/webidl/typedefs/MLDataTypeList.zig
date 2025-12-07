@@ -4,5 +4,6 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const MLDataTypeList = []const enums.MLOperandDataType;

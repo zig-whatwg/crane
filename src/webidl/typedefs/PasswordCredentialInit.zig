@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const dictionaries = @import("dictionaries");
 
 pub const PasswordCredentialInit = union(enum) {
     password_credential_data: dictionaries.PasswordCredentialData,

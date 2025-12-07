@@ -1,5 +1,5 @@
 //! Generated from: EXT_color_buffer_float.idl
-//! Generated at: 2025-12-07T19:32:59Z
+//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

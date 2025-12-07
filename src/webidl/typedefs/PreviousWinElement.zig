@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const dictionaries = @import("dictionaries");
 
 pub const PreviousWinElement = union(enum) {
     long_long: i64,

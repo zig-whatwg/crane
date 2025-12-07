@@ -5,6 +5,7 @@
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const typedefs = @import("root.zig");
+const dictionaries = @import("dictionaries");
 
 pub const FileSystemWriteChunkType = union(enum) {
     buffer_source: typedefs.BufferSource,

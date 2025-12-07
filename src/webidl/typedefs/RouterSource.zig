@@ -4,6 +4,8 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const dictionaries = @import("dictionaries");
+const enums = @import("enums");
 
 pub const RouterSource = union(enum) {
     router_source_dict: dictionaries.RouterSourceDict,

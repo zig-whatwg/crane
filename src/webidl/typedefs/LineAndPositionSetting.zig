@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const enums = @import("enums");
 
 pub const LineAndPositionSetting = union(enum) {
     double: f64,

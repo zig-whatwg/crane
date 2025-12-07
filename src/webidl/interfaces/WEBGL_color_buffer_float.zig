@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_color_buffer_float.idl
-//! Generated at: 2025-12-07T19:33:01Z
+//! Generated at: 2025-12-07T20:02:44Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

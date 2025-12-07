@@ -1,5 +1,5 @@
 //! Generated from: mediastream-recording.idl
-//! Generated at: 2025-12-07T19:33:02Z
+//! Generated at: 2025-12-07T20:02:45Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 

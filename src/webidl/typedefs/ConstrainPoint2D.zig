@@ -4,6 +4,7 @@
 
 const runtime = @import("runtime");
 const v8 = @import("v8");
+const dictionaries = @import("dictionaries");
 
 pub const ConstrainPoint2D = union(enum) {
     point2d_sequence: []const dictionaries.Point2D,

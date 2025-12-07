@@ -10,10 +10,6 @@ pub const MouseEventInit = struct {
     // Inherited from EventModifierInit
     base: EventModifierInit,
 
-    screenX: ?i32 = null,
-    screenY: ?i32 = null,
-    clientX: ?i32 = null,
-    clientY: ?i32 = null,
     button: ?i16 = null,
     buttons: ?u16 = null,
     relatedTarget: ?*runtime.Instance = null,

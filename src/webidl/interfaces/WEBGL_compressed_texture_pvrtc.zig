@@ -1,5 +1,5 @@
 //! Generated from: WEBGL_compressed_texture_pvrtc.idl
-//! Generated at: 2025-12-07T19:33:00Z
+//! Generated at: 2025-12-07T20:02:43Z
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
