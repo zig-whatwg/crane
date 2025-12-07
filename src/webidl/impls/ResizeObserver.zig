@@ -42,13 +42,24 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
+///
+/// TODO: When implementing, the callback MUST be stored as a V8 Global handle
+/// to survive past the caller's HandleScope. See:
+/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
+/// - src/webidl/impls/MutationObserver.zig for Observer callback pattern
+///
+/// Implementation requirements:
+/// 1. Add `callback: v8_engine.OptionalGlobalHandle` to InternalState
+/// 2. Add `isolate: ?*v8_engine.ffi.Isolate` to InternalState
+/// 3. Create Global handle in constructor: `v8_engine.createOptionalGlobalHandle(iso, @ptrCast(callback))`
+/// 4. Dispose Global handle in deinit: `v8_engine.disposeOptionalGlobalHandle(&self.callback)`
 pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.ResizeObserverCallback) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(allocator, State, &ResizeObserver.vtable, ctx);
     errdefer deinit(instance);
 
     _ = callback;
-    // TODO: Implement constructor logic with parameters
+    // TODO: Store callback as Global handle (see above doc comment)
 
     return instance;
 }
