@@ -180,7 +180,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
             return error.TypeError;
         }
 
-        break :blk @ptrCast(untagged.ptr);
+        break :blk @ptrCast(@alignCast(untagged.ptr));
     } else &default_sink;
 
     // Step 3: If type exists, throw RangeError (reserved for future use)
