@@ -785,8 +785,11 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
     }
 
     // Get writable and readable from transform pair
-    const writable: *runtime.Instance = @ptrCast(@alignCast(@constCast(transform.writable)));
-    const readable: *runtime.Instance = @ptrCast(@alignCast(@constCast(transform.readable)));
+    // IMPORTANT: transform.writable and transform.readable are *v8.Value pointers (stored as *const anyopaque)
+    // They are NOT *runtime.Instance pointers. We must extract the runtime.Instance from the V8 object's
+    // internal field where it was stored when the V8 wrapper was created.
+    const writable = try unwrapV8Instance(transform.writable) orelse return error.TypeError;
+    const readable = try unwrapV8Instance(transform.readable) orelse return error.TypeError;
 
     // Step 2: Check if writable is locked
     const WritableStreamImpl = @import("WritableStream.zig");
@@ -807,6 +810,50 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 
     // Step 6: Return transform["readable"]
     return readable;
+}
+
+/// Unwrap a V8 object pointer to extract the Zig runtime.Instance
+///
+/// When V8 converts JavaScript objects to Zig dictionaries, interface-typed members
+/// (like ReadableWritablePair.writable) are stored as raw *v8.Value pointers via
+/// the *const anyopaque branch in fromV8Value. This function extracts the actual
+/// *runtime.Instance from the V8 object's internal field.
+///
+/// Arguments:
+/// - v8_ptr: An opaque pointer that is actually a *v8.Value pointing to a V8 Object
+///
+/// Returns:
+/// - The *runtime.Instance if the V8 object is a valid wrapped Zig object
+/// - null if the object doesn't have internal fields (not a wrapped Zig object)
+/// - error.TypeError if the value is not an object
+fn unwrapV8Instance(v8_ptr: *const anyopaque) !?*runtime.Instance {
+    const v8 = @import("v8").ffi;
+
+    // Cast the opaque pointer to a V8 Value
+    const value: *v8.Value = @ptrCast(@alignCast(@constCast(v8_ptr)));
+
+    // Verify it's an object
+    if (!v8.v8_Value_IsObject(value)) {
+        return error.TypeError;
+    }
+
+    // Cast to Object to access internal fields
+    const obj: *v8.Object = @ptrCast(value);
+
+    // Check if this object has internal fields (indicating it wraps a Zig instance)
+    const field_count = v8.v8_Object_InternalFieldCount(obj);
+    if (field_count == 0) {
+        // Not a wrapped Zig object - likely a plain JS object
+        return null;
+    }
+
+    // Extract the runtime.Instance pointer from internal field 0
+    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0);
+    if (instance_ptr == null) {
+        return null;
+    }
+
+    return @ptrCast(@alignCast(instance_ptr));
 }
 
 /// Operation: cancel
