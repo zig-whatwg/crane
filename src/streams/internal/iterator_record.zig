@@ -12,6 +12,7 @@ const V8Resources = @import("v8_resources").V8Resources;
 const v8_mod = @import("v8");
 const v8 = v8_mod.ffi; // Use FFI functions directly
 const v8_engine = v8_mod.engine; // V8 engine helpers
+const pointer_tag = v8_mod.pointer_tag; // Pointer untagging for V8 tagged pointers
 
 // V8 FFI types from v8 module
 const V8Object = v8_mod.Object;
@@ -55,8 +56,9 @@ pub const IteratorRecord = struct {
         const isolate = v8_engine.getIsolate(ctx) orelse return error.NoV8Engine;
         const v8_context = v8_engine.getV8Context(ctx) orelse return error.NoV8Context;
 
-        // Cast to V8 Object
-        const iterable_obj: *V8Object = @ptrCast(@alignCast(@constCast(async_iterable)));
+        // Cast to V8 Object - use pointer untagging for V8 tagged pointers
+        const untagged = pointer_tag.untagPointer(async_iterable);
+        const iterable_obj: *V8Object = @ptrCast(untagged.ptr);
 
         // Step 1: Let method = GetMethod(obj, @@asyncIterator)
         const async_iterator_symbol = v8.v8_Symbol_GetAsyncIterator(isolate) orelse

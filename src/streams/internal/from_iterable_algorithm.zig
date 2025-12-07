@@ -12,6 +12,7 @@ const AsyncPromise = @import("async_promise").AsyncPromise;
 const v8_mod = @import("v8");
 const v8 = v8_mod.ffi; // Use FFI functions directly
 const v8_engine = v8_mod.engine; // V8 engine helpers
+const pointer_tag = v8_mod.pointer_tag; // Pointer untagging for V8 tagged pointers
 const webidl = @import("webidl");
 
 // Use interfaces instead of impls (per Golden Rule #12)
@@ -217,8 +218,9 @@ fn cancelInvokeWithArg(
     const event_loop = try controller.ctx.getEventLoop();
     const promise = try AsyncPromise(void).init(allocator, event_loop);
 
-    // Cast reason to V8 Value
-    const reason_value: *v8.Value = @ptrCast(@alignCast(@constCast(reason)));
+    // Cast reason to V8 Value - use pointer untagging for V8 tagged pointers
+    const untagged = pointer_tag.untagPointer(reason);
+    const reason_value: *v8.Value = @ptrCast(untagged.ptr);
 
     // Call iterator.return(reason)
     // If close fails, just fulfill anyway (stream is canceling)
