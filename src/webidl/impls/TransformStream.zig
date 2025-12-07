@@ -402,8 +402,6 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
     ctx: runtime.Context,
     transformer: *const anyopaque,
 ) !void {
-    _ = transformer; // Will be used to extract transform/flush/cancel algorithms
-
     // Create TransformStreamDefaultController instance
     const controller = try interfaces.TransformStreamDefaultController.init(allocator, ctx);
     errdefer runtime.Instance.deinit(controller);
@@ -424,12 +422,78 @@ fn setUpTransformStreamDefaultControllerFromTransformer(
         .finishPromise = null,
         .isolate = @ptrCast(@alignCast(ctx.engine_ctx)),
         .v8_context = null,
-        // V8 Global handles will be set by V8 integration layer when transformer callbacks are registered
-        // Currently uses default algorithms until transformer callback extraction is implemented
+        // Initialize V8 Global handles to null - will be set below if transformer has callbacks
         .flush_algorithm_v8 = null,
         .transform_algorithm_v8 = null,
         .cancel_algorithm_v8 = null,
     };
+
+    // Extract transformer callbacks and create Global handles
+    // The transformer dictionary can have: transform, flush, cancel methods
+    const v8 = v8_engine.ffi;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse {
+        // No V8 isolate available - use default algorithms (stub mode)
+        controller_state.own._internal = controller_internal;
+        internal.controller = controller;
+        return;
+    };
+
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        controller_state.own._internal = controller_internal;
+        internal.controller = controller;
+        return;
+    };
+
+    // Store V8 context in controller
+    controller_internal.v8_context = v8_context;
+
+    // The transformer parameter is a V8 object pointer (passed as *const anyopaque)
+    // Cast to *ffi.Object for V8 API calls
+    const v8_obj: *v8.Object = @ptrCast(@constCast(transformer));
+
+    // Extract 'transform' callback property and convert to Global handle
+    // Local handles become invalid after HandleScope ends, so we must create Global handles
+    const transform_key = v8.v8_String_NewFromUtf8(isolate, "transform", 9) orelse {
+        controller_state.own._internal = controller_internal;
+        internal.controller = controller;
+        return;
+    };
+    if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(transform_key))) |transform_val| {
+        if (!v8.v8_Value_IsNullOrUndefined(transform_val)) {
+            // Create Global handle to persist the callback past HandleScope
+            if (v8_engine.GlobalHandle.create(isolate, transform_val)) |global_handle| {
+                controller_internal.transform_algorithm_v8 = global_handle;
+            }
+        }
+    }
+
+    // Extract 'flush' callback property and convert to Global handle
+    const flush_key = v8.v8_String_NewFromUtf8(isolate, "flush", 5) orelse {
+        controller_state.own._internal = controller_internal;
+        internal.controller = controller;
+        return;
+    };
+    if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(flush_key))) |flush_val| {
+        if (!v8.v8_Value_IsNullOrUndefined(flush_val)) {
+            if (v8_engine.GlobalHandle.create(isolate, flush_val)) |global_handle| {
+                controller_internal.flush_algorithm_v8 = global_handle;
+            }
+        }
+    }
+
+    // Extract 'cancel' callback property and convert to Global handle
+    const cancel_key = v8.v8_String_NewFromUtf8(isolate, "cancel", 6) orelse {
+        controller_state.own._internal = controller_internal;
+        internal.controller = controller;
+        return;
+    };
+    if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(cancel_key))) |cancel_val| {
+        if (!v8.v8_Value_IsNullOrUndefined(cancel_val)) {
+            if (v8_engine.GlobalHandle.create(isolate, cancel_val)) |global_handle| {
+                controller_internal.cancel_algorithm_v8 = global_handle;
+            }
+        }
+    }
 
     controller_state.own._internal = controller_internal;
 

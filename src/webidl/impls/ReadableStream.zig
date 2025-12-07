@@ -170,32 +170,42 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         // Get current isolate
         const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
 
-        // Extract 'start' callback property
+        // Extract 'start' callback property and convert to Global handle
+        // Local handles become invalid after HandleScope ends, so we must create Global handles
+        // to persist the callback references. The Global handles will be properly cleaned up
+        // when the Algorithm instances are destroyed.
         const start_key = v8.v8_String_NewFromUtf8(isolate, "start", 5) orelse return error.OutOfMemory;
         if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(start_key))) |start_val| {
             if (!v8.v8_Value_IsNullOrUndefined(start_val)) {
-                // Store the V8 function pointer
-                underlying_source_dict_storage.start = @ptrCast(start_val);
+                // Create Global handle to persist the callback past HandleScope
+                // GlobalHandle.create returns a struct with .ptr field containing the Global<Value>*
+                if (v8_engine.GlobalHandle.create(isolate, start_val)) |global_handle| {
+                    underlying_source_dict_storage.start = @ptrCast(global_handle.ptr);
+                }
             }
         }
 
-        // Extract 'pull' callback property
+        // Extract 'pull' callback property and convert to Global handle
         const pull_key = v8.v8_String_NewFromUtf8(isolate, "pull", 4) orelse return error.OutOfMemory;
         if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(pull_key))) |pull_val| {
             if (!v8.v8_Value_IsNullOrUndefined(pull_val)) {
-                underlying_source_dict_storage.pull = @ptrCast(pull_val);
+                if (v8_engine.GlobalHandle.create(isolate, pull_val)) |global_handle| {
+                    underlying_source_dict_storage.pull = @ptrCast(global_handle.ptr);
+                }
             }
         }
 
-        // Extract 'cancel' callback property
+        // Extract 'cancel' callback property and convert to Global handle
         const cancel_key = v8.v8_String_NewFromUtf8(isolate, "cancel", 6) orelse return error.OutOfMemory;
         if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(cancel_key))) |cancel_val| {
             if (!v8.v8_Value_IsNullOrUndefined(cancel_val)) {
-                underlying_source_dict_storage.cancel = @ptrCast(cancel_val);
+                if (v8_engine.GlobalHandle.create(isolate, cancel_val)) |global_handle| {
+                    underlying_source_dict_storage.cancel = @ptrCast(global_handle.ptr);
+                }
             }
         }
 
-        // Extract 'type' property
+        // Extract 'type' property (not a callback, no need for Global handle)
         const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return error.OutOfMemory;
         if (v8.v8_Object_Get(v8_obj, v8_context, @ptrCast(type_key))) |type_val| {
             if (!v8.v8_Value_IsNullOrUndefined(type_val)) {

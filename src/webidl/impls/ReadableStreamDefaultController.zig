@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const v8_engine = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -59,9 +60,9 @@ pub const InternalState = struct {
     /// [[pulling]]: Whether pull algorithm is currently executing
     pulling: bool,
 
-    /// [[strategySizeAlgorithm]]: Function to compute chunk size
+    /// [[strategySizeAlgorithm]]: Function to compute chunk size (V8 Global handle)
     /// For now, defaults to returning 1
-    strategy_size_algorithm: ?*const anyopaque,
+    strategy_size_algorithm: v8_engine.OptionalGlobalHandle,
 
     /// [[strategyHWM]]: High water mark for backpressure
     strategy_hwm: f64,
@@ -80,6 +81,9 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        // Dispose V8 Global handles to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.strategy_size_algorithm);
+
         // Clean up algorithms
         if (self.start_algorithm) |algo| {
             algo.deinit();
@@ -274,7 +278,9 @@ fn readableStreamDefaultControllerClearAlgorithms(internal: *InternalState) void
 
     internal.pull_algorithm = null;
     internal.cancel_algorithm = null;
-    internal.strategy_size_algorithm = null;
+
+    // Dispose and clear the size algorithm Global handle
+    v8_engine.disposeOptionalGlobalHandle(&internal.strategy_size_algorithm);
 }
 
 /// ReadableStreamDefaultController.[[CancelSteps]](reason)
@@ -318,7 +324,9 @@ pub fn cancelSteps(controller: *runtime.Instance, reason: *const anyopaque) !*As
         internal.allocator.destroy(algo);
     }
     internal.pull_algorithm = null;
-    internal.strategy_size_algorithm = null;
+
+    // Dispose and clear the size algorithm Global handle
+    v8_engine.disposeOptionalGlobalHandle(&internal.strategy_size_algorithm);
 
     // Now clear cancel_algorithm since we've finished using it
     if (internal.cancel_algorithm) |algo| {
@@ -373,7 +381,9 @@ pub fn cancelStepsWithOptReason(controller: *runtime.Instance, reason: ?*anyopaq
         internal.allocator.destroy(algo);
     }
     internal.pull_algorithm = null;
-    internal.strategy_size_algorithm = null;
+
+    // Dispose and clear the size algorithm Global handle
+    v8_engine.disposeOptionalGlobalHandle(&internal.strategy_size_algorithm);
 
     if (internal.cancel_algorithm) |algo| {
         algo.deinit();
