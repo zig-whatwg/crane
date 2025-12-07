@@ -16,7 +16,8 @@ const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const reader_ops = @import("reader_ops");
-const pointer_tag = @import("../../runtime/engines/v8/pointer_tag.zig");
+const v8_mod = @import("v8");
+const pointer_tag = v8_mod.pointer_tag;
 
 /// ReadableStreamAsyncIterator
 ///
@@ -124,7 +125,7 @@ pub fn next(
     // So we can safely cast the promise type
     // Untag V8 pointer before casting (V8 uses pointer tagging)
     const untagged = pointer_tag.untagPointer(read_result_promise_ptr);
-    const iterator_promise: *AsyncPromise(IteratorResult) = @ptrCast(untagged.ptr);
+    const iterator_promise: *AsyncPromise(IteratorResult) = @ptrCast(@alignCast(untagged.ptr));
 
     // Step 6: Return promise
     return iterator_promise;

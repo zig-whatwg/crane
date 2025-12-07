@@ -21,7 +21,8 @@ const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const event_loop_mod = @import("event_loop");
-const pointer_tag = @import("../../../runtime/engines/v8/pointer_tag.zig");
+const v8_mod = @import("v8");
+const pointer_tag = v8_mod.pointer_tag;
 
 // Internal impl access for algorithms that bypass public API checks
 // (e.g., pullSteps, internal cancel without lock check)
@@ -237,7 +238,7 @@ pub fn readableStreamReaderGenericCancel(
     // Cast the returned pointer to AsyncPromise(void)
     // Untag V8 pointer before casting (V8 uses pointer tagging)
     const untagged = pointer_tag.untagPointer(cancel_promise_ptr);
-    const cancel_promise: *AsyncPromise(void) = @ptrCast(untagged.ptr);
+    const cancel_promise: *AsyncPromise(void) = @ptrCast(@alignCast(untagged.ptr));
 
     return cancel_promise;
 }

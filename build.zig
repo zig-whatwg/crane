@@ -1130,6 +1130,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "async_promise", .module = streams_async_promise_mod },
             .{ .name = "impls", .module = impls_mod },
             .{ .name = "event_loop", .module = streams_event_loop_mod },
+            .{ .name = "v8", .module = v8_mod },
         },
     });
 
@@ -1145,6 +1146,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "reader_ops", .module = streams_reader_ops_mod },
             .{ .name = "impls", .module = impls_mod },
+            .{ .name = "v8", .module = v8_mod },
         },
     });
 
