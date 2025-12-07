@@ -93,7 +93,7 @@ pub const BrowserAdapter = struct {
     ///
     /// Flow:
     /// 1. First test: Load testharness.js (once)
-    /// 2. Subsequent tests: Reset JS state
+    /// 2. Subsequent tests: Reset JS/Zig state, reload testharness.js
     /// 3. Execute test script
     /// 4. Wait for completion
     pub fn runTest(
@@ -106,9 +106,12 @@ pub const BrowserAdapter = struct {
         if (!self.context_initialized) {
             try self.initializeTestHarness();
         } else {
-            // Subsequent tests: reload testharness.js completely
-            // We can't reset testharness.js state because 'tests' is a local variable
-            // in the IIFE, not accessible from outside. Re-loading is the only way.
+            // Subsequent tests: reset state and reload testharness.js
+            // This is CRITICAL for cross-test isolation:
+            // 1. Clear pending timers (V8 function pointers become invalid after reload)
+            // 2. Reset internal state registry (Zig-side instance references)
+            // 3. Reload testharness.js (creates fresh test state)
+            try self.context.resetJavaScriptState();
             try self.context.loadTestHarness();
         }
 

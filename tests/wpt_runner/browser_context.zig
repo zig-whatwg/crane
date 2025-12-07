@@ -710,6 +710,14 @@ pub const BrowserContext = struct {
     pub fn resetJavaScriptState(self: *BrowserContext) !void {
         const isolate = self.isolate orelse return error.NotInitialized;
 
+        // CRITICAL: Clear all pending timer contexts FIRST before JS reset
+        // This prevents dangling pointers to V8 functions that will be GC'd
+        clearPendingTimers();
+
+        // Reset the internal state registry to clear references from previous tests
+        // This prevents dangling instance references that can cause segfaults
+        runtime.resetInternalStateRegistry();
+
         // Comprehensive JavaScript state reset
         const reset_script =
             \\(function() {
@@ -1055,6 +1063,24 @@ pub fn clearTimerInterface() void {
     }
     current_timer_interface = null;
     current_allocator = null;
+}
+
+/// Clear ALL pending timer contexts but keep the timer interface
+/// This is used during test isolation to cancel timers without tearing down the interface
+pub fn clearPendingTimers() void {
+    if (timer_contexts) |*map| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+            // Cancel the timer at the libuv level
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(ctx.current_timer_id);
+            }
+            // Destroy the timer context
+            ctx.destroy();
+        }
+        map.clearRetainingCapacity();
+    }
 }
 
 /// Register a timer context for cleanup tracking (both one-shot and intervals)

@@ -114,6 +114,7 @@ pub const getInternal = internal_state.getInternal;
 pub const setInternal = internal_state.setInternal;
 pub const removeInternal = internal_state.removeInternal;
 pub const hasInternal = internal_state.hasInternal;
+pub const resetInternalStateRegistry = internal_state.resetRegistry;
 
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
