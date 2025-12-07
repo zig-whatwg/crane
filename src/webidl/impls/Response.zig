@@ -802,6 +802,8 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
 pub fn call_json(instance: *runtime.Instance, data: v8.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
+    _ = data;
+    _ = init_data;
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 

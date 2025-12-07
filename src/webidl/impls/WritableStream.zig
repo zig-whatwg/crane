@@ -996,9 +996,6 @@ pub fn invokePendingStartCallback(
         return;
     }
 
-    // Import V8 FFI for direct function invocation
-    const v8_ffi = v8.ffi;
-
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
     const context: *v8.Context = @ptrCast(@alignCast(v8_context));

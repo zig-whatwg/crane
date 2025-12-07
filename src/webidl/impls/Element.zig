@@ -3375,7 +3375,6 @@ fn parseShadowRootMode(ptr: *const anyopaque) enums.ShadowRootMode {
 
 /// Parse SlotAssignmentMode from V8 value
 fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
-
     const v8_value: *v8.ffi.Value = @ptrCast(@constCast(ptr));
     if (v8.ffi.v8_Value_IsString(v8_value)) {
         const str_len = v8.ffi.v8_Value_StringLength_Raw(ptr);

@@ -68,7 +68,7 @@ pub fn call_createExpression(instance: *runtime.Instance, expression: runtime.DO
 /// Spec: https://dom.spec.whatwg.org/#dom-xpathevaluatorbase-creatensresolver
 pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    _ = node_resolver;
+    _ = nodeResolver;
 
     // TODO: Implement NS resolver creation
     return error.NotImplemented;
@@ -79,9 +79,9 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString, contextNode: *runtime.Instance, resolver: webidl.Opt(??*runtime.CallbackWrapper), @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
     _ = instance;
     _ = expression;
-    _ = context_node;
+    _ = contextNode;
     _ = resolver;
-    _ = result_type;
+    _ = @"type";
     _ = result;
 
     // TODO: Implement XPath evaluation

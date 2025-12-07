@@ -19,6 +19,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -1045,7 +1046,7 @@ pub fn closest(
 
 /// prepend - Inserts nodes before the first child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
-pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+pub fn call_prepend(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1065,7 +1066,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 
 /// append - Inserts nodes after the last child
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
-pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+pub fn call_append(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1080,7 +1081,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 
 /// replaceChildren - Replaces all children with nodes
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
-pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
     const allocator = instance.ctx.getAllocator();
 
     // Get this node's document
@@ -1236,7 +1237,6 @@ fn createDocumentFragment(
 
     return fragment;
 }
-
 
 pub fn deinit(instance: *runtime.Instance) void {
     _ = instance;

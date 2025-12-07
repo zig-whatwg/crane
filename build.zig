@@ -533,6 +533,8 @@ pub fn build(b: *std.Build) void {
     typedefs_mod.addImport("runtime", runtime_mod);
     typedefs_mod.addImport("callbacks", callbacks_mod);
     typedefs_mod.addImport("webidl", webidl_mod);
+    typedefs_mod.addImport("dictionaries", dictionaries_mod);
+    typedefs_mod.addImport("enums", enums_mod);
 
     // ========================================================================
     // INTERFACES MODULE (WebIDL interface definitions)
@@ -586,9 +588,10 @@ pub fn build(b: *std.Build) void {
     // V8 module needs impls for ReadableStream start callback invocation
     v8_mod.addImport("impls", impls_mod);
 
-    // Dictionaries module needs typedefs and enums for RequestInit and other dictionaries
+    // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
     dictionaries_mod.addImport("typedefs", typedefs_mod);
     dictionaries_mod.addImport("enums", enums_mod);
+    dictionaries_mod.addImport("callbacks", callbacks_mod);
 
     // WebIDL modules need v8 for JSValue type (any/object WebIDL types)
     callbacks_mod.addImport("v8", v8_mod);

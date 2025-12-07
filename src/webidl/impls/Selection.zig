@@ -519,15 +519,15 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
     }
 
     // Parse alter parameter (default: "move")
-    const alter_slice = if (alter_opt.was_passed) alter_opt.value.asSlice() else "move";
+    const alter_slice = if (alter.was_passed) alter.value.asSlice() else "move";
     const is_extend = std.mem.eql(u8, alter_slice, "extend");
 
     // Parse direction parameter (default: "forward")
-    const direction_slice = if (direction_opt.was_passed) direction_opt.value.asSlice() else "forward";
+    const direction_slice = if (direction.was_passed) direction.value.asSlice() else "forward";
     const is_forward = std.mem.eql(u8, direction_slice, "forward") or std.mem.eql(u8, direction_slice, "right");
 
     // Parse granularity parameter (default: "character")
-    const granularity_slice = if (granularity_opt.was_passed) granularity_opt.value.asSlice() else "character";
+    const granularity_slice = if (granularity.was_passed) granularity.value.asSlice() else "character";
 
     // Get the current focus position
     const focus_node = internal.focus_node.?;

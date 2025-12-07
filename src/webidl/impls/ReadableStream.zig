@@ -353,9 +353,6 @@ pub fn invokePendingStartCallback(
         return;
     };
 
-    // Import V8 FFI for direct function invocation
-    const v8_ffi = v8.ffi;
-
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
     const context: *v8.Context = @ptrCast(@alignCast(v8_context));
@@ -515,9 +512,6 @@ pub fn invokePendingByteStartCallback(
         onByteStartFulfilledImmediate(controller_internal, controller_instance);
         return;
     };
-
-    // Import V8 FFI for direct function invocation
-    const v8_ffi = v8.ffi;
 
     // Cast the opaque pointer to V8 types
     const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
@@ -862,7 +856,6 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 /// - null if the object doesn't have internal fields (not a wrapped Zig object)
 /// - error.TypeError if the value is not an object
 fn unwrapV8Instance(v8_ptr: *const anyopaque) !?*runtime.Instance {
-    const v8_ffi = v8.ffi;
     const pointer_tag = @import("v8").pointer_tag;
 
     // Untag the pointer before using it as a V8 value

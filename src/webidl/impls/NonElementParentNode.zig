@@ -58,7 +58,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 1. Return the first element, in tree order, within this's descendants,
 ///    that has an ID equal to elementId; otherwise null
 pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
-    const id_slice = element_id.asSlice();
+    const id_slice = elementId.asSlice();
 
     // Empty ID never matches
     if (id_slice.len == 0) {
