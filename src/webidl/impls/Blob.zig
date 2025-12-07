@@ -90,11 +90,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blob
     // Determine if we have blob parts and what endings mode to use
     const endings_mode: file.algorithms.Endings = blk: {
         if (options.wasPassed()) {
-            if (options.value.endings) |endings_ptr| {
-                // endings is a pointer to the endings string value
-                // For now, check if it's "native"
-                const endings_str: *const []const u8 = @ptrCast(@alignCast(endings_ptr));
-                if (std.mem.eql(u8, endings_str.*, "native")) {
+            if (options.value.endings) |endings| {
+                // endings is now an enum, check if it's "native"
+                if (endings == ._native_) {
                     break :blk .native;
                 }
             }
@@ -325,7 +323,7 @@ pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         .start = null,
         .pull = @ptrCast(&blobStreamPull),
         .cancel = @ptrCast(&blobStreamCancel),
-        .type = @ptrCast(&blob_stream_type_bytes), // "bytes" for ReadableByteStreamController
+        .type = ._bytes_, // "bytes" for ReadableByteStreamController
         .autoAllocateChunkSize = DEFAULT_CHUNK_SIZE,
     };
 

@@ -162,7 +162,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
         // error defaults to undefined (null in our representation)
         if (init_dict.@"error") |err| {
-            internal.@"error" = err;
+            internal.@"error" = err.toAnyopaque();
         }
     }
 
@@ -204,10 +204,13 @@ pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
 ///       Null is represented by returning a special "undefined" marker pointer.
 pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse {
-        // Return a marker for "undefined" - caller must handle this
-        return @as(*const anyopaque, @ptrCast(&undefined_marker));
+        // Return undefined
+        return runtime.JSValue.jsUndefined;
     };
-    return internal.@"error" orelse @as(*const anyopaque, @ptrCast(&undefined_marker));
+    if (internal.@"error") |err| {
+        return runtime.JSValue.fromAnyopaque(err);
+    }
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Marker value for JavaScript "undefined"
