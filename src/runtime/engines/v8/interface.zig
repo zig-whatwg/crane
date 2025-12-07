@@ -1017,9 +1017,12 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                 }
                             } else if (PayloadType == *const anyopaque) {
-                                // Opaque pointer is already a V8 value - just cast it
-                                // This is used for WebIDL 'any' type and pre-converted values
-                                break :comptime_convert @ptrCast(@constCast(result));
+                                // SAFETY: Cannot blindly cast *const anyopaque to V8 Value.
+                                // These are often Zig-side objects (like *runtime.Instance for
+                                // Promise returns) that need proper wrapping, not raw casting.
+                                // For now, return undefined to prevent crashes.
+                                // TODO: Implement proper Promise creation for [NewObject] methods
+                                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                             } else if (PayloadType == ?*runtime.CallbackWrapper) {
                                 // EventHandler (callback wrapper) - extract V8 function from wrapper
                                 if (result) |wrapper| {
@@ -1367,7 +1370,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     isolate,
                     v8_context,
                 ) catch {
-                    return @ptrCast(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
                 return @ptrCast(v8_obj);
             }
@@ -1389,7 +1392,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ReturnType == runtime.DOMString) {
                 const slice = result.asSlice();
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
-                    return @ptrCast(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
                 return @ptrCast(v8_str);
             }
@@ -1397,7 +1400,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Handle []const u8 (string slices)
             if (ReturnType == []const u8) {
                 const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
-                    return @ptrCast(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
                 return @ptrCast(v8_str);
             }
@@ -1406,7 +1409,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (type_info == .@"union") {
                 // Use the generic toV8Value conversion which handles unions
                 return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
-                    return @ptrCast(v8.v8_Undefined(isolate));
+                    return v8.v8_Undefined(isolate);
                 };
             }
 
@@ -1418,16 +1421,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle *const anyopaque - treat as V8 Value pointer
-            // The caller is expected to return a V8 Value directly (e.g., from createStringArray)
+            // Handle *const anyopaque - SAFETY: Cannot blindly cast to V8 Value
+            // These are often Zig-side objects (like *runtime.Instance for
+            // Promise returns) that need proper wrapping, not raw casting.
             if (ReturnType == *const anyopaque) {
-                // Cast the anyopaque directly to V8 Value
-                return @ptrCast(@constCast(result));
+                // Return undefined to prevent crashes from misaligned pointers
+                // TODO: Implement proper Promise creation for [NewObject] methods
+                return v8.v8_Undefined(isolate);
             }
 
             // For other types, return undefined as fallback
             // TODO: Expand type conversion coverage
-            return @ptrCast(v8.v8_Undefined(isolate));
+            return v8.v8_Undefined(isolate);
         }
 
         /// Register a method on the prototype template using generated callback
@@ -2001,7 +2006,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return @ptrCast(v8_obj);
             } else {
                 // Unknown type - return undefined
-                return @ptrCast(v8.v8_Undefined(isolate));
+                return v8.v8_Undefined(isolate);
             }
         }
 
@@ -2215,8 +2220,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 } else {
                     // null - return undefined
-                    const undef = v8.v8_Undefined(isolate);
-                    info.setReturnValue(@ptrCast(undef));
+                    if (v8.v8_Undefined(isolate)) |undef| {
+                        info.setReturnValue(undef);
+                    }
                 }
             } else {
                 // Non-optional type (like CSSOMString)
@@ -2591,12 +2597,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (index >= length) {
                 // Iterator exhausted
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                if (v8.v8_Undefined(isolate)) |undef| {
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef);
+                }
                 _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             } else {
                 // Get entry at index (it's a [key, value] array)
                 const entry = v8.v8_Array_Get(v8_context, @ptrCast(entries_val), index) orelse {
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                    if (v8.v8_Undefined(isolate)) |undef| {
+                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef);
+                    }
                     _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
                     info.setReturnValue(@ptrCast(result_obj));
                     return;
@@ -2609,9 +2619,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 const val_v8 = v8.v8_Object_Get(@ptrCast(entry), v8_context, @ptrCast(one_key));
 
                 // Return value based on kind
+                const undef = v8.v8_Undefined(isolate);
                 const result_val: *v8.Value = switch (kind) {
-                    .keys => @ptrCast(key_v8 orelse v8.v8_Undefined(isolate)),
-                    .values => @ptrCast(val_v8 orelse v8.v8_Undefined(isolate)),
+                    .keys => key_v8 orelse undef orelse return,
+                    .values => val_v8 orelse undef orelse return,
                     .entries => @ptrCast(entry), // Return the [key, value] pair
                 };
 
@@ -2659,9 +2670,11 @@ pub fn V8Interface(comptime Interface: type) type {
             const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
 
+            const undef_val = v8.v8_Undefined(isolate) orelse return;
+
             if (index >= length) {
                 // Iterator exhausted
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef_val);
                 _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             } else {
                 // Get value at index using item() method or indexed access
@@ -2670,12 +2683,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 const result_value: *v8.Value = switch (kind) {
                     .keys => @ptrCast(index_str),
-                    .values => @ptrCast(item_val orelse v8.v8_Undefined(isolate).?),
+                    .values => item_val orelse undef_val,
                     .entries => blk: {
                         // Create [index, value] array
                         const arr = v8.v8_Array_New(isolate, 2);
                         _ = v8.v8_Array_Set(arr, v8_context, 0, @ptrCast(index_str));
-                        _ = v8.v8_Array_Set(arr, v8_context, 1, @ptrCast(item_val orelse v8.v8_Undefined(isolate).?));
+                        _ = v8.v8_Array_Set(arr, v8_context, 1, item_val orelse undef_val);
                         break :blk @ptrCast(arr);
                     },
                 };
@@ -3053,9 +3066,60 @@ pub fn V8Interface(comptime Interface: type) type {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+//
+// POINTER TAGGING AUDIT NOTES
+// ===========================
+//
+// ## Summary
+//
+// The getInstance/setInstance family of functions are SAFE from pointer tagging
+// issues because they operate directly on V8 internal fields, NOT on values
+// returned from conv.fromV8Value().
+//
+// ## Pointer Flow Analysis
+//
+// ### SAFE Paths (no tagging involved):
+//
+// 1. getInstance(object) -> v8_Object_GetAlignedPointerFromInternalField
+//    - Extracts raw Zig pointer from V8 internal storage
+//    - This pointer was stored by setInstance, never passed through fromV8Value
+//    - NO TAGGING: Direct V8 API call returns raw pointer
+//
+// 2. setInstance(object, instance) -> v8_Object_SetAlignedPointerInInternalField
+//    - Stores raw Zig pointer into V8 internal storage
+//    - NO TAGGING: Direct storage, pointer identity preserved
+//
+// 3. constructorCallback -> info.getThis() -> getInstance()
+//    - `this` object comes from V8 callback, not fromV8Value
+//    - Internal field extraction is untagged
+//
+// ### POTENTIALLY TAGGED Paths (require attention):
+//
+// 1. callConstructorWithArgs -> conv.fromV8Value(Param1Type, ...)
+//    - Returns tagged pointers when Param1Type is *const anyopaque
+//    - These go to Zig impl constructors, which must handle tagged pointers
+//    - IMPL CODE RESPONSIBILITY: Untag before V8 FFI calls
+//
+// 2. callMethodWithArgs -> conv.fromV8Value(ParamType, ...)
+//    - Same as above: tagged pointers for *const anyopaque params
+//    - IMPL CODE RESPONSIBILITY: Untag before V8 FFI calls
+//
+// ## Conclusion
+//
+// interface.zig itself is SAFE - it never passes tagged pointers to V8 FFI.
+// Tagged pointers only flow to impl code via constructor/method parameters.
+// Impl code must follow the tagging contract documented in pointer_tag.zig.
+//
+// ============================================================================
 
 /// Extract Zig instance from V8 object internal field (legacy - no type checking)
 /// Prefer getInstanceTypeSafe for production code.
+///
+/// ## Pointer Tagging Note
+///
+/// This function returns an UNTAGGED pointer. The pointer is extracted directly
+/// from V8's internal field storage, not from conv.fromV8Value(). No untagging
+/// is required by callers.
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
@@ -3103,6 +3167,12 @@ pub fn getWrapperTypeInfo(object: *v8.Object) ?*const WrapperTypeInfo {
 
 /// Store Zig instance in V8 object internal field (legacy - no type info)
 /// Prefer setInstanceWithTypeInfo for new code.
+///
+/// ## Pointer Tagging Note
+///
+/// This function stores an UNTAGGED pointer directly into V8's internal field.
+/// The pointer can later be retrieved via getInstance(), which also returns
+/// it untagged. This bypasses the pointer tagging system entirely.
 pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,
