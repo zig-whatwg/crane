@@ -927,43 +927,71 @@ pub fn fromV8Value(
     if (T == runtime.Any) return fromV8Any(value);
     if (T == *const anyopaque) {
         // For anyopaque parameters (WebIDL 'any' type), we need to handle V8 handle
-        // lifetimes correctly:
+        // lifetimes correctly AND detect wrapped Zig interface instances.
         //
-        // PROBLEM: V8 Local<Value> handles are stack-bound to the current HandleScope.
-        // When the HandleScope ends (e.g., when a constructor returns), Local handles
-        // become INVALID (dangling pointers). Storing a raw Local pointer and using
-        // it later causes SEGFAULTS.
+        // CRITICAL: Dictionary fields typed as interfaces (e.g., ReadableWritablePair.writable)
+        // are declared as *const anyopaque in Zig. When these receive a V8 object that
+        // wraps a Zig runtime.Instance, we MUST extract the Instance pointer, NOT return
+        // a V8 pointer. Otherwise, callers that cast to *runtime.Instance will crash
+        // because they're interpreting V8 memory as Zig structs.
         //
-        // SOLUTION: For functions and objects (which are typically stored for later use,
-        // e.g., stream callbacks), create a Global handle that persists beyond the
-        // HandleScope lifetime. Global handles are heap-allocated and must be explicitly
-        // disposed, but they survive scope destruction.
+        // Detection strategy:
+        // - V8 objects wrapping Zig instances have internal fields (field count > 0)
+        // - Internal field 0 contains the *runtime.Instance pointer
+        // - Plain JS objects (e.g., callbacks, dictionaries) have no internal fields
         //
-        // For primitives (undefined, null, booleans, numbers, strings), V8 copies
-        // the value internally, so the Local pointer behavior is actually safe.
-        // However, for consistency and future-proofing, we still return them as-is.
+        // For V8 handle lifetimes:
+        // - Local<Value> handles are stack-bound to the current HandleScope
+        // - When HandleScope ends, Local handles become INVALID (dangling pointers)
+        // - For functions/objects (stored for later use), create Global handles
+        // - Primitives are safe as-is (V8 copies values internally)
         //
-        // IMPORTANT: Do NOT convert the value to Zig types here!
-        // - Streams API uses 'any' for chunks that should round-trip to JS unchanged
-        // - Converting to DOMString would lose the original V8 reference
-        // - When the value is later passed back (e.g., in iterator.next()), we need
-        //   the original V8 pointer to pass to toV8() which expects a V8 value
+        // POINTER TAGGING:
+        // We tag the returned pointers so consumers can safely determine the type:
+        // - .runtime_instance: Pointer to *runtime.Instance (Zig object)
+        // - .global_handle: Pointer to V8 Global<Value>* (persisted JS value)
+        // - .local_value: Pointer to V8 Local<Value>* (temporary, primitives)
+        // - .untagged: Legacy untagged pointer (for backward compatibility)
+        //
+        // Use untagPointer() to extract the type and original pointer.
 
-        // Check if this is a function or object that needs to persist beyond HandleScope
+        const pointer_tag_mod = @import("pointer_tag.zig");
+
+        // Check if this is a V8 object that wraps a Zig instance
+        if (v8.v8_Value_IsObject(value)) {
+            // Cast to Object to access internal fields
+            const obj: *v8.Object = @ptrCast(value);
+
+            // Check if this object has internal fields (indicates it wraps a Zig instance)
+            const field_count = v8.v8_Object_InternalFieldCount(obj);
+            if (field_count > 0) {
+                // This is a wrapped Zig object - extract the runtime.Instance from field 0
+                if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
+                    // Return the runtime.Instance pointer, TAGGED as .runtime_instance
+                    // This allows callers to safely dispatch based on the tag
+                    return pointer_tag_mod.tagPointer(internal_ptr, .runtime_instance);
+                }
+                // Internal field exists but is null - object not fully initialized
+                // Fall through to Global handle creation
+            }
+        }
+
+        // Not a wrapped Zig object (or object access failed)
+        // For functions and objects, create Global handle for persistence
         if (v8.v8_Value_IsFunction(value) or v8.v8_Value_IsObject(value)) {
             // Create a Global handle so it survives after HandleScope ends
             // Note: This creates a STRONG Global handle. Callers are responsible for
-            // disposing it when no longer needed. Future work (whatwg-0ddpx) will
-            // add weak handle support for automatic GC cleanup.
+            // disposing it when no longer needed.
             if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
-                return @ptrCast(global);
+                // Return Global handle pointer, TAGGED as .global_handle
+                return pointer_tag_mod.tagPointer(global, .global_handle);
             }
             // If Global creation fails (e.g., OOM), fall through to return raw pointer
-            // This maintains backward compatibility but may cause issues later
         }
 
         // For primitives or if Global creation failed, return raw Local pointer
-        return @ptrCast(value);
+        // TAG as .local_value to indicate it's a temporary V8 Local handle
+        return pointer_tag_mod.tagPointer(@ptrCast(@constCast(value)), .local_value);
     }
 
     // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
