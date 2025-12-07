@@ -27,6 +27,13 @@ const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
+const js_value_mod = @import("js_value.zig");
+
+/// Type-safe JavaScript value representation
+pub const JSValue = js_value_mod.JSValue;
+
+/// Optional JSValue for WebIDL optional parameters
+pub const OptionalJSValue = js_value_mod.OptionalJSValue;
 
 /// Conversion errors that can occur during type conversion
 pub const ConversionError = error{
@@ -211,6 +218,83 @@ pub fn fromV8Any(value: *v8.Value) runtime.Any {
 /// Convert V8 Object to runtime.Object (opaque pointer)
 pub fn fromV8Object(value: *v8.Object) runtime.Object {
     return @ptrCast(value);
+}
+
+/// Convert V8 Value to JSValue (type-safe)
+///
+/// This is the preferred way to convert V8 values for WebIDL 'any' type.
+/// Unlike fromV8Any, this preserves type information and eliminates the need
+/// for unsafe pointer tagging or sentinel values.
+///
+/// ## Return Values
+/// - Primitives (undefined, null, boolean, number) are stored directly
+/// - Wrapped Zig instances return `.instance` variant
+/// - Functions and objects needing persistence return `.global` variant
+/// - Other values return `.local` variant (temporary, scope-bound)
+///
+/// ## Example
+/// ```zig
+/// const js_value = try fromV8ValueTyped(v8_value, isolate, context);
+/// defer js_value.deinit(allocator); // Clean up if needed
+///
+/// switch (js_value) {
+///     .undefined_value => // handle undefined,
+///     .instance => |inst| // use Zig instance,
+///     .global => |g| // use V8 object/function,
+///     // ...
+/// }
+/// ```
+pub fn fromV8ValueTyped(
+    value: *v8.Value,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) ConversionError!JSValue {
+    // Check for undefined
+    if (v8.v8_Value_IsUndefined(value)) {
+        return JSValue.jsUndefined;
+    }
+
+    // Check for null
+    if (v8.v8_Value_IsNull(value)) {
+        return JSValue.jsNull;
+    }
+
+    // Check for boolean (optimize: no allocation needed)
+    if (v8.v8_Value_IsBoolean(value)) {
+        return JSValue.fromBoolean(v8.v8_Value_BooleanValue(value, isolate));
+    }
+
+    // Check for number (optimize: no allocation needed)
+    if (v8.v8_Value_IsNumber(value)) {
+        return JSValue.fromNumber(v8.v8_Value_NumberValue(value, context));
+    }
+
+    // Check for object/function - look for wrapped Zig instance first
+    if (v8.v8_Value_IsObject(value)) {
+        const obj: *v8.Object = @ptrCast(value);
+        const field_count = v8.v8_Object_InternalFieldCount(obj);
+
+        // Check if this V8 object wraps a Zig instance
+        if (field_count > 0) {
+            if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
+                // This is a wrapped Zig instance - return it directly
+                const instance: *runtime.Instance = @ptrCast(@alignCast(internal_ptr));
+                return JSValue.fromInstance(instance);
+            }
+        }
+
+        // Not a wrapped instance - create Global handle for persistence
+        // Functions and objects need Global handles to survive HandleScope
+        if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
+            return JSValue.fromGlobal(global);
+        }
+
+        // Global creation failed (OOM) - fall through to local
+    }
+
+    // For other values (strings, etc.) - return as local handle
+    // NOTE: Local handles are only valid within the current HandleScope!
+    return JSValue.fromLocal(value);
 }
 
 /// Convert V8 Array to Zig sequence
@@ -928,6 +1012,20 @@ pub fn fromV8Value(
         return try fromV8String(allocator, isolate, context, string);
     }
     if (T == runtime.Any) return fromV8Any(value);
+
+    // Handle JSValue (type-safe JavaScript value wrapper)
+    if (T == JSValue) {
+        return try fromV8ValueTyped(value, isolate, context);
+    }
+
+    // Handle OptionalJSValue (for optional 'any' parameters)
+    if (T == OptionalJSValue) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) {
+            return OptionalJSValue.notPassed;
+        }
+        return OptionalJSValue.fromValue(try fromV8ValueTyped(value, isolate, context));
+    }
+
     if (T == *const anyopaque) {
         // ============================================================================
         // POINTER TAGGING DOCUMENTATION
@@ -1444,6 +1542,19 @@ pub fn toV8Value(
     // SAFETY: runtime.Any is *anyopaque which might not be a valid V8 Value pointer
     // Return undefined instead of blindly casting to prevent crashes
     if (T == runtime.Any) return toV8Undefined(isolate);
+
+    // Handle JSValue (type-safe JavaScript value wrapper)
+    if (T == JSValue) {
+        return value.toV8(isolate);
+    }
+
+    // Handle OptionalJSValue (for optional 'any' parameters)
+    if (T == OptionalJSValue) {
+        return switch (value) {
+            .not_passed => toV8Undefined(isolate),
+            .passed => |v| v.toV8(isolate),
+        };
+    }
 
     // If we get here, it's an unsupported type that wasn't handled by any of the above cases
     // This should be rare - most types are covered by generic handlers (int, float, struct, pointer, etc.)

@@ -179,6 +179,17 @@ pub const untagPointer = pointer_tag.untagPointer;
 pub const isTaggedPointer = pointer_tag.isTagged;
 pub const getPointerTag = pointer_tag.getTag;
 
+/// Type-Safe JavaScript Value Representation
+/// Use JSValue instead of *const anyopaque for type safety
+pub const js_value = @import("js_value.zig");
+pub const JSValue = js_value.JSValue;
+pub const OptionalJSValue = js_value.OptionalJSValue;
+
+/// Type-Safe Stored Error for Stream Implementations
+/// Use StoredError instead of stored_error: ?*anyopaque
+pub const stored_error = @import("stored_error.zig");
+pub const StoredError = stored_error.StoredError;
+
 /// Thread safety primitives for V8 isolate access
 pub const locker = @import("locker.zig");
 pub const IsolateLock = locker.IsolateLock;
