@@ -150,19 +150,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for href
 /// Per spec §7.1.3: Returns the URL serialization of this Location's URL.
-pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_href(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Serialize the URL (exclude fragment = false)
     const serialized = try url_serializer.serialize(internal.allocator, url, false);
 
-    return serialized;
+    return runtime.DOMString.initOwned(serialized);
 }
 
 /// Getter for origin
 /// Per spec §7.1.3: Returns the serialization of this Location's origin.
-pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -173,12 +175,13 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     // Serialize the origin
     const serialized = try url_origin.serialize(internal.allocator);
 
-    return serialized;
+    return runtime.DOMString.initOwned(serialized);
 }
 
 /// Getter for protocol
 /// Per spec §7.1.3: Returns the scheme of this Location's URL, followed by ":".
-pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -189,18 +192,19 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     @memcpy(result[0..scheme.len], scheme);
     result[scheme.len] = ':';
 
-    return result;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Getter for host
 /// Per spec §7.1.3: Returns this Location's URL host and port (if different from default).
-pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_host(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If no host, return empty string
     if (url.host == null) {
-        return "";
+        return runtime.DOMString.empty;
     }
 
     // Serialize host
@@ -209,66 +213,72 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no port or default port, return just host
     if (url.port == null) {
-        return try internal.allocator.dupe(u8, host_str);
+        const buffer = try internal.allocator.dupe(u8, host_str);
+        return runtime.DOMString.initOwned(buffer);
     }
 
     // Check if port is default for scheme
     const scheme = url.scheme();
     const default_port = getDefaultPort(scheme);
     if (default_port != null and url.port.? == default_port.?) {
-        return try internal.allocator.dupe(u8, host_str);
+        const buffer = try internal.allocator.dupe(u8, host_str);
+        return runtime.DOMString.initOwned(buffer);
     }
 
     // Return host:port
     const result = try std.fmt.allocPrint(internal.allocator, "{s}:{d}", .{ host_str, url.port.? });
 
-    return result;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Getter for hostname
 /// Per spec §7.1.3: Returns this Location's URL host, serialized.
-pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If no host, return empty string
     if (url.host == null) {
-        return "";
+        return runtime.DOMString.empty;
     }
 
     // Serialize host
     const host_str = try host_serializer.serializeHost(internal.allocator, url.host.?);
 
-    return host_str;
+    return runtime.DOMString.initOwned(host_str);
 }
 
 /// Getter for port
 /// Per spec §7.1.3: Returns this Location's URL port, serialized.
-pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_port(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If no port, return empty string
     if (url.port == null) {
-        return "";
+        return runtime.DOMString.empty;
     }
 
     // Serialize port
     const result = try std.fmt.allocPrint(internal.allocator, "{d}", .{url.port.?});
 
-    return result;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Getter for pathname
 /// Per spec §7.1.3: Returns the URL path serialized.
-pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Use the path component from URL
     switch (url.path) {
         .opaque_path => |op| {
-            return try internal.allocator.dupe(u8, op);
+            const buffer = try internal.allocator.dupe(u8, op);
+            return runtime.DOMString.initOwned(buffer);
         },
         .segments => |segs| {
             // Build path string with "/" separators
@@ -288,20 +298,22 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
                 try result.append(internal.allocator, '/');
             }
 
-            return try result.toOwnedSlice(internal.allocator);
+            const buffer = try result.toOwnedSlice(internal.allocator);
+            return runtime.DOMString.initOwned(buffer);
         },
     }
 }
 
 /// Getter for search
 /// Per spec §7.1.3: Returns this Location's URL query (includes "?").
-pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_search(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If no query, return empty string
     const query = url.query() orelse {
-        return "";
+        return runtime.DOMString.empty;
     };
 
     // Return "?" + query
@@ -309,18 +321,19 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     result[0] = '?';
     @memcpy(result[1..], query);
 
-    return result;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Getter for hash
 /// Per spec §7.1.3: Returns this Location's URL fragment (includes "#").
-pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
+/// Returns DOMString with owned memory that caller must free.
+pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const url = getURL(instance) orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // If no fragment, return empty string
     const fragment = url.fragment() orelse {
-        return "";
+        return runtime.DOMString.empty;
     };
 
     // Return "#" + fragment
@@ -328,7 +341,7 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     result[0] = '#';
     @memcpy(result[1..], fragment);
 
-    return result;
+    return runtime.DOMString.initOwned(result);
 }
 
 /// Getter for ancestorOrigins

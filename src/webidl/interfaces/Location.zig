@@ -136,7 +136,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_href(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_href(instance);
     }
 
@@ -146,12 +147,14 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_origin(instance);
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_protocol(instance);
     }
 
@@ -161,7 +164,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_host(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_host(instance);
     }
 
@@ -171,7 +175,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_hostname(instance);
     }
 
@@ -181,7 +186,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_port(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_port(instance);
     }
 
@@ -191,7 +197,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_pathname(instance);
     }
 
@@ -201,7 +208,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_search(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_search(instance);
     }
 
@@ -211,7 +219,8 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
+    /// Returns DOMString with owned memory - caller must free after conversion to V8.
+    pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try LocationImpl.get_hash(instance);
     }
 

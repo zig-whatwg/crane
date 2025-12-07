@@ -71,6 +71,8 @@ pub const EngineError = error{
     AsyncIteratorError,
     /// Interface registration failed
     RegistrationFailed,
+    /// V8 object creation from template failed
+    ObjectCreationFailed,
 };
 
 /// Abstract interface for JavaScript engine operations

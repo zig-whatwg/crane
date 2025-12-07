@@ -247,7 +247,10 @@ pub fn wrapInstanceAsV8Object(
 
     // Create a new V8 object from the template
     // This creates an object with the correct prototype chain and internal fields
-    const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context);
+    const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
+        // NewInstance can fail if there's a JS exception or the context is invalid
+        return error.ObjectCreationFailed;
+    };
 
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(

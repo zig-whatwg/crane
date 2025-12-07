@@ -277,7 +277,8 @@ pub fn registerNamespacesGeneric(
 
             // Get the namespace object we just created
             const global_obj = v8.v8_Context_Global(context);
-            const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len));
+            // Note: This should always succeed for valid comptime string literals
+            const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len)).?;
             const ns_obj_value = v8.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
             const ns_obj: ?*v8.Object = @ptrCast(ns_obj_value);
 
