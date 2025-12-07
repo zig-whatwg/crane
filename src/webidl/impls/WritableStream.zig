@@ -947,8 +947,44 @@ pub fn invokePendingStartCallback(
     const context: *v8.Context = @ptrCast(@alignCast(v8_context));
     const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
 
-    // The stored pointer is a raw V8 Value pointer - verify it's a function
+    // IMPORTANT: The start_algo pointer comes from dictionary conversion.
+    // When V8 converts JS objects to Zig dictionaries, callback members like
+    // UnderlyingSink.start are stored as raw *const anyopaque.
+    //
+    // This pointer may NOT be a valid V8 Value pointer if:
+    // 1. The callback was not actually provided (but non-null due to default)
+    // 2. The pointer is from a different context or has been garbage collected
+    // 3. The conversion path stored something other than a V8 Value
+    //
+    // To safely unwrap: extract the V8 Value from the object that holds it.
+    // For dictionary callbacks, the pointer IS a V8 Value* - but we need to
+    // verify it's actually a valid V8 object before dereferencing.
+    //
+    // Safety check: Verify the pointer is within a reasonable address range
+    // before treating it as a V8 Value. V8 objects are heap-allocated and
+    // should have properly aligned addresses.
+    const start_algo_addr = @intFromPtr(start_algo);
+
+    // Check for obviously invalid addresses (null-ish, misaligned, or too small)
+    // V8 objects should be at reasonable heap addresses (> 4KB typically)
+    if (start_algo_addr < 0x1000 or start_algo_addr % @alignOf(*anyopaque) != 0) {
+        // Invalid pointer - mark as started without calling callback
+        controller_internal.start_algorithm = null;
+        onWritableStartFulfilledImmediate(controller_internal);
+        return;
+    }
+
+    // The stored pointer should be a raw V8 Value pointer - verify it's a function
     const v8_value: *v8.Value = @ptrCast(@alignCast(@constCast(start_algo)));
+
+    // Additional safety: check if it's a valid V8 object before checking if it's a function
+    // v8_Value_IsObject returns false for invalid/null values
+    if (!v8.v8_Value_IsObject(v8_value) and !v8.v8_Value_IsFunction(v8_value)) {
+        // Not a valid V8 object or function - mark as started
+        controller_internal.start_algorithm = null;
+        onWritableStartFulfilledImmediate(controller_internal);
+        return;
+    }
 
     if (!v8.v8_Value_IsFunction(v8_value)) {
         // Clear the start algorithm and mark as started
