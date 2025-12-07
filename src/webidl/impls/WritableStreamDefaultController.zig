@@ -919,8 +919,21 @@ pub fn abortSteps(controller: *runtime.Instance, reason: *const anyopaque) !*Asy
             const abort_function: *v8_engine.ffi.Function = @ptrCast(abort_value);
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
 
-            // Convert reason to V8 Value (treat reason as raw V8 value pointer)
-            const reason_v8: *v8_engine.ffi.Value = @ptrCast(@alignCast(@constCast(reason)));
+            // Convert reason to V8 Value - untag the pointer first
+            const pointer_tag = @import("v8").pointer_tag;
+            const untagged_reason = pointer_tag.untagPointer(reason);
+
+            // If it's a runtime instance, we can't use it directly as a V8 value
+            // In this case, we should convert it or error
+            if (untagged_reason.tag == .runtime_instance) {
+                const promise = try AsyncPromise(void).init(allocator, event_loop);
+                const exception = try webidl.errors.Exception.typeError(allocator, "Invalid abort reason: expected V8 value");
+                promise.reject(exception);
+                writableStreamDefaultControllerClearAlgorithms(controller);
+                return promise;
+            }
+
+            const reason_v8: *v8_engine.ffi.Value = @ptrCast(untagged_reason.ptr);
 
             // Invoke abort_algorithm(reason) → Promise<void>
             var abort_promise = v8_engine.streams_callbacks.invokeAbortAlgorithm(

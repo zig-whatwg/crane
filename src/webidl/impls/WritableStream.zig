@@ -170,7 +170,18 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
 
     // Step 2: Convert to UnderlyingSink dictionary (if provided)
     const default_sink = dictionaries.UnderlyingSink{};
-    const underlying_sink_dict: *const dictionaries.UnderlyingSink = if (underlying_sink_ptr) |ptr| @ptrCast(@alignCast(ptr)) else &default_sink;
+    const underlying_sink_dict: *const dictionaries.UnderlyingSink = if (underlying_sink_ptr) |ptr| blk: {
+        // Untag the pointer before casting - it may be tagged by V8 conversions
+        const pointer_tag = @import("v8").pointer_tag;
+        const untagged = pointer_tag.untagPointer(ptr);
+
+        // If it's a runtime instance, this is not a valid UnderlyingSink dictionary
+        if (untagged.tag == .runtime_instance) {
+            return error.TypeError;
+        }
+
+        break :blk @ptrCast(untagged.ptr);
+    } else &default_sink;
 
     // Step 3: If type exists, throw RangeError (reserved for future use)
     if (underlying_sink_dict.type != null) {

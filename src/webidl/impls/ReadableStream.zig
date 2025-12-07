@@ -151,7 +151,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         // underlyingSource.value is a V8 Object* (Global<Value>*)
         // Extract callback properties using V8 FFI
         const v8 = @import("v8").ffi;
-        const v8_obj: *v8.Object = @ptrCast(@alignCast(@constCast(underlyingSource.value)));
+        const pointer_tag = @import("v8").pointer_tag;
+
+        // Untag the pointer before using it as a V8 object
+        const untagged = pointer_tag.untagPointer(underlyingSource.value);
+
+        // Validate we have a V8 value (not a Zig instance)
+        if (untagged.tag == .runtime_instance) {
+            return error.TypeError; // Expected V8 object, got Zig instance
+        }
+
+        const v8_obj: *v8.Object = @ptrCast(untagged.ptr);
 
         // Get V8 context from runtime context
         const v8_context_ptr = ctx.getEngineContext() orelse return error.InvalidState;
@@ -829,9 +839,18 @@ pub fn call_pipeThrough(instance: *runtime.Instance, transform: dictionaries.Rea
 /// - error.TypeError if the value is not an object
 fn unwrapV8Instance(v8_ptr: *const anyopaque) !?*runtime.Instance {
     const v8 = @import("v8").ffi;
+    const pointer_tag = @import("v8").pointer_tag;
 
-    // Cast the opaque pointer to a V8 Value
-    const value: *v8.Value = @ptrCast(@alignCast(@constCast(v8_ptr)));
+    // Untag the pointer before using it as a V8 value
+    const untagged = pointer_tag.untagPointer(v8_ptr);
+
+    // If it's a runtime instance, extract it directly
+    if (untagged.tag == .runtime_instance) {
+        return @ptrCast(@alignCast(untagged.ptr));
+    }
+
+    // Cast the untagged pointer to a V8 Value
+    const value: *v8.Value = @ptrCast(untagged.ptr);
 
     // Verify it's an object
     if (!v8.v8_Value_IsObject(value)) {

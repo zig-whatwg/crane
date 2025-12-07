@@ -534,8 +534,17 @@ pub fn addReadRequest(
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    // Untag the pointer before casting - it may be tagged by V8 conversions
+    const pointer_tag = @import("v8").pointer_tag;
+    const untagged = pointer_tag.untagPointer(readRequest);
+
+    // If it's a V8 object rather than our internal promise type, that's an error
+    if (untagged.tag == .runtime_instance) {
+        // This is fine - runtime instances can be used here
+    }
+
     // Cast to promise type
-    const promise: *AsyncPromise(ReadResult) = @ptrCast(@alignCast(@constCast(readRequest)));
+    const promise: *AsyncPromise(ReadResult) = @ptrCast(@alignCast(untagged.ptr));
 
     // Add to end of queue
     try internal.read_requests.append(internal.allocator, promise);
