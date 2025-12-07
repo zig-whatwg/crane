@@ -1,13 +1,13 @@
 //! Stream Constructor Callback Tests
 //!
-//! These tests verify that stream constructors correctly handle V8 callback pointers.
+//! These tests verify that stream constructors correctly handle V8 values.
 //!
 //! ## Background
 //!
-//! V8 uses pointer tagging on some platforms (arm64). When JavaScript passes callback
-//! objects to Zig stream constructors, the pointers may have tag bits set in the low bits.
-//! Before using these pointers with @alignCast, the tag must be stripped using
-//! pointer_tag.untagPointer().
+//! Stream constructors accept JavaScript objects that contain callbacks (start, pull, etc).
+//! The codegen now uses v8.JSValue for these parameters instead of *const anyopaque,
+//! which provides better type safety. The V8 conversion layer (conversions.zig) handles
+//! pointer tagging and Global handle creation automatically.
 //!
 //! ## Fixed Code Paths
 //!
@@ -33,6 +33,7 @@ const interfaces = @import("interfaces");
 const impls = @import("impls");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
+// Note: We get JSValue type info indirectly since v8 module isn't available in test context
 
 // =============================================================================
 // Compile-time verification that fixed code paths exist
@@ -47,9 +48,15 @@ test "ReadableStream: constructor accepts underlyingSource parameter" {
     // In Zig 0.15+, function types are in .@"fn" field
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be underlyingSource: webidl.Opt(*const anyopaque)
+    // Parameter 2 (index 2) should be underlyingSource: webidl.Opt(JSValue)
+    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
     try testing.expect(params.len >= 4);
-    try testing.expectEqual(params[2].type.?, webidl.Opt(*const anyopaque));
+    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(param_type_info == .@"struct");
+    // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
+    try testing.expect(@hasField(params[2].type.?, "was_passed"));
+    try testing.expect(@hasField(params[2].type.?, "value"));
 }
 
 test "WritableStream: constructor accepts underlyingSink parameter" {
@@ -59,9 +66,15 @@ test "WritableStream: constructor accepts underlyingSink parameter" {
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be underlyingSink: webidl.Opt(*const anyopaque)
+    // Parameter 2 (index 2) should be underlyingSink: webidl.Opt(JSValue)
+    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
     try testing.expect(params.len >= 4);
-    try testing.expectEqual(params[2].type.?, webidl.Opt(*const anyopaque));
+    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(param_type_info == .@"struct");
+    // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
+    try testing.expect(@hasField(params[2].type.?, "was_passed"));
+    try testing.expect(@hasField(params[2].type.?, "value"));
 }
 
 test "TransformStream: constructor accepts transformer parameter" {
@@ -71,9 +84,15 @@ test "TransformStream: constructor accepts transformer parameter" {
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be transformer: webidl.Opt(*const anyopaque)
+    // Parameter 2 (index 2) should be transformer: webidl.Opt(JSValue)
+    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
     try testing.expect(params.len >= 5);
-    try testing.expectEqual(params[2].type.?, webidl.Opt(*const anyopaque));
+    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(param_type_info == .@"struct");
+    // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
+    try testing.expect(@hasField(params[2].type.?, "was_passed"));
+    try testing.expect(@hasField(params[2].type.?, "value"));
 }
 
 // =============================================================================
