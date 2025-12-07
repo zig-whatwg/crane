@@ -119,15 +119,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
     };
 
     // Step 3-5: Create transform stream
-    var empty_transformer: u8 = 0;
-    const writable_strategy = dictionaries.QueuingStrategy{};
-    const readable_strategy = dictionaries.QueuingStrategy{};
+    //
+    // Per spec, CompressionStream uses internal Zig-based transform/flush algorithms,
+    // not a JavaScript transformer object. We pass notPassed() to indicate no
+    // JavaScript transformer is needed.
+    //
+    // IMPORTANT: Do NOT pass a Zig stack pointer as the transformer - that would
+    // cause TransformStream to try to use it as a V8 Object handle, resulting in
+    // misaligned pointer segfaults. See whatwg-lbw51 for details.
+    const v8 = @import("v8");
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        webidl.Opt(*const anyopaque).passed(&empty_transformer),
-        webidl.Opt(dictionaries.QueuingStrategy).passed(writable_strategy),
-        webidl.Opt(dictionaries.QueuingStrategy).passed(readable_strategy),
+        webidl.Opt(v8.JSValue).notPassed(),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
+        webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );
     errdefer interfaces.TransformStream.deinit(transform);
 

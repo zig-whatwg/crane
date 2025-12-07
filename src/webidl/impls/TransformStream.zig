@@ -158,9 +158,43 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     try initializeTransformStream(instance, internal, allocator, ctx, start_promise, writable_hwm, readable_hwm);
 
     // Spec step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict)
-    const transformer_ptr = if (transformer.was_passed) transformer.value else null;
-    if (transformer_ptr) |ptr| {
-        try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, ptr);
+    //
+    // The transformer parameter is a v8.JSValue that can be:
+    // - undefined/null: No transformer, use default algorithms
+    // - local/global: A V8 Object with transform/flush/cancel methods
+    // - instance: A Zig runtime.Instance (should not happen, would be a bug)
+    //
+    // We need to extract the V8 object pointer from the JSValue, not blindly cast.
+    // Passing a non-V8 pointer (like a Zig stack address) to V8 FFI will cause
+    // misaligned pointer segfaults. See whatwg-lbw51 for details.
+    if (transformer.was_passed) {
+        const js_value = transformer.value;
+        switch (js_value) {
+            .undefined_value, .null_value => {
+                // No transformer - use default algorithms (skip setup)
+            },
+            .local => |local_handle| {
+                // V8 Local handle - extract pointer and set up controller
+                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, @ptrCast(local_handle.ptr));
+            },
+            .global => |global_handle| {
+                // V8 Global handle - get Local from it and set up controller
+                const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+                if (global_handle.get(isolate)) |v8_value| {
+                    try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, @ptrCast(v8_value));
+                }
+                // If Global handle is invalid, skip transformer setup
+            },
+            .instance => {
+                // A Zig runtime.Instance - this should not be passed as a transformer.
+                // Skip setup to avoid passing a Zig pointer to V8 FFI.
+                // This would be a caller bug, but we handle it gracefully.
+            },
+            else => {
+                // Other types (boolean, number, string) are not valid transformers
+                // Skip setup - they can't have transform/flush/cancel methods
+            },
+        }
     }
 
     // Spec step 12-13: If transformerDict["start"] exists, resolve startPromise with result of invoking it
@@ -396,6 +430,15 @@ fn createReadableStreamForTransform(
 /// SetUpTransformStreamDefaultControllerFromTransformer
 ///
 /// Spec: § 6.3.4 "SetUpTransformStreamDefaultControllerFromTransformer(stream, transformer, transformerDict)"
+///
+/// IMPORTANT: The `transformer` parameter MUST be a valid V8 Object pointer.
+/// Do NOT pass Zig pointers (stack variables, heap allocations, runtime.Instance, etc.)
+/// as they will be incorrectly cast to V8 Objects and cause misaligned pointer segfaults.
+///
+/// The caller (call_constructor) is responsible for:
+/// 1. Validating that transformer is a V8 JSValue with .local or .global variant
+/// 2. Extracting the raw V8 pointer from the JSValue
+/// 3. NOT calling this function if transformer is undefined/null/non-V8
 fn setUpTransformStreamDefaultControllerFromTransformer(
     instance: *runtime.Instance,
     internal: *InternalState,

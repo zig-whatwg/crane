@@ -120,11 +120,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     // Step 1: Encoder is implicit (UTF-8 only)
 
     // Steps 2-6: Create the underlying transform stream
-    // Use notPassed() for undefined transformer - the TransformStream constructor handles this
+    //
+    // Per spec, TextEncoderStream uses internal Zig-based transform/flush algorithms,
+    // not a JavaScript transformer object. We pass notPassed() to indicate no
+    // JavaScript transformer is needed.
+    //
+    // IMPORTANT: Do NOT pass a Zig stack pointer as the transformer - that would
+    // cause TransformStream to try to use it as a V8 Object handle, resulting in
+    // misaligned pointer segfaults. See whatwg-lbw51 for details.
+    const v8 = @import("v8");
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        webidl.Opt(*const anyopaque).notPassed(),
+        webidl.Opt(v8.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );
