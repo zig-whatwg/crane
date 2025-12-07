@@ -7,7 +7,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -28,8 +27,8 @@ pub const ImplError = error{
 /// Contains the detail property which is any JavaScript value.
 pub const InternalState = struct {
     /// The detail property - any JavaScript value passed to the constructor
-    /// Stored as opaque pointer since it can be any JS value
-    detail: ?*const anyopaque = null,
+    /// Now stored as engine-agnostic JSValue
+    detail: runtime.JSValue = runtime.JSValue.jsUndefined,
 };
 
 /// Get the internal state from an instance
@@ -73,15 +72,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     // Create internal state for CustomEvent
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
+    const detail_value = if (eventInitDict.was_passed and eventInitDict.value.detail != null)
+        eventInitDict.value.detail.?
+    else
+        runtime.JSValue.jsUndefined;
     internal.* = InternalState{
-        .detail = if (eventInitDict.was_passed) eventInitDict.value.detail else null,
+        .detail = detail_value,
     };
     state.own._internal = internal;
 
     // Store detail in state (for direct access)
-    if (if (eventInitDict.was_passed) eventInitDict.value.detail else null) |detail| {
-        state.own.detail = detail;
-    }
+    state.own.detail = detail_value;
 
     // Note: CustomEvent inherits from Event via prototype chain
     // The base Event state is accessed through state.base (which is *Event)
@@ -97,7 +98,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Getter for detail
 /// Spec: https://dom.spec.whatwg.org/#dom-customevent-detail
 /// Returns the value it was initialized with.
-pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
+pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     return state.own.detail;
 }
@@ -109,7 +110,7 @@ pub fn get_detail(instance: *runtime.Instance) anyerror!v8.JSValue {
 /// 1. If this's dispatch flag is set, then return.
 /// 2. Initialize this with type, bubbles, and cancelable.
 /// 3. Set this's detail attribute to detail.
-pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(v8.JSValue)) anyerror!void {
+pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Step 1: Check dispatch flag
     // Note: Would check via Event's dispatch flag, but we don't have direct access
     // For now, proceed with initialization

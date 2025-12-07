@@ -7,7 +7,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -91,12 +90,15 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 /// Getter for reason
 ///
 /// Spec: § 3.3.1 "The reason getter steps are to return this's abort reason"
-/// Note: Returns InvalidState when reason is not set (undefined in JS)
-pub fn get_reason(instance: *runtime.Instance) anyerror!v8.JSValue {
+/// Note: Returns undefined JSValue when reason is not set
+pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    // Return reason (or InvalidState if not set - represents undefined)
-    return internal.reason orelse return error.InvalidState;
+    // Convert anyopaque to JSValue, or return undefined if not set
+    if (internal.reason) |reason| {
+        return runtime.JSValue.fromAnyopaque(reason);
+    }
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Getter for onabort
@@ -128,7 +130,7 @@ pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerro
 /// Static operation: abort(reason)
 ///
 /// Spec: § 3.3.2 "Returns an immediately aborted signal"
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(v8.JSValue)) anyerror!*runtime.Instance {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = reason;
     // Static method that creates a new AbortSignal and immediately aborts it

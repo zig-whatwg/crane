@@ -988,7 +988,7 @@ fn generateImplFile(
 
     if (has_iterable) {
         try w.writeAll("/// Operation: forEach\n");
-        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: *const anyopaque) anyerror!void {\n");
+        try w.writeAll("pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {\n");
         try w.writeAll("    _ = instance;\n");
         try w.writeAll("    _ = callback;\n");
         try w.writeAll("    return error.NotImplemented;\n");
