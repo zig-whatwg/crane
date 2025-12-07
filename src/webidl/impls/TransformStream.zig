@@ -256,7 +256,7 @@ fn createWritableStreamForTransform(
         .controller = null, // Will be set by controller setup
         .writer = .none,
         .state = .writable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .write_requests = .{
             .items = &.{},
             .capacity = 0,

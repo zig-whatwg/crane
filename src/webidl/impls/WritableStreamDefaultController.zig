@@ -285,7 +285,7 @@ fn writableStreamDefaultControllerError(controller: *runtime.Instance, error_val
     const stream_state = stream.getState(interfaces.WritableStream.State);
     if (stream_state.own._internal) |stream_internal| {
         stream_internal.state = .errored;
-        stream_internal.stored_error = @constCast(error_value);
+        stream_internal.stored_error.storeRawPtr(@constCast(error_value));
     }
 }
 

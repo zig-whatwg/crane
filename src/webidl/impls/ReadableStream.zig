@@ -3065,9 +3065,8 @@ fn pipeLoop(pipe_state: *PipeState) void {
     // Check destination state
     if (pipe_state.dest_internal.state == .errored) {
         // Error propagation backward
-        // NOTE: dest_internal is WritableStream which still uses ?*anyopaque for stored_error
-        // This will be migrated as part of issue whatwg-bgz0x
-        const error_ptr = pipe_state.dest_internal.stored_error;
+        // Use type-safe StoredError API to get raw pointer for legacy functions
+        const error_ptr = pipe_state.dest_internal.stored_error.toRawPtr();
         if (!pipe_state.prevent_cancel) {
             pipeShutdownWithAction(pipe_state, .cancel_source, error_ptr);
         } else {

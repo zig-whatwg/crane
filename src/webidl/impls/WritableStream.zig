@@ -15,6 +15,9 @@ const webidl = @import("webidl");
 const WritableStream = interfaces.WritableStream;
 const v8_engine = @import("v8");
 
+// Type-safe V8 value system
+const StoredError = v8_engine.stored_error.StoredError;
+
 // Import streams infrastructure
 const streams_common = @import("streams_common");
 const event_loop = @import("streams_event_loop");
@@ -69,7 +72,8 @@ pub const InternalState = struct {
     state: StreamState,
 
     /// [[storedError]]: any - stored error if state is "errored"
-    stored_error: ?*anyopaque,
+    /// Uses type-safe StoredError instead of raw anyopaque
+    stored_error: StoredError = .none,
 
     /// [[writeRequests]]: List of pending write requests
     write_requests: std.ArrayList(*WriteRequest),
@@ -135,6 +139,9 @@ fn deinitInternal(internal: *InternalState, allocator: std.mem.Allocator) void {
         abort_request.promise.deinit();
         allocator.destroy(abort_request);
     }
+
+    // Dispose stored error (frees V8 Global handle if present)
+    internal.stored_error.dispose();
 
     allocator.destroy(internal);
 }
@@ -203,7 +210,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         .controller = null, // Will be set by SetUp
         .writer = .none,
         .state = .writable,
-        .stored_error = null,
+        .stored_error = .none, // Type-safe StoredError
         .write_requests = .{
             .items = &.{},
             .capacity = 0,
@@ -317,7 +324,7 @@ pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: *const a
 
     // 1. Assert: stream.[[storedError]] is undefined
     // 2. Assert: stream.[[state]] is "writable"
-    if (internal.state != .writable or internal.stored_error != null) {
+    if (internal.state != .writable or internal.stored_error.hasError()) {
         return; // Graceful handling instead of assert
     }
 
@@ -331,7 +338,7 @@ pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: *const a
     internal.state = .erroring;
 
     // 6. Set stream.[[storedError]] to reason
-    internal.stored_error = @constCast(reason);
+    internal.stored_error.storeRawPtr(@constCast(reason));
 
     // 7. Let writer be stream.[[writer]]
     // 8. If writer is not undefined, perform WritableStreamDefaultWriterEnsureReadyPromiseRejected
