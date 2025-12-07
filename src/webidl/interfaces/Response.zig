@@ -263,7 +263,8 @@ pub const Response = struct {
 
     /// Static json() method - creates Response from JSON data
     /// Response.json(data, init)
-    pub fn call_json_static(allocator: std.mem.Allocator, ctx: runtime.Context, data: runtime.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
-        return try ResponseImpl.call_json_static(allocator, ctx, data, init_data);
+    /// Takes instance (template) as first param to match V8 static method calling convention
+    pub fn call_json_static(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(ResponseInit)) anyerror!*runtime.Instance {
+        return try ResponseImpl.call_json_static(instance.ctx.allocator, instance.ctx, data, init_data);
     }
 };
