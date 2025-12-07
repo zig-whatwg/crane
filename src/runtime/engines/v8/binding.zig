@@ -33,6 +33,7 @@ const template_registry = @import("template_registry.zig");
 const wrapper_cache_mod = @import("wrapper_cache.zig");
 const context_manager = @import("context_manager.zig");
 const dom_type_info = @import("dom_type_info.zig");
+const pointer_tag = @import("pointer_tag.zig");
 
 // Re-export types for convenience
 pub const EngineBinding = engine_binding.EngineBinding;
@@ -284,7 +285,9 @@ fn v8CreateInstance(
 
     // Get the instance template and create a new object
     const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(func_template);
-    const v8_object = ffi.v8_ObjectTemplate_NewInstance(instance_template, context);
+    const v8_object = ffi.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
+        return EngineError.ObjectCreationFailed;
+    };
 
     // Store the Zig instance in internal field 0
     ffi.v8_Object_SetAlignedPointerInInternalField(v8_object, 0, zig_instance);
@@ -382,7 +385,6 @@ fn v8ToJSValue(
     type_desc: *const TypeDescriptor,
     zig_value: *const anyopaque,
 ) EngineError!*anyopaque {
-    _ = engine_ctx;
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
@@ -462,7 +464,8 @@ fn v8FromJSValue(
     out_value: *anyopaque,
 ) EngineError!void {
     _ = engine_ctx;
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
@@ -504,7 +507,8 @@ fn v8IsInstanceOf(
     interface_name: [*:0]const u8,
 ) bool {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
 
     if (!ffi.v8_Value_IsObject(value)) {
         return false;
@@ -523,7 +527,8 @@ fn v8UnwrapInstance(
     js_value: *const anyopaque,
 ) ?*anyopaque {
     _ = engine_ctx;
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
 
     if (!ffi.v8_Value_IsObject(value)) {
         return null;
@@ -651,7 +656,8 @@ fn v8IsSerializable(
     js_value: *const anyopaque,
 ) bool {
     _ = engine_ctx;
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // Most primitive types are serializable
     if (ffi.v8_Value_IsUndefined(value) or
@@ -686,7 +692,8 @@ fn v8IsTransferable(
     js_value: *const anyopaque,
 ) bool {
     _ = engine_ctx;
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // ArrayBuffer is transferable
     if (ffi.v8_Value_IsArrayBuffer(value)) {
