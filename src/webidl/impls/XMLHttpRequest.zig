@@ -24,6 +24,9 @@ const ResponseType = xhr.state_machine.ResponseType;
 const open_algo = xhr.open;
 const headers_algo = xhr.headers;
 
+// Import pointer_tag for V8 pointer untagging (via v8 module)
+const pointer_tag = @import("v8").pointer_tag;
+
 pub const State = XMLHttpRequest.State;
 
 pub const ImplError = error{
@@ -406,10 +409,13 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
         // Import V8-specific types
         const v8 = @import("v8");
 
+        // Untag pointer from V8 before use
+        const untagged = pointer_tag.untagPointer(@ptrCast(callback_wrapper_ptr));
+
         // Cast to V8-specific callback wrapper
         // This works because the conversion code in interface.zig casts the
         // v8.CallbackWrapper* to runtime.CallbackWrapper* for storage
-        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(@constCast(callback_wrapper_ptr)));
+        const v8_wrapper: *v8.CallbackWrapper = @ptrCast(@alignCast(untagged.ptr));
 
         // engine_ctx is the V8 Context
         const context: *v8.Context = @ptrCast(@alignCast(engine_ctx));
