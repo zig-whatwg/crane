@@ -27,6 +27,7 @@ const async_iterator = @import("async_iterator.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
 const callback_wrapper_mod = @import("callback_wrapper.zig");
+const pointer_tag = @import("pointer_tag.zig");
 
 // Logging for V8 exceptions
 const log = std.log.scoped(.v8_engine);
@@ -190,11 +191,11 @@ fn v8ResolvePromise(
     _ = engine_ctx;
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
 
-    // Convert value to V8 Value
-    const v8_value: *ffi.Value = if (value) |v|
-        @ptrCast(@alignCast(@constCast(v)))
-    else
-        ffi.v8_Undefined(handle.isolate) orelse return EngineError.OperationFailed;
+    // Convert value to V8 Value, untagging if necessary
+    const v8_value: *ffi.Value = if (value) |v| blk: {
+        const untagged = pointer_tag.untagPointer(v);
+        break :blk @ptrCast(untagged.ptr);
+    } else ffi.v8_Undefined(handle.isolate) orelse return EngineError.OperationFailed;
 
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, v8_value)) {
         return EngineError.PromiseError;
@@ -409,7 +410,8 @@ fn v8WrapInstance(
 fn v8IsString(
     js_value: *const anyopaque,
 ) bool {
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
     return ffi.v8_Value_IsString(value);
 }
 
@@ -423,7 +425,8 @@ fn v8ExtractString(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    const value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_value)));
+    const untagged = pointer_tag.untagPointer(js_value);
+    const value: *ffi.Value = @ptrCast(untagged.ptr);
 
     // Use the conversions module to extract the string
     const conv = @import("conversions.zig");
@@ -620,9 +623,9 @@ fn v8InvokeStreamCallback(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    // Get the JS function value from the Global handle
-    // The callback is stored as a V8 Global<Value>* which we need to dereference
-    const callback_value: *ffi.Value = @ptrCast(@alignCast(@constCast(js_callback)));
+    // Get the JS function value from the Global handle, untagging if necessary
+    const untagged_callback = pointer_tag.untagPointer(js_callback);
+    const callback_value: *ffi.Value = @ptrCast(untagged_callback.ptr);
 
     // Check if it's actually a function
     if (!ffi.v8_Value_IsFunction(callback_value)) {
@@ -635,15 +638,17 @@ fn v8InvokeStreamCallback(
     var args: [2]*ffi.Value = undefined;
     var arg_count: usize = 0;
 
-    // First argument: controller (if provided)
+    // First argument: controller (if provided), untag if necessary
     if (controller_v8) |ctrl| {
-        args[arg_count] = @ptrCast(@alignCast(ctrl));
+        const untagged_ctrl = pointer_tag.untagPointer(@ptrCast(ctrl));
+        args[arg_count] = @ptrCast(untagged_ctrl.ptr);
         arg_count += 1;
     }
 
-    // Second argument: additional arg (if provided)
+    // Second argument: additional arg (if provided), untag if necessary
     if (arg) |a| {
-        args[arg_count] = @ptrCast(@alignCast(@constCast(a)));
+        const untagged_arg = pointer_tag.untagPointer(a);
+        args[arg_count] = @ptrCast(untagged_arg.ptr);
         arg_count += 1;
     }
 
