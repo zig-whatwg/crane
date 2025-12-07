@@ -3319,15 +3319,11 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     // header, main, nav, p, section, span, or any custom element
     // For now, we allow any element
 
-    // Parse mode from the dictionary (it's passed as *const anyopaque from V8)
-    // The conversion layer passes through V8 values for enum types
-    const mode = parseShadowRootMode(init_data.mode);
+    // Use the mode directly from the dictionary (it's already an enum type)
+    const mode = init_data.mode;
 
-    // Parse slotAssignment if provided
-    const slot_assignment = if (init_data.slotAssignment) |sa|
-        parseSlotAssignmentMode(sa)
-    else
-        enums.SlotAssignmentMode._named_;
+    // Use slotAssignment directly from the dictionary (it's already an enum type)
+    const slot_assignment = init_data.slotAssignment orelse enums.SlotAssignmentMode._named_;
 
     // Create the ShadowRoot using the factory function which properly initializes all state
     const ShadowRootImpl = @import("ShadowRoot.zig");

@@ -156,10 +156,12 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     // Create parameter key (namespace + local name)
     const key = local_str;
 
+    // Convert JSValue to anyopaque for storage (we'll need to reconvert when getting)
+    const value_ptr = value.toAnyopaque() orelse return error.TypeError;
     try internal.parameters.put(key, .{
         .namespace_uri = if (ns_str.len > 0) ns_str else null,
         .local_name = local_str,
-        .value = value,
+        .value = value_ptr,
     });
 }
 
@@ -173,10 +175,12 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     const local_str = localName.asSlice();
 
     if (internal.parameters.get(local_str)) |param| {
-        return param.value;
+        // Convert stored anyopaque pointer back to JSValue
+        return runtime.JSValue.fromAnyopaque(param.value);
     }
 
-    return error.InvalidState;
+    // Return undefined if parameter not found
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: removeParameter

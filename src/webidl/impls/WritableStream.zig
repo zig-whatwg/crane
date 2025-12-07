@@ -174,7 +174,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     const loop = try ctx.getEventLoop();
 
     // Step 1: If underlyingSink is missing, use default
-    const underlying_sink_ptr = if (underlyingSink.was_passed) underlyingSink.value else null;
+    const underlying_sink_ptr: ?*const anyopaque = if (underlyingSink.was_passed)
+        underlyingSink.value.toAnyopaque()
+    else
+        null;
 
     // Step 2: Convert to UnderlyingSink dictionary (if provided)
     const default_sink = dictionaries.UnderlyingSink{};
@@ -309,7 +312,10 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     // Step 2: Return WritableStreamAbort(this, reason)
     // If reason is not passed, use a default undefined-like value
     const default_reason: u8 = 0;
-    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrCast(&default_reason);
+    const reason_ptr: *const anyopaque = if (reason.was_passed)
+        reason.value.toAnyopaque() orelse @ptrCast(&default_reason)
+    else
+        @ptrCast(&default_reason);
     return writableStreamAbort(instance, internal, reason_ptr);
 }
 
@@ -849,7 +855,7 @@ fn writableStreamAbort(
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
                 // Signal abort on the AbortController
-                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(*const anyopaque).passed(reason)) catch {};
+                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(reason))) catch {};
             }
         }
     }

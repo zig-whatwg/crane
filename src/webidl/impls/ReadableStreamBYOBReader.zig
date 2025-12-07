@@ -202,7 +202,7 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
 
     // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason)
     // Use a default undefined reason if not passed
-    const reason_ptr: ?*const anyopaque = if (reason.was_passed) reason.value else null;
+    const reason_ptr: ?*const anyopaque = if (reason.was_passed) reason.value.toAnyopaque() else null;
     if (reason_ptr) |ptr| {
         return readableStreamReaderGenericCancel(internal, ptr);
     } else {

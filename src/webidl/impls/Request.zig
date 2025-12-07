@@ -351,46 +351,57 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, inpu
     internal.request = base_request; // Transfer ownership
 
     // Steps 36-42: Handle body from init
-    if (init_opts.body) |body_ptr| {
-        // Get the engine interface to extract the body
-        const engine = ctx.engine orelse {
-            return instance; // Can't process body without engine
-        };
-        const engine_ctx = ctx.engine_ctx orelse {
-            return instance;
-        };
+    if (init_opts.body) |body_init| {
+        // Handle BodyInit union type
+        switch (body_init) {
+            .readable_stream => |stream_instance| {
+                // ReadableStream body - store reference
+                // TODO: Implement proper ReadableStream body handling
+                _ = stream_instance;
+            },
+            .xmlhttp_request_body_init => |xhr_body| {
+                // Handle XMLHttpRequestBodyInit variants
+                switch (xhr_body) {
+                    .usvstring => |body_string| {
+                        // String body - USVString is []const u8
+                        const body_bytes = body_string;
+                        if (body_bytes.len > 0) {
+                            // Create Body from bytes - need to copy since body_string may not be owned
+                            const owned_bytes = allocator.dupe(u8, body_bytes) catch {
+                                return instance;
+                            };
+                            const fetch_body = fetch.internal.Body.fromBytes(allocator, owned_bytes) catch {
+                                allocator.free(owned_bytes);
+                                return instance;
+                            };
+                            internal.request.body = .{ .body = fetch_body };
 
-        // Check if body is a string
-        const isString = engine.isString orelse {
-            return instance; // Can't check type without function
-        };
-
-        if (isString(body_ptr)) {
-            // Extract string body
-            const extractString = engine.extractString orelse {
-                return instance;
-            };
-
-            const body_bytes = extractString(engine_ctx, body_ptr, allocator) catch {
-                return instance; // Failed to extract, leave body null
-            };
-
-            if (body_bytes.len > 0) {
-                // Create Body from bytes
-                const fetch_body = fetch.internal.Body.fromBytes(allocator, body_bytes) catch {
-                    allocator.free(body_bytes);
-                    return instance;
-                };
-                internal.request.body = .{ .body = fetch_body };
-
-                // Set Content-Type header if not already set
-                const has_content_type = internal.request.header_list.contains("content-type");
-                if (!has_content_type) {
-                    internal.request.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
+                            // Set Content-Type header if not already set
+                            const has_content_type = internal.request.header_list.contains("content-type");
+                            if (!has_content_type) {
+                                internal.request.header_list.append("Content-Type", "text/plain;charset=UTF-8") catch {};
+                            }
+                        }
+                    },
+                    .blob => |blob_instance| {
+                        // TODO: Implement Blob body handling
+                        _ = blob_instance;
+                    },
+                    .buffer_source => |buffer| {
+                        // TODO: Implement BufferSource body handling
+                        _ = buffer;
+                    },
+                    .form_data => |form_instance| {
+                        // TODO: Implement FormData body handling
+                        _ = form_instance;
+                    },
+                    .urlsearch_params => |params_instance| {
+                        // TODO: Implement URLSearchParams body handling
+                        _ = params_instance;
+                    },
                 }
-            }
+            },
         }
-        // TODO: Handle other BodyInit types (Blob, ArrayBuffer, FormData, etc.)
     }
 
     return instance;
@@ -657,7 +668,7 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const stream_instance = interfaces.ReadableStream.call_constructor(
         allocator,
         ctx,
-        webidl.Opt(*const anyopaque).notPassed(),
+        webidl.Opt(runtime.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     ) catch {
         // Stream creation failed, fall back to null
@@ -757,7 +768,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 }
             },
         }
@@ -771,7 +782,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 };
                 break :blk bytes;
             },
@@ -782,12 +793,12 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     const createArrayBuffer = engine.createArrayBuffer orelse {
         // No createArrayBuffer support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const js_array_buffer = createArrayBuffer(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Resolve with the JS ArrayBuffer
@@ -796,7 +807,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 /// blob() - Returns promise fulfilled with body as Blob
@@ -834,7 +845,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 }
             },
         }
@@ -848,7 +859,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 };
                 break :blk bytes;
             },
@@ -858,7 +869,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Create Blob instance
     const blob_data = BlobData.init(internal.allocator, body_bytes, mime_type) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const blob_instance = BlobImpl.createFromBlobData(
@@ -868,18 +879,18 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     ) catch {
         blob_data.deinit();
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Wrap the Blob instance as a V8 object
     const wrapInstance = engine.wrapInstance orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const js_blob = wrapInstance(engine_ctx, blob_instance) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Resolve with the JS Blob
@@ -888,7 +899,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 /// bytes() - Returns promise fulfilled with body as Uint8Array
@@ -920,7 +931,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 }
             },
         }
@@ -934,7 +945,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 };
                 break :blk bytes;
             },
@@ -945,12 +956,12 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     const createUint8Array = engine.createUint8Array orelse {
         // No createUint8Array support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const js_uint8_array = createUint8Array(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Resolve with the JS Uint8Array
@@ -959,7 +970,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 /// formData() - Returns promise fulfilled with body as FormData
@@ -990,9 +1001,9 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
 
     // Helper to reject with error
     const rejectAndReturn = struct {
-        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) runtime.Promise(*runtime.Instance) {
+        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) *const anyopaque {
             eng.rejectPromise(eng_ctx, handle, err) catch {};
-            return .{ .handle = eng.getPromiseObject(handle) };
+            return eng.getPromiseObject(handle);
         }
     }.call;
 
@@ -1143,7 +1154,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 /// json() - Returns promise fulfilled with body parsed as JSON
@@ -1175,7 +1186,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 }
             },
         }
@@ -1189,7 +1200,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 };
                 break :blk bytes;
             },
@@ -1197,20 +1208,20 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     } else {
         // Null body - reject with SyntaxError (empty JSON is invalid)
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Parse JSON through engine abstraction
     const parseJson = engine.parseJson orelse {
         // No parseJson support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const js_value = parseJson(engine_ctx, body_bytes) catch {
         // JSON parse failed - reject with SyntaxError
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Resolve with the parsed JS value
@@ -1219,7 +1230,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 /// text() - Returns promise fulfilled with body as string
@@ -1251,7 +1262,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 }
             },
         }
@@ -1265,7 +1276,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return .{ .handle = engine.getPromiseObject(promise_handle) };
+                    return engine.getPromiseObject(promise_handle);
                 };
                 break :blk bytes;
             },
@@ -1276,12 +1287,12 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     const createString = engine.createString orelse {
         // No createString support - resolve with null (undefined)
         engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     const js_string = createString(engine_ctx, body_text) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return .{ .handle = engine.getPromiseObject(promise_handle) };
+        return engine.getPromiseObject(promise_handle);
     };
 
     // Resolve with the JS string
@@ -1290,7 +1301,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return .{ .handle = engine.getPromiseObject(promise_handle) };
+    return engine.getPromiseObject(promise_handle);
 }
 
 // === Helper Functions ===

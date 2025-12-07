@@ -333,8 +333,9 @@ pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
     blob_stream_context = source_state;
 
     // Create the ReadableStream
-    const source_ptr: *const anyopaque = @ptrCast(&underlying_source);
-    const opt_source = webidl.Opt(*const anyopaque).passed(source_ptr);
+    // Convert the underlying source struct to a JSValue for the constructor
+    const source_jsvalue = runtime.JSValue.fromAnyopaque(@ptrCast(&underlying_source));
+    const opt_source = webidl.Opt(runtime.JSValue).passed(source_jsvalue);
     const strategy = dictionaries.QueuingStrategy{};
     const opt_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(strategy);
     const stream = interfaces.ReadableStream.call_constructor(

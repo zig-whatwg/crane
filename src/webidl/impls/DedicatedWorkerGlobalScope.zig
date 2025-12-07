@@ -197,7 +197,8 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.dedicated_worker) |worker| {
-            try worker.postMessage(message, transfer);
+            const msg_ptr = message.toAnyopaque() orelse return error.TypeError;
+            try worker.postMessage(msg_ptr, transfer);
         }
     }
 }

@@ -227,10 +227,19 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
     }
 
     // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
-    // Convert JSValue to anyopaque for ReadableStreamDefaultController API
+    // Convert streams_common.JSValue to runtime.JSValue for ReadableStreamDefaultController API
     // Use interface per Golden Rule #13
-    const chunk_ptr: *const anyopaque = @ptrCast(&chunk);
-    interfaces.ReadableStreamDefaultController.call_enqueue(controller_instance, webidl.Opt(*const anyopaque).passed(chunk_ptr)) catch |err| {
+    const runtime_chunk: runtime.JSValue = switch (chunk) {
+        .undefined => .{ .undefined = {} },
+        .null => .{ .null = {} },
+        .boolean => |b| .{ .boolean = b },
+        .number => |n| .{ .number = n },
+        .string => |s| .{ .string = .{ .data = s, .owned = false } },
+        .bytes => |b| .{ .string = .{ .data = b, .owned = false } },
+        .v8_value => |ptr| .{ .handle = .{ .ptr = ptr, .needs_disposal = false } },
+        else => .{ .undefined = {} },
+    };
+    interfaces.ReadableStreamDefaultController.call_enqueue(controller_instance, webidl.Opt(runtime.JSValue).passed(runtime_chunk)) catch |err| {
         // Spec step 5: If enqueueResult is an abrupt completion
         // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
         const error_value = JSValue{ .string = "Enqueue failed" };

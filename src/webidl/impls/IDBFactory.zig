@@ -219,7 +219,9 @@ pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: run
 
     // Compare V8 values directly using raw V8 APIs
     // We compare in place to avoid lifetime issues with string buffers
-    return compareV8Keys(first, second) orelse return error.DataError;
+    const first_ptr = first.toAnyopaque() orelse return error.DataError;
+    const second_ptr = second.toAnyopaque() orelse return error.DataError;
+    return compareV8Keys(first_ptr, second_ptr) orelse return error.DataError;
 }
 
 /// Compare two V8 values as IndexedDB keys

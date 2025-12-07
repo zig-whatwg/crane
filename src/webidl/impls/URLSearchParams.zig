@@ -475,3 +475,28 @@ pub fn call_toString(instance: *runtime.Instance) anyerror!runtime.USVString {
     const serialized = try form_serializer.serialize(internal.allocator, internal.list.toSlice());
     return serialized;
 }
+
+/// Entry type for pair iterable support
+pub const IterableEntry = struct {
+    name: []const u8,
+    value: []const u8,
+};
+
+/// Get entries for pair iterable support (used by V8 for iteration)
+pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return null;
+
+    const tuples = internal.list.toSlice();
+    if (tuples.len == 0) return &[_]IterableEntry{};
+
+    // Note: This allocates but the lifetime is managed by the internal state
+    const entries = internal.allocator.alloc(IterableEntry, tuples.len) catch return null;
+    for (tuples, 0..) |tuple, i| {
+        entries[i] = .{
+            .name = tuple.name,
+            .value = tuple.value,
+        };
+    }
+    return entries;
+}

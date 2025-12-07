@@ -220,6 +220,9 @@ pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
 pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return the state pointer, or sentinel for undefined
-    return internal.state orelse &undefined_sentinel;
+    // Return the state as JSValue, or undefined
+    if (internal.state) |state_ptr| {
+        return runtime.JSValue.fromAnyopaque(state_ptr);
+    }
+    return runtime.JSValue.jsUndefined;
 }

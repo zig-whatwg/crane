@@ -58,3 +58,15 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
     _ = callback;
     return error.NotImplemented;
 }
+
+/// Entry type for pair iterable support
+pub const IterableEntry = struct {
+    name: enums.XRBodyJoint,
+    value: *runtime.Instance, // XRJointSpace
+};
+
+/// Get entries for pair iterable support (used by V8 for iteration)
+pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
+    _ = instance;
+    return null; // TODO: Implement when XRBody is fully implemented
+}

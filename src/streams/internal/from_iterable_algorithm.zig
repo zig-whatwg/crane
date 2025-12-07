@@ -77,8 +77,8 @@ fn pullInvoke(
     const next_result = iter_record.next() catch |err| {
         // Step 4.2: If nextResult is abrupt, error the controller
         const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
         promise.fulfill({});
         return promise;
     };
@@ -90,8 +90,8 @@ fn pullInvoke(
     if (!v8.v8_Value_IsObject(next_result)) {
         const err = error.TypeError;
         const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
         promise.fulfill({});
         return promise;
     }
@@ -112,8 +112,8 @@ fn pullInvoke(
         // Step 4.4.3: If done is true, close the stream
         ReadableStreamDefaultController.call_close(controller) catch |err| {
             const err_ptr: *const anyopaque = @ptrCast(&err);
-            // Wrap in Opt since call_error expects webidl.Opt
-            ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+            // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
+            ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
         };
         promise.fulfill({});
         return promise;
@@ -126,19 +126,21 @@ fn pullInvoke(
         iter_record.isolate,
     ) catch |err| {
         const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
         promise.fulfill({});
         return promise;
     };
     // Keep value alive - will be enqueued
 
-    // Step 4.4.4.2: Enqueue value - wrap in Opt since call_enqueue expects webidl.Opt
-    ReadableStreamDefaultController.call_enqueue(controller, webidl.Opt(*const anyopaque).passed(@ptrCast(iter_value))) catch |err| {
+    // Step 4.4.4.2: Enqueue value - wrap in Opt since call_enqueue expects webidl.Opt(runtime.JSValue)
+    // Convert the V8 value pointer to a runtime.JSValue handle
+    const chunk_js_value = runtime.JSValue.fromHandle(@ptrCast(iter_value));
+    ReadableStreamDefaultController.call_enqueue(controller, webidl.Opt(runtime.JSValue).passed(chunk_js_value)) catch |err| {
         v8.v8_Value_Dispose(iter_value);
         const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
         promise.fulfill({});
         return promise;
     };

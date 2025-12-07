@@ -119,8 +119,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
         state.base.own.composed = init_dict.base.composed orelse false;
 
         // MessageEvent-specific properties (in state.own)
-        // Use a static undefined value instead of null pointer
-        state.own.data = init_dict.data orelse &undefined_sentinel;
+        // Use JSValue.jsUndefined for undefined data
+        state.own.data = init_dict.data orelse runtime.JSValue.jsUndefined;
         state.own.origin = init_dict.origin orelse "";
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
         // source and ports require more complex handling
@@ -130,7 +130,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
         state.base.own.bubbles = false;
         state.base.own.cancelable = false;
         state.base.own.composed = false;
-        state.own.data = &undefined_sentinel; // Use static sentinel for undefined
+        state.own.data = runtime.JSValue.jsUndefined; // Use jsUndefined for undefined
         state.own.origin = "";
         state.own.lastEventId = runtime.DOMString.initEmpty();
         state.own.source = null;
@@ -209,7 +209,7 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     state.base.own.cancelable = if (cancelable.was_passed) cancelable.value else false;
 
     // MessageEvent fields in state.own
-    state.own.data = if (data.was_passed) data.value else &undefined_sentinel;
+    state.own.data = if (data.was_passed) data.value else runtime.JSValue.jsUndefined;
     state.own.origin = if (origin.was_passed) origin.value else "";
     state.own.lastEventId = if (lastEventId.was_passed) lastEventId.value else runtime.DOMString.initEmpty();
     state.own.source = if (source.was_passed) source.value else null;

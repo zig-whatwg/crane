@@ -75,8 +75,8 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Get the value from the cursor
     if (cursor_with_value.getValue()) |value| {
-        return @ptrCast(value.ptr);
+        return runtime.JSValue.fromAnyopaque(value.ptr);
     }
 
-    return error.InvalidState;
+    return runtime.JSValue.jsUndefined;
 }

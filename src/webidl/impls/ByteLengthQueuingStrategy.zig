@@ -106,12 +106,12 @@ pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
 /// Spec: https://streams.spec.whatwg.org/#byte-length-queuing-strategy-size-function
 /// Steps (given chunk):
 /// 1. Return ? GetV(chunk, "byteLength").
-fn byteLengthSizeFunction(arguments: []const *const anyopaque) *const anyopaque {
+fn byteLengthSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
     _ = arguments;
     // TODO: Extract byteLength property from chunk
     // This requires JS runtime integration
-    // For now, return a dummy value
-    return @ptrFromInt(0x1);
+    // For now, return undefined
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Getter for size

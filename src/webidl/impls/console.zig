@@ -13,7 +13,7 @@
 //! This allows namespaces (which are stateless static objects) to maintain per-context state.
 //!
 //! ### Data Formatting
-//! The `data` parameter is `[]const runtime.ConsoleValue` - values converted from V8.
+//! The `data` parameter is `[]const runtime.JSValue` - values from WebIDL bindings.
 //! Full format specifier support (%s, %d, etc.) requires runtime type introspection.
 //! Current implementation provides basic string output with proper indentation.
 //!
@@ -48,7 +48,7 @@ fn printIndented(ctx: runtime.Context, comptime fmt: []const u8, args: anytype) 
 }
 
 /// Format and print console values
-fn printConsoleValues(ctx: runtime.Context, data: []const runtime.ConsoleValue) void {
+fn printConsoleValues(ctx: runtime.Context, data: []const runtime.JSValue) void {
     const indent = getIndent(ctx);
     if (indent.len > 0) {
         std.debug.print("{s}", .{indent});
@@ -74,10 +74,9 @@ fn printConsoleValues(ctx: runtime.Context, data: []const runtime.ConsoleValue) 
                     std.debug.print("{d}", .{n});
                 }
             },
-            .string => |s| std.debug.print("{s}", .{s}),
-            .bigint => |bi| std.debug.print("{s}n", .{bi}),
-            .symbol => std.debug.print("Symbol()", .{}),
-            .object => std.debug.print("[object Object]", .{}),
+            .string => |s| std.debug.print("{s}", .{s.data}),
+            .handle => std.debug.print("[object]", .{}),
+            .instance => std.debug.print("[instance]", .{}),
         }
     }
 
@@ -145,7 +144,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
             for (data, 0..) |value, i| {
                 if (i > 0) std.debug.print(" ", .{});
                 switch (value) {
-                    .string => |s| std.debug.print("{s}", .{s}),
+                    .string => |s| std.debug.print("{s}", .{s.data}),
                     .number => |n| std.debug.print("{d}", .{n}),
                     .boolean => |b| std.debug.print("{}", .{b}),
                     else => std.debug.print("[value]", .{}),
@@ -223,7 +222,7 @@ pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), 
             for (data, 0..) |value, i| {
                 if (i > 0) std.debug.print(" ", .{});
                 switch (value) {
-                    .string => |s| std.debug.print("{s}", .{s}),
+                    .string => |s| std.debug.print("{s}", .{s.data}),
                     .number => |n| std.debug.print("{d}", .{n}),
                     .boolean => |b| std.debug.print("{}", .{b}),
                     else => std.debug.print("[value]", .{}),

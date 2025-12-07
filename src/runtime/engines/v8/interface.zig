@@ -2362,11 +2362,27 @@ pub fn V8Interface(comptime Interface: type) type {
                         for (entries) |entry| {
                             // Create V8 strings for key and value
                             const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse continue;
-                            const val_str = v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse continue;
+
+                            // Handle the value - check if it's a union type or simple string
+                            const ValueType = @TypeOf(entry.value);
+                            const val_v8: *v8.Value = val_blk: {
+                                if (@typeInfo(ValueType) == .@"union") {
+                                    // It's a union - try to get the usvstring variant
+                                    switch (entry.value) {
+                                        .usvstring => |s| {
+                                            break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse continue);
+                                        },
+                                        else => continue, // Skip non-string variants for now
+                                    }
+                                } else {
+                                    // Simple string type - use directly
+                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse continue);
+                                }
+                            };
 
                             // Call: callback(value, key, map)
                             var args = [_]*v8.Value{
-                                @ptrCast(val_str),
+                                val_v8,
                                 @ptrCast(key_str),
                                 @ptrCast(this_obj),
                             };
@@ -2511,15 +2527,31 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Create [key, value] pair as V8 array
                             const pair = v8.v8_Array_New(isolate, 2);
 
-                            // entry.name is the key, entry.value is the value
+                            // entry.name is the key
                             const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len));
-                            const val_str = v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len));
+
+                            // Handle the value - check if it's a union type or simple string
+                            const ValueType = @TypeOf(entry.value);
+                            const val_v8: ?*v8.Value = val_blk: {
+                                if (@typeInfo(ValueType) == .@"union") {
+                                    // It's a union - try to get the usvstring variant
+                                    switch (entry.value) {
+                                        .usvstring => |s| {
+                                            break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)));
+                                        },
+                                        else => break :val_blk null, // Skip non-string variants for now
+                                    }
+                                } else {
+                                    // Simple string type - use directly
+                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)));
+                                }
+                            };
 
                             if (key_str) |k| {
                                 _ = v8.v8_Array_Set(pair, context, 0, @ptrCast(k));
                             }
-                            if (val_str) |val| {
-                                _ = v8.v8_Array_Set(pair, context, 1, @ptrCast(val));
+                            if (val_v8) |val| {
+                                _ = v8.v8_Array_Set(pair, context, 1, val);
                             }
 
                             // Add pair to entries array

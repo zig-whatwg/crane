@@ -196,14 +196,16 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        // For now, treat message as a JSValue pointer
-        // In a full implementation, this would involve structured clone
-        // Convert pointer to int for null check (non-null pointers can't be compared to 0)
-        const msg_addr = @intFromPtr(message);
-        const msg_value = if (msg_addr != 0)
-            JSValue{ .object = {} } // Simplified: treat as object
-        else
-            JSValue.undefined_value();
+        // Convert runtime.JSValue to streams JSValue
+        const msg_value = switch (message) {
+            .undefined => JSValue.undefined_value(),
+            .null => JSValue{ .null = {} },
+            .boolean => |b| JSValue{ .boolean = b },
+            .number => |n| JSValue{ .number = n },
+            .string => |s| JSValue{ .string = s.data },
+            .handle => |h| JSValue{ .v8_value = h.ptr },
+            .instance => JSValue{ .object = {} },
+        };
 
         internal.internal_port.postMessage("chunk", msg_value) catch |err| {
             return switch (err) {

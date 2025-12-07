@@ -634,13 +634,15 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
     } else null;
 
     // The value parameter represents the JavaScript value to clone
-    // In a full implementation, this would be properly converted to JSValue
-    // based on the actual JavaScript type. For now, treat as undefined if null.
-    const js_value = if (@intFromPtr(value) != 0)
-        // Non-null value - simplified handling
-        structured_clone.JSValue{ .object = .{ .properties = &[_]structured_clone.JSValue.ObjectValue.ObjectProperty{} } }
-    else
-        structured_clone.JSValue.undefined;
+    // Convert from runtime.JSValue to structured_clone.JSValue
+    const js_value: structured_clone.JSValue = switch (value) {
+        .undefined => structured_clone.JSValue.undefined,
+        .null => structured_clone.JSValue.null,
+        .boolean => |b| .{ .boolean = b },
+        .number => |n| .{ .number = n },
+        .string => |s| .{ .string = s.data },
+        else => structured_clone.JSValue{ .object = .{ .properties = &[_]structured_clone.JSValue.ObjectValue.ObjectProperty{} } },
+    };
 
     // Perform structured clone
     const cloned = structured_clone.structuredClone(
@@ -651,8 +653,15 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
         return error.OutOfMemory;
     };
 
-    // Return as opaque pointer
-    return @ptrCast(cloned);
+    // Convert structured clone result back to runtime.JSValue
+    return switch (cloned.*) {
+        .undefined => runtime.JSValue.jsUndefined,
+        .null => runtime.JSValue.jsNull,
+        .boolean => |b| runtime.JSValue.fromBoolean(b),
+        .number => |n| runtime.JSValue.fromNumber(n),
+        .string => |s| runtime.JSValue.fromStringRef(s),
+        else => runtime.JSValue.jsUndefined, // Complex objects not fully supported yet
+    };
 }
 
 /// Operation: importScripts

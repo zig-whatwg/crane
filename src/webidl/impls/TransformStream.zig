@@ -170,20 +170,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     if (transformer.was_passed) {
         const js_value = transformer.value;
         switch (js_value) {
-            .undefined_value, .null_value => {
+            .undefined, .null => {
                 // No transformer - use default algorithms (skip setup)
             },
-            .local => |local_handle| {
-                // V8 Local handle - extract pointer and set up controller
-                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, @ptrCast(local_handle.ptr));
-            },
-            .global => |global_handle| {
-                // V8 Global handle - get Local from it and set up controller
-                const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-                if (global_handle.get(isolate)) |v8_value| {
-                    try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, @ptrCast(v8_value));
-                }
-                // If Global handle is invalid, skip transformer setup
+            .handle => |engine_handle| {
+                // Engine handle (V8 object reference) - set up controller
+                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, engine_handle.ptr);
             },
             .instance => {
                 // A Zig runtime.Instance - this should not be passed as a transformer.

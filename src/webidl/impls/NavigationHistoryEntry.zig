@@ -212,13 +212,13 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // In full implementation, this would deserialize and return a clone
     const state = &entry.navigation_api_state;
 
-    // Check for undefined (initial state) - return sentinel
+    // Check for undefined (initial state) - return undefined JSValue
     if (state.isUndefined()) {
-        return &undefined_sentinel;
+        return runtime.JSValue.jsUndefined;
     }
 
-    // Return the state data pointer
-    return @ptrCast(state.data.ptr);
+    // Return the state data as JSValue
+    return runtime.JSValue.fromAnyopaque(state.data.ptr);
 }
 
 // ============================================================================

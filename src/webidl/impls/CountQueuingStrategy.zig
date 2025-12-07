@@ -106,16 +106,10 @@ pub fn get_highWaterMark(instance: *runtime.Instance) anyerror!f64 {
 /// Spec: https://streams.spec.whatwg.org/#count-queuing-strategy-size-function
 /// Steps (given chunk):
 /// 1. Return 1.
-///
-/// Note: This returns the number 1.0 as an f64 pointer. The actual value is stored
-/// in a static location and the pointer to it is returned.
-var size_one: f64 = 1.0;
-
-fn countSizeFunction(arguments: []const *const anyopaque) *const anyopaque {
+fn countSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
     _ = arguments;
     // Count strategy always returns 1 per chunk
-    // Return pointer to the static f64 value 1.0
-    return @ptrCast(&size_one);
+    return runtime.JSValue.fromNumber(1.0);
 }
 
 /// Getter for size

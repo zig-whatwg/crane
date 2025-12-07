@@ -185,11 +185,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     // IMPORTANT: Do NOT pass a Zig stack pointer as the transformer - that would
     // cause TransformStream to try to use it as a V8 Object handle, resulting in
     // misaligned pointer segfaults. See whatwg-lbw51 for details.
-    const v8 = @import("v8");
     const transform = try interfaces.TransformStream.call_constructor(
         allocator,
         ctx,
-        webidl.Opt(v8.JSValue).notPassed(),
+        webidl.Opt(runtime.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
     );

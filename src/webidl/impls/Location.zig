@@ -158,7 +158,7 @@ pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     // Serialize the URL (exclude fragment = false)
     const serialized = try url_serializer.serialize(internal.allocator, url, false);
 
-    return runtime.DOMString.initOwned(serialized);
+    return serialized;
 }
 
 /// Getter for origin
@@ -175,7 +175,7 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     // Serialize the origin
     const serialized = try url_origin.serialize(internal.allocator);
 
-    return runtime.DOMString.initOwned(serialized);
+    return serialized;
 }
 
 /// Getter for protocol
@@ -192,7 +192,7 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     @memcpy(result[0..scheme.len], scheme);
     result[scheme.len] = ':';
 
-    return runtime.DOMString.initOwned(result);
+    return result;
 }
 
 /// Getter for host
@@ -204,7 +204,7 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no host, return empty string
     if (url.host == null) {
-        return runtime.DOMString.empty;
+        return "";
     }
 
     // Serialize host
@@ -214,7 +214,7 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     // If no port or default port, return just host
     if (url.port == null) {
         const buffer = try internal.allocator.dupe(u8, host_str);
-        return runtime.DOMString.initOwned(buffer);
+        return buffer;
     }
 
     // Check if port is default for scheme
@@ -222,13 +222,13 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     const default_port = getDefaultPort(scheme);
     if (default_port != null and url.port.? == default_port.?) {
         const buffer = try internal.allocator.dupe(u8, host_str);
-        return runtime.DOMString.initOwned(buffer);
+        return buffer;
     }
 
     // Return host:port
     const result = try std.fmt.allocPrint(internal.allocator, "{s}:{d}", .{ host_str, url.port.? });
 
-    return runtime.DOMString.initOwned(result);
+    return result;
 }
 
 /// Getter for hostname
@@ -240,13 +240,13 @@ pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no host, return empty string
     if (url.host == null) {
-        return runtime.DOMString.empty;
+        return "";
     }
 
     // Serialize host
     const host_str = try host_serializer.serializeHost(internal.allocator, url.host.?);
 
-    return runtime.DOMString.initOwned(host_str);
+    return host_str;
 }
 
 /// Getter for port
@@ -258,13 +258,13 @@ pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no port, return empty string
     if (url.port == null) {
-        return runtime.DOMString.empty;
+        return "";
     }
 
     // Serialize port
     const result = try std.fmt.allocPrint(internal.allocator, "{d}", .{url.port.?});
 
-    return runtime.DOMString.initOwned(result);
+    return result;
 }
 
 /// Getter for pathname
@@ -278,7 +278,7 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     switch (url.path) {
         .opaque_path => |op| {
             const buffer = try internal.allocator.dupe(u8, op);
-            return runtime.DOMString.initOwned(buffer);
+            return buffer;
         },
         .segments => |segs| {
             // Build path string with "/" separators
@@ -299,7 +299,7 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
             }
 
             const buffer = try result.toOwnedSlice(internal.allocator);
-            return runtime.DOMString.initOwned(buffer);
+            return buffer;
         },
     }
 }
@@ -313,7 +313,7 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no query, return empty string
     const query = url.query() orelse {
-        return runtime.DOMString.empty;
+        return "";
     };
 
     // Return "?" + query
@@ -321,7 +321,7 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     result[0] = '?';
     @memcpy(result[1..], query);
 
-    return runtime.DOMString.initOwned(result);
+    return result;
 }
 
 /// Getter for hash
@@ -333,7 +333,7 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
 
     // If no fragment, return empty string
     const fragment = url.fragment() orelse {
-        return runtime.DOMString.empty;
+        return "";
     };
 
     // Return "#" + fragment
@@ -341,7 +341,7 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     result[0] = '#';
     @memcpy(result[1..], fragment);
 
-    return runtime.DOMString.initOwned(result);
+    return result;
 }
 
 /// Getter for ancestorOrigins

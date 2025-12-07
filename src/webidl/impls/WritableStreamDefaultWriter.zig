@@ -183,7 +183,10 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     // 2. Return WritableStreamDefaultWriterAbort(this, reason)
     // Unwrap the Opt - use a default value if not passed
     const default_reason: u8 = 0;
-    const reason_ptr: *const anyopaque = if (reason.was_passed) reason.value else @ptrCast(&default_reason);
+    const reason_ptr: *const anyopaque = if (reason.was_passed)
+        reason.value.toAnyopaque() orelse @ptrCast(&default_reason)
+    else
+        @ptrCast(&default_reason);
     return writableStreamDefaultWriterAbort(instance, stream, reason_ptr);
 }
 
@@ -207,7 +210,10 @@ pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue
     // 2. Return WritableStreamDefaultWriterWrite(this, chunk)
     // Unwrap the Opt - use a default value if not passed
     const default_chunk: u8 = 0;
-    const chunk_ptr: *const anyopaque = if (chunk.was_passed) chunk.value else @ptrCast(&default_chunk);
+    const chunk_ptr: *const anyopaque = if (chunk.was_passed)
+        chunk.value.toAnyopaque() orelse @ptrCast(&default_chunk)
+    else
+        @ptrCast(&default_chunk);
     return writableStreamDefaultWriterWrite(instance, stream, chunk_ptr);
 }
 

@@ -199,7 +199,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
         internal.download_request = try allocator.dupe(u8, download.asSlice());
     }
 
-    internal.info = eventInitDict.info;
+    // Convert JSValue to anyopaque if provided
+    if (eventInitDict.info) |info_value| {
+        internal.info = info_value.toAnyopaque();
+    } else {
+        internal.info = null;
+    }
 
     if (eventInitDict.sourceElement) |source_ptr| {
         _ = source_ptr;
@@ -276,7 +281,10 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 /// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
 pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.info orelse error.InvalidStateError;
+    if (internal.info) |info_ptr| {
+        return runtime.JSValue.fromAnyopaque(info_ptr);
+    }
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Getter for hasUAVisualTransition

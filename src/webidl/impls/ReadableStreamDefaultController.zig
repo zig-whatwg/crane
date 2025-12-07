@@ -172,7 +172,7 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) a
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Perform error - use a static error value if not passed
-    const error_ptr: ?*const anyopaque = if (e.was_passed) e.value else null;
+    const error_ptr: ?*const anyopaque = if (e.was_passed) e.value.toAnyopaque() else null;
     if (error_ptr) |ptr| {
         readableStreamDefaultControllerError(internal, ptr);
     } else {
@@ -428,7 +428,7 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSVal
     }
 
     // Step 2: Perform enqueue - use a default undefined chunk if not passed
-    const chunk_ptr: ?*const anyopaque = if (chunk.was_passed) chunk.value else null;
+    const chunk_ptr: ?*const anyopaque = if (chunk.was_passed) chunk.value.toAnyopaque() else null;
     if (chunk_ptr) |ptr| {
         try readableStreamDefaultControllerEnqueue(internal, ptr);
     } else {

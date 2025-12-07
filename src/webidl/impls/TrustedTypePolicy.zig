@@ -78,7 +78,10 @@ pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, ar
     // Create the TrustedHTML via the policy
     // Note: arguments are passed as opaque context for now
     // Full variadic argument handling requires JS runtime integration
-    const context: ?*anyopaque = if (arguments.len > 0) @constCast(arguments[0]) else null;
+    const context: ?*anyopaque = if (arguments.len > 0)
+        if (arguments[0].toAnyopaque()) |ptr| @constCast(ptr) else null
+    else
+        null;
 
     // Convert DOMString to slice for the policy
     const input_slice = input.asSlice();
@@ -103,7 +106,10 @@ pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, 
     const internal = state.own._internal orelse return error.NotImplemented;
     const policy = internal.inner orelse return error.NotImplemented;
 
-    const context: ?*anyopaque = if (arguments.len > 0) @constCast(arguments[0]) else null;
+    const context: ?*anyopaque = if (arguments.len > 0)
+        if (arguments[0].toAnyopaque()) |ptr| @constCast(ptr) else null
+    else
+        null;
 
     // Convert DOMString to slice for the policy
     const input_slice = input.asSlice();
@@ -125,7 +131,10 @@ pub fn call_createScriptURL(instance: *runtime.Instance, input: runtime.DOMStrin
     const internal = state.own._internal orelse return error.NotImplemented;
     const policy = internal.inner orelse return error.NotImplemented;
 
-    const context: ?*anyopaque = if (arguments.len > 0) @constCast(arguments[0]) else null;
+    const context: ?*anyopaque = if (arguments.len > 0)
+        if (arguments[0].toAnyopaque()) |ptr| @constCast(ptr) else null
+    else
+        null;
 
     // Convert DOMString to slice for the policy
     const input_slice = input.asSlice();

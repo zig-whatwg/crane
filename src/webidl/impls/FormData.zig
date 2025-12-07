@@ -26,8 +26,12 @@ pub const ImplError = error{
     InvalidState,
 };
 
-/// Entry type for iterable protocol - uses the interface's type
-pub const IterableEntry = FormData.IterableEntry;
+/// Entry type for iterable protocol
+/// FormData iterates as (USVString, FormDataEntryValue) pairs
+pub const IterableEntry = struct {
+    name: []const u8,
+    value: typedefs.FormDataEntryValue,
+};
 
 /// Internal state for FormData implementation
 ///
@@ -365,9 +369,12 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
         iterable_entries[i] = .{
             .name = entry.name,
             .value = switch (entry.value) {
-                .string => |s| s,
-                .file => "[object File]",
-                .blob_instance => "[object Blob]",
+                .string => |s| .{ .usvstring = s },
+                // For files, return [object File] placeholder
+                // TODO: Return actual File instance when WebIDL File is fully integrated
+                .file => .{ .usvstring = "[object File]" },
+                // blob_instance is already a runtime.Instance (File or Blob)
+                .blob_instance => |b| .{ .file = @ptrCast(@alignCast(b)) },
             },
         };
     }
@@ -377,3 +384,6 @@ pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const IterableEntry
 
     return iterable_entries;
 }
+
+/// Alias for getEntriesForIterable - called by generated interface
+pub const getEntriesInternal = getEntriesForIterable;

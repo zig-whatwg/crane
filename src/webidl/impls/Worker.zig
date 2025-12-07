@@ -249,7 +249,9 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         if (internal.dedicated_worker) |worker| {
             // Post message to the dedicated worker
             // The dedicated worker will handle serialization and dispatch
-            try worker.postMessage(message, transfer);
+            // Convert JSValue to anyopaque for the internal API
+            const message_ptr = message.toAnyopaque() orelse return error.TypeError;
+            try worker.postMessage(message_ptr, transfer);
         }
     }
 }

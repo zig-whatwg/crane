@@ -959,7 +959,7 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(d
     }
 
     // Get allowed shadow roots from options
-    const allowed_shadow_roots: ?*const anyopaque = if (options.was_passed)
+    const allowed_shadow_roots: ?[]const *runtime.Instance = if (options.was_passed)
         options.value.shadowRoots
     else
         null;
@@ -1016,7 +1016,7 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(d
 fn adjustForShadowBoundary(
     node: *runtime.Instance,
     offset: u32,
-    allowed_shadow_roots: ?*const anyopaque,
+    allowed_shadow_roots: ?[]const *runtime.Instance,
     is_end: bool,
 ) !PositionResult {
     const ShadowRootImpl = @import("ShadowRoot.zig");
@@ -1074,17 +1074,15 @@ fn getRoot(node: *runtime.Instance) *runtime.Instance {
 }
 
 /// Check if a shadow root is in the allowed list
-fn isShadowRootAllowed(shadow_root: *runtime.Instance, allowed_list: ?*const anyopaque) bool {
-    _ = shadow_root;
-    if (allowed_list == null) {
-        return false;
+fn isShadowRootAllowed(shadow_root: *runtime.Instance, allowed_list: ?[]const *runtime.Instance) bool {
+    const list = allowed_list orelse return false;
+
+    // Check if shadow_root matches any in the list
+    for (list) |allowed| {
+        if (allowed == shadow_root) {
+            return true;
+        }
     }
-    // TODO: Iterate through the sequence of ShadowRoots
-    // For now, return false (no shadow roots allowed)
-    // A full implementation would:
-    // 1. Cast allowed_list to the sequence type
-    // 2. Iterate through each ShadowRoot
-    // 3. Check if shadow_root matches any in the list
     return false;
 }
 

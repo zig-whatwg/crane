@@ -168,14 +168,12 @@ pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
         if (entry.state) |state| {
             // Return pointer to the state data
             // Note: This should be deserialized via structured clone
-            return @ptrCast(state.ptr);
+            return runtime.JSValue.fromAnyopaque(state.ptr);
         }
     }
 
     // Return null if no state
-    // Note: We return error here since we can't return a null pointer
-    // The interface layer will need to handle this
-    return error.NotImplemented;
+    return runtime.JSValue.jsNull;
 }
 
 // =============================================================================

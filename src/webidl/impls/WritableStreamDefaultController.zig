@@ -257,7 +257,10 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) a
     // 3. Perform WritableStreamDefaultControllerError(this, e)
     // Unwrap the Opt - use a default error value if not passed
     const default_error: u8 = 0;
-    const error_ptr: *const anyopaque = if (e.was_passed) e.value else @ptrCast(&default_error);
+    const error_ptr: *const anyopaque = if (e.was_passed)
+        e.value.toAnyopaque() orelse @ptrCast(&default_error)
+    else
+        @ptrCast(&default_error);
     writableStreamDefaultControllerError(instance, error_ptr);
 }
 

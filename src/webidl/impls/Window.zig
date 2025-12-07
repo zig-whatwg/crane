@@ -484,17 +484,18 @@ pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
 pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // If disowned, return null (represented as NotImplemented for non-nullable pointer)
+    // If disowned, return null
     if (internal.browsing_context.disowned) {
-        return error.NotImplemented;
+        return runtime.JSValue.jsNull;
     }
 
     // Return opener if set
     if (internal.opener_any) |opener| {
-        return opener;
+        return runtime.JSValue.fromAnyopaque(opener);
     }
 
-    return error.NotImplemented; // null in JS (no opener)
+    // Return null for no opener
+    return runtime.JSValue.jsNull;
 }
 
 /// Getter for parent
@@ -1788,11 +1789,8 @@ pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if value represents null
-    // In WebIDL `any` type, a null/undefined JavaScript value would be passed
-    // as a specific sentinel. The exact representation depends on the JS binding layer.
-    // For now, we check if the pointer value is 0 (null representation)
-    const ptr_value = @intFromPtr(value);
-    if (ptr_value == 0) {
+    // In WebIDL `any` type, null is represented by the .null variant
+    if (value.isNull()) {
         // Setting opener to null disowns the relationship
         // Per spec: "If the given value is null, then set this's browsing context's
         // disowned to true."
