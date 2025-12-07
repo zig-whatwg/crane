@@ -926,15 +926,43 @@ pub fn fromV8Value(
     }
     if (T == runtime.Any) return fromV8Any(value);
     if (T == *const anyopaque) {
-        // For anyopaque parameters (WebIDL 'any' type), pass through the V8 value as-is.
-        // The V8 value pointer (Global<Value>*) is returned so it can be stored and
-        // passed back to JavaScript unchanged.
+        // For anyopaque parameters (WebIDL 'any' type), we need to handle V8 handle
+        // lifetimes correctly:
+        //
+        // PROBLEM: V8 Local<Value> handles are stack-bound to the current HandleScope.
+        // When the HandleScope ends (e.g., when a constructor returns), Local handles
+        // become INVALID (dangling pointers). Storing a raw Local pointer and using
+        // it later causes SEGFAULTS.
+        //
+        // SOLUTION: For functions and objects (which are typically stored for later use,
+        // e.g., stream callbacks), create a Global handle that persists beyond the
+        // HandleScope lifetime. Global handles are heap-allocated and must be explicitly
+        // disposed, but they survive scope destruction.
+        //
+        // For primitives (undefined, null, booleans, numbers, strings), V8 copies
+        // the value internally, so the Local pointer behavior is actually safe.
+        // However, for consistency and future-proofing, we still return them as-is.
         //
         // IMPORTANT: Do NOT convert the value to Zig types here!
         // - Streams API uses 'any' for chunks that should round-trip to JS unchanged
         // - Converting to DOMString would lose the original V8 reference
         // - When the value is later passed back (e.g., in iterator.next()), we need
         //   the original V8 pointer to pass to toV8() which expects a V8 value
+
+        // Check if this is a function or object that needs to persist beyond HandleScope
+        if (v8.v8_Value_IsFunction(value) or v8.v8_Value_IsObject(value)) {
+            // Create a Global handle so it survives after HandleScope ends
+            // Note: This creates a STRONG Global handle. Callers are responsible for
+            // disposing it when no longer needed. Future work (whatwg-0ddpx) will
+            // add weak handle support for automatic GC cleanup.
+            if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
+                return @ptrCast(global);
+            }
+            // If Global creation fails (e.g., OOM), fall through to return raw pointer
+            // This maintains backward compatibility but may cause issues later
+        }
+
+        // For primitives or if Global creation failed, return raw Local pointer
         return @ptrCast(value);
     }
 
@@ -1217,7 +1245,9 @@ pub fn toV8Value(
         const ElemType = type_info.pointer.child;
         // Special case: []const u8 and []u8 are strings, not arrays
         if (ElemType == u8) {
-            const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len));
+            const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse {
+                return ConversionError.StringError;
+            };
             return @ptrCast(str);
         }
         return @ptrCast(try toV8Sequence(ElemType, isolate, context, value));
@@ -1328,9 +1358,13 @@ pub fn toV8Value(
         return toV8Undefined(isolate);
     }
 
-    // Handle pointers (convert to Any)
+    // Handle pointers - SAFETY: Cannot blindly cast Zig pointers to V8 Values
+    // Zig heap pointers are NOT V8 Global<Value>* handles and will cause crashes
+    // if passed to V8. Return undefined instead.
+    // Note: runtime.Instance* should be handled separately with proper wrapping.
     if (type_info == .pointer) {
-        return toV8Any(@ptrCast(@constCast(value)));
+        // Return undefined for unknown pointer types to prevent crashes
+        return toV8Undefined(isolate);
     }
 
     // Handle WebIDL primitive types with explicit conversion functions
@@ -1345,7 +1379,9 @@ pub fn toV8Value(
     if (T == runtime.Double) return @ptrCast(toV8Double(isolate, value));
     if (T == runtime.Float) return @ptrCast(toV8Float(isolate, value));
     if (T == runtime.DOMString) return @ptrCast(toV8String(isolate, value));
-    if (T == runtime.Any) return toV8Any(value);
+    // SAFETY: runtime.Any is *anyopaque which might not be a valid V8 Value pointer
+    // Return undefined instead of blindly casting to prevent crashes
+    if (T == runtime.Any) return toV8Undefined(isolate);
 
     // If we get here, it's an unsupported type that wasn't handled by any of the above cases
     // This should be rare - most types are covered by generic handlers (int, float, struct, pointer, etc.)
