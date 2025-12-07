@@ -449,7 +449,10 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
             const function: *v8_engine.ffi.Function = @ptrCast(local_value);
             // Call the callback with no arguments
             // The readystatechange event doesn't pass an event object in typical XHR usage
-            _ = v8_engine.ffi.v8_Function_Call0(v8_context, function);
+            // Use undefined as the receiver (this) since XHR events don't need a specific this binding
+            const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+            var empty_args: [0]*v8_engine.ffi.Value = .{};
+            _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 0, &empty_args);
         }
     }
 }

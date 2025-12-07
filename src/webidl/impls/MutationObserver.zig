@@ -141,15 +141,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
     const instance = try init(allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
 
-    // Store the callback using a Global handle for persistence
+    // Store the callback as a Global handle
+    // The callback parameter comes from the V8 conversion system and represents
+    // a V8 Local<Function> that needs to be persisted via Global handle.
     const internal = getInternal(instance);
 
-    // Get isolate from context and create Global handle
-    if (ctx.isolate) |isolate| {
-        internal.isolate = isolate;
-        // Create Global handle from the callback pointer
-        // The callback is a V8 Function passed as anyopaque
-        internal.callback = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(callback)));
+    // Get the current isolate for Global handle creation
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+    internal.isolate = isolate;
+
+    // Create Global handle from the callback (which is actually a V8 function pointer)
+    // The callback type is a function pointer, but when coming from V8, it's really
+    // a pointer to a V8 Local<Function> that needs to be persisted
+    if (isolate) |iso| {
+        internal.callback = v8_engine.createOptionalGlobalHandle(iso, @ptrCast(@constCast(callback)));
     }
 
     return instance;
