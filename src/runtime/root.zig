@@ -48,6 +48,12 @@ pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 // (EventListener, NodeFilter, XPathNSResolver)
 pub const CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
 
+// Engine-agnostic JavaScript value type
+// Use this in impl files instead of v8.JSValue
+pub const js_value = @import("js_value.zig");
+pub const JSValue = js_value.JSValue;
+pub const OptionalJSValue = js_value.OptionalJSValue;
+
 // WebIDL type system
 pub const types = @import("types.zig");
 pub const DOMString = types.DOMString;

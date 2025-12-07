@@ -126,7 +126,7 @@ pub fn writeImports(
     try writer.writeAll("const std = @import(\"std\");\n");
     try writer.writeAll("const runtime = @import(\"runtime\");\n");
     try writer.writeAll("const webidl = @import(\"webidl\");\n");
-    try writer.writeAll("const v8 = @import(\"v8\");\n");
+    // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
 
     // Import implementation from "impls" module
     try writer.print("const {s}Impl = @import(\"impls\").{s};\n", .{ interface_name, interface_name });
@@ -1077,9 +1077,9 @@ fn idlTypeToZig(idl_type_name: []const u8) []const u8 {
     } else if (std.mem.eql(u8, idl_type_name, "USVString")) {
         return "runtime.USVString";
     } else if (std.mem.eql(u8, idl_type_name, "object")) {
-        return "v8.JSValue";
+        return "runtime.JSValue";
     } else if (std.mem.eql(u8, idl_type_name, "any")) {
-        return "v8.JSValue";
+        return "runtime.JSValue";
     } else if (std.mem.eql(u8, idl_type_name, "void")) {
         return "void";
     } else if (std.mem.eql(u8, idl_type_name, "undefined")) {
@@ -2982,9 +2982,9 @@ fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
     else if (std.mem.eql(u8, idl_type.type, "USVString"))
         "runtime.USVString"
     else if (std.mem.eql(u8, idl_type.type, "any"))
-        "v8.JSValue"
+        "runtime.JSValue"
     else if (std.mem.eql(u8, idl_type.type, "object"))
-        "v8.JSValue"
+        "runtime.JSValue"
     else
         "anyopaque";
 

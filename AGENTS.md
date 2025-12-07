@@ -820,6 +820,64 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
 
+### 14. **NEVER Import V8 Directly - Use Runtime Abstraction** ⭐⭐⭐
+
+**All JavaScript engine access MUST go through `src/runtime/` abstractions. NEVER import `v8` directly in impl files.**
+
+**Architecture:**
+- `src/runtime/` provides engine-agnostic interfaces
+- Impl files use `runtime.Context`, `runtime.Instance`, and related abstractions
+- The runtime layer handles V8-specific details internally
+- This allows future support for other JS engines (JavaScriptCore, SpiderMonkey)
+
+**Correct Pattern:**
+```zig
+// src/webidl/impls/SomeInterface.zig
+const runtime = @import("runtime");
+
+pub fn someMethod(instance: *runtime.Instance, callback: runtime.Callback) !void {
+    const ctx = instance.ctx;
+    // Use runtime abstractions for JS engine operations
+    try ctx.invokeCallback(callback, args);
+}
+```
+
+**Wrong Pattern:**
+```zig
+// src/webidl/impls/SomeInterface.zig
+const v8 = @import("v8");  // ❌ NEVER do this!
+
+pub fn someMethod(instance: *runtime.Instance, callback: v8.JSValue) !void {
+    // ❌ Direct V8 usage bypasses abstraction
+    const isolate = v8.v8_Isolate_GetCurrent();
+    // ...
+}
+```
+
+**When You Encounter Violations:**
+If you find code that imports `v8` directly in impl files:
+1. ✅ Refactor to use `runtime` abstractions
+2. ✅ If needed abstraction doesn't exist, add it to `src/runtime/`
+3. ✅ Update the impl to use the new abstraction
+4. ❌ NEVER leave direct V8 imports in impl files
+
+**Why This Matters:**
+- **Engine Independence**: Enables future support for JSC, SpiderMonkey, etc.
+- **Testability**: Runtime abstractions can be mocked for unit tests
+- **Encapsulation**: V8-specific quirks are isolated in runtime layer
+- **Maintainability**: Engine upgrades only affect runtime layer, not all impls
+
+**Allowed V8 Imports:**
+- `src/runtime/engines/v8/*.zig` - V8 engine implementation files
+- `tests/v8/*.zig` - V8-specific test files
+- Build/tooling scripts
+
+**Violations to Refactor:**
+Run this to find violations:
+```bash
+rg "^const v8 = @import" src/webidl/impls/ --type zig
+```
+
 ---
 
 ## Critical Project Context
@@ -1213,6 +1271,7 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Modifying generated files directly** (changes must go through codegen source files)
 - **Calling impls directly from external code** (must go through interfaces - see Golden Rule #12)
 - **Impls calling other impls directly** (must go through interfaces - see Golden Rule #13)
+- **Importing V8 directly in impl files** (must use runtime abstractions - see Golden Rule #14)
 
 ---
 
