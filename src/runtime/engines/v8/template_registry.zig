@@ -107,7 +107,12 @@ fn ensureInitialized() void {
 /// 3. The generation counter ensures we detect isolate disposal even if
 ///    the new isolate has the same address
 pub fn clear() void {
+    // Dispose V8 FunctionTemplate handles before clearing entries
+    // V8 Global handles must be explicitly disposed to release resources
     for (&templates) |*entry| {
+        if (entry.*) |e| {
+            v8.v8_FunctionTemplate_Dispose(e.template);
+        }
         entry.* = null;
     }
     template_count = 0;

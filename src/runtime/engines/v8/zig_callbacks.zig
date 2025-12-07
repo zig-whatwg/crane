@@ -96,8 +96,8 @@ pub fn genericZigCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) voi
 
     if (user_data_ptr == null) {
         // Invalid external - return undefined
+        // Note: V8 owns the return value after setReturnValue - do NOT dispose
         const undef = v8.v8_Undefined(isolate) orelse return;
-        defer v8.v8_Value_Dispose(undef);
         info.setReturnValue(undef);
         return;
     }
@@ -126,8 +126,8 @@ fn invokeVoidNoArgs(info: *const v8.FunctionCallbackInfo, callback_data: *Callba
     void_fn();
 
     // Return undefined
+    // Note: V8 owns the return value after setReturnValue - do NOT dispose
     const undef = v8.v8_Undefined(isolate) orelse return;
-    defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
 }
 
@@ -147,8 +147,8 @@ fn invokeOneArgVoid(info: *const v8.FunctionCallbackInfo, callback_data: *Callba
     one_arg_fn(arg1);
 
     // Return undefined
+    // Note: V8 owns the return value after setReturnValue - do NOT dispose
     const undef = v8.v8_Undefined(isolate) orelse return;
-    defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
 }
 
@@ -174,8 +174,8 @@ fn invokeTwoArgsVoid(info: *const v8.FunctionCallbackInfo, callback_data: *Callb
     two_args_fn(arg1, arg2);
 
     // Return undefined
+    // Note: V8 owns the return value after setReturnValue - do NOT dispose
     const undef = v8.v8_Undefined(isolate) orelse return;
-    defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
 }
 
@@ -237,8 +237,8 @@ fn invokeContextVoid(info: *const v8.FunctionCallbackInfo, callback_data: *Callb
     }
 
     // Return undefined
+    // Note: V8 owns the return value after setReturnValue - do NOT dispose
     const undef = v8.v8_Undefined(isolate) orelse return;
-    defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
 }
 
@@ -263,8 +263,8 @@ fn invokeContextOneArgVoid(info: *const v8.FunctionCallbackInfo, callback_data: 
     }
 
     // Return undefined
+    // Note: V8 owns the return value after setReturnValue - do NOT dispose
     const undef = v8.v8_Undefined(isolate) orelse return;
-    defer v8.v8_Value_Dispose(undef);
     info.setReturnValue(undef);
 }
 
