@@ -165,9 +165,23 @@ pub const dom_tree_adapter = @import("dom_tree_adapter.zig");
 pub const DomTreeAdapter = dom_tree_adapter.DomTreeAdapter;
 pub const DomTreeAdapterError = dom_tree_adapter.DomTreeAdapterError;
 
+/// External script loader for loading external scripts during parsing.
+/// Handles parser-blocking, async, and deferred scripts.
+pub const external_script_loader = @import("external_script_loader.zig");
+pub const ExternalScriptLoader = external_script_loader.ExternalScriptLoader;
+pub const PendingScript = external_script_loader.PendingScript;
+pub const ExternalScriptType = external_script_loader.ScriptType;
+pub const ScriptExecutor = external_script_loader.ScriptExecutor;
+pub const ScriptLoaderFn = external_script_loader.ScriptLoaderFn;
+
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");
+
+/// Parser script execution callback and context for V8 integration.
+/// Provides the bridge between tree builder's script callback and V8 execution.
+pub const parser_script_execution = @import("parser_script_execution.zig");
+pub const ParserScriptContext = parser_script_execution.ParserScriptContext;
 
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");

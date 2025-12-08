@@ -267,6 +267,11 @@ pub const PermissionsPolicy = permissions_policy.PermissionsPolicy;
 pub const PermissionsPolicyFeature = permissions_policy.Feature;
 pub const PermissionsPolicyAllowlist = permissions_policy.Allowlist;
 
+// Note: The following modules require WebIDL interface access and are NOT available
+// from html_core. They are only available from the 'html' module (full.zig):
+// - external_script_loader.zig - External script loading during parsing
+// - dom_tree_adapter.zig - Incremental TreeNode to DOM conversion
+
 // Editing APIs (§6.5)
 pub const editing = @import("editing/root.zig");
 
