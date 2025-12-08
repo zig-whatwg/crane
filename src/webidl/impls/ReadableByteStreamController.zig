@@ -28,7 +28,7 @@ const Algorithm = @import("streams_algorithm").Algorithm;
 
 // BYOB infrastructure
 const PullIntoDescriptorModule = @import("streams_pull_into_descriptor");
-const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
+pub const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
 const ArrayBuffer = PullIntoDescriptorModule.ArrayBuffer;
 const ViewConstructor = PullIntoDescriptorModule.ViewConstructor;
 const ReaderType = PullIntoDescriptorModule.ReaderType;
@@ -56,7 +56,7 @@ pub const ImplError = error{
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2
 ///
 /// Represents a queued chunk in a byte stream with its buffer and byte range.
-const ByteStreamQueueEntry = struct {
+pub const ByteStreamQueueEntry = struct {
     /// The ArrayBuffer containing the queued bytes
     buffer: *ArrayBuffer,
     /// Byte offset into the buffer where this chunk starts

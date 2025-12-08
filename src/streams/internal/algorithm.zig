@@ -741,3 +741,152 @@ fn noopInvokeWithArg(
 fn noopDestroy(_: ?*anyopaque, _: Allocator) void {
     // Nothing to clean up
 }
+
+// ============================================================================
+// Zig Native Callback Algorithm
+// ============================================================================
+
+/// Context for Zig native callback algorithm
+/// Stores the function pointers and user context
+pub const ZigCallbackContext = struct {
+    /// Pull callback function pointer
+    pull_fn: ?*const fn (*runtime.Instance, ?*anyopaque) anyerror!void,
+    /// Cancel callback function pointer
+    cancel_fn: ?*const fn (?*const anyopaque, ?*anyopaque) anyerror!void,
+    /// User context passed to callbacks
+    user_context: ?*anyopaque,
+};
+
+/// Create an Algorithm from a Zig pull callback
+///
+/// This is for internal use when Zig code (e.g., Blob.stream()) needs to create
+/// a ReadableStream with Zig function callbacks instead of JavaScript callbacks.
+pub fn zigPullAlgorithm(
+    allocator: Allocator,
+    pull_fn: *const fn (*runtime.Instance, ?*anyopaque) anyerror!void,
+    user_context: ?*anyopaque,
+) !*Algorithm {
+    const ctx = try allocator.create(ZigCallbackContext);
+    errdefer allocator.destroy(ctx);
+    ctx.* = .{
+        .pull_fn = pull_fn,
+        .cancel_fn = null,
+        .user_context = user_context,
+    };
+
+    const algo = try allocator.create(Algorithm);
+    algo.* = .{
+        .context = ctx,
+        .vtable = &zig_callback_vtable,
+        .allocator = allocator,
+    };
+
+    return algo;
+}
+
+/// Create an Algorithm from a Zig cancel callback
+///
+/// This is for internal use when Zig code (e.g., Blob.stream()) needs to create
+/// a ReadableStream with Zig function callbacks instead of JavaScript callbacks.
+pub fn zigCancelAlgorithm(
+    allocator: Allocator,
+    cancel_fn: *const fn (?*const anyopaque, ?*anyopaque) anyerror!void,
+    user_context: ?*anyopaque,
+) !*Algorithm {
+    const ctx = try allocator.create(ZigCallbackContext);
+    errdefer allocator.destroy(ctx);
+    ctx.* = .{
+        .pull_fn = null,
+        .cancel_fn = cancel_fn,
+        .user_context = user_context,
+    };
+
+    const algo = try allocator.create(Algorithm);
+    algo.* = .{
+        .context = ctx,
+        .vtable = &zig_callback_vtable,
+        .allocator = allocator,
+    };
+
+    return algo;
+}
+
+const zig_callback_vtable = Algorithm.VTable{
+    .invoke = zigCallbackInvoke,
+    .invoke_with_arg = zigCallbackInvokeWithArg,
+    .destroy = zigCallbackDestroy,
+};
+
+fn zigCallbackInvoke(
+    controller: *runtime.Instance,
+    context: ?*anyopaque,
+) !*AsyncPromise(void) {
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    const ctx: *ZigCallbackContext = @ptrCast(@alignCast(context orelse {
+        // No context - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    }));
+
+    if (ctx.pull_fn) |pull_fn| {
+        // Invoke the Zig pull callback
+        pull_fn(controller, ctx.user_context) catch |err| {
+            // Callback returned error - reject promise
+            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            promise.reject(webidl.errors.Exception{ .simple = .{
+                .type = .TypeError,
+                .message = @errorName(err),
+            } });
+            return promise;
+        };
+    }
+
+    // Callback succeeded - return resolved promise
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    promise.fulfill({});
+    return promise;
+}
+
+fn zigCallbackInvokeWithArg(
+    controller: *runtime.Instance,
+    context: ?*anyopaque,
+    arg: *const anyopaque,
+) !*AsyncPromise(void) {
+    const allocator = controller.ctx.getAllocator();
+    const event_loop = try controller.ctx.getEventLoop();
+
+    const ctx: *ZigCallbackContext = @ptrCast(@alignCast(context orelse {
+        // No context - return resolved promise
+        const promise = try AsyncPromise(void).init(allocator, event_loop);
+        promise.fulfill({});
+        return promise;
+    }));
+
+    if (ctx.cancel_fn) |cancel_fn| {
+        // Invoke the Zig cancel callback with reason
+        cancel_fn(arg, ctx.user_context) catch |err| {
+            // Callback returned error - reject promise
+            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            promise.reject(webidl.errors.Exception{ .simple = .{
+                .type = .TypeError,
+                .message = @errorName(err),
+            } });
+            return promise;
+        };
+    }
+
+    // Callback succeeded - return resolved promise
+    const promise = try AsyncPromise(void).init(allocator, event_loop);
+    promise.fulfill({});
+    return promise;
+}
+
+fn zigCallbackDestroy(context: ?*anyopaque, allocator: Allocator) void {
+    if (context) |ctx| {
+        const zig_ctx: *ZigCallbackContext = @ptrCast(@alignCast(ctx));
+        allocator.destroy(zig_ctx);
+    }
+}

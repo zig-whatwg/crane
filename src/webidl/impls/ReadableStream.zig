@@ -13,6 +13,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const ReadableStream = interfaces.ReadableStream;
 const v8_engine = @import("v8");
 const v8 = v8_engine;
@@ -184,8 +185,6 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
             return error.TypeError; // Expected V8 object, got Zig instance
         }
 
-        const v8_obj: *v8_ffi.Object = @ptrCast(untagged.ptr);
-
         // Get V8 context from runtime context
         const v8_context_ptr = ctx.getEngineContext() orelse return error.InvalidState;
         const v8_context: *v8_ffi.Context = @ptrCast(@alignCast(v8_context_ptr));
@@ -193,66 +192,76 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         // Get current isolate
         const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
 
-        // Extract callbacks from V8 object manually
-        //
-        // The generated dictionary uses Zig callback function pointer types, but what we
-        // receive from V8 are Global handle pointers (tagged with .global_handle).
-        // We bypass the generated dictionary and extract callbacks directly here,
-        // storing them in a parallel structure that uses *const anyopaque.
-        //
-        // The extraction uses v8_Object_Get to get each property, and if it's a function,
-        // conversions.fromV8Value creates a Global handle automatically (see whatwg-okii8).
+        // Validate that the pointer is actually a V8 object
+        // This catches cases where Zig code passes a Zig struct pointer as JSValue
+        // (e.g., Blob.stream() passing an UnderlyingSource struct)
+        const v8_value: *v8_ffi.Value = @ptrCast(untagged.ptr);
+        if (v8_ffi.v8_Value_IsObject(v8_value)) {
+            const v8_obj: *v8_ffi.Object = @ptrCast(untagged.ptr);
 
-        // Helper to extract a callback property
-        const extractCallback = struct {
-            fn extract(iso: *v8_ffi.Isolate, obj: *v8_ffi.Object, v8ctx: *v8_ffi.Context, name: []const u8) ?*const anyopaque {
-                const key = v8_ffi.v8_String_NewFromUtf8(iso, name.ptr, @intCast(name.len)) orelse return null;
-                const prop_value = v8_ffi.v8_Object_Get(obj, v8ctx, @ptrCast(key)) orelse return null;
+            // Extract callbacks from V8 object manually
+            //
+            // The generated dictionary uses Zig callback function pointer types, but what we
+            // receive from V8 are Global handle pointers (tagged with .global_handle).
+            // We bypass the generated dictionary and extract callbacks directly here,
+            // storing them in a parallel structure that uses *const anyopaque.
+            //
+            // The extraction uses v8_Object_Get to get each property, and if it's a function,
+            // conversions.fromV8Value creates a Global handle automatically (see whatwg-okii8).
 
-                // Check if it's null/undefined
-                if (v8_ffi.v8_Value_IsNullOrUndefined(prop_value)) {
+            // Helper to extract a callback property
+            const extractCallback = struct {
+                fn extract(iso: *v8_ffi.Isolate, obj: *v8_ffi.Object, v8ctx: *v8_ffi.Context, name: []const u8) ?*const anyopaque {
+                    const key = v8_ffi.v8_String_NewFromUtf8(iso, name.ptr, @intCast(name.len)) orelse return null;
+                    const prop_value = v8_ffi.v8_Object_Get(obj, v8ctx, @ptrCast(key)) orelse return null;
+
+                    // Check if it's null/undefined
+                    if (v8_ffi.v8_Value_IsNullOrUndefined(prop_value)) {
+                        return null;
+                    }
+
+                    // Check if it's a function
+                    if (!v8_ffi.v8_Value_IsFunction(prop_value)) {
+                        return null;
+                    }
+
+                    // Create Global handle for the function (for persistence beyond constructor)
+                    if (v8_ffi.v8_Value_ToGlobal(iso, prop_value)) |global| {
+                        // Tag as global_handle so consumers know how to handle it
+                        return pointer_tag.tagPointer(global, .global_handle);
+                    }
+
                     return null;
                 }
+            }.extract;
 
-                // Check if it's a function
-                if (!v8_ffi.v8_Value_IsFunction(prop_value)) {
-                    return null;
-                }
+            // Extract the callback properties from the underlying source object
+            extracted_start_callback = extractCallback(isolate, v8_obj, v8_context, "start");
+            extracted_pull_callback = extractCallback(isolate, v8_obj, v8_context, "pull");
+            extracted_cancel_callback = extractCallback(isolate, v8_obj, v8_context, "cancel");
 
-                // Create Global handle for the function (for persistence beyond constructor)
-                if (v8_ffi.v8_Value_ToGlobal(iso, prop_value)) |global| {
-                    // Tag as global_handle so consumers know how to handle it
-                    return pointer_tag.tagPointer(global, .global_handle);
-                }
-
-                return null;
-            }
-        }.extract;
-
-        // Extract the callback properties from the underlying source object
-        extracted_start_callback = extractCallback(isolate, v8_obj, v8_context, "start");
-        extracted_pull_callback = extractCallback(isolate, v8_obj, v8_context, "pull");
-        extracted_cancel_callback = extractCallback(isolate, v8_obj, v8_context, "cancel");
-
-        // Extract 'type' property for byte stream detection
-        const type_key = v8_ffi.v8_String_NewFromUtf8(isolate, "type", 4);
-        if (type_key) |tk| {
-            if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(tk))) |type_val| {
-                if (!v8_ffi.v8_Value_IsNullOrUndefined(type_val) and v8_ffi.v8_Value_IsString(type_val)) {
-                    // Get string value and check if it's "bytes"
-                    if (v8_ffi.v8_Value_ToString(type_val, v8_context)) |type_str| {
-                        var buf: [16]u8 = undefined;
-                        const len = v8_ffi.v8_String_Utf8Length(type_str);
-                        if (len > 0 and len <= 16) {
-                            _ = v8_ffi.v8_String_WriteUtf8(type_str, &buf, @intCast(len));
-                            if (std.mem.eql(u8, buf[0..@intCast(len)], "bytes")) {
-                                underlying_source_dict_storage.type = ._bytes_;
+            // Extract 'type' property for byte stream detection
+            const type_key = v8_ffi.v8_String_NewFromUtf8(isolate, "type", 4);
+            if (type_key) |tk| {
+                if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(tk))) |type_val| {
+                    if (!v8_ffi.v8_Value_IsNullOrUndefined(type_val) and v8_ffi.v8_Value_IsString(type_val)) {
+                        // Get string value and check if it's "bytes"
+                        if (v8_ffi.v8_Value_ToString(type_val, v8_context)) |type_str| {
+                            var buf: [16]u8 = undefined;
+                            const len = v8_ffi.v8_String_Utf8Length(type_str);
+                            if (len > 0 and len <= 16) {
+                                _ = v8_ffi.v8_String_WriteUtf8(type_str, &buf, @intCast(len));
+                                if (std.mem.eql(u8, buf[0..@intCast(len)], "bytes")) {
+                                    underlying_source_dict_storage.type = ._bytes_;
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        // If not a V8 object (e.g., Zig struct pointer from Blob.stream()),
+        // skip callback extraction - stream will be created without JS callbacks
     }
     const underlying_source_dict: *const dictionaries.UnderlyingSource = &underlying_source_dict_storage;
 
@@ -3098,4 +3107,238 @@ fn pipeFinalize(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
 
     // Clean up pipe state
     pipe_state.allocator.destroy(pipe_state);
+}
+
+// ============================================================================
+// Internal API for Zig-only streams (e.g., Blob.stream())
+// ============================================================================
+
+/// Configuration for creating a ReadableStream from Zig callbacks
+/// This bypasses the V8/JSValue path entirely for internal use.
+pub const ZigUnderlyingSource = struct {
+    /// Pull callback - called when the stream needs more data
+    /// Signature: fn(controller: *runtime.Instance, context: ?*anyopaque) anyerror!void
+    pull: ?*const fn (*runtime.Instance, ?*anyopaque) anyerror!void = null,
+
+    /// Cancel callback - called when the stream is cancelled
+    /// Signature: fn(reason: ?*const anyopaque, context: ?*anyopaque) anyerror!void
+    cancel: ?*const fn (?*const anyopaque, ?*anyopaque) anyerror!void = null,
+
+    /// User context passed to callbacks
+    context: ?*anyopaque = null,
+
+    /// Stream type - set to true for byte streams
+    is_byte_stream: bool = false,
+
+    /// Auto-allocate chunk size for byte streams
+    auto_allocate_chunk_size: ?u64 = null,
+};
+
+/// Create a ReadableStream from Zig callbacks (internal API)
+///
+/// This is an internal function for Zig code that needs to create a ReadableStream
+/// without going through the V8/JavaScript path. It accepts Zig function pointers
+/// directly, avoiding the JSValue conversion issues.
+///
+/// Example usage (Blob.stream()):
+/// ```zig
+/// const source = ReadableStreamImpl.ZigUnderlyingSource{
+///     .pull = &blobStreamPull,
+///     .cancel = &blobStreamCancel,
+///     .context = @ptrCast(source_state),
+///     .is_byte_stream = true,
+///     .auto_allocate_chunk_size = 64 * 1024,
+/// };
+/// const stream = try ReadableStreamImpl.createFromZigSource(allocator, ctx, source);
+/// ```
+pub fn createFromZigSource(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    source: ZigUnderlyingSource,
+) !*runtime.Instance {
+    // Get event loop from context (required for async operations)
+    const loop = try ctx.getEventLoop();
+
+    // Create the stream instance
+    const instance = try init(allocator, State, &ReadableStream.vtable, ctx);
+    errdefer deinit(instance);
+
+    const state = instance.getState(State);
+
+    // Create internal state
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    // InitializeReadableStream: Set initial state
+    internal.* = InternalState{
+        .controller = undefined, // Will be set by SetUp
+        .reader = .none,
+        .state = .readable,
+        .stored_error = .none,
+        .detached = false,
+        .disturbed = false,
+        .event_loop = loop,
+        .allocator = allocator,
+    };
+
+    state.own._internal = internal;
+
+    if (source.is_byte_stream) {
+        // Create byte stream controller
+        const high_water_mark: f64 = 0.0; // Byte streams default to 0
+
+        // Create pull algorithm from Zig callback using algorithm module helper
+        const pull_algo: ?*Algorithm = if (source.pull) |pull_fn|
+            try algorithm_mod.zigPullAlgorithm(allocator, pull_fn, source.context)
+        else
+            null;
+        errdefer if (pull_algo) |a| a.deinit();
+
+        // Create cancel algorithm from Zig callback using algorithm module helper
+        const cancel_algo: ?*Algorithm = if (source.cancel) |cancel_fn|
+            try algorithm_mod.zigCancelAlgorithm(allocator, cancel_fn, source.context)
+        else
+            null;
+        errdefer if (cancel_algo) |a| a.deinit();
+
+        // Set up byte stream controller
+        try setUpReadableByteStreamControllerInternal(
+            instance,
+            internal,
+            pull_algo,
+            cancel_algo,
+            high_water_mark,
+            source.auto_allocate_chunk_size,
+        );
+    } else {
+        // Create default stream controller
+        const high_water_mark: f64 = 1.0; // Default streams use 1
+
+        // Create pull algorithm from Zig callback using algorithm module helper
+        const pull_algo: ?*Algorithm = if (source.pull) |pull_fn|
+            try algorithm_mod.zigPullAlgorithm(allocator, pull_fn, source.context)
+        else
+            null;
+        errdefer if (pull_algo) |a| a.deinit();
+
+        // Create cancel algorithm from Zig callback using algorithm module helper
+        const cancel_algo: ?*Algorithm = if (source.cancel) |cancel_fn|
+            try algorithm_mod.zigCancelAlgorithm(allocator, cancel_fn, source.context)
+        else
+            null;
+        errdefer if (cancel_algo) |a| a.deinit();
+
+        // Set up default stream controller
+        try setUpReadableStreamDefaultControllerInternal(
+            instance,
+            internal,
+            pull_algo,
+            cancel_algo,
+            high_water_mark,
+        );
+    }
+
+    return instance;
+}
+
+/// Internal helper to set up a byte stream controller without V8 callbacks
+fn setUpReadableByteStreamControllerInternal(
+    stream: *runtime.Instance,
+    internal: *InternalState,
+    pull_algorithm: ?*Algorithm,
+    cancel_algorithm: ?*Algorithm,
+    high_water_mark: f64,
+    auto_allocate_chunk_size: ?u64,
+) !void {
+    const allocator = internal.allocator;
+    const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
+
+    // Create controller instance
+    const controller = try ReadableByteStreamControllerImpl.init(
+        allocator,
+        interfaces.ReadableByteStreamController.State,
+        &interfaces.ReadableByteStreamController.vtable,
+        stream.ctx,
+    );
+    errdefer ReadableByteStreamControllerImpl.deinit(controller);
+
+    // Create controller internal state
+    const controller_internal = try allocator.create(ReadableByteStreamControllerImpl.InternalState);
+    errdefer allocator.destroy(controller_internal);
+
+    controller_internal.* = ReadableByteStreamControllerImpl.InternalState{
+        .allocator = allocator,
+        .abort_controller = null,
+        .auto_allocate_chunk_size = auto_allocate_chunk_size,
+        .byob_request = null,
+        .cancel_algorithm = cancel_algorithm,
+        .close_requested = false,
+        .pull_again = false,
+        .pull_algorithm = pull_algorithm,
+        .pulling = false,
+        .pending_pull_intos = infra.List(*ReadableByteStreamControllerImpl.PullIntoDescriptor).init(allocator),
+        .byte_queue = infra.List(ReadableByteStreamControllerImpl.ByteStreamQueueEntry).init(allocator),
+        .queue_total_size = 0,
+        .started = true, // No async start for Zig sources
+        .start_algorithm = null,
+        .strategy_hwm = high_water_mark,
+        .stream = stream,
+        .isolate = null,
+        .v8_context = null,
+        .loop = internal.event_loop,
+        .controller_instance = controller,
+    };
+
+    const controller_state = controller.getState(interfaces.ReadableByteStreamController.State);
+    controller_state.own._internal = controller_internal;
+
+    // Link stream to controller
+    internal.controller = controller;
+}
+
+/// Internal helper to set up a default stream controller without V8 callbacks
+fn setUpReadableStreamDefaultControllerInternal(
+    stream: *runtime.Instance,
+    internal: *InternalState,
+    pull_algorithm: ?*Algorithm,
+    cancel_algorithm: ?*Algorithm,
+    high_water_mark: f64,
+) !void {
+    const allocator = internal.allocator;
+    const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
+
+    // Create controller instance
+    const controller = try ReadableStreamDefaultControllerImpl.init(
+        allocator,
+        interfaces.ReadableStreamDefaultController.State,
+        &interfaces.ReadableStreamDefaultController.vtable,
+        stream.ctx,
+    );
+    errdefer ReadableStreamDefaultControllerImpl.deinit(controller);
+
+    // Create controller internal state
+    const controller_internal = try allocator.create(ReadableStreamDefaultControllerImpl.InternalState);
+    errdefer allocator.destroy(controller_internal);
+
+    controller_internal.* = ReadableStreamDefaultControllerImpl.InternalState{
+        .stream = stream,
+        .start_algorithm = null, // No async start for Zig sources
+        .pull_algorithm = pull_algorithm,
+        .cancel_algorithm = cancel_algorithm,
+        .queue = QueueWithSizes.init(allocator),
+        .queue_total_size = 0.0,
+        .strategy_hwm = high_water_mark,
+        .strategy_size_algorithm = null,
+        .close_requested = false,
+        .started = true, // No async start for Zig sources
+        .pulling = false,
+        .pull_again = false,
+        .allocator = allocator,
+    };
+
+    const controller_state = controller.getState(interfaces.ReadableStreamDefaultController.State);
+    controller_state.own._internal = controller_internal;
+
+    // Link stream to controller
+    internal.controller = controller;
 }

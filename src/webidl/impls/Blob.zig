@@ -22,6 +22,9 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const webidl = @import("webidl");
 const webidl_errors = webidl.errors;
 
+// Import ReadableStream impl for internal API (Zig-only stream creation)
+const ReadableStreamImpl = @import("ReadableStream.zig");
+
 pub const State = Blob.State;
 
 pub const ImplError = error{
@@ -302,6 +305,10 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// 1. Create a new ReadableStream with byte reading support
 /// 2. Pull algorithm reads chunks from blob bytes
 /// 3. Returns stream that yields all blob bytes
+///
+/// Implementation note: Uses internal ReadableStream API (createFromZigSource)
+/// to bypass the V8/JavaScript constructor path, similar to how browsers like
+/// Firefox use ReadableStream::CreateByteNative() internally.
 pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -317,38 +324,25 @@ pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         .allocator = allocator,
     };
 
-    // Create UnderlyingSource dictionary with our pull callback
-    // Note: The type field being non-null indicates a byte stream
-    const underlying_source = dictionaries.UnderlyingSource{
-        .start = null,
-        .pull = @ptrCast(&blobStreamPull),
-        .cancel = @ptrCast(&blobStreamCancel),
-        .type = ._bytes_, // "bytes" for ReadableByteStreamController
-        .autoAllocateChunkSize = DEFAULT_CHUNK_SIZE,
+    // Create ReadableStream using internal Zig API (bypasses V8/JSValue path)
+    // This mirrors browser implementations like Firefox's CreateByteNative()
+    const zig_source = ReadableStreamImpl.ZigUnderlyingSource{
+        .pull = &blobStreamPullNative,
+        .cancel = &blobStreamCancelNative,
+        .context = @ptrCast(source_state),
+        .is_byte_stream = true,
+        .auto_allocate_chunk_size = DEFAULT_CHUNK_SIZE,
     };
 
-    // Store source state pointer for callback access
-    // We encode the source_state pointer in the start callback context
-    // This is a workaround since UnderlyingSource doesn't have a context field
-    blob_stream_context = source_state;
-
-    // Create the ReadableStream
-    // Convert the underlying source struct to a JSValue for the constructor
-    const source_jsvalue = runtime.JSValue.fromAnyopaque(@ptrCast(&underlying_source));
-    const opt_source = webidl.Opt(runtime.JSValue).passed(source_jsvalue);
-    const strategy = dictionaries.QueuingStrategy{};
-    const opt_strategy = webidl.Opt(dictionaries.QueuingStrategy).passed(strategy);
-    const stream = interfaces.ReadableStream.call_constructor(
+    const stream = ReadableStreamImpl.createFromZigSource(
         allocator,
         ctx,
-        opt_source,
-        opt_strategy,
+        zig_source,
     ) catch |err| {
         allocator.destroy(source_state);
         return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
-            error.NoEventLoop => error.InvalidState, // No event loop in context
-            else => error.InvalidState,
+            error.NoEventLoop => error.InvalidState,
         };
     };
 
@@ -388,7 +382,42 @@ const null_result: u8 = 0;
 /// Sentinel value to indicate successful read
 const success_result: u8 = 1;
 
-/// Pull callback for blob stream
+/// Native pull callback for blob stream (used with internal ReadableStream API)
+/// Called by ReadableStream when it needs more data.
+/// Signature matches ZigUnderlyingSource.pull
+fn blobStreamPullNative(controller: *runtime.Instance, context: ?*anyopaque) anyerror!void {
+    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return error.InvalidState));
+
+    // Check if we've read all bytes
+    if (source.position >= source.blob_data.bytes.len) {
+        // Close the stream - no more data
+        // TODO: Call controller.close() when ReadableByteStreamController is fully implemented
+        _ = controller;
+        return;
+    }
+
+    // Calculate chunk size
+    const remaining = source.blob_data.bytes.len - source.position;
+    const chunk_len = @min(remaining, DEFAULT_CHUNK_SIZE);
+
+    // Get the chunk data
+    const chunk_data = source.blob_data.bytes[source.position..][0..chunk_len];
+    _ = chunk_data; // TODO: Enqueue to controller when fully implemented
+
+    // Advance position
+    source.position += chunk_len;
+}
+
+/// Native cancel callback for blob stream (used with internal ReadableStream API)
+/// Signature matches ZigUnderlyingSource.cancel
+fn blobStreamCancelNative(reason: ?*const anyopaque, context: ?*anyopaque) anyerror!void {
+    _ = reason;
+    const source: *BlobStreamSource = @ptrCast(@alignCast(context orelse return));
+    // Reset position
+    source.position = 0;
+}
+
+/// Legacy pull callback for blob stream (kept for compatibility)
 /// Called by ReadableStream when it needs more data
 fn blobStreamPull(controller: *const anyopaque) *const anyopaque {
     _ = controller;
@@ -412,7 +441,7 @@ fn blobStreamPull(controller: *const anyopaque) *const anyopaque {
     return @ptrCast(&success_result);
 }
 
-/// Cancel callback for blob stream
+/// Legacy cancel callback for blob stream (kept for compatibility)
 fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
     _ = controller;
     // Reset position if source exists
