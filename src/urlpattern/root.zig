@@ -35,15 +35,13 @@ const std = @import("std");
 pub const tokenizer = @import("tokenizer.zig");
 pub const parser = @import("parser.zig");
 pub const pcre2_ffi = @import("pcre2_ffi.zig");
+pub const regex_generator = @import("regex_generator.zig");
 
 // Middle layer - canonicalization and construction (Agent 2)
 pub const canonicalize = @import("canonicalize.zig");
-
-// TODO: regex_generator (Agent 1)
-// pub const regex_generator = @import("regex_generator.zig");
+pub const constructor_string_parser = @import("constructor_string_parser.zig");
 
 // TODO: Middle layer - to be implemented
-// pub const constructor_string_parser = @import("constructor_string_parser.zig");
 // pub const constructor = @import("constructor.zig");
 // pub const matcher = @import("matcher.zig");
 
@@ -75,10 +73,22 @@ pub const canonicalizeHash = canonicalize.canonicalizeHash;
 // Re-export error types
 pub const CanonicalizationError = canonicalize.CanonicalizationError;
 
+// Re-export constructor string parser types
+pub const URLPatternInit = constructor_string_parser.URLPatternInit;
+pub const ConstructorStringParser = constructor_string_parser.ConstructorStringParser;
+pub const parseConstructorString = constructor_string_parser.parse;
+
 // Re-export PCRE2 types
 pub const Regex = pcre2_ffi.Regex;
 pub const Match = pcre2_ffi.Match;
 pub const CompileOptions = pcre2_ffi.CompileOptions;
+
+// Re-export regex generator types
+pub const RegexGenerationResult = regex_generator.RegexGenerationResult;
+pub const generateRegexAndNameList = regex_generator.generateRegexAndNameList;
+pub const escapeRegexpString = regex_generator.escapeRegexpString;
+pub const generateSegmentWildcardRegexp = regex_generator.generateSegmentWildcardRegexp;
+pub const full_wildcard_regexp = regex_generator.full_wildcard_regexp;
 
 test {
     // Run all module tests
