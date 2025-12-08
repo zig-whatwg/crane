@@ -803,11 +803,11 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
     const copy = try runtime.Instance.init(allocator, State, node.vtable, node.ctx);
     errdefer runtime.Instance.deinit(copy);
 
-    // Initialize internal state for copy
-    const copy_state = copy.getState(State);
+    // Initialize internal state for copy in the global registry
+    // (getInternal() uses the registry, not state._internal)
     const copy_internal = try ArenaAllocator.get().create(InternalState);
     copy_internal.* = InternalState.init(allocator);
-    copy_state.own._internal = copy_internal;
+    try setInternalInRegistry(copy, copy_internal);
 
     // Copy node properties
     copy_internal.node_type = node_internal.node_type;

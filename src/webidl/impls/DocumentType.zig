@@ -57,40 +57,68 @@ pub const InternalState = struct {
     }
 };
 
+/// Global registry for DocumentType internal state
+var doctype_registry: std.AutoHashMap(usize, *InternalState) = undefined;
+var doctype_registry_initialized: bool = false;
+
+fn ensureDoctypeRegistry() void {
+    if (!doctype_registry_initialized) {
+        doctype_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+        doctype_registry_initialized = true;
+    }
+}
+
+fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
+    ensureDoctypeRegistry();
+    try doctype_registry.put(@intFromPtr(instance), internal);
+}
+
+fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    ensureDoctypeRegistry();
+    return doctype_registry.get(@intFromPtr(instance));
+}
+
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser when creating DOCTYPE nodes.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return getInternalFromRegistry(instance);
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class: Node → EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
-    // Initialize DocumentType internal state
-    const state = instance.getState(StateType);
+    // Set node type to DOCUMENT_TYPE_NODE (10)
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_TYPE_NODE);
+
+    // Initialize DocumentType internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
+    try setInternalInRegistry(instance, internal);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
+    // Clean up from registry
+    if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
+        ensureDoctypeRegistry();
+        _ = doctype_registry.remove(@intFromPtr(instance));
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+
+    // Chain to parent deinit
+    NodeImpl.deinit(instance);
 }
 
 // =============================================================================
@@ -216,8 +244,7 @@ pub fn createDocumentType(
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Set node type to DOCUMENT_TYPE_NODE (10)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_TYPE_NODE);
+    // Node type is already set by init() to DOCUMENT_TYPE_NODE
 
     // Set doctype properties
     internal.name = try allocator.dupe(u8, name);
