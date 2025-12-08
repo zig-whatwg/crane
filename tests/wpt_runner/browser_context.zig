@@ -201,16 +201,19 @@ pub const BrowserContext = struct {
         // Register all namespaces using the generic function
         v8.interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
 
+        // CRITICAL: Set up window/self globals via JavaScript FIRST
+        // This MUST happen before registerBrowserGlobals() because that function
+        // executes scripts that reference `self` (e.g., `self.console = {...}`).
+        // We do this via JS because V8's global proxy has special semantics
+        // that make C++ property setting behave differently from JS assignment.
+        try self.setupGlobalAliases();
+
         // Register browser globals (Window, document, navigator, etc.)
+        // Now scripts in registerCommonGlobals() can safely use `self`
         try self.registerBrowserGlobals();
 
         // Register WPT result callbacks
         try self.registerWptCallbacks();
-
-        // Set up window/self globals via JavaScript
-        // We do this via JS because V8's global proxy has special semantics
-        // that make C++ property setting behave differently from JS assignment.
-        try self.setupGlobalAliases();
 
         // Set up timer interface in thread-local storage
         // This needs to be available for testharness.js which uses setTimeout
@@ -578,7 +581,7 @@ pub const BrowserContext = struct {
                 \\    // This is a no-op for now - we just want console.log to not throw
                 \\    // Real implementation would need native binding
                 \\  }
-                \\  self.console = {
+                \\  globalThis.console = {
                 \\    log: consoleLog,
                 \\    warn: consoleLog,
                 \\    error: consoleLog,
@@ -600,7 +603,9 @@ pub const BrowserContext = struct {
                 \\  };
                 \\})();
             ;
-            self.executeScript(console_script) catch {};
+            self.executeScript(console_script) catch |err| {
+                std.debug.print("Warning: Failed to register console: {}\n", .{err});
+            };
         }
 
         // Register btoa/atob for base64 encoding/decoding
@@ -609,7 +614,7 @@ pub const BrowserContext = struct {
             const btoa_atob_script =
                 \\(function() {
                 \\  // btoa: binary string to base64
-                \\  self.btoa = function(str) {
+                \\  globalThis.btoa = function(str) {
                 \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
                 \\    var result = '';
                 \\    var i = 0;
@@ -627,7 +632,7 @@ pub const BrowserContext = struct {
                 \\  };
                 \\  
                 \\  // atob: base64 to binary string
-                \\  self.atob = function(str) {
+                \\  globalThis.atob = function(str) {
                 \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
                 \\    str = str.replace(/=+$/, '');
                 \\    var result = '';
@@ -646,7 +651,9 @@ pub const BrowserContext = struct {
                 \\  };
                 \\})();
             ;
-            self.executeScript(btoa_atob_script) catch {};
+            self.executeScript(btoa_atob_script) catch |err| {
+                std.debug.print("Warning: Failed to register btoa/atob: {}\n", .{err});
+            };
         }
     }
 

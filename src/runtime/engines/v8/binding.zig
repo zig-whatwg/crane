@@ -581,6 +581,11 @@ fn v8ThrowRangeError(
 }
 
 /// Throw a DOMException
+/// Creates a proper DOMException instance with:
+/// - e instanceof DOMException === true
+/// - e.name === <name>
+/// - e.message === <message>
+/// - e.code === <legacy code> (for known error names)
 fn v8ThrowDOMException(
     engine_ctx: *anyopaque,
     name: [*:0]const u8,
@@ -588,8 +593,84 @@ fn v8ThrowDOMException(
 ) void {
     _ = engine_ctx;
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
+    const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const global = ffi.v8_Context_Global(context) orelse return;
 
-    // Create error message combining name and message
+    // Get the DOMException constructor from global
+    const dom_exception_key = ffi.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    const dom_exception_ctor = ffi.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
+        // DOMException not registered, fall back to generic Error
+        fallbackToError(isolate, name, message);
+        return;
+    };
+
+    if (!ffi.v8_Value_IsFunction(dom_exception_ctor)) {
+        // DOMException is not a function, fall back to generic Error
+        fallbackToError(isolate, name, message);
+        return;
+    }
+
+    // Create V8 strings for the arguments
+    const name_str = std.mem.span(name);
+    const msg_str = std.mem.span(message);
+
+    const v8_message = ffi.v8_String_NewFromUtf8(isolate, message, @intCast(msg_str.len)) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    const v8_name = ffi.v8_String_NewFromUtf8(isolate, name, @intCast(name_str.len)) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+
+    // Use Reflect.construct to call the constructor
+    // Reflect.construct(DOMException, [message, name])
+    const reflect_key = ffi.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    const reflect_obj = ffi.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    const construct_key = ffi.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    const construct_fn_value = ffi.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+    if (!ffi.v8_Value_IsFunction(construct_fn_value)) {
+        fallbackToError(isolate, name, message);
+        return;
+    }
+    const construct_fn: *ffi.Function = @ptrCast(construct_fn_value);
+
+    // Create argument array: [message, name]
+    const args_array = ffi.v8_Array_New(isolate, 2);
+    _ = ffi.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
+    _ = ffi.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
+
+    // Call Reflect.construct(DOMException, [message, name])
+    var args = [_]*ffi.Value{ dom_exception_ctor, @ptrCast(args_array) };
+    const exception = ffi.v8_Function_Call(construct_fn, context, reflect_obj, 2, &args) orelse {
+        fallbackToError(isolate, name, message);
+        return;
+    };
+
+    ffi.v8_Isolate_ThrowException(isolate, exception);
+}
+
+/// Fallback to throwing a generic Error when DOMException is not available
+fn fallbackToError(
+    isolate: *ffi.Isolate,
+    name: [*:0]const u8,
+    message: [*:0]const u8,
+) void {
     var buf: [512]u8 = undefined;
     const name_str = std.mem.span(name);
     const msg_str = std.mem.span(message);
@@ -601,7 +682,6 @@ fn v8ThrowDOMException(
         @intCast(full_msg.len),
     ) orelse return;
 
-    // Use generic Error for DOMException (could be enhanced to create proper DOMException)
     const exception = ffi.v8_Exception_Error(v8_msg) orelse return;
     ffi.v8_Isolate_ThrowException(isolate, exception);
 }
