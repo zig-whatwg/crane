@@ -135,7 +135,7 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
         // Queue for later execution after fetch completes
         // The tree builder's script_nesting_level is already incremented by caller
-        std.debug.print("External script encountered: {s}\n", .{src_attr.?});
+        // External scripts with src attribute require network fetch - not yet implemented
         return;
     }
 
