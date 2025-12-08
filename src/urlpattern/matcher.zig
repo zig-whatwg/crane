@@ -290,6 +290,7 @@ pub fn execInput(
         .init => "",
     };
     const owned_input = try allocator.alloc(u8, input_str.len);
+    errdefer allocator.free(owned_input);
     @memcpy(owned_input, input_str);
 
     const owned_inputs = try allocator.alloc([]u8, 1);
@@ -445,6 +446,7 @@ fn matchComponent(
             if (match.getNamedGroup(name)) |value| {
                 // Copy the value since match will be freed
                 const value_copy = try allocator.alloc(u8, value.len);
+                errdefer allocator.free(value_copy);
                 @memcpy(value_copy, value);
                 try result._owned_group_values.append(allocator, value_copy);
                 try result.groups.put(allocator, name, value_copy);
@@ -460,6 +462,7 @@ fn matchComponent(
         // Wildcard matches everything - capture the whole input as group "0"
         if (component.group_names.len > 0) {
             const value_copy = try allocator.alloc(u8, input.len);
+            errdefer allocator.free(value_copy);
             @memcpy(value_copy, input);
             try result._owned_group_values.append(allocator, value_copy);
             try result.groups.put(allocator, component.group_names[0], value_copy);
@@ -532,6 +535,7 @@ fn trySimplePatternMatch(
 
                 // Store the captured group
                 const value_copy = try allocator.alloc(u8, value.len);
+                errdefer allocator.free(value_copy);
                 @memcpy(value_copy, value);
                 try result._owned_group_values.append(allocator, value_copy);
                 try result.groups.put(allocator, name, value_copy);
@@ -562,6 +566,7 @@ fn trySimplePatternMatch(
 
             // Capture the entire input
             const value_copy = try allocator.alloc(u8, input.len);
+            errdefer allocator.free(value_copy);
             @memcpy(value_copy, input);
             try result._owned_group_values.append(allocator, value_copy);
             try result.groups.put(allocator, name, value_copy);
