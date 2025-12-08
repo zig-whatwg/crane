@@ -7,6 +7,7 @@
 //!
 //! These are the WHATWG/W3C spec categories we implement and test:
 //! - url/ - URL Standard
+//! - urlpattern/ - URLPattern Standard
 //! - encoding/ - Encoding Standard
 //! - console/ - Console Standard
 //! - mimesniff/ - MIME Sniffing Standard
@@ -77,6 +78,7 @@ pub const TestCategory = struct {
 /// These match the WHATWG/W3C specs implemented in this project
 pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "url", .description = "URL Standard" },
+    .{ .name = "urlpattern", .description = "URLPattern Standard" },
     .{ .name = "encoding", .description = "Encoding Standard" },
     .{ .name = "console", .description = "Console Standard" },
     .{ .name = "mimesniff", .description = "MIME Sniffing Standard" },
@@ -199,6 +201,7 @@ test "isInScope" {
     const testing = std.testing;
 
     try testing.expect(isInScope("url/url-constructor.any.js"));
+    try testing.expect(isInScope("urlpattern/urlpattern.any.js"));
     try testing.expect(isInScope("encoding/textdecoder.any.js"));
     try testing.expect(isInScope("dom/events/Event.html"));
     try testing.expect(isInScope("cookiestore/cookieStore_get_set_basic.https.any.js"));

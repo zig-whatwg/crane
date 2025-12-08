@@ -640,7 +640,8 @@ test "exec - basic result" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    if (try exec(allocator, &pattern, "https://example.com/path", null)) |*result| {
+    if (try exec(allocator, &pattern, "https://example.com/path", null)) |r| {
+        var result = r;
         defer result.deinit();
 
         // Check that input is captured
@@ -668,7 +669,8 @@ test "exec - with named parameter" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    if (try exec(allocator, &pattern, "https://example.com/123", null)) |*result| {
+    if (try exec(allocator, &pattern, "https://example.com/123", null)) |r| {
+        var result = r;
         defer result.deinit();
 
         // Should capture the id parameter
@@ -709,7 +711,8 @@ test "exec - with base URL" {
     defer pattern.deinit(allocator);
 
     // Relative URL with base
-    if (try exec(allocator, &pattern, "/api/users", "https://example.com")) |*result| {
+    if (try exec(allocator, &pattern, "/api/users", "https://example.com")) |r| {
+        var result = r;
         defer result.deinit();
         try std.testing.expectEqualStrings("/api/users", result.pathname.input);
     } else {

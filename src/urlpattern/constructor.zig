@@ -87,6 +87,12 @@ pub const Component = struct {
             }
             self._allocator.free(names);
         }
+        // Free the group_names pointer slice (allocated in compileComponent)
+        if (self.group_names.len > 0) {
+            // Cast from [][]const u8 to [][]u8 since we allocated it ourselves
+            const ptr: [*][]const u8 = @constCast(self.group_names.ptr);
+            self._allocator.free(ptr[0..self.group_names.len]);
+        }
     }
 };
 

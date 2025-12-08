@@ -374,6 +374,7 @@ pub fn build(b: *std.Build) void {
             "dom",
             "encoding",
             "url",
+            "urlpattern",
             "console",
             "streams",
             "mimesniff",
@@ -400,7 +401,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html\n", .{});
             std.process.exit(1);
         }
     }
@@ -1509,6 +1510,7 @@ pub fn build(b: *std.Build) void {
     const test_selector = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "selector"));
     const test_encoding = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "encoding"));
     const test_url = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "url"));
+    const test_urlpattern = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "urlpattern"));
     const test_console = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "console"));
     const test_streams = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "streams"));
     const test_mimesniff = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "mimesniff"));
@@ -1606,6 +1608,21 @@ pub fn build(b: *std.Build) void {
         };
         addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
+        };
+    }
+
+    if (test_urlpattern) {
+        const urlpattern_tests = b.addTest(.{ .root_module = urlpattern_mod });
+        const run_urlpattern_tests = b.addRunArtifact(urlpattern_tests);
+        test_step.dependOn(&run_urlpattern_tests.step);
+
+        // Add dedicated test files from tests/urlpattern/
+        const urlpattern_imports = [_]std.Build.Module.Import{
+            .{ .name = "urlpattern", .module = urlpattern_mod },
+            .{ .name = "url", .module = url_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/urlpattern", target, &urlpattern_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add urlpattern test files: {}\n", .{err});
         };
     }
 
