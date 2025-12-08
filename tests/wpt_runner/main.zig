@@ -648,101 +648,25 @@ fn executeTestFile(
     var parsed = try test_parser.parseTestFile(allocator, test_file.path, content);
     defer parsed.deinit();
 
+    // For HTML files, use the HTML parser to build a real DOM
+    // This enables document.querySelector() to find parsed elements
+    if (test_file.file_type == .html) {
+        // Use runHTMLTest which:
+        // 1. Parses HTML and builds DOM
+        // 2. Executes scripts during parsing (in document order)
+        // 3. Fires DOMContentLoaded
+        // 4. Waits for test completion
+        const result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout);
+        return result;
+    }
+
+    // For JS files, we need to load META scripts first, then the test content
     // Build test content to execute
-    // For HTML files, we need to concatenate inline scripts
-    // For JS files, we execute the content directly
     var test_content: []const u8 = undefined;
     var test_content_owned: ?[]u8 = null;
     defer if (test_content_owned) |owned| allocator.free(owned);
 
-    if (test_file.file_type == .html) {
-        // For HTML files, we need to load external scripts first, then inline scripts
-        // Scripts are processed in document order (external and inline interleaved)
-        var all_scripts: std.ArrayListUnmanaged([]const u8) = .{};
-        defer all_scripts.deinit(allocator);
-        var scripts_to_free: std.ArrayListUnmanaged([]const u8) = .{};
-        defer {
-            for (scripts_to_free.items) |s| allocator.free(s);
-            scripts_to_free.deinit(allocator);
-        }
-
-        for (parsed.metadata.scripts.items) |script| {
-            if (script.inline_script) {
-                // Inline script - content is already in script.path
-                try all_scripts.append(allocator, script.path);
-            } else {
-                // External script - load from file
-                // Skip testharness.js and testharnessreport.js (already loaded by browser context)
-                if (std.mem.endsWith(u8, script.path, "testharness.js") or
-                    std.mem.endsWith(u8, script.path, "testharnessreport.js"))
-                {
-                    continue;
-                }
-
-                // Resolve the script path FIRST so we can use the absolute path as cache key
-                var script_path: []u8 = undefined;
-                if (std.mem.startsWith(u8, script.path, "/")) {
-                    // Absolute path from WPT root (e.g., "/common/subset-tests.js")
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, script.path[1..] });
-                } else {
-                    // Relative path from test file
-                    const test_dir = if (std.mem.lastIndexOf(u8, test_file.path, "/")) |pos|
-                        test_file.path[0..pos]
-                    else
-                        "";
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_dir, script.path });
-                }
-                defer allocator.free(script_path);
-
-                // Skip scripts that have already been loaded in this context
-                // This prevents "const already declared" errors when running
-                // multiple tests that share the same helper scripts
-                // Use the resolved absolute path as the cache key to correctly handle
-                // relative paths from different directories
-                if (browser.isScriptLoaded(script_path)) {
-                    continue;
-                }
-
-                // Read the script file
-                const script_content = std.fs.cwd().readFileAlloc(allocator, script_path, 10 * 1024 * 1024) catch |err| {
-                    // Skip missing scripts with a warning
-                    std.debug.print("Warning: Could not load script {s}: {}\n", .{ script.path, err });
-                    continue;
-                };
-                try all_scripts.append(allocator, script_content);
-                try scripts_to_free.append(allocator, script_content);
-
-                // Mark script as loaded so we don't reload it for subsequent tests
-                try browser.markScriptLoaded(script_path);
-            }
-        }
-
-        if (all_scripts.items.len == 0) {
-            // No scripts - nothing to test
-            return test_harness.TestResult.init(allocator, test_file.path);
-        }
-
-        // Calculate total length
-        var total_len: usize = 0;
-        for (all_scripts.items) |s| {
-            total_len += s.len + 2; // +2 for ";\n" separator
-        }
-
-        // Concatenate all scripts
-        const combined = try allocator.alloc(u8, total_len);
-        test_content_owned = combined;
-
-        var offset: usize = 0;
-        for (all_scripts.items) |s| {
-            @memcpy(combined[offset .. offset + s.len], s);
-            offset += s.len;
-            combined[offset] = ';';
-            combined[offset + 1] = '\n';
-            offset += 2;
-        }
-
-        test_content = combined;
-    } else {
+    {
         // For JS files, we need to load META scripts first, then the test content
         // META scripts are specified like: // META: script=/common/subset-tests-by-key.js
         var all_scripts: std.ArrayListUnmanaged([]const u8) = .{};
@@ -766,14 +690,6 @@ fn executeTestFile(
                 }
                 defer allocator.free(script_path);
 
-                // Skip scripts that have already been loaded in this context
-                // This prevents "const already declared" errors when running
-                // multiple tests that share the same helper scripts
-                // Use the resolved absolute path as the cache key
-                if (browser.isScriptLoaded(script_path)) {
-                    continue;
-                }
-
                 // Read the script file
                 const script_content = std.fs.cwd().readFileAlloc(allocator, script_path, 10 * 1024 * 1024) catch |err| {
                     // Skip missing scripts with a warning
@@ -781,9 +697,6 @@ fn executeTestFile(
                     continue;
                 };
                 try all_scripts.append(allocator, script_content);
-
-                // Mark script as loaded so we don't reload it for subsequent tests
-                try browser.markScriptLoaded(script_path);
             }
         }
 
@@ -815,7 +728,7 @@ fn executeTestFile(
     }
 
     // Execute the test using the BrowserAdapter
-    // The browser maintains a single V8 isolate and creates a new context per navigation
+    // Each test gets a fresh V8 context for complete isolation (matching real browser behavior)
     const result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout);
     return result;
 }

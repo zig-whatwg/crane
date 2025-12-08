@@ -1,33 +1,28 @@
 //! Browser Adapter for WPT Runner
 //!
-//! This module provides an efficient browser adapter for WPT test execution
-//! using context REUSE (not recreation) between tests.
+//! This module provides browser-like test execution for WPT tests.
+//! Following the official WPT runner behavior, each test runs in a FRESH
+//! browsing context (new V8 context) for complete isolation.
 //!
-//! ## Performance Optimization
+//! ## Browser-Aligned Behavior
 //!
-//! Creating a new V8 context per test is expensive (~11s per test) due to:
-//! - ~30,000 V8 FFI calls to register all WebIDL interfaces
-//! - Parsing 200KB testharness.js
-//! - DOM/navigator/location singleton creation
+//! Real browsers and the official wptrunner create a new window/tab for each test:
+//! - Complete JavaScript isolation between tests
+//! - No shared global state
+//! - Fresh testharness.js for each test
 //!
-//! Instead, we:
-//! 1. Create V8 context ONCE with all interfaces registered
-//! 2. Load testharness.js ONCE
-//! 3. Between tests, reset JavaScript state via script (much cheaper)
-//! 4. Run test in the existing context
-//!
-//! Expected speedup: 20-100x (from ~11s to ~100-500ms per test)
+//! This matches the default behavior of `wpt run` (without --reuse-window flag).
 //!
 //! ## Usage
 //!
 //! ```zig
 //! const adapter = @import("browser_adapter.zig");
 //!
-//! // Create once at runner startup
+//! // Create adapter at runner startup
 //! var browser = try adapter.BrowserAdapter.init(allocator, wpt_root);
 //! defer browser.deinit();
 //!
-//! // For each test (reuses context, resets JS state)
+//! // For each test (creates fresh context)
 //! const result = try browser.runTest(test_path, test_content, timeout);
 //! ```
 
@@ -39,44 +34,24 @@ const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
 
-/// Adapter that provides efficient WPT test execution with context reuse
+/// Adapter that provides browser-aligned WPT test execution
+/// with fresh context per test (matching real browser behavior)
 pub const BrowserAdapter = struct {
     allocator: std.mem.Allocator,
-    /// Single browser context (maintained across all tests)
-    context: *BrowserContext,
     /// WPT root directory
     wpt_root: []const u8,
-    /// Whether the context has been initialized with testharness.js
-    context_initialized: bool,
     /// Number of tests run (for stats)
     tests_run: usize,
-    /// Cache of already-loaded script paths (to avoid re-loading and const redeclaration errors)
-    /// Key is the script path (e.g., "/common/subset-tests.js" or "resources/encodings.js")
-    loaded_scripts: std.StringHashMapUnmanaged(void),
 
     /// Initialize the browser adapter
-    ///
-    /// Creates a single BrowserContext that will be reused for all tests.
-    /// The V8 isolate and context are created once, with JS state reset between tests.
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*BrowserAdapter {
         const adapter = try allocator.create(BrowserAdapter);
         errdefer allocator.destroy(adapter);
 
-        // Create browser context (window type for WPT tests)
-        // Note: createWindowContext returns a BrowserContext value, we need to allocate it
-        const ctx = try allocator.create(BrowserContext);
-        errdefer allocator.destroy(ctx);
-        ctx.* = try BrowserContext.init(allocator, .window, wpt_root);
-        errdefer ctx.deinit();
-        try ctx.initialize();
-
         adapter.* = BrowserAdapter{
             .allocator = allocator,
-            .context = ctx,
             .wpt_root = try allocator.dupe(u8, wpt_root),
-            .context_initialized = false,
             .tests_run = 0,
-            .loaded_scripts = .{},
         };
 
         return adapter;
@@ -84,71 +59,126 @@ pub const BrowserAdapter = struct {
 
     /// Cleanup the adapter
     pub fn deinit(self: *BrowserAdapter) void {
-        // Free loaded script path keys
-        var it = self.loaded_scripts.keyIterator();
-        while (it.next()) |key| {
-            self.allocator.free(key.*);
-        }
-        self.loaded_scripts.deinit(self.allocator);
-
-        self.context.deinit();
-        self.allocator.destroy(self.context);
         self.allocator.free(self.wpt_root);
         self.allocator.destroy(self);
     }
 
     /// Check if a script has already been loaded in this context
+    /// With fresh contexts per test, scripts are never "already loaded"
     pub fn isScriptLoaded(self: *BrowserAdapter, script_path: []const u8) bool {
-        return self.loaded_scripts.contains(script_path);
+        _ = self;
+        _ = script_path;
+        // Fresh context per test - nothing is pre-loaded
+        return false;
     }
 
-    /// Mark a script as loaded
+    /// Mark a script as loaded (no-op with fresh contexts)
     pub fn markScriptLoaded(self: *BrowserAdapter, script_path: []const u8) !void {
-        if (!self.loaded_scripts.contains(script_path)) {
-            const key = try self.allocator.dupe(u8, script_path);
-            try self.loaded_scripts.put(self.allocator, key, {});
-        }
+        _ = self;
+        _ = script_path;
+        // No-op: each test gets a fresh context
     }
 
-    /// Run a single WPT test
+    /// Run a single WPT test (JavaScript content)
     ///
-    /// REUSES the existing V8 context with JavaScript state reset.
-    /// This is much faster than creating a new context per test.
+    /// Creates a FRESH V8 context for each test, matching real browser behavior.
+    /// This provides complete JavaScript isolation between tests.
     ///
     /// Flow:
-    /// 1. First test: Load testharness.js (once)
-    /// 2. Subsequent tests: Reset JS/Zig state, reload testharness.js
+    /// 1. Create new BrowserContext (new V8 isolate + context)
+    /// 2. Load testharness.js
     /// 3. Execute test script
     /// 4. Wait for completion
+    /// 5. Cleanup context
     pub fn runTest(
         self: *BrowserAdapter,
         test_path: []const u8,
         test_content: []const u8,
         timeout: config.Timeout,
     ) !test_harness.TestResult {
-        // First test: load testharness.js
-        if (!self.context_initialized) {
-            try self.initializeTestHarness();
-        } else {
-            // Subsequent tests: reset state and reload testharness.js
-            // This is CRITICAL for cross-test isolation:
-            // 1. Clear pending timers (V8 function pointers become invalid after reload)
-            // 2. Reset internal state registry (Zig-side instance references)
-            // 3. Reload testharness.js (creates fresh test state)
-            try self.context.resetJavaScriptState();
-            try self.context.loadTestHarness();
-        }
+        // Create fresh browser context for this test
+        var ctx = try BrowserContext.init(self.allocator, .window, self.wpt_root);
+        defer ctx.deinit();
+
+        // Initialize V8 isolate and context
+        try ctx.initialize();
+
+        // Load testharness.js
+        try ctx.loadTestHarness();
 
         // Execute the test
-        const result = try self.context.executeTest(test_path, test_content, timeout);
+        const result = try ctx.executeTest(test_path, test_content, timeout);
 
         self.tests_run += 1;
         return result;
     }
 
-    /// Initialize testharness.js on first test
-    fn initializeTestHarness(self: *BrowserAdapter) !void {
-        try self.context.loadTestHarness();
-        self.context_initialized = true;
+    /// Run an HTML WPT test
+    ///
+    /// For .html tests, this method:
+    /// 1. Creates a fresh V8 context
+    /// 2. Loads testharness.js
+    /// 3. Parses the HTML content and builds a real DOM tree
+    /// 4. Scripts execute during parsing (in document order)
+    /// 5. Fires DOMContentLoaded after parsing
+    /// 6. Waits for test completion
+    ///
+    /// This enables tests that use document.querySelector() to find
+    /// elements that were parsed from the HTML.
+    pub fn runHTMLTest(
+        self: *BrowserAdapter,
+        test_path: []const u8,
+        html_content: []const u8,
+        timeout: config.Timeout,
+    ) !test_harness.TestResult {
+        // Create fresh browser context for this test
+        var ctx = try BrowserContext.init(self.allocator, .window, self.wpt_root);
+        defer ctx.deinit();
+
+        // Initialize V8 isolate and context
+        try ctx.initialize();
+
+        // Load testharness.js BEFORE parsing HTML
+        // This ensures test infrastructure is available when scripts run during parsing
+        try ctx.loadTestHarness();
+
+        // Start tracking results for this test file
+        try ctx.result_collector.startTest(test_path);
+
+        // Set result collector for V8 callbacks
+        browser_context.setResultCollector(&ctx.result_collector);
+        defer browser_context.clearResultCollector();
+
+        // Set WPT root and test path for URL resolution
+        browser_context.setWptRoot(self.wpt_root);
+        browser_context.setCurrentTestPath(test_path);
+
+        // Parse HTML and build DOM - scripts execute during parsing
+        ctx.loadHTMLDocument(html_content, test_path) catch |err| {
+            std.debug.print("HTML parse error for {s}: {}\n", .{ test_path, err });
+            // Return a failed result
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = "HTML parsing failed";
+            return result;
+        };
+
+        // Fire DOMContentLoaded event
+        ctx.fireDOMContentLoaded() catch |err| {
+            std.debug.print("DOMContentLoaded error for {s}: {}\n", .{ test_path, err });
+        };
+
+        // Trigger testharness.js completion
+        try ctx.triggerTestHarnessCompletion();
+
+        // Run event loop until completion or timeout
+        const timeout_ms = timeout.toMillis();
+        try ctx.runEventLoop(timeout_ms);
+
+        // Collect and return results
+        const result = ctx.result_collector.finalize(self.allocator, test_path);
+
+        self.tests_run += 1;
+        return result;
     }
 };

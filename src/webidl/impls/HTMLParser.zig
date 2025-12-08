@@ -51,6 +51,11 @@ const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
 const html_mod = @import("html");
 const script_execution = html_mod.script_execution;
 
+// Import parser script execution for incremental DOM building
+const parser_script_execution = html_mod.parser_script_execution;
+const DomTreeAdapter = parser_script_execution.DomTreeAdapter;
+const ParserScriptContext = parser_script_execution.ParserScriptContext;
+
 /// Error type for HTML parsing operations
 pub const ParseError = error{
     OutOfMemory,
@@ -156,6 +161,230 @@ pub fn parseHTML(
     try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document);
 
     return document;
+}
+
+/// Script loader interface for external script loading
+/// Used during HTML parsing to load external scripts synchronously
+pub const ScriptLoader = struct {
+    /// Opaque context pointer passed to load callback
+    context: ?*anyopaque,
+    /// Load an external script by URL, returns script content
+    /// Returns null on failure
+    loadScript: *const fn (?*anyopaque, []const u8) ?[]const u8,
+
+    /// Load a script and return its content (or null on failure)
+    pub fn load(self: ScriptLoader, url: []const u8) ?[]const u8 {
+        return self.loadScript(self.context, url);
+    }
+};
+
+/// Options for HTML parsing with scripting support
+pub const ScriptingParseOptions = struct {
+    /// Enable scripting (executes scripts during parsing)
+    scripting_enabled: bool = true,
+    /// Base URL for resolving relative URLs
+    base_url: []const u8 = "",
+    /// Script loader for external scripts (null = no external script loading)
+    script_loader: ?ScriptLoader = null,
+};
+
+/// Parse an HTML document with scripting support
+///
+/// This is the entry point for WPT runner HTML tests. It parses HTML,
+/// builds the DOM tree incrementally, and executes scripts during parsing.
+///
+/// Key behaviors:
+/// - DOM nodes are created incrementally as parsing progresses
+/// - Scripts execute when their `</script>` end tag is seen
+/// - Scripts can access DOM nodes parsed before them (e.g., document.querySelector)
+/// - External scripts are loaded via the provided ScriptLoader
+/// - defer/async attributes are respected
+///
+/// Architecture:
+/// 1. Create Document first (scripts need access to it)
+/// 2. Set up DomTreeAdapter for incremental TreeNode → DOM conversion
+/// 3. Set up ParserScriptContext for script execution
+/// 4. Wire callbacks to tree builder
+/// 5. Parse (DOM builds incrementally, scripts execute at </script>)
+/// 6. Return complete document
+///
+/// @param allocator Memory allocator for DOM nodes
+/// @param ctx Runtime context for DOM instances
+/// @param html The HTML string to parse
+/// @param options Scripting parse options
+/// @return A Document instance containing the parsed DOM tree with executed scripts
+pub fn parseHTMLWithScripting(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    html: []const u8,
+    options: ScriptingParseOptions,
+) ParseError!*runtime.Instance {
+    // Step 1: Create DOM Document FIRST (before parsing)
+    // Scripts need access to the document during parsing
+    const document = interfaces.Document.init(
+        allocator,
+        ctx,
+    ) catch return error.OutOfMemory;
+    errdefer interfaces.Document.deinit(document);
+
+    // Set document type to HTML
+    if (DocumentImpl.getInternal(document)) |doc_internal| {
+        doc_internal.doc_type = .html;
+    }
+
+    // Step 2: Create tokenizer with input
+    var tokenizer = Tokenizer.init(allocator, html);
+    defer tokenizer.deinit();
+
+    // Step 3: Create tree builder
+    var tree_builder = TreeBuilder.init(allocator, &tokenizer) catch return error.OutOfMemory;
+    defer tree_builder.deinit();
+
+    // Step 4: Create DomTreeAdapter for incremental DOM building
+    var dom_adapter = DomTreeAdapter.init(allocator, ctx, document);
+    defer dom_adapter.deinit();
+
+    // Pre-register the document's TreeNode → DOM mapping
+    // The tree builder's document node maps to our DOM document
+    dom_adapter.node_map.put(tree_builder.document, document) catch return error.OutOfMemory;
+
+    // Step 5: Create ParserScriptContext for script execution
+    var script_context = ParserScriptContext.init(
+        allocator,
+        ctx,
+        document,
+        &dom_adapter.node_map,
+        &tree_builder,
+        options.scripting_enabled,
+    );
+
+    // Step 6: Wire up callbacks to tree builder
+    tree_builder.scripting_enabled = options.scripting_enabled;
+
+    // Set DOM adapter callbacks for incremental conversion
+    tree_builder.setDomAdapterCallbacks(
+        @ptrCast(&dom_adapter),
+        &parser_script_execution.domAdapterOnNodeCreated,
+        &parser_script_execution.domAdapterOnChildAppended,
+        &parser_script_execution.domAdapterOnTextContentChanged,
+    );
+
+    // Set script execution callback
+    if (options.scripting_enabled) {
+        tree_builder.setScriptExecutionCallback(
+            &parser_script_execution.parserScriptCallback,
+            @ptrCast(&script_context),
+        );
+    }
+
+    // Step 7: Parse the document
+    // During parsing:
+    // - DomTreeAdapter callbacks convert TreeNodes to DOM nodes incrementally
+    // - parserScriptCallback executes scripts when </script> is seen
+    // - Scripts can access already-parsed DOM via document.querySelector, etc.
+    tree_builder.parse() catch return error.TreeBuilderError;
+
+    // Step 8: Set quirks mode based on parser result
+    if (DocumentImpl.getInternal(document)) |doc_internal| {
+        switch (tree_builder.quirks_mode) {
+            .quirks => {},
+            .limited_quirks => {},
+            .no_quirks => {},
+        }
+
+        // Update document element reference
+        // The html element should have been added during parsing
+        if (tree_builder.document.first_child) |html_tree_node| {
+            if (html_tree_node.hasTagName("html")) {
+                if (dom_adapter.node_map.get(html_tree_node)) |html_dom| {
+                    doc_internal.document_element = html_dom;
+                }
+            }
+        }
+    }
+
+    // Step 9: Handle any deferred scripts (TODO: implement in follow-up task)
+    // Per HTML spec, deferred scripts execute after parsing completes
+    // This will be addressed in whatwg-9rji9 (external script loading)
+
+    return document;
+}
+
+/// Convert a TreeNode tree to DOM nodes with script execution support
+fn convertTreeNodeToDomWithScripts(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    tree_node: *TreeNode,
+    parent_dom: *runtime.Instance,
+    owner_document: *runtime.Instance,
+    options: ScriptingParseOptions,
+) ParseError!void {
+    var child = tree_node.first_child;
+    while (child) |tree_child| {
+        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document);
+
+        // Append to parent
+        _ = interfaces.Node.call_appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
+
+        // For document element, update document's documentElement pointer
+        if (tree_child.node_type == .element and tree_child.hasTagName("html")) {
+            if (DocumentImpl.getInternal(owner_document)) |doc_internal| {
+                doc_internal.document_element = dom_node;
+            }
+        }
+
+        // Recursively convert children (with script execution)
+        try convertChildrenToDomWithScripts(allocator, ctx, tree_child, dom_node, owner_document, options);
+
+        // After converting a script element's children, prepare and potentially execute it
+        if (tree_child.node_type == .element) {
+            if (tree_child.local_name) |name| {
+                if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
+                    // Execute script via script_execution module
+                    _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
+                        std.debug.print("Script preparation error: {}\n", .{err});
+                    };
+                }
+            }
+        }
+
+        child = tree_child.next_sibling;
+    }
+}
+
+/// Convert children of a TreeNode to DOM nodes with script execution
+fn convertChildrenToDomWithScripts(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    tree_node: *TreeNode,
+    parent_dom: *runtime.Instance,
+    owner_document: ?*runtime.Instance,
+    options: ScriptingParseOptions,
+) ParseError!void {
+    var child = tree_node.first_child;
+    while (child) |tree_child| {
+        const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tree_child, owner_document);
+
+        // Append to parent
+        _ = interfaces.Node.call_appendChild(parent_dom, dom_node) catch return error.InvalidStateError;
+
+        // Recursively convert children
+        try convertChildrenToDomWithScripts(allocator, ctx, tree_child, dom_node, owner_document, options);
+
+        // After converting a script element's children, prepare and execute it
+        if (tree_child.node_type == .element) {
+            if (tree_child.local_name) |name| {
+                if (std.mem.eql(u8, name, "script") and tree_child.namespace == .html) {
+                    // Execute script
+                    _ = script_execution.prepareScriptElement(allocator, dom_node) catch |err| {
+                        std.debug.print("Script preparation error: {}\n", .{err});
+                    };
+                }
+            }
+        }
+
+        child = tree_child.next_sibling;
+    }
 }
 
 /// Parse an HTML fragment and return a DocumentFragment

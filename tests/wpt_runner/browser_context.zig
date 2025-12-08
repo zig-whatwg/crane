@@ -37,6 +37,8 @@ const runtime = @import("runtime");
 const context_manager = v8.context_manager;
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
+const impls = @import("impls");
+const webidl = @import("webidl");
 
 // DOM and HTML modules for thread-local state cleanup on isolate disposal
 const dom = @import("dom");
@@ -710,84 +712,6 @@ pub const BrowserContext = struct {
         setResultCollector(&self.result_collector);
     }
 
-    /// Reset the result collector for the next test
-    pub fn resetForNextTest(self: *BrowserContext) void {
-        // Reset completion flag but keep collected results
-        self.result_collector.completion_signaled = false;
-        self.result_collector.completed = false;
-    }
-
-    /// Reset JavaScript state for context reuse between tests
-    ///
-    /// This resets testharness.js internal state and clears test artifacts.
-    /// Much faster than recreating the entire V8 context (~100ms vs ~11s).
-    pub fn resetJavaScriptState(self: *BrowserContext) !void {
-        const isolate = self.isolate orelse return error.NotInitialized;
-
-        // CRITICAL: Clear all pending timer contexts FIRST before JS reset
-        // This prevents dangling pointers to V8 functions that will be GC'd
-        clearPendingTimers();
-
-        // NOTE: We intentionally do NOT call runtime.resetInternalStateRegistry() here.
-        // The internal state registry contains state for global singletons (document,
-        // navigator, location, etc.) that must persist across tests. Clearing it would
-        // cause DOMExceptions when testharness.js tries to access these globals.
-        // Individual test-created instances will be cleaned up by V8 garbage collection.
-
-        // Comprehensive JavaScript state reset
-        const reset_script =
-            \\(function() {
-            \\  'use strict';
-            \\  
-            \\  // === Reset testharness.js internal state ===
-            \\  if (typeof tests !== 'undefined' && tests) {
-            \\    tests.tests = [];
-            \\    tests.num_pending = 0;
-            \\    tests.all_loaded = false;
-            \\    tests.all_done = false;
-            \\    tests.start_callbacks = [];
-            \\    tests.test_done_callbacks = [];
-            \\    tests.all_done_callbacks = [];
-            \\    tests.status = { status: null, message: null, stack: null };
-            \\    tests.timeout_length = null;
-            \\    tests.timeout_id = null;
-            \\    tests.file_is_test = false;
-            \\    tests.properties = {};
-            \\  }
-            \\  
-            \\  // Reset test_environment
-            \\  if (typeof test_environment !== 'undefined' && test_environment) {
-            \\    test_environment.all_loaded = false;
-            \\  }
-            \\  
-            \\  // Clear document.body - wrapped in try-catch because the Document
-            \\  // object may be in a bad state after running tests
-            \\  try {
-            \\    if (typeof document !== 'undefined' && document && document.body) {
-            \\      document.body.innerHTML = '';
-            \\    }
-            \\  } catch (e) {
-            \\    // Ignore DOMException - document may be in invalid state
-            \\  }
-            \\  
-            \\  return true;
-            \\})();
-        ;
-
-        try self.executeScript(reset_script);
-
-        // Re-register testharnessreport.js callbacks (they were cleared by the reset above)
-        // This is critical: add_result_callback and add_completion_callback must be
-        // re-registered after clearing tests.test_done_callbacks and tests.all_done_callbacks
-        try self.executeScript(test_harness.testharnessreport_js);
-
-        // Run microtasks to clear any pending work
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-        // Reset result collector
-        self.resetForNextTest();
-    }
-
     /// Load and execute a script file
     pub fn loadScript(self: *BrowserContext, script_path: []const u8) !void {
         _ = self.isolate orelse return error.NotInitialized;
@@ -918,7 +842,7 @@ pub const BrowserContext = struct {
     /// but our mock environment doesn't have proper event dispatch.
     /// The `done()` function is exposed globally by testharness.js and can
     /// be called to signal that all tests have been defined.
-    fn triggerTestHarnessCompletion(self: *BrowserContext) !void {
+    pub fn triggerTestHarnessCompletion(self: *BrowserContext) !void {
         const completion_script =
             \\(function() {
             \\  // CRITICAL: testharness.js WindowTestEnvironment sets all_loaded = true
@@ -1019,7 +943,128 @@ pub const BrowserContext = struct {
         // Return the collected results
         return self.result_collector.finalize(self.allocator, test_path);
     }
+
+    /// Load and parse an HTML document, replacing the current document
+    ///
+    /// This is the main entry point for HTML tests in the WPT runner.
+    /// It uses the HTMLParser to parse HTML content, build the DOM tree,
+    /// and execute scripts during parsing.
+    ///
+    /// @param html_content The HTML content to parse
+    /// @param base_url The base URL for resolving relative URLs
+    /// @return void on success, error on failure
+    pub fn loadHTMLDocument(self: *BrowserContext, html_content: []const u8, base_url: []const u8) !void {
+        const runtime_ctx = context_manager.getOrCreate(self.context.?, self.allocator) catch |err| {
+            std.debug.print("Failed to get runtime context: {}\n", .{err});
+            return error.NotInitialized;
+        };
+
+        // Use HTMLParser from impls module
+        const HTMLParser = impls.HTMLParser;
+
+        // Create script loader that uses WPT file system
+        const script_loader = HTMLParser.ScriptLoader{
+            .context = self,
+            .loadScript = wptScriptLoader,
+        };
+
+        // Parse HTML with scripting enabled
+        const new_document = HTMLParser.parseHTMLWithScripting(
+            self.allocator,
+            runtime_ctx,
+            html_content,
+            .{
+                .scripting_enabled = true,
+                .base_url = base_url,
+                .script_loader = script_loader,
+            },
+        ) catch |err| {
+            std.debug.print("HTML parse error: {}\n", .{err});
+            return error.ParseError;
+        };
+
+        // Replace the current document
+        if (self.document_instance) |old_doc| {
+            interfaces.Document.deinit(old_doc);
+        }
+        self.document_instance = new_document;
+
+        // Update the global 'document' reference in V8
+        if (self.isolate) |isolate| {
+            if (self.context) |context| {
+                const global_obj = v8.ffi.v8_Context_Global(context) orelse return;
+
+                const v8_document = v8.template_registry.wrapInstanceAsV8Object(
+                    new_document,
+                    "Document",
+                    isolate,
+                    context,
+                ) catch |err| {
+                    std.debug.print("Failed to wrap new document: {}\n", .{err});
+                    return;
+                };
+
+                const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return;
+                _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(doc_key), @ptrCast(v8_document));
+            }
+        }
+    }
+
+    /// Fire the DOMContentLoaded event on the document
+    ///
+    /// This should be called after:
+    /// 1. The HTML parser has finished parsing
+    /// 2. All deferred scripts have been executed
+    ///
+    /// Per HTML Standard §12.2.7 "The end" step 4:
+    /// Fire an event named "DOMContentLoaded" at the Document object,
+    /// with its bubbles attribute initialized to true.
+    pub fn fireDOMContentLoaded(self: *BrowserContext) !void {
+        const document = self.document_instance orelse return error.NotInitialized;
+
+        // Create DOMContentLoaded event
+        // Event type, bubbles = true, cancelable = false
+        const event = interfaces.Event.init(
+            self.allocator,
+            context_manager.getOrCreate(self.context.?, self.allocator) catch return error.NotInitialized,
+        ) catch return error.OutOfMemory;
+        errdefer interfaces.Event.deinit(event);
+
+        // Initialize the event with type "DOMContentLoaded"
+        // bubbles = true, cancelable = false per HTML spec
+        const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
+        const bubbles = webidl.Opt(bool).passed(true);
+        const cancelable = webidl.Opt(bool).passed(false);
+        interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
+
+        // Dispatch on document
+        _ = interfaces.EventTarget.call_dispatchEvent(document, event) catch return error.DispatchError;
+    }
 };
+
+/// WPT script loader callback - loads scripts from WPT file system
+fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
+    const self: *BrowserContext = @ptrCast(@alignCast(ctx_ptr orelse return null));
+
+    // Resolve URL against WPT root
+    var path: []u8 = undefined;
+    if (std.mem.startsWith(u8, url, "/")) {
+        // Absolute path from WPT root (e.g., "/resources/testharness.js")
+        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url[1..] }) catch return null;
+    } else {
+        // Relative path - would need test directory context
+        // For now, try relative to WPT root
+        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url }) catch return null;
+    }
+    defer self.allocator.free(path);
+
+    // Read the file
+    const file = std.fs.cwd().openFile(path, .{}) catch return null;
+    defer file.close();
+
+    const content = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch return null;
+    return content;
+}
 
 // Thread-local storage for result collector (accessible from V8 callbacks)
 // V8 callbacks are C functions that can't easily capture context,

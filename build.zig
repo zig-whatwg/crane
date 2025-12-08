@@ -2185,6 +2185,10 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "infra", .module = infra_mod },
                 // Browser module for single-isolate WPT execution
                 .{ .name = "browser", .module = browser_mod },
+                // Impls module for HTMLParser (needed for HTML test parsing)
+                .{ .name = "impls", .module = impls_mod },
+                // WebIDL module for Optional type wrappers
+                .{ .name = "webidl", .module = webidl_mod },
             },
         }),
     });
