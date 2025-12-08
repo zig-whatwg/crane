@@ -52,6 +52,9 @@ pub const Namespace = @import("tree_builder.zig").Namespace;
 pub const FormattingEntry = @import("tree_builder.zig").FormattingEntry;
 pub const ElementCategory = @import("tree_builder.zig").ElementCategory;
 
+// NOTE: DomTreeAdapter is exported from html (full.zig), not html_core/parser,
+// because it requires runtime and interfaces which aren't available in html_core.
+
 // Named character references (entities)
 pub const entities = @import("entities.zig");
 
@@ -83,4 +86,5 @@ test {
     _ = @import("entities.zig");
     _ = @import("fragment_parser.zig");
     _ = @import("document_write.zig");
+    // NOTE: dom_tree_adapter.zig tests are run from html (full.zig) module
 }

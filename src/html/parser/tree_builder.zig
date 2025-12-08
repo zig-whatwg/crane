@@ -471,6 +471,19 @@ pub const TreeBuilder = struct {
     /// Script execution callback context.
     script_execution_context: ?*anyopaque,
 
+    /// DOM adapter callbacks for incremental TreeNode to DOM conversion.
+    /// When set, these callbacks are invoked as nodes are created and modified,
+    /// enabling scripts to access DOM during parsing.
+    ///
+    /// Callback signatures:
+    /// - on_node_created: fn(node: *TreeNode, context: ?*anyopaque) void
+    /// - on_child_appended: fn(parent: *TreeNode, child: *TreeNode, context: ?*anyopaque) void
+    /// - on_text_content_changed: fn(node: *TreeNode, context: ?*anyopaque) void
+    dom_adapter_context: ?*anyopaque,
+    dom_adapter_on_node_created: ?*const fn (*TreeNode, ?*anyopaque) void,
+    dom_adapter_on_child_appended: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void,
+    dom_adapter_on_text_content_changed: ?*const fn (*TreeNode, ?*anyopaque) void,
+
     /// Initialize a new tree builder.
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) !TreeBuilder {
         const document = try TreeNode.initDocument(allocator);
@@ -497,6 +510,10 @@ pub const TreeBuilder = struct {
             .parser_pause_flag = false,
             .script_execution_callback = null,
             .script_execution_context = null,
+            .dom_adapter_context = null,
+            .dom_adapter_on_node_created = null,
+            .dom_adapter_on_child_appended = null,
+            .dom_adapter_on_text_content_changed = null,
         };
     }
 
@@ -509,6 +526,22 @@ pub const TreeBuilder = struct {
     ) void {
         self.script_execution_callback = callback;
         self.script_execution_context = context;
+    }
+
+    /// Set DOM adapter callbacks for incremental conversion.
+    /// When set, these callbacks are invoked as nodes are created and modified during parsing.
+    /// This enables scripts to access DOM nodes that were parsed before them.
+    pub fn setDomAdapterCallbacks(
+        self: *TreeBuilder,
+        context: ?*anyopaque,
+        on_node_created: ?*const fn (*TreeNode, ?*anyopaque) void,
+        on_child_appended: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void,
+        on_text_content_changed: ?*const fn (*TreeNode, ?*anyopaque) void,
+    ) void {
+        self.dom_adapter_context = context;
+        self.dom_adapter_on_node_created = on_node_created;
+        self.dom_adapter_on_child_appended = on_child_appended;
+        self.dom_adapter_on_text_content_changed = on_text_content_changed;
     }
 
     /// Check if the parser is currently paused waiting for scripts.
@@ -1113,6 +1146,14 @@ pub const TreeBuilder = struct {
             doctype.force_quirks,
         );
         self.document.appendChild(doctype_node);
+
+        // Notify DOM adapter of doctype creation and parent-child relationship
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(doctype_node, self.dom_adapter_context);
+        }
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(self.document, doctype_node, self.dom_adapter_context);
+        }
 
         // Set quirks mode based on DOCTYPE
         if (!self.parser_cannot_change_mode) {
@@ -2962,6 +3003,11 @@ pub const TreeBuilder = struct {
             try element.addAttribute(attr.getName(), attr.getValue(), null);
         }
 
+        // Notify DOM adapter of element creation (for incremental DOM conversion)
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(element, self.dom_adapter_context);
+        }
+
         return element;
     }
 
@@ -2976,10 +3022,12 @@ pub const TreeBuilder = struct {
     /// Insert at the appropriate place.
     fn insertAtAppropriatePlace(self: *TreeBuilder, node: *TreeNode) void {
         // For now, just append to current node
-        if (self.currentNode()) |parent| {
-            parent.appendChild(node);
-        } else {
-            self.document.appendChild(node);
+        const parent = self.currentNode() orelse self.document;
+        parent.appendChild(node);
+
+        // Notify DOM adapter of parent-child relationship (for incremental DOM conversion)
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(parent, node, self.dom_adapter_context);
         }
     }
 
@@ -2991,6 +3039,10 @@ pub const TreeBuilder = struct {
         if (parent.last_child) |last| {
             if (last.node_type == .text) {
                 try last.appendChar(char);
+                // Notify DOM adapter of text content change
+                if (self.dom_adapter_on_text_content_changed) |callback| {
+                    callback(last, self.dom_adapter_context);
+                }
                 return;
             }
         }
@@ -2999,16 +3051,29 @@ pub const TreeBuilder = struct {
         const text = try TreeNode.initText(self.allocator);
         try text.appendChar(char);
         parent.appendChild(text);
+
+        // Notify DOM adapter of new text node creation and parent-child relationship
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(text, self.dom_adapter_context);
+        }
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(parent, text, self.dom_adapter_context);
+        }
     }
 
     /// Insert a comment.
     fn insertComment(self: *TreeBuilder, comment: CommentToken) !void {
         const node = try TreeNode.initComment(self.allocator);
         try node.appendText(comment.getData());
-        if (self.currentNode()) |parent| {
-            parent.appendChild(node);
-        } else {
-            self.document.appendChild(node);
+        const parent = self.currentNode() orelse self.document;
+        parent.appendChild(node);
+
+        // Notify DOM adapter of comment creation and parent-child relationship
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(node, self.dom_adapter_context);
+        }
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(parent, node, self.dom_adapter_context);
         }
     }
 

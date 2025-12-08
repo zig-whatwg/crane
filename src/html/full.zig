@@ -159,6 +159,12 @@ pub const script_execution = @import("script_execution.zig");
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 
+/// DOM tree adapter for incremental TreeNode to DOM conversion during parsing.
+/// This enables scripts to access DOM nodes that were parsed before them.
+pub const dom_tree_adapter = @import("dom_tree_adapter.zig");
+pub const DomTreeAdapter = dom_tree_adapter.DomTreeAdapter;
+pub const DomTreeAdapterError = dom_tree_adapter.DomTreeAdapterError;
+
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");
 
