@@ -1329,6 +1329,34 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             };
 
+            // Determine the payload type (unwrap error union if needed) for cleanup
+            const PayloadType = comptime blk: {
+                const type_info = @typeInfo(ReturnType);
+                if (type_info == .error_union) {
+                    break :blk type_info.error_union.payload;
+                } else {
+                    break :blk ReturnType;
+                }
+            };
+
+            // For string types that allocate memory, free after V8 conversion.
+            // IMPORTANT: Impls MUST use instance.ctx.allocator for returned strings,
+            // not internal.allocator, so this cleanup uses the correct allocator.
+            // Static strings (empty string "") have len=0 and won't be freed.
+            const needs_cleanup = comptime (PayloadType == runtime.USVString or
+                PayloadType == []const u8 or
+                PayloadType == runtime.DOMString);
+            defer if (needs_cleanup) {
+                if (PayloadType == runtime.DOMString) {
+                    var mutable = zig_result;
+                    mutable.deinit(instance.ctx.allocator);
+                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                    if (zig_result.len > 0) {
+                        instance.ctx.allocator.free(zig_result);
+                    }
+                }
+            };
+
             // Convert return value to V8
             return try convertReturnValue(ReturnType, zig_result, allocator, isolate, v8_context);
         }
