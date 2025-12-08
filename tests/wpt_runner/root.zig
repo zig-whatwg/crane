@@ -57,6 +57,7 @@ pub const browser_context = @import("browser_context.zig");
 pub const result_reporter = @import("result_reporter.zig");
 pub const http_server = @import("http_server.zig");
 pub const browser_adapter = @import("browser_adapter.zig");
+pub const wpt_server = @import("wpt_server.zig");
 
 // Re-export main entry point
 pub const main = @import("main.zig").main;
@@ -64,6 +65,7 @@ pub const main = @import("main.zig").main;
 // Re-export commonly used types
 pub const HttpServer = http_server.HttpServer;
 pub const ServerConfig = http_server.ServerConfig;
+pub const WptServer = wpt_server.WptServer;
 
 test "wpt_runner module compiles" {
     const std = @import("std");
