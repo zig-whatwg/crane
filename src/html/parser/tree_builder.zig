@@ -830,6 +830,11 @@ pub const TreeBuilder = struct {
                         try element.addAttribute(attr_name, attr.getValue(), attr_namespace);
                     }
 
+                    // Notify DOM adapter of element creation
+                    if (self.dom_adapter_on_node_created) |callback| {
+                        callback(element, self.dom_adapter_context);
+                    }
+
                     self.insertAtAppropriatePlace(element);
                     try self.open_elements.append(element);
 
@@ -1290,7 +1295,19 @@ pub const TreeBuilder = struct {
     fn handleBeforeHtmlAnythingElse(self: *TreeBuilder) !void {
         // Create html element and append to document
         const html = try TreeNode.initElement(self.allocator, "html", .html);
+
+        // Notify DOM adapter of element creation
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(html, self.dom_adapter_context);
+        }
+
         self.document.appendChild(html);
+
+        // Notify DOM adapter of parent-child relationship
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(self.document, html, self.dom_adapter_context);
+        }
+
         try self.open_elements.append(html);
         self.insertion_mode = .before_head;
     }
@@ -1345,13 +1362,16 @@ pub const TreeBuilder = struct {
 
     fn handleBeforeHeadAnythingElse(self: *TreeBuilder) !void {
         // Insert implicit head element
-        const dummy_tag = TagToken.init(self.allocator, false);
-        // We need to set tag name - for now create element directly
         const head = try TreeNode.initElement(self.allocator, "head", .html);
+
+        // Notify DOM adapter of element creation
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(head, self.dom_adapter_context);
+        }
+
         self.insertAtAppropriatePlace(head);
         try self.open_elements.append(head);
         self.head_element = head;
-        _ = dummy_tag;
         self.insertion_mode = .in_head;
     }
 
@@ -1660,6 +1680,12 @@ pub const TreeBuilder = struct {
     fn handleAfterHeadAnythingElse(self: *TreeBuilder) !void {
         // Insert implicit body element
         const body = try TreeNode.initElement(self.allocator, "body", .html);
+
+        // Notify DOM adapter of element creation
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(body, self.dom_adapter_context);
+        }
+
         self.insertAtAppropriatePlace(body);
         try self.open_elements.append(body);
         self.insertion_mode = .in_body;
@@ -1940,6 +1966,10 @@ pub const TreeBuilder = struct {
                     self.clearStackBackToTableContext();
                     // Insert implicit colgroup
                     const colgroup = try TreeNode.initElement(self.allocator, "colgroup", .html);
+                    // Notify DOM adapter of element creation
+                    if (self.dom_adapter_on_node_created) |callback| {
+                        callback(colgroup, self.dom_adapter_context);
+                    }
                     self.insertAtAppropriatePlace(colgroup);
                     try self.open_elements.append(colgroup);
                     self.insertion_mode = .in_column_group;
@@ -1958,6 +1988,10 @@ pub const TreeBuilder = struct {
                     self.clearStackBackToTableContext();
                     // Insert implicit tbody
                     const tbody = try TreeNode.initElement(self.allocator, "tbody", .html);
+                    // Notify DOM adapter of element creation
+                    if (self.dom_adapter_on_node_created) |callback| {
+                        callback(tbody, self.dom_adapter_context);
+                    }
                     self.insertAtAppropriatePlace(tbody);
                     try self.open_elements.append(tbody);
                     self.insertion_mode = .in_table_body;
@@ -2275,6 +2309,10 @@ pub const TreeBuilder = struct {
                     self.clearStackBackToTableBodyContext();
                     // Insert implicit tr
                     const tr = try TreeNode.initElement(self.allocator, "tr", .html);
+                    // Notify DOM adapter of element creation
+                    if (self.dom_adapter_on_node_created) |callback| {
+                        callback(tr, self.dom_adapter_context);
+                    }
                     self.insertAtAppropriatePlace(tr);
                     try self.open_elements.append(tr);
                     self.insertion_mode = .in_row;

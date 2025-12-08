@@ -259,6 +259,20 @@ pub const DomTreeAdapter = struct {
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
+        // The node_map contains mappings from TreeNode to DOM instances.
+        // We do NOT deinit the DOM instances here because:
+        //
+        // 1. The document is managed externally (by BrowserContext) and will be
+        //    explicitly deinit'd by the caller.
+        //
+        // 2. All other DOM nodes (elements, text, comments, doctypes) are attached
+        //    as children of the document during parsing. When Document.deinit is
+        //    called, Node.deinit will recursively clean up all child nodes.
+        //
+        // 3. Deinit'ing nodes here would cause double-free issues since the parent
+        //    document's deinit would also try to clean up the same nodes.
+        //
+        // We only need to clean up the HashMap itself.
         self.node_map.deinit();
     }
 
@@ -275,9 +289,7 @@ pub const DomTreeAdapter = struct {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
-        _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch |err| {
-            std.debug.print("Failed to append child in DOM: {}\n", .{err});
-        };
+        _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
     }
 
     /// Called when a node's text content changes during parsing.

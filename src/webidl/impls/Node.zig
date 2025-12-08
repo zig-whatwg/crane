@@ -188,12 +188,105 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Deinitialize instance
+///
+/// This performs proper DOM tree cleanup by recursively deinitializing all
+/// child nodes before cleaning up this node's own resources. This ensures
+/// the entire subtree is properly freed when a node is destroyed.
+///
+/// Per DOM spec semantics, destroying a parent node should release all
+/// child nodes since they are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
+    // First, recursively deinit all child nodes.
+    // We must do this BEFORE removing ourselves from the registry,
+    // and we need to collect children first since deinit modifies the tree.
+    if (getInternalFromRegistry(instance)) |internal| {
+        // Iterate through children and deinit each one.
+        // We iterate by following next_sibling links starting from first_child.
+        var child = internal.first_child;
+        while (child) |child_node| {
+            // Get the next sibling BEFORE deinit (deinit may clear sibling pointers)
+            const next = if (getInternalFromRegistry(child_node)) |child_internal|
+                child_internal.next_sibling
+            else
+                null;
+
+            // Deinit the child node based on its type.
+            // Each node type has its own deinit that handles type-specific cleanup.
+            deinitNodeByType(child_node);
+
+            child = next;
+        }
+
+        // Clear tree pointers to prevent dangling references
+        internal.first_child = null;
+        internal.last_child = null;
+
+        // Also deinit the internal state's owned resources
+        internal.deinit();
+    }
+
     // Clean up from registry
     ensureNodeRegistry();
     _ = node_internal_registry.remove(@intFromPtr(instance));
+
     // EventTarget cleanup happens via inheritance chain
     EventTargetImpl.deinit(instance);
+}
+
+/// Deinitialize a node based on its node type.
+/// This dispatches to the appropriate interface's deinit function.
+///
+/// This is called from Node.deinit when iterating over children. The type-specific
+/// deinit (e.g., Element.deinit) will chain back to Node.deinit, which will then
+/// recursively deinit that node's children. This ensures the entire subtree is cleaned up.
+fn deinitNodeByType(instance: *runtime.Instance) void {
+    const internal = getInternalFromRegistry(instance) orelse {
+        // No internal state found, try generic EventTarget cleanup
+        EventTargetImpl.deinit(instance);
+        return;
+    };
+
+    // Dispatch based on node type to call the appropriate interface's deinit.
+    // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.
+    // DO NOT clear first_child/last_child here - the recursive Node.deinit needs them
+    // to properly clean up the entire subtree.
+    switch (internal.node_type) {
+        NodeType.TEXT_NODE => {
+            interfaces.Text.deinit(instance);
+        },
+        NodeType.COMMENT_NODE => {
+            interfaces.Comment.deinit(instance);
+        },
+        NodeType.DOCUMENT_TYPE_NODE => {
+            interfaces.DocumentType.deinit(instance);
+        },
+        NodeType.DOCUMENT_FRAGMENT_NODE => {
+            interfaces.DocumentFragment.deinit(instance);
+        },
+        NodeType.PROCESSING_INSTRUCTION_NODE => {
+            interfaces.ProcessingInstruction.deinit(instance);
+        },
+        NodeType.CDATA_SECTION_NODE => {
+            interfaces.CDATASection.deinit(instance);
+        },
+        NodeType.ELEMENT_NODE => {
+            // Element nodes could be any HTML element subclass.
+            // The base Element.deinit handles all element types.
+            interfaces.Element.deinit(instance);
+        },
+        NodeType.DOCUMENT_NODE => {
+            // Document nodes - this shouldn't typically happen in child iteration
+            // but handle it for completeness
+            interfaces.Document.deinit(instance);
+        },
+        else => {
+            // For unknown types, do generic Node cleanup
+            // (this handles ATTRIBUTE_NODE and legacy types)
+            ensureNodeRegistry();
+            _ = node_internal_registry.remove(@intFromPtr(instance));
+            EventTargetImpl.deinit(instance);
+        },
+    }
 }
 
 // =============================================================================
