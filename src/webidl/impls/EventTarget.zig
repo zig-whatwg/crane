@@ -274,6 +274,10 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 
     if (!already_exists) {
         try list.append(updated_listener);
+    } else {
+        // Listener already exists - free the duplicated type string to avoid leak
+        var listener_type = updated_listener.type;
+        listener_type.deinit(internal.allocator);
     }
 
     // Step 6: If listener's signal is not null, add abort steps
@@ -354,9 +358,14 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
         break :blk null;
     } else null;
 
-    // Create listener record
+    // Duplicate the type string with internal allocator to ensure ownership
+    // The incoming DOMString may be allocated with a different allocator (from V8 conversion layer)
+    // and we need to own it to safely free it in deinit()
+    const owned_type = runtime.DOMString.initDupe(internal.?.allocator, @"type".asSlice()) catch return error.OutOfMemory;
+
+    // Create listener record with owned type string
     const listener = EventListenerRecord{
-        .type = @"type",
+        .type = owned_type,
         .callback = callback_instance,
         .capture = capture,
         .passive = passive,
@@ -364,7 +373,12 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
         .signal = signal,
     };
 
-    addAnEventListener(internal.?, instance, listener) catch return error.OutOfMemory;
+    addAnEventListener(internal.?, instance, listener) catch |err| {
+        // Clean up owned type on error
+        var type_copy = owned_type;
+        type_copy.deinit(internal.?.allocator);
+        return err;
+    };
 }
 
 /// Operation: removeEventListener
