@@ -161,6 +161,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     // We need to extract the callback properties from the V8 object manually.
     var underlying_source_dict_storage = dictionaries.UnderlyingSource{};
 
+    // Extracted callbacks - stored as V8 Global handle pointers (tagged with .global_handle)
+    // These bypass the generated dictionary's callback types which are Zig function pointers.
+    var extracted_start_callback: ?*const anyopaque = null;
+    var extracted_pull_callback: ?*const anyopaque = null;
+    var extracted_cancel_callback: ?*const anyopaque = null;
+
     if (underlyingSource.was_passed) {
         // underlyingSource.value is a JSValue containing a V8 handle
         // Extract the handle pointer first, then untag it
@@ -187,23 +193,66 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         // Get current isolate
         const isolate = v8_ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
 
-        // TODO: Callback extraction disabled due to type mismatch
+        // Extract callbacks from V8 object manually
         //
-        // The generated callbacks.UnderlyingSourceStartCallback is a Zig function pointer type:
-        //   *const fn (controller: *const anyopaque) runtime.JSValue
+        // The generated dictionary uses Zig callback function pointer types, but what we
+        // receive from V8 are Global handle pointers (tagged with .global_handle).
+        // We bypass the generated dictionary and extract callbacks directly here,
+        // storing them in a parallel structure that uses *const anyopaque.
         //
-        // But what we need to store is a V8 Global handle pointer, not a function pointer.
-        // The proper fix is to use streams_internal.UnderlyingSource which uses
-        // webidl.GenericCallback (an opaque pointer type) instead.
-        //
-        // For now, we skip callback extraction. Streams with callbacks won't work until
-        // this architecture is fixed. See whatwg-lwz02 for details.
+        // The extraction uses v8_Object_Get to get each property, and if it's a function,
+        // conversions.fromV8Value creates a Global handle automatically (see whatwg-okii8).
 
-        // Note: isolate, v8_obj, v8_context extracted but callbacks not stored
-        // Type property extraction also disabled due to enum conversion complexity
-        _ = isolate;
-        _ = v8_obj;
-        _ = v8_context;
+        // Helper to extract a callback property
+        const extractCallback = struct {
+            fn extract(iso: *v8_ffi.Isolate, obj: *v8_ffi.Object, v8ctx: *v8_ffi.Context, name: []const u8) ?*const anyopaque {
+                const key = v8_ffi.v8_String_NewFromUtf8(iso, name.ptr, @intCast(name.len)) orelse return null;
+                const prop_value = v8_ffi.v8_Object_Get(obj, v8ctx, @ptrCast(key)) orelse return null;
+
+                // Check if it's null/undefined
+                if (v8_ffi.v8_Value_IsNullOrUndefined(prop_value)) {
+                    return null;
+                }
+
+                // Check if it's a function
+                if (!v8_ffi.v8_Value_IsFunction(prop_value)) {
+                    return null;
+                }
+
+                // Create Global handle for the function (for persistence beyond constructor)
+                if (v8_ffi.v8_Value_ToGlobal(iso, prop_value)) |global| {
+                    // Tag as global_handle so consumers know how to handle it
+                    return pointer_tag.tagPointer(global, .global_handle);
+                }
+
+                return null;
+            }
+        }.extract;
+
+        // Extract the callback properties from the underlying source object
+        extracted_start_callback = extractCallback(isolate, v8_obj, v8_context, "start");
+        extracted_pull_callback = extractCallback(isolate, v8_obj, v8_context, "pull");
+        extracted_cancel_callback = extractCallback(isolate, v8_obj, v8_context, "cancel");
+
+        // Extract 'type' property for byte stream detection
+        const type_key = v8_ffi.v8_String_NewFromUtf8(isolate, "type", 4);
+        if (type_key) |tk| {
+            if (v8_ffi.v8_Object_Get(v8_obj, v8_context, @ptrCast(tk))) |type_val| {
+                if (!v8_ffi.v8_Value_IsNullOrUndefined(type_val) and v8_ffi.v8_Value_IsString(type_val)) {
+                    // Get string value and check if it's "bytes"
+                    if (v8_ffi.v8_Value_ToString(type_val, v8_context)) |type_str| {
+                        var buf: [16]u8 = undefined;
+                        const len = v8_ffi.v8_String_Utf8Length(type_str);
+                        if (len > 0 and len <= 16) {
+                            _ = v8_ffi.v8_String_WriteUtf8(type_str, &buf, @intCast(len));
+                            if (std.mem.eql(u8, buf[0..@intCast(len)], "bytes")) {
+                                underlying_source_dict_storage.type = ._bytes_;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     const underlying_source_dict: *const dictionaries.UnderlyingSource = &underlying_source_dict_storage;
 
@@ -248,13 +297,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         const high_water_mark = try extractHighWaterMark(&strat, 0.0);
 
         // Step 4.3: Perform ? SetUpReadableByteStreamControllerFromUnderlyingSource
-        // Note: The first anyopaque param is unused, passing dict pointer as placeholder
+        // Pass the manually extracted callbacks (V8 Global handles) instead of relying
+        // on the dictionary's callback fields which expect Zig function pointers.
         try setUpReadableByteStreamControllerFromUnderlyingSource(
             instance,
             internal,
             @ptrCast(underlying_source_dict),
             underlying_source_dict,
             high_water_mark,
+            extracted_start_callback,
+            extracted_pull_callback,
+            extracted_cancel_callback,
         );
     } else {
         // Step 5: Default stream (not byte stream)
@@ -268,13 +321,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         const high_water_mark = try extractHighWaterMark(&strat, 1.0);
 
         // Step 5.4: Perform SetUpReadableStreamDefaultControllerFromUnderlyingSource
-        // Note: The first anyopaque param is unused, passing dict pointer as placeholder
+        // Pass the manually extracted callbacks (V8 Global handles) instead of relying
+        // on the dictionary's callback fields which expect Zig function pointers.
         try setUpReadableStreamDefaultControllerFromUnderlyingSource(
             instance,
             internal,
             @ptrCast(underlying_source_dict),
             underlying_source_dict,
             high_water_mark,
+            extracted_start_callback,
+            extracted_pull_callback,
+            extracted_cancel_callback,
         );
     }
 
@@ -1866,12 +1923,22 @@ pub fn call_getAsyncIterator(
 /// 6. If underlyingSourceDict["pull"] exists, set pullAlgorithm to invoke it
 /// 7. If underlyingSourceDict["cancel"] exists, set cancelAlgorithm to invoke it
 /// 8. Perform ? SetUpReadableStreamDefaultController(...)
+///
+/// ## V8 Callback Extraction
+///
+/// The dictionary's callback fields (start, pull, cancel) use Zig function pointer types
+/// which cannot be populated from V8 objects. Instead, we receive pre-extracted callbacks
+/// as V8 Global handle pointers (tagged with .global_handle). These are passed separately
+/// and take precedence over the dictionary fields.
 fn setUpReadableStreamDefaultControllerFromUnderlyingSource(
     stream_instance: *runtime.Instance,
     stream_internal: *InternalState,
     underlyingSource: *const anyopaque,
     underlyingSourceDict: *const dictionaries.UnderlyingSource,
     highWaterMark: f64,
+    extracted_start: ?*const anyopaque,
+    extracted_pull: ?*const anyopaque,
+    extracted_cancel: ?*const anyopaque,
 ) !void {
     const allocator = stream_internal.allocator;
     const ctx = stream_instance.ctx;
@@ -1885,28 +1952,13 @@ fn setUpReadableStreamDefaultControllerFromUnderlyingSource(
 
     // Step 2-4: Default algorithms (no-ops that return undefined/resolved promise)
     // For now, we store null and handle it in the controller
-    var start_algorithm: ?*const anyopaque = null;
-    var pull_algorithm: ?*const anyopaque = null;
-    var cancel_algorithm: ?*const anyopaque = null;
 
-    // Step 5: If start callback exists, use it
-    if (underlyingSourceDict.start) |_| {
-        // Store callback - will be invoked in SetUpReadableStreamDefaultController
-        start_algorithm = underlyingSourceDict.start;
-    }
-
-    // Step 6: If pull callback exists, use it
-    if (underlyingSourceDict.pull) |_| {
-        // Store callback - will be invoked by CallPullIfNeeded
-        pull_algorithm = underlyingSourceDict.pull;
-    }
-
-    // Step 7: If cancel callback exists, use it
-    if (underlyingSourceDict.cancel) |_| {
-        // Store callback - will be invoked by cancel() operation
-        // Future: Implement cancel algorithm invocation
-        cancel_algorithm = underlyingSourceDict.cancel;
-    }
+    // Step 5-7: Use extracted callbacks (V8 Global handles) if provided.
+    // These are preferred over dictionary fields since the dictionary's callback types
+    // are Zig function pointers which V8 conversion cannot populate.
+    const start_algorithm: ?*const anyopaque = extracted_start;
+    const pull_algorithm: ?*const anyopaque = extracted_pull;
+    const cancel_algorithm: ?*const anyopaque = extracted_cancel;
 
     // Step 8: SetUpReadableStreamDefaultController
     try setUpReadableStreamDefaultController(
@@ -1920,6 +1972,7 @@ fn setUpReadableStreamDefaultControllerFromUnderlyingSource(
     );
 
     _ = underlyingSource; // Will be used when we invoke callbacks
+    _ = underlyingSourceDict; // Kept for potential future non-callback fields
 }
 
 /// SetUpReadableStreamDefaultController
@@ -2186,12 +2239,22 @@ fn onStartRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anye
 /// 8. Let autoAllocateChunkSize be underlyingSourceDict["autoAllocateChunkSize"]
 /// 9. If autoAllocateChunkSize is 0, throw TypeError
 /// 10. Perform ? SetUpReadableByteStreamController(...)
+///
+/// ## V8 Callback Extraction
+///
+/// The dictionary's callback fields (start, pull, cancel) use Zig function pointer types
+/// which cannot be populated from V8 objects. Instead, we receive pre-extracted callbacks
+/// as V8 Global handle pointers (tagged with .global_handle). These are passed separately
+/// and take precedence over the dictionary fields.
 fn setUpReadableByteStreamControllerFromUnderlyingSource(
     stream_instance: *runtime.Instance,
     stream_internal: *InternalState,
     underlyingSource: *const anyopaque,
     underlyingSourceDict: *const dictionaries.UnderlyingSource,
     highWaterMark: f64,
+    extracted_start: ?*const anyopaque,
+    extracted_pull: ?*const anyopaque,
+    extracted_cancel: ?*const anyopaque,
 ) !void {
     const allocator = stream_internal.allocator;
     const ctx = stream_instance.ctx;
@@ -2204,24 +2267,12 @@ fn setUpReadableByteStreamControllerFromUnderlyingSource(
     errdefer interfaces.ReadableByteStreamController.deinit(controller_instance);
 
     // Step 2-4: Default algorithms (no-ops that return undefined/resolved promise)
-    var start_algorithm: ?*const anyopaque = null;
-    var pull_algorithm: ?*const anyopaque = null;
-    var cancel_algorithm: ?*const anyopaque = null;
-
-    // Step 5: If start callback exists, use it
-    if (underlyingSourceDict.start) |_| {
-        start_algorithm = underlyingSourceDict.start;
-    }
-
-    // Step 6: If pull callback exists, use it
-    if (underlyingSourceDict.pull) |_| {
-        pull_algorithm = underlyingSourceDict.pull;
-    }
-
-    // Step 7: If cancel callback exists, use it
-    if (underlyingSourceDict.cancel) |_| {
-        cancel_algorithm = underlyingSourceDict.cancel;
-    }
+    // Step 5-7: Use extracted callbacks (V8 Global handles) if provided.
+    // These are preferred over dictionary fields since the dictionary's callback types
+    // are Zig function pointers which V8 conversion cannot populate.
+    const start_algorithm: ?*const anyopaque = extracted_start;
+    const pull_algorithm: ?*const anyopaque = extracted_pull;
+    const cancel_algorithm: ?*const anyopaque = extracted_cancel;
 
     // Step 8: Get autoAllocateChunkSize
     const auto_allocate_chunk_size = underlyingSourceDict.autoAllocateChunkSize;
