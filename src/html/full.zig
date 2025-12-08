@@ -165,6 +165,10 @@ pub const dom_tree_adapter = @import("dom_tree_adapter.zig");
 pub const DomTreeAdapter = dom_tree_adapter.DomTreeAdapter;
 pub const DomTreeAdapterError = dom_tree_adapter.DomTreeAdapterError;
 
+/// Scripted HTML parser with incremental DOM conversion
+/// Use this when scripts need access to DOM nodes during parsing
+pub const scripted_parser = @import("scripted_parser.zig");
+
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");
 
