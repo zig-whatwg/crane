@@ -50,6 +50,9 @@ pub const BrowserAdapter = struct {
     context_initialized: bool,
     /// Number of tests run (for stats)
     tests_run: usize,
+    /// Cache of already-loaded script paths (to avoid re-loading and const redeclaration errors)
+    /// Key is the script path (e.g., "/common/subset-tests.js" or "resources/encodings.js")
+    loaded_scripts: std.StringHashMapUnmanaged(void),
 
     /// Initialize the browser adapter
     ///
@@ -73,6 +76,7 @@ pub const BrowserAdapter = struct {
             .wpt_root = try allocator.dupe(u8, wpt_root),
             .context_initialized = false,
             .tests_run = 0,
+            .loaded_scripts = .{},
         };
 
         return adapter;
@@ -80,10 +84,30 @@ pub const BrowserAdapter = struct {
 
     /// Cleanup the adapter
     pub fn deinit(self: *BrowserAdapter) void {
+        // Free loaded script path keys
+        var it = self.loaded_scripts.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.loaded_scripts.deinit(self.allocator);
+
         self.context.deinit();
         self.allocator.destroy(self.context);
         self.allocator.free(self.wpt_root);
         self.allocator.destroy(self);
+    }
+
+    /// Check if a script has already been loaded in this context
+    pub fn isScriptLoaded(self: *BrowserAdapter, script_path: []const u8) bool {
+        return self.loaded_scripts.contains(script_path);
+    }
+
+    /// Mark a script as loaded
+    pub fn markScriptLoaded(self: *BrowserAdapter, script_path: []const u8) !void {
+        if (!self.loaded_scripts.contains(script_path)) {
+            const key = try self.allocator.dupe(u8, script_path);
+            try self.loaded_scripts.put(self.allocator, key, {});
+        }
     }
 
     /// Run a single WPT test
