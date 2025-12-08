@@ -949,6 +949,16 @@ pub fn build(b: *std.Build) void {
     // Encoding module for TextDecoder/TextEncoder implementations
     impls_mod.addImport("encoding", encoding_mod);
 
+    // ========================================================================
+    // URLPATTERN MODULE (WHATWG URLPattern Standard)
+    // ========================================================================
+
+    const urlpattern_mod = b.addModule("urlpattern", .{
+        .root_source_file = b.path("src/urlpattern/root.zig"),
+        .target = target,
+    });
+    urlpattern_mod.addImport("url", url_mod);
+
     const console_mod = b.addModule("console", .{
         .root_source_file = b.path("src/console/root.zig"),
         .target = target,
