@@ -40,9 +40,9 @@ pub const regex_generator = @import("regex_generator.zig");
 // Middle layer - canonicalization and construction (Agent 2)
 pub const canonicalize = @import("canonicalize.zig");
 pub const constructor_string_parser = @import("constructor_string_parser.zig");
+pub const constructor = @import("constructor.zig");
 
-// TODO: Middle layer - to be implemented
-// pub const constructor = @import("constructor.zig");
+// TODO: Matcher - to be implemented
 // pub const matcher = @import("matcher.zig");
 
 // Re-export tokenizer types
@@ -94,6 +94,13 @@ pub const generateRegexAndNameList = regex_generator.generateRegexAndNameList;
 pub const escapeRegexpString = regex_generator.escapeRegexpString;
 pub const generateSegmentWildcardRegexp = regex_generator.generateSegmentWildcardRegexp;
 pub const full_wildcard_regexp = regex_generator.full_wildcard_regexp;
+
+// Re-export constructor types
+pub const URLPattern = constructor.URLPattern;
+pub const Component = constructor.Component;
+pub const Input = constructor.Input;
+pub const URLPatternOptions = constructor.URLPatternOptions;
+pub const ConstructorError = constructor.ConstructorError;
 
 test {
     // Run all module tests
