@@ -305,6 +305,12 @@ pub fn invokePendingStartCallback(
     v8_isolate: *anyopaque,
     v8_context: *anyopaque,
 ) void {
+    // Suppress unused parameter warnings - these were needed for the old direct V8 FFI approach
+    // but are not needed when using Algorithm.invoke() which handles V8 internally
+    _ = controller_v8;
+    _ = v8_isolate;
+    _ = v8_context;
+
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller;
@@ -323,47 +329,17 @@ pub fn invokePendingStartCallback(
         return;
     }
 
-    // Get the V8 function pointer from the algorithm's context
-    // The context contains the raw V8 Value pointer that was cast from the dictionary
-    const v8_func_ptr = start_algo.context orelse {
-        // No callback - mark as started
-        onStartFulfilledImmediate(controller_internal);
-        return;
-    };
-
-    // Cast the opaque pointer to V8 types
-    const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
-    const context: *v8.Context = @ptrCast(@alignCast(v8_context));
-    const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
-
-    // The stored pointer is a raw V8 Value pointer - verify it's a function
-    const v8_value: *v8.Value = @ptrCast(@alignCast(v8_func_ptr));
-
-    if (!v8.ffi.v8_Value_IsFunction(v8_value)) {
-        onStartFulfilledImmediate(controller_internal);
-        return;
-    }
-
-    const func: *v8.Function = @ptrCast(v8_value);
-
-    // Call the V8 function with the controller as argument
-    // Use 'undefined' as 'this' since start() is not called as a method
-    const undefined_recv = v8.ffi.v8_Undefined(isolate) orelse {
-        // Couldn't get undefined - mark as started and return
-        onStartFulfilledImmediate(controller_internal);
-        return;
-    };
-    var args = [_]*v8.Value{@ptrCast(controller_obj)};
-    const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
-
-    // Check if call succeeded
-    if (result == null) {
-        // Call threw an exception - error the controller
-        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
+    // Use the Algorithm's invoke() method which properly handles GlobalCallbackContext.
+    // The Algorithm was created with jsCallbackAlgorithmGlobal() in setUpReadableStreamDefaultController,
+    // so its context is a *GlobalCallbackContext containing the V8 Global handle.
+    // The invoke() method retrieves the Local from the Global and calls through the engine interface.
+    const start_promise = start_algo.invoke(controller_instance) catch {
+        // Invocation failed - error the controller
+        const js_error = streams_common.JSValue{ .string = "Start callback invocation failed" };
         const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
         ReadableStreamDefaultControllerImpl.readableStreamDefaultControllerError(controller_internal, @ptrCast(&js_error));
         return;
-    }
+    };
 
     // Clear the start algorithm since it's been invoked
     start_algo.deinit();
@@ -375,68 +351,32 @@ pub fn invokePendingStartCallback(
     // 11. Upon fulfillment of startPromise: set started = true, call pull if needed
     // 12. Upon rejection of startPromise: error the controller
 
-    // Unwrap the result (already checked for null above)
-    const result_value: *v8.Value = result.?;
-
-    // Check if result is a Promise
-    const is_promise = v8.ffi.v8_Value_IsPromise(result_value);
-    if (is_promise) {
-        // Result is a Promise - chain handlers to wait for it to settle
-        const promise: *v8.ffi.Promise = @ptrCast(result_value);
-
-        // Create context for the callbacks (store pointer to controller internal state)
-        // We need to allocate this because the callbacks are called asynchronously
-        const callback_ctx = controller_internal.allocator.create(StartCallbackContext) catch {
-            // Allocation failed - fall back to immediate fulfillment
-            onStartFulfilledImmediate(controller_internal);
-            return;
-        };
-        callback_ctx.* = .{
-            .controller_internal = controller_internal,
-            .allocator = controller_internal.allocator,
-        };
-
-        // Create fulfill handler
-        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
-            context,
-            onStartPromiseFulfilled,
-            callback_ctx,
-        ) orelse {
-            // Failed to create handler - fall back to immediate fulfillment
-            controller_internal.allocator.destroy(callback_ctx);
-            onStartFulfilledImmediate(controller_internal);
-            return;
-        };
-
-        // Create reject handler
-        const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
-            context,
-            onStartPromiseRejected,
-            callback_ctx,
-        ) orelse {
-            // Failed to create handler - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
-            onStartFulfilledImmediate(controller_internal);
-            return;
-        };
-
-        // Chain handlers onto the promise
-        const chained = v8.ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
-        if (chained == null) {
-            // Failed to chain - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
-            onStartFulfilledImmediate(controller_internal);
-            return;
-        }
-        // Promise handlers are now chained - they will be called when the promise settles
-        // The callback context will be freed in the callback handlers
-    } else {
-        // Result is not a Promise - mark as started immediately
+    // Use onSettleCtx to handle promise settlement without creating a chained promise
+    // This avoids memory leaks from untracked chained promises
+    start_promise.onSettleCtx(
+        onStartFulfilledCallback,
+        onStartRejectedCallback,
+        @ptrCast(controller_internal),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
         onStartFulfilledImmediate(controller_internal);
-    }
+        // Clean up the promise since we're not using its handlers
+        start_promise.deinit();
+    };
+}
+
+/// Callback for start promise fulfillment (used with onSettleCtx)
+/// Signature must match: fn (*anyopaque, void) anyerror!void
+fn onStartFulfilledCallback(ctx: *anyopaque, _: void) anyerror!void {
+    const controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState = @ptrCast(@alignCast(ctx));
+    onStartFulfilledImmediate(controller_internal);
+}
+
+/// Callback for start promise rejection (used with onSettleCtx)
+/// Signature must match: fn (*anyopaque, webidl.errors.Exception) anyerror!void
+fn onStartRejectedCallback(ctx: *anyopaque, reason: webidl.errors.Exception) anyerror!void {
+    const controller_internal: *@import("ReadableStreamDefaultController.zig").InternalState = @ptrCast(@alignCast(ctx));
+    onStartRejectedImmediate(controller_internal, reason);
 }
 
 /// Invoke the pending start callback for a ReadableByteStreamController
@@ -464,6 +404,12 @@ pub fn invokePendingByteStartCallback(
     v8_isolate: *anyopaque,
     v8_context: *anyopaque,
 ) void {
+    // Suppress unused parameter warnings - these were needed for the old direct V8 FFI approach
+    // but are not needed when using Algorithm.invoke() which handles V8 internally
+    _ = controller_v8;
+    _ = v8_isolate;
+    _ = v8_context;
+
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller;
@@ -483,46 +429,16 @@ pub fn invokePendingByteStartCallback(
         return;
     }
 
-    // Get the V8 function pointer from the algorithm's context
-    // The context contains the raw V8 Value pointer that was cast from the dictionary
-    const v8_func_ptr = start_algo.context orelse {
-        // No callback - mark as started
-        onByteStartFulfilledImmediate(controller_internal, controller_instance);
-        return;
-    };
-
-    // Cast the opaque pointer to V8 types
-    const isolate: *v8.Isolate = @ptrCast(@alignCast(v8_isolate));
-    const context: *v8.Context = @ptrCast(@alignCast(v8_context));
-    const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
-
-    // The stored pointer is a raw V8 Value pointer - verify it's a function
-    const v8_value: *v8.Value = @ptrCast(@alignCast(v8_func_ptr));
-
-    if (!v8.ffi.v8_Value_IsFunction(v8_value)) {
-        onByteStartFulfilledImmediate(controller_internal, controller_instance);
-        return;
-    }
-
-    const func: *v8.Function = @ptrCast(v8_value);
-
-    // Call the V8 function with the controller as argument
-    // Use 'undefined' as 'this' since start() is not called as a method
-    const undefined_recv = v8.ffi.v8_Undefined(isolate) orelse {
-        // Couldn't get undefined - mark as started and return
-        onByteStartFulfilledImmediate(controller_internal, controller_instance);
-        return;
-    };
-    var args = [_]*v8.Value{@ptrCast(controller_obj)};
-    const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
-
-    // Check if call succeeded
-    if (result == null) {
-        // Call threw an exception - error the controller
-        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
+    // Use the Algorithm's invoke() method which properly handles GlobalCallbackContext.
+    // The Algorithm was created with jsCallbackAlgorithmGlobal() in setUpReadableByteStreamController,
+    // so its context is a *GlobalCallbackContext containing the V8 Global handle.
+    // The invoke() method retrieves the Local from the Global and calls through the engine interface.
+    const start_promise = start_algo.invoke(controller_instance) catch {
+        // Invocation failed - error the controller
+        const js_error = streams_common.JSValue{ .string = "Start callback invocation failed" };
         ReadableByteStreamControllerImpl.errorInternal(controller_internal, js_error);
         return;
-    }
+    };
 
     // Clear the start algorithm since it's been invoked
     start_algo.deinit();
@@ -534,103 +450,73 @@ pub fn invokePendingByteStartCallback(
     // 16. Upon fulfillment of startPromise: set started = true, call pull if needed
     // 17. Upon rejection of startPromise: error the controller
 
-    // Unwrap the result (already checked for null above)
-    const result_value: *v8.Value = result.?;
-
-    // Check if result is a Promise
-    const is_promise = v8.ffi.v8_Value_IsPromise(result_value);
-    if (is_promise) {
-        // Result is a Promise - chain handlers to wait for it to settle
-        const promise: *v8.ffi.Promise = @ptrCast(result_value);
-
-        // Create context for the callbacks (store pointer to controller internal state)
-        // We need to allocate this because the callbacks are called asynchronously
-        const callback_ctx = controller_internal.allocator.create(ByteStartCallbackContext) catch {
-            // Allocation failed - fall back to immediate fulfillment
-            onByteStartFulfilledImmediate(controller_internal, controller_instance);
-            return;
-        };
-        callback_ctx.* = .{
-            .controller_internal = controller_internal,
-            .controller_instance = controller_instance,
-            .allocator = controller_internal.allocator,
-        };
-
-        // Create fulfill handler
-        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
-            context,
-            onByteStartPromiseFulfilled,
-            callback_ctx,
-        ) orelse {
-            // Failed to create handler - fall back to immediate fulfillment
-            controller_internal.allocator.destroy(callback_ctx);
-            onByteStartFulfilledImmediate(controller_internal, controller_instance);
-            return;
-        };
-
-        // Create reject handler
-        const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
-            context,
-            onByteStartPromiseRejected,
-            callback_ctx,
-        ) orelse {
-            // Failed to create handler - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
-            onByteStartFulfilledImmediate(controller_internal, controller_instance);
-            return;
-        };
-
-        // Chain handlers onto the promise
-        const chained = v8.ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
-        if (chained == null) {
-            // Failed to chain - clean up and fall back
-            v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
-            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
-            onByteStartFulfilledImmediate(controller_internal, controller_instance);
-            return;
-        }
-        // Promise handlers are now chained - they will be called when the promise settles
-        // The callback context will be freed in the callback handlers
-    } else {
-        // Result is not a Promise - mark as started immediately
+    // Create context for the callbacks (store pointer to controller internal state + instance)
+    // We need to allocate this because the callbacks are called asynchronously
+    const callback_ctx = controller_internal.allocator.create(ByteStartCallbackContext) catch {
+        // Allocation failed - fall back to immediate fulfillment
         onByteStartFulfilledImmediate(controller_internal, controller_instance);
-    }
+        start_promise.deinit();
+        return;
+    };
+    callback_ctx.* = .{
+        .controller_internal = controller_internal,
+        .controller_instance = controller_instance,
+        .allocator = controller_internal.allocator,
+        .promise = start_promise,
+    };
+
+    // Use onSettleCtx to handle promise settlement without creating a chained promise
+    start_promise.onSettleCtx(
+        onByteStartFulfilledCallback,
+        onByteStartRejectedCallback,
+        @ptrCast(callback_ctx),
+    ) catch {
+        // If we can't attach handlers, assume immediate fulfillment
+        onByteStartFulfilledImmediate(controller_internal, controller_instance);
+        controller_internal.allocator.destroy(callback_ctx);
+        start_promise.deinit();
+    };
 }
 
-/// Context for V8 promise callbacks from invokePendingByteStartCallback
-/// This is allocated and passed to the V8 promise handlers, then freed in the callbacks
+/// Context for async promise callbacks from invokePendingByteStartCallback
 const ByteStartCallbackContext = struct {
     controller_internal: *@import("ReadableByteStreamController.zig").InternalState,
     controller_instance: *runtime.Instance,
     allocator: std.mem.Allocator,
+    promise: *AsyncPromise(void),
 };
 
-/// V8 Promise fulfill handler for byte stream start callback
-fn onByteStartPromiseFulfilled(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
-    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
-    defer callback_ctx.allocator.destroy(callback_ctx);
+/// Callback for byte stream start promise fulfillment (used with onSettleCtx)
+/// Signature must match: fn (*anyopaque, void) anyerror!void
+fn onByteStartFulfilledCallback(ctx: *anyopaque, _: void) anyerror!void {
+    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx));
+    defer {
+        callback_ctx.promise.deinit();
+        callback_ctx.allocator.destroy(callback_ctx);
+    }
 
     // Mark the controller as started and call pull if needed
     onByteStartFulfilledImmediate(callback_ctx.controller_internal, callback_ctx.controller_instance);
 }
 
-/// V8 Promise reject handler for byte stream start callback
-fn onByteStartPromiseRejected(ctx: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void {
-    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
-    defer callback_ctx.allocator.destroy(callback_ctx);
+/// Callback for byte stream start promise rejection (used with onSettleCtx)
+/// Signature must match: fn (*anyopaque, webidl.errors.Exception) anyerror!void
+fn onByteStartRejectedCallback(ctx: *anyopaque, reason: webidl.errors.Exception) anyerror!void {
+    const callback_ctx: *ByteStartCallbackContext = @ptrCast(@alignCast(ctx));
+    defer {
+        callback_ctx.promise.deinit();
+        callback_ctx.allocator.destroy(callback_ctx);
+    }
 
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
 
-    // Convert reason to JSValue if provided
-    if (reason) |r| {
-        const js_error = streams_common.JSValue{ .v8_value = r };
-        ReadableByteStreamControllerImpl.errorInternal(callback_ctx.controller_internal, js_error);
-    } else {
-        const js_error = streams_common.JSValue{ .string = "Start callback promise rejected" };
-        ReadableByteStreamControllerImpl.errorInternal(callback_ctx.controller_internal, js_error);
-    }
+    // Convert Exception to JSValue - extract message from the tagged union
+    const message = switch (reason) {
+        .simple => |s| s.message,
+        .dom => |d| d.message,
+    };
+    const js_error = streams_common.JSValue{ .string = message };
+    ReadableByteStreamControllerImpl.errorInternal(callback_ctx.controller_internal, js_error);
 }
 
 /// Getter for locked
