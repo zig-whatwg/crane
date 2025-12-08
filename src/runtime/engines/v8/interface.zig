@@ -938,6 +938,22 @@ pub fn V8Interface(comptime Interface: type) type {
                         else
                             zig_getter(instance);
 
+                        // For string types that allocate memory, free after V8 conversion.
+                        // IMPORTANT: Impls MUST use instance.ctx.allocator for returned strings,
+                        // not internal.allocator, so this cleanup uses the correct allocator.
+                        // Static strings (empty string "") have len=0 and won't be freed.
+                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
+                        defer if (needs_cleanup) {
+                            if (PayloadType == runtime.DOMString) {
+                                var mutable = result;
+                                mutable.deinit(instance.ctx.allocator);
+                            } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                                if (result.len > 0) {
+                                    instance.ctx.allocator.free(result);
+                                }
+                            }
+                        };
+
                         // Convert to V8 using comptime type dispatch
                         const v8_value: *v8.Value = comptime_convert: {
                             // WebIDL primitive types
@@ -2975,14 +2991,23 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// Free converted value if it needs cleanup (e.g., DOMString)
+        /// Free converted value if it needs cleanup (e.g., DOMString, USVString, []const u8)
         fn freeConvertedValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
             if (T == runtime.DOMString) {
                 // DOMString owns its buffer - deinit it
                 var mutable_value = value;
                 mutable_value.deinit(allocator);
+            } else if (T == runtime.USVString or T == []const u8) {
+                // USVString and []const u8 are slices from a DOMString allocation
+                // The slice points to memory that was allocated by fromV8String
+                // We need to free the underlying buffer
+                if (value.len > 0) {
+                    // The slice was created by DOMString.asSlice() which returns data[0..len]
+                    // We need to free the original allocation
+                    allocator.free(value);
+                }
             }
-            // Other types don't need cleanup
+            // Other types (primitives, optionals with null, etc.) don't need cleanup
         }
 
         /// Generate a static method callback for a specific method at comptime

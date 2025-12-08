@@ -142,29 +142,34 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 
 /// href getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-href (line 1855)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    return url_serializer.serialize(internal.allocator, &internal.url_record, false);
+    return url_serializer.serialize(instance.ctx.allocator, &internal.url_record, false);
 }
 
 /// origin getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    const url_origin = try origin_module.getOrigin(internal.allocator, &internal.url_record);
-    defer url_origin.deinit(internal.allocator);
-    return url_origin.serialize(internal.allocator);
+    const allocator = instance.ctx.allocator;
+    const url_origin = try origin_module.getOrigin(allocator, &internal.url_record);
+    defer url_origin.deinit(allocator);
+    return url_origin.serialize(allocator);
 }
 
 /// protocol getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
     const scheme = internal.url_record.scheme();
-    const result = try internal.allocator.alloc(u8, scheme.len + 1);
+    const result = try allocator.alloc(u8, scheme.len + 1);
     @memcpy(result[0..scheme.len], scheme);
     result[scheme.len] = ':';
     return result;
@@ -172,92 +177,103 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
 
 /// username getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-username (line 1877)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    return try internal.allocator.dupe(u8, internal.url_record.username());
+    return try instance.ctx.allocator.dupe(u8, internal.url_record.username());
 }
 
 /// password getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-password (line 1885)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    return try internal.allocator.dupe(u8, internal.url_record.password());
+    return try instance.ctx.allocator.dupe(u8, internal.url_record.password());
 }
 
 /// host getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1893-1901)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
 
     // Step 2: If url's host is null, return empty string
-    const h = internal.url_record.host orelse return try internal.allocator.dupe(u8, "");
+    const h = internal.url_record.host orelse return try allocator.dupe(u8, "");
 
     // Step 3: If url's port is null, return serialized host
     const p = internal.url_record.port orelse {
-        return host_serializer.serializeHost(internal.allocator, h);
+        return host_serializer.serializeHost(allocator, h);
     };
 
     // Step 4: Return host:port
-    const host_str = try host_serializer.serializeHost(internal.allocator, h);
-    defer internal.allocator.free(host_str);
+    const host_str = try host_serializer.serializeHost(allocator, h);
+    defer allocator.free(host_str);
 
-    const port_str = try std.fmt.allocPrint(internal.allocator, "{d}", .{p});
-    defer internal.allocator.free(port_str);
+    const port_str = try std.fmt.allocPrint(allocator, "{d}", .{p});
+    defer allocator.free(port_str);
 
-    return std.fmt.allocPrint(internal.allocator, "{s}:{s}", .{ host_str, port_str });
+    return std.fmt.allocPrint(allocator, "{s}:{s}", .{ host_str, port_str });
 }
 
 /// hostname getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1911-1915)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
 
     // Step 1: If url's host is null, return empty string
-    const h = internal.url_record.host orelse return try internal.allocator.dupe(u8, "");
+    const h = internal.url_record.host orelse return try allocator.dupe(u8, "");
 
     // Step 2: Return serialized host
-    return host_serializer.serializeHost(internal.allocator, h);
+    return host_serializer.serializeHost(allocator, h);
 }
 
 /// port getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1923-1927)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
 
     // Step 1: If port is null, return empty string
-    const p = internal.url_record.port orelse return try internal.allocator.dupe(u8, "");
+    const p = internal.url_record.port orelse return try allocator.dupe(u8, "");
 
     // Step 2: Return port serialized
-    return std.fmt.allocPrint(internal.allocator, "{d}", .{p});
+    return std.fmt.allocPrint(allocator, "{d}", .{p});
 }
 
 /// pathname getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (line 1937)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    return path_serializer.serializePath(internal.allocator, &internal.url_record);
+    return path_serializer.serializePath(instance.ctx.allocator, &internal.url_record);
 }
 
 /// search getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1947-1951)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
     const q = internal.url_record.query();
 
     // Step 1: If query is null or empty, return empty string
     if (q == null or q.?.len == 0) {
-        return try internal.allocator.dupe(u8, "");
+        return try allocator.dupe(u8, "");
     }
 
     // Step 2: Return "?" + query
-    return std.fmt.allocPrint(internal.allocator, "?{s}", .{q.?});
+    return std.fmt.allocPrint(allocator, "?{s}", .{q.?});
 }
 
 /// searchParams getter
@@ -277,18 +293,20 @@ pub fn get_searchParams(instance: *runtime.Instance) anyerror!*runtime.Instance 
 
 /// hash getter
 /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1969-1973)
+/// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = instance.ctx.allocator;
     const f = internal.url_record.fragment();
 
     // Step 1: If fragment is null or empty, return empty string
     if (f == null or f.?.len == 0) {
-        return try internal.allocator.dupe(u8, "");
+        return try allocator.dupe(u8, "");
     }
 
     // Step 2: Return "#" + fragment
-    return std.fmt.allocPrint(internal.allocator, "#{s}", .{f.?});
+    return std.fmt.allocPrint(allocator, "#{s}", .{f.?});
 }
 
 // ========================================================================
