@@ -58,9 +58,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Stringifier - returns the string representation
+/// Internal: stringifier implementation
+///
+/// Returns the string representation of the TrustedScript value.
+/// NOT a WebIDL operation - stringifiers are handled differently.
 /// Per spec: "The stringifier must return the value of the object's [[Data]] internal slot."
-pub fn call_toString(instance: *runtime.Instance) anyerror!runtime.DOMString {
+pub fn stringify(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return runtime.DOMString.initEmpty();
     if (internal.inner) |inner| {

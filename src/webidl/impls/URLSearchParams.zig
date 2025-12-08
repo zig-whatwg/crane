@@ -464,10 +464,12 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
     return error.NotImplemented;
 }
 
-/// toString method (stringifier)
+/// Internal: stringifier implementation
+///
+/// Returns the serialization of the URLSearchParams' list.
+/// NOT a WebIDL operation - stringifiers are handled differently.
 /// Spec: https://url.spec.whatwg.org/#urlsearchparams-stringification-behavior
-/// Returns the serialization of the URLSearchParams' list
-pub fn call_toString(instance: *runtime.Instance) anyerror!runtime.USVString {
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

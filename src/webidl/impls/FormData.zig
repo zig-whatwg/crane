@@ -131,11 +131,12 @@ pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: 
     try internal.form_data.appendString(name, value);
 }
 
-/// Operation: append (Blob overload)
+/// Internal: append Blob/File entry
 ///
+/// This is an internal helper for handling the Blob overload of append.
+/// NOT a WebIDL operation - no corresponding interface delegate.
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-append
-/// Appends a Blob/File to an existing key, or adds the key if it doesn't exist.
-pub fn call_appendBlob(instance: *runtime.Instance, name: runtime.USVString, blob_instance: *runtime.Instance, filename: ?runtime.USVString) ImplError!void {
+pub fn appendBlobEntry(instance: *runtime.Instance, name: runtime.USVString, blob_instance: *runtime.Instance, filename: ?runtime.USVString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Store the Blob instance reference
@@ -144,12 +145,14 @@ pub fn call_appendBlob(instance: *runtime.Instance, name: runtime.USVString, blo
     try internal.form_data.appendBlobInstance(name, blob_instance, filename);
 }
 
-/// Dispatch method for append - handles overload resolution at runtime
+/// Internal: dispatch append operation
 ///
+/// Handles overload resolution at runtime for append.
+/// NOT a WebIDL operation - no corresponding interface delegate.
 /// This receives the raw V8 value as `any` and determines whether to:
 /// - Store as string (if it's a string or coercible to string)
 /// - Store as Blob instance (if it's a Blob/File object)
-pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
+pub fn dispatchAppend(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Import V8 FFI types for runtime type checking
@@ -195,8 +198,11 @@ pub fn call_appendDispatch(instance: *runtime.Instance, name: runtime.USVString,
     }
 }
 
-/// Dispatch method for set - handles overload resolution at runtime
-pub fn call_setDispatch(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
+/// Internal: dispatch set operation
+///
+/// Handles overload resolution at runtime for set.
+/// NOT a WebIDL operation - no corresponding interface delegate.
+pub fn dispatchSet(instance: *runtime.Instance, name: runtime.USVString, value_v8: runtime.Any) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Import V8 FFI types
