@@ -150,15 +150,22 @@ pub const IDBCursor = struct {
         return value;
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try IDBCursorImpl.call_delete(instance);
+    pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
+        // [EnforceRange] on count
+        if (!runtime.isInRange(u32, count)) return error.TypeError;
+        
+        return try IDBCursorImpl.call_advance(instance, count);
     }
 
     pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try IDBCursorImpl.call_continue(instance, key);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try IDBCursorImpl.call_delete(instance);
     }
 
     pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: runtime.JSValue, primaryKey: runtime.JSValue) anyerror!void {
@@ -171,13 +178,6 @@ pub const IDBCursor = struct {
         // [NewObject] - Caller owns the returned object
         
         return try IDBCursorImpl.call_update(instance, value);
-    }
-
-    pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
-        // [EnforceRange] on count
-        if (!runtime.isInRange(u32, count)) return error.TypeError;
-        
-        return try IDBCursorImpl.call_advance(instance, count);
     }
 
 };

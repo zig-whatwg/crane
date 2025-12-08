@@ -118,6 +118,25 @@ pub const Sanitizer = struct {
         return try SanitizerImpl.call_replaceElementWithChildren(instance, element);
     }
 
+    pub fn call_get(instance: *runtime.Instance) anyerror!SanitizerConfig {
+        return try SanitizerImpl.call_get(instance);
+    }
+
+    pub fn call_allowElement(instance: *runtime.Instance, element: SanitizerElementWithAttributes) anyerror!bool {
+        
+        return try SanitizerImpl.call_allowElement(instance, element);
+    }
+
+    pub fn call_allowAttribute(instance: *runtime.Instance, attribute: SanitizerAttribute) anyerror!bool {
+        
+        return try SanitizerImpl.call_allowAttribute(instance, attribute);
+    }
+
+    pub fn call_setDataAttributes(instance: *runtime.Instance, allow: bool) anyerror!bool {
+        
+        return try SanitizerImpl.call_setDataAttributes(instance, allow);
+    }
+
     pub fn call_setComments(instance: *runtime.Instance, allow: bool) anyerror!bool {
         
         return try SanitizerImpl.call_setComments(instance, allow);
@@ -127,33 +146,14 @@ pub const Sanitizer = struct {
         return try SanitizerImpl.call_removeUnsafe(instance);
     }
 
-    pub fn call_allowElement(instance: *runtime.Instance, element: SanitizerElementWithAttributes) anyerror!bool {
-        
-        return try SanitizerImpl.call_allowElement(instance, element);
-    }
-
-    pub fn call_get(instance: *runtime.Instance) anyerror!SanitizerConfig {
-        return try SanitizerImpl.call_get(instance);
-    }
-
-    pub fn call_allowAttribute(instance: *runtime.Instance, attribute: SanitizerAttribute) anyerror!bool {
-        
-        return try SanitizerImpl.call_allowAttribute(instance, attribute);
-    }
-
-    pub fn call_removeElement(instance: *runtime.Instance, element: SanitizerElement) anyerror!bool {
-        
-        return try SanitizerImpl.call_removeElement(instance, element);
-    }
-
     pub fn call_removeAttribute(instance: *runtime.Instance, attribute: SanitizerAttribute) anyerror!bool {
         
         return try SanitizerImpl.call_removeAttribute(instance, attribute);
     }
 
-    pub fn call_setDataAttributes(instance: *runtime.Instance, allow: bool) anyerror!bool {
+    pub fn call_removeElement(instance: *runtime.Instance, element: SanitizerElement) anyerror!bool {
         
-        return try SanitizerImpl.call_setDataAttributes(instance, allow);
+        return try SanitizerImpl.call_removeElement(instance, element);
     }
 
 };

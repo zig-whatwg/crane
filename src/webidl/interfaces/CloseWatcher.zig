@@ -133,16 +133,16 @@ pub const CloseWatcher = struct {
         try CloseWatcherImpl.set_onclose(instance, value);
     }
 
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try CloseWatcherImpl.call_close(instance);
+    }
+
     pub fn call_requestClose(instance: *runtime.Instance) anyerror!void {
         return try CloseWatcherImpl.call_requestClose(instance);
     }
 
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try CloseWatcherImpl.call_destroy(instance);
-    }
-
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try CloseWatcherImpl.call_close(instance);
     }
 
 };

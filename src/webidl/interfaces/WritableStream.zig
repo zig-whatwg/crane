@@ -102,10 +102,6 @@ pub const WritableStream = struct {
         return try WritableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WritableStreamImpl.call_getWriter(instance);
-    }
-
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         
         return try WritableStreamImpl.call_abort(instance, reason);
@@ -113,6 +109,10 @@ pub const WritableStream = struct {
 
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WritableStreamImpl.call_close(instance);
+    }
+
+    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WritableStreamImpl.call_getWriter(instance);
     }
 
 };

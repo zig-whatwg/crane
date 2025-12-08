@@ -94,14 +94,14 @@ pub const DOMStringList = struct {
         return try DOMStringListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
-        
-        return try DOMStringListImpl.call_item(instance, index);
-    }
-
     pub fn call_contains(instance: *runtime.Instance, string: DOMString) anyerror!bool {
         
         return try DOMStringListImpl.call_contains(instance, string);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
+        
+        return try DOMStringListImpl.call_item(instance, index);
     }
 
 };

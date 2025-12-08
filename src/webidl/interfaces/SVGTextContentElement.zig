@@ -327,9 +327,18 @@ pub const SVGTextContentElement = struct {
         return value;
     }
 
-    pub fn call_selectSubString(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!void {
+    pub fn call_getComputedTextLength(instance: *runtime.Instance) anyerror!f32 {
+        return try SVGTextContentElementImpl.call_getComputedTextLength(instance);
+    }
+
+    pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!i32 {
         
-        return try SVGTextContentElementImpl.call_selectSubString(instance, charnum, nchars);
+        return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
+    }
+
+    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+        
+        return try SVGTextContentElementImpl.call_getEndPositionOfChar(instance, charnum);
     }
 
     pub fn call_getExtentOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
@@ -341,14 +350,9 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getNumberOfChars(instance);
     }
 
-    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+    pub fn call_getSubStringLength(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!f32 {
         
-        return try SVGTextContentElementImpl.call_getStartPositionOfChar(instance, charnum);
-    }
-
-    pub fn call_getEndPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
-        
-        return try SVGTextContentElementImpl.call_getEndPositionOfChar(instance, charnum);
+        return try SVGTextContentElementImpl.call_getSubStringLength(instance, charnum, nchars);
     }
 
     pub fn call_getRotationOfChar(instance: *runtime.Instance, charnum: u32) anyerror!f32 {
@@ -356,18 +360,14 @@ pub const SVGTextContentElement = struct {
         return try SVGTextContentElementImpl.call_getRotationOfChar(instance, charnum);
     }
 
-    pub fn call_getComputedTextLength(instance: *runtime.Instance) anyerror!f32 {
-        return try SVGTextContentElementImpl.call_getComputedTextLength(instance);
+    pub fn call_getStartPositionOfChar(instance: *runtime.Instance, charnum: u32) anyerror!*runtime.Instance {
+        
+        return try SVGTextContentElementImpl.call_getStartPositionOfChar(instance, charnum);
     }
 
-    pub fn call_getCharNumAtPosition(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!i32 {
+    pub fn call_selectSubString(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!void {
         
-        return try SVGTextContentElementImpl.call_getCharNumAtPosition(instance, point);
-    }
-
-    pub fn call_getSubStringLength(instance: *runtime.Instance, charnum: u32, nchars: u32) anyerror!f32 {
-        
-        return try SVGTextContentElementImpl.call_getSubStringLength(instance, charnum, nchars);
+        return try SVGTextContentElementImpl.call_selectSubString(instance, charnum, nchars);
     }
 
 };

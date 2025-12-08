@@ -96,14 +96,14 @@ pub const PrivateAggregation = struct {
         return try PrivateAggregationImpl.call_contributeToHistogram(instance, contribution);
     }
 
-    pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: DOMString, contribution: *const anyopaque) anyerror!void {
-        
-        return try PrivateAggregationImpl.call_contributeToHistogramOnEvent(instance, event, contribution);
-    }
-
     pub fn call_enableDebugMode(instance: *runtime.Instance, options: webidl.Opt(PADebugModeOptions)) anyerror!void {
         
         return try PrivateAggregationImpl.call_enableDebugMode(instance, options);
+    }
+
+    pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: DOMString, contribution: *const anyopaque) anyerror!void {
+        
+        return try PrivateAggregationImpl.call_contributeToHistogramOnEvent(instance, event, contribution);
     }
 
 };

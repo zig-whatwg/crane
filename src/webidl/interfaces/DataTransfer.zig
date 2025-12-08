@@ -177,14 +177,14 @@ pub const DataTransfer = struct {
         return try DataTransferImpl.call_clearData(instance, format);
     }
 
-    pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
-        
-        return try DataTransferImpl.call_setDragImage(instance, image, x, y);
-    }
-
     pub fn call_setData(instance: *runtime.Instance, format: DOMString, data: DOMString) anyerror!void {
         
         return try DataTransferImpl.call_setData(instance, format, data);
+    }
+
+    pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, x: i32, y: i32) anyerror!void {
+        
+        return try DataTransferImpl.call_setDragImage(instance, image, x, y);
     }
 
 };

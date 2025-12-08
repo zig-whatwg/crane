@@ -137,13 +137,9 @@ pub const GPUComputePassEncoder = struct {
         try GPUComputePassEncoderImpl.set_label(instance, value);
     }
 
-    pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: GPUSize32, workgroupCountY: webidl.Opt(GPUSize32), workgroupCountZ: webidl.Opt(GPUSize32)) anyerror!void {
+    pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
         
-        return try GPUComputePassEncoderImpl.call_dispatchWorkgroups(instance, workgroupCountX, workgroupCountY, workgroupCountZ);
-    }
-
-    pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
-        return try GPUComputePassEncoderImpl.call_popDebugGroup(instance);
+        return try GPUComputePassEncoderImpl.call_dispatchWorkgroupsIndirect(instance, indirectBuffer, indirectOffset);
     }
 
     pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
@@ -151,9 +147,9 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }
 
-    pub fn call_dispatchWorkgroupsIndirect(instance: *runtime.Instance, indirectBuffer: *runtime.Instance, indirectOffset: GPUSize64) anyerror!void {
+    pub fn call_dispatchWorkgroups(instance: *runtime.Instance, workgroupCountX: GPUSize32, workgroupCountY: webidl.Opt(GPUSize32), workgroupCountZ: webidl.Opt(GPUSize32)) anyerror!void {
         
-        return try GPUComputePassEncoderImpl.call_dispatchWorkgroupsIndirect(instance, indirectBuffer, indirectOffset);
+        return try GPUComputePassEncoderImpl.call_dispatchWorkgroups(instance, workgroupCountX, workgroupCountY, workgroupCountZ);
     }
 
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
@@ -166,13 +162,17 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
-    pub fn call_end(instance: *runtime.Instance) anyerror!void {
-        return try GPUComputePassEncoderImpl.call_end(instance);
-    }
-
     pub fn call_setPipeline(instance: *runtime.Instance, pipeline: *runtime.Instance) anyerror!void {
         
         return try GPUComputePassEncoderImpl.call_setPipeline(instance, pipeline);
+    }
+
+    pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
+        return try GPUComputePassEncoderImpl.call_popDebugGroup(instance);
+    }
+
+    pub fn call_end(instance: *runtime.Instance) anyerror!void {
+        return try GPUComputePassEncoderImpl.call_end(instance);
     }
 
 };

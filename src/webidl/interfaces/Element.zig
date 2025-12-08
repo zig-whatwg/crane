@@ -1757,265 +1757,17 @@ pub const Element = struct {
         return try ElementImpl.get_assignedSlot(instance);
     }
 
-    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
-        
-        return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
-    }
-
-    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?DOMString {
-        
-        return try ElementImpl.call_getAttribute(instance, qualifiedName);
-    }
-
-    pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!bool {
-        
-        return try ElementImpl.call_hasAttribute(instance, qualifiedName);
-    }
-
-    pub fn call_matches(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
-        
-        return try ElementImpl.call_matches(instance, selectors);
-    }
-
-    pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-        
-        return try ElementImpl.call_releasePointerCapture(instance, pointerId);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ElementImpl.call_computedStyleMap(instance);
-    }
-
-    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_scroll(instance, options);
-    }
-
-    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ElementImpl.call_getClientRects(instance);
-    }
-
-    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_scrollBy(instance, options);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_prepend(instance, nodes);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_replaceWith(instance, nodes);
-    }
-
-    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_setAttributeNodeNS(instance, attr);
-    }
-
-    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_setAttributeNS(instance, namespace, qualifiedName, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_setAttributeNode(instance, attr);
-    }
-
-    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_scrollTo(instance, options);
-    }
-
-    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_replaceChildren(instance, nodes);
-    }
-
-    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
-        return try ElementImpl.call_getRegionFlowRanges(instance);
-    }
-
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_getBoxQuads(instance, options);
-    }
-
-    pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_focusableAreas(instance, option);
-    }
-
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
-    }
-
-    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_getAnimations(instance, options);
-    }
-
-    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_getElementsByClassName(instance, classNames);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_insertAdjacentElement(instance, where, element);
-    }
-
-    pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
-        
-        return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
-    }
-
-    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_spatialNavigationSearch(instance, dir, options);
-    }
-
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
-    }
-
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_querySelector(instance, selectors);
-    }
-
-    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_closest(instance, selectors);
-    }
-
     pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_getSpatialNavigationContainer(instance);
     }
 
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        return try ElementImpl.call_remove(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_removeAttribute(instance, qualifiedName);
-    }
-
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_removeAttributeNode(instance, attr);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_removeAttributeNS(instance, namespace, localName);
+    pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
+        return try ElementImpl.call_hasAttributes(instance);
     }
 
     pub fn call_insertAdjacentText(instance: *runtime.Instance, where: DOMString, data: DOMString) anyerror!void {
         
         return try ElementImpl.call_insertAdjacentText(instance, where, data);
-    }
-
-    pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!*const anyopaque {
-        
-        return try ElementImpl.call_requestFullscreen(instance, options);
-    }
-
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_animate(instance, keyframes, options);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ElementImpl.call_append(instance, nodes);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2028,38 +1780,39 @@ pub const Element = struct {
         return try ElementImpl.call_moveBefore(instance, node, child);
     }
 
-    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
-        
-        return try ElementImpl.call_getHTML(instance, options);
-    }
-
-    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
-    }
-
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
-        return try ElementImpl.call_startViewTransition(instance, callbackOptions);
-    }
-
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!void {
+    pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         
-        return try ElementImpl.call_setHTMLUnsafe(instance, html);
+        return try ElementImpl.call_insertAdjacentElement(instance, where, element);
     }
 
-    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
         
-        return try ElementImpl.call_scrollIntoView(instance, arg);
+        
+        return try ElementImpl.call_append(instance, nodes);
     }
 
-    pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
-        return try ElementImpl.call_hasAttributes(instance);
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_getBoxQuads(instance, options);
+    }
+
+    pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
+        
+        return try ElementImpl.call_setPointerCapture(instance, pointerId);
+    }
+
+    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!bool {
+        
+        return try ElementImpl.call_hasAttributeNS(instance, namespace, localName);
     }
 
     pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!bool {
@@ -2067,19 +1820,9 @@ pub const Element = struct {
         return try ElementImpl.call_hasPointerCapture(instance, pointerId);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: DOMString, force: webidl.Opt(bool)) anyerror!bool {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!*const anyopaque {
         
-        
-        return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
-    }
-
-    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
-        
-        return try ElementImpl.call_pseudo(instance, @"type");
+        return try ElementImpl.call_focusableAreas(instance, option);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -2092,6 +1835,27 @@ pub const Element = struct {
         return try ElementImpl.call_before(instance, nodes);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_setAttributeNS(instance, namespace, qualifiedName, value);
+    }
+
+    pub fn call_closest(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+        
+        return try ElementImpl.call_closest(instance, selectors);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try ElementImpl.call_getBoundingClientRect(instance);
+    }
+
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2100,6 +1864,90 @@ pub const Element = struct {
         
         
         return try ElementImpl.call_after(instance, nodes);
+    }
+
+    pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: DOMString) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_getElementsByClassName(instance, classNames);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_setAttributeNode(instance, attr);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        return try ElementImpl.call_remove(instance);
+    }
+
+    pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
+    }
+
+    pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_requestPointerLock(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_setAttributeNodeNS(instance, attr);
+    }
+
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_animate(instance, keyframes, options);
+    }
+
+    pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
+        
+        return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
+    }
+
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_startViewTransition(instance, callbackOptions);
+    }
+
+    pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?DOMString {
+        
+        return try ElementImpl.call_getAttribute(instance, qualifiedName);
+    }
+
+    pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {
+        
+        return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
+    }
+
+    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_scroll(instance, options);
+    }
+
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
+    }
+
+    pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
+        
+        return try ElementImpl.call_spatialNavigationSearch(instance, dir, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2112,6 +1960,156 @@ pub const Element = struct {
         return try ElementImpl.call_setAttribute(instance, qualifiedName, value);
     }
 
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+        
+        return try ElementImpl.call_querySelector(instance, selectors);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: DOMString, force: webidl.Opt(bool)) anyerror!bool {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try ElementImpl.call_querySelectorAll(instance, selectors);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ElementImpl.call_computedStyleMap(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_setHTMLUnsafe(instance, html);
+    }
+
+    pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!?*runtime.Instance {
+        
+        return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
+    }
+
+    pub fn call_matches(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
+        
+        return try ElementImpl.call_matches(instance, selectors);
+    }
+
+    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
+        
+        return try ElementImpl.call_getHTML(instance, options);
+    }
+
+    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_scrollBy(instance, options);
+    }
+
+    pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ElementImpl.call_getAttributeNames(instance);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_replaceWith(instance, nodes);
+    }
+
+    pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
+    }
+
+    pub fn call_webkitMatchesSelector(instance: *runtime.Instance, selectors: DOMString) anyerror!bool {
+        
+        return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
+    }
+
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
+    }
+
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+        
+        return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
+    }
+
+    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_scrollTo(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_replaceChildren(instance, nodes);
+    }
+
+    pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_requestFullscreen(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_removeAttribute(instance, qualifiedName);
+    }
+
+    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
+        return try ElementImpl.call_getRegionFlowRanges(instance);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_prepend(instance, nodes);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_removeAttributeNode(instance, attr);
+    }
+
+    pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!bool {
+        
+        return try ElementImpl.call_hasAttribute(instance, qualifiedName);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: DOMString, string: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2122,13 +2120,18 @@ pub const Element = struct {
         return try ElementImpl.call_insertAdjacentHTML(instance, position, string);
     }
 
-    pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(CheckVisibilityOptions)) anyerror!bool {
-        
-        return try ElementImpl.call_checkVisibility(instance, options);
+    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ElementImpl.call_getClientRects(instance);
     }
 
-    pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ElementImpl.call_getAttributeNames(instance);
+    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_scrollIntoView(instance, arg);
+    }
+
+    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
+        
+        return try ElementImpl.call_getAnimations(instance, options);
     }
 
     pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!*runtime.Instance {
@@ -2136,32 +2139,29 @@ pub const Element = struct {
         return try ElementImpl.call_attachShadow(instance, init_data);
     }
 
-    pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!*const anyopaque {
+    pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
         
-        return try ElementImpl.call_requestPointerLock(instance, options);
+        return try ElementImpl.call_releasePointerCapture(instance, pointerId);
     }
 
-    pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!bool {
+    pub fn call_pseudo(instance: *runtime.Instance, @"type": CSSOMString) anyerror!?*runtime.Instance {
         
-        return try ElementImpl.call_hasAttributeNS(instance, namespace, localName);
+        return try ElementImpl.call_pseudo(instance, @"type");
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try ElementImpl.call_getBoundingClientRect(instance);
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ElementImpl.call_removeAttributeNS(instance, namespace, localName);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
+    pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(CheckVisibilityOptions)) anyerror!bool {
         
-        return try ElementImpl.call_querySelectorAll(instance, selectors);
-    }
-
-    pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-        
-        return try ElementImpl.call_setPointerCapture(instance, pointerId);
+        return try ElementImpl.call_checkVisibility(instance, options);
     }
 
 };

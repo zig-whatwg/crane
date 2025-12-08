@@ -96,11 +96,6 @@ pub const PluginArray = struct {
         return try PluginArrayImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
-        return try PluginArrayImpl.call_item(instance, index);
-    }
-
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
         
         return try PluginArrayImpl.call_namedItem(instance, name);
@@ -108,6 +103,11 @@ pub const PluginArray = struct {
 
     pub fn call_refresh(instance: *runtime.Instance) anyerror!void {
         return try PluginArrayImpl.call_refresh(instance);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+        
+        return try PluginArrayImpl.call_item(instance, index);
     }
 
 };

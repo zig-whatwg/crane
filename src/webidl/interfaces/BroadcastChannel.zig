@@ -140,13 +140,13 @@ pub const BroadcastChannel = struct {
         try BroadcastChannelImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try BroadcastChannelImpl.call_close(instance);
-    }
-
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) anyerror!void {
         
         return try BroadcastChannelImpl.call_postMessage(instance, message);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try BroadcastChannelImpl.call_close(instance);
     }
 
 };

@@ -105,14 +105,14 @@ pub const CSSGroupingRule = struct {
         return value;
     }
 
-    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
-        
-        return try CSSGroupingRuleImpl.call_deleteRule(instance, index);
-    }
-
     pub fn call_insertRule(instance: *runtime.Instance, rule: CSSOMString, index: webidl.Opt(u32)) anyerror!u32 {
         
         return try CSSGroupingRuleImpl.call_insertRule(instance, rule, index);
+    }
+
+    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
+        
+        return try CSSGroupingRuleImpl.call_deleteRule(instance, index);
     }
 
 };

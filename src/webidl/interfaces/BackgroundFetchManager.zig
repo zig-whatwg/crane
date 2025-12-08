@@ -97,13 +97,13 @@ pub const BackgroundFetchManager = struct {
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }
 
+    pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try BackgroundFetchManagerImpl.call_getIds(instance);
+    }
+
     pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: *const anyopaque, options: webidl.Opt(BackgroundFetchOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
-    }
-
-    pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try BackgroundFetchManagerImpl.call_getIds(instance);
     }
 
 };

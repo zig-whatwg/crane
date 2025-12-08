@@ -263,42 +263,42 @@ pub const MediaStreamTrack = struct {
         try MediaStreamTrackImpl.set_onisolationchange(instance, value);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try MediaStreamTrackImpl.call_clone(instance);
-    }
-
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try MediaStreamTrackImpl.call_stop(instance);
+    pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!*const anyopaque {
+        
+        return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
 
     pub fn call_getCapabilities(instance: *runtime.Instance) anyerror!MediaTrackCapabilities {
         return try MediaStreamTrackImpl.call_getCapabilities(instance);
     }
 
-    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!?CaptureHandle {
-        return try MediaStreamTrackImpl.call_getCaptureHandle(instance);
-    }
-
-    pub fn call_getConstraints(instance: *runtime.Instance) anyerror!MediaTrackConstraints {
-        return try MediaStreamTrackImpl.call_getConstraints(instance);
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try MediaStreamTrackImpl.call_stop(instance);
     }
 
     pub fn call_getSettings(instance: *runtime.Instance) anyerror!MediaTrackSettings {
         return try MediaStreamTrackImpl.call_getSettings(instance);
     }
 
+    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
+        
+        return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
+    }
+
     pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MediaStreamTrackImpl.call_getSupportedCaptureActions(instance);
     }
 
-    pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!*const anyopaque {
-        
-        return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
+    pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!?CaptureHandle {
+        return try MediaStreamTrackImpl.call_getCaptureHandle(instance);
     }
 
-    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
-        
-        return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try MediaStreamTrackImpl.call_clone(instance);
+    }
+
+    pub fn call_getConstraints(instance: *runtime.Instance) anyerror!MediaTrackConstraints {
+        return try MediaStreamTrackImpl.call_getConstraints(instance);
     }
 
 };

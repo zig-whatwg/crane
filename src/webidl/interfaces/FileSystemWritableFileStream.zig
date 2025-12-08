@@ -96,11 +96,6 @@ pub const FileSystemWritableFileStream = struct {
         FileSystemWritableFileStreamImpl.deinit(instance);
     }
 
-    pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!*const anyopaque {
-        
-        return try FileSystemWritableFileStreamImpl.call_truncate(instance, size);
-    }
-
     pub fn call_write(instance: *runtime.Instance, data: FileSystemWriteChunkType) anyerror!*const anyopaque {
         
         return try FileSystemWritableFileStreamImpl.call_write(instance, data);
@@ -109,6 +104,11 @@ pub const FileSystemWritableFileStream = struct {
     pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!*const anyopaque {
         
         return try FileSystemWritableFileStreamImpl.call_seek(instance, position);
+    }
+
+    pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!*const anyopaque {
+        
+        return try FileSystemWritableFileStreamImpl.call_truncate(instance, size);
     }
 
 };

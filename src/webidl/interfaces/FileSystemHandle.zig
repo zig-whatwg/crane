@@ -110,14 +110,14 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.get_name(instance);
     }
 
-    pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
-        
-        return try FileSystemHandleImpl.call_isSameEntry(instance, other);
-    }
-
     pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
         
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
+    }
+
+    pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
+        
+        return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {

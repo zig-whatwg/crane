@@ -94,23 +94,23 @@ pub const StylePropertyMap = struct {
         StylePropertyMapImpl.deinit(instance);
     }
 
+    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+        
+        return try StylePropertyMapImpl.call_set(instance, property, values);
+    }
+
     pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) anyerror!void {
         
         return try StylePropertyMapImpl.call_delete(instance, property);
-    }
-
-    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
-        
-        return try StylePropertyMapImpl.call_append(instance, property, values);
     }
 
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try StylePropertyMapImpl.call_clear(instance);
     }
 
-    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
         
-        return try StylePropertyMapImpl.call_set(instance, property, values);
+        return try StylePropertyMapImpl.call_append(instance, property, values);
     }
 
 };

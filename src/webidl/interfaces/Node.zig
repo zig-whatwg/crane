@@ -417,21 +417,6 @@ pub const Node = struct {
         try NodeImpl.set_textContent(instance, value);
     }
 
-    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?DOMString) anyerror!bool {
-        
-        return try NodeImpl.call_isDefaultNamespace(instance, namespace);
-    }
-
-    pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
-        
-        return try NodeImpl.call_compareDocumentPosition(instance, other);
-    }
-
-    pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
-        
-        return try NodeImpl.call_contains(instance, other);
-    }
-
     /// Extended attributes: [CEReactions]
     pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -442,9 +427,38 @@ pub const Node = struct {
         return try NodeImpl.call_insertBefore(instance, node, child);
     }
 
+    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
+        
+        return try NodeImpl.call_isSameNode(instance, otherNode);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try NodeImpl.call_replaceChild(instance, node, child);
+    }
+
     pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupNamespaceURI(instance, prefix);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        return try NodeImpl.call_normalize(instance);
+    }
+
+    pub fn call_compareDocumentPosition(instance: *runtime.Instance, other: *runtime.Instance) anyerror!u16 {
+        
+        return try NodeImpl.call_compareDocumentPosition(instance, other);
     }
 
     /// Extended attributes: [CEReactions]
@@ -457,8 +471,14 @@ pub const Node = struct {
         return try NodeImpl.call_appendChild(instance, node);
     }
 
-    pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
-        return try NodeImpl.call_hasChildNodes(instance);
+    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
+        
+        return try NodeImpl.call_isEqualNode(instance, otherNode);
+    }
+
+    pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?DOMString) anyerror!bool {
+        
+        return try NodeImpl.call_isDefaultNamespace(instance, namespace);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -472,9 +492,8 @@ pub const Node = struct {
         return try NodeImpl.call_cloneNode(instance, subtree);
     }
 
-    pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(GetRootNodeOptions)) anyerror!*runtime.Instance {
-        
-        return try NodeImpl.call_getRootNode(instance, options);
+    pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
+        return try NodeImpl.call_hasChildNodes(instance);
     }
 
     /// Extended attributes: [CEReactions]
@@ -487,38 +506,19 @@ pub const Node = struct {
         return try NodeImpl.call_removeChild(instance, child);
     }
 
-    pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
+    pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(GetRootNodeOptions)) anyerror!*runtime.Instance {
         
-        return try NodeImpl.call_isEqualNode(instance, otherNode);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        return try NodeImpl.call_normalize(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try NodeImpl.call_replaceChild(instance, node, child);
-    }
-
-    pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
-        
-        return try NodeImpl.call_isSameNode(instance, otherNode);
+        return try NodeImpl.call_getRootNode(instance, options);
     }
 
     pub fn call_lookupPrefix(instance: *runtime.Instance, namespace: ?DOMString) anyerror!?DOMString {
         
         return try NodeImpl.call_lookupPrefix(instance, namespace);
+    }
+
+    pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
+        
+        return try NodeImpl.call_contains(instance, other);
     }
 
 };

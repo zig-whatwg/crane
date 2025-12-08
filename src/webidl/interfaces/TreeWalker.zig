@@ -146,12 +146,12 @@ pub const TreeWalker = struct {
         try TreeWalkerImpl.set_currentNode(instance, value);
     }
 
-    pub fn call_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try TreeWalkerImpl.call_parentNode(instance);
+    pub fn call_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try TreeWalkerImpl.call_firstChild(instance);
     }
 
-    pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try TreeWalkerImpl.call_previousNode(instance);
+    pub fn call_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try TreeWalkerImpl.call_previousSibling(instance);
     }
 
     pub fn call_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -162,16 +162,16 @@ pub const TreeWalker = struct {
         return try TreeWalkerImpl.call_nextNode(instance);
     }
 
-    pub fn call_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try TreeWalkerImpl.call_firstChild(instance);
-    }
-
-    pub fn call_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try TreeWalkerImpl.call_previousSibling(instance);
+    pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try TreeWalkerImpl.call_previousNode(instance);
     }
 
     pub fn call_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TreeWalkerImpl.call_nextSibling(instance);
+    }
+
+    pub fn call_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try TreeWalkerImpl.call_parentNode(instance);
     }
 
 };

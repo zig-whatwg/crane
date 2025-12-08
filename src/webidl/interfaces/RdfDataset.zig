@@ -105,14 +105,14 @@ pub const RdfDataset = struct {
         return try RdfDatasetImpl.get_defaultGraph(instance);
     }
 
-    pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
-        
-        return try RdfDatasetImpl.call_add(instance, graphName, graph);
-    }
-
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try RdfDatasetImpl.call_forEach(instance, callback);
+    }
+
+    pub fn call_add(instance: *runtime.Instance, graphName: runtime.USVString, graph: *runtime.Instance) anyerror!void {
+        
+        return try RdfDatasetImpl.call_add(instance, graphName, graph);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

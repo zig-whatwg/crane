@@ -92,17 +92,17 @@ pub const HandwritingStroke = struct {
         return try HandwritingStrokeImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn call_addPoint(instance: *runtime.Instance, point: HandwritingPoint) anyerror!void {
-        
-        return try HandwritingStrokeImpl.call_addPoint(instance, point);
-    }
-
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try HandwritingStrokeImpl.call_clear(instance);
     }
 
     pub fn call_getPoints(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try HandwritingStrokeImpl.call_getPoints(instance);
+    }
+
+    pub fn call_addPoint(instance: *runtime.Instance, point: HandwritingPoint) anyerror!void {
+        
+        return try HandwritingStrokeImpl.call_addPoint(instance, point);
     }
 
 };

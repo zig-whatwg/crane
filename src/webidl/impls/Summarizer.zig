@@ -88,8 +88,8 @@ pub fn get_inputQuota(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
-/// Operation: availability
-pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
+/// Operation: availability (static)
+pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -125,8 +125,8 @@ pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     return error.NotImplemented;
 }
 
-/// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateOptions)) anyerror!*const anyopaque {
+/// Operation: create (static)
+pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SummarizerCreateOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

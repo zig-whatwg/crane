@@ -348,13 +348,13 @@ pub fn invokePendingStartCallback(
 
     // Call the V8 function with the controller as argument
     // Use 'undefined' as 'this' since start() is not called as a method
-    const undefined_recv = v8.v8_Undefined(isolate) orelse {
+    const undefined_recv = v8.ffi.v8_Undefined(isolate) orelse {
         // Couldn't get undefined - mark as started and return
         onStartFulfilledImmediate(controller_internal);
         return;
     };
     var args = [_]*v8.Value{@ptrCast(controller_obj)};
-    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
+    const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
 
     // Check if call succeeded
     if (result == null) {
@@ -382,7 +382,7 @@ pub fn invokePendingStartCallback(
     const is_promise = v8.ffi.v8_Value_IsPromise(result_value);
     if (is_promise) {
         // Result is a Promise - chain handlers to wait for it to settle
-        const promise: *v8.Promise = @ptrCast(result_value);
+        const promise: *v8.ffi.Promise = @ptrCast(result_value);
 
         // Create context for the callbacks (store pointer to controller internal state)
         // We need to allocate this because the callbacks are called asynchronously
@@ -397,7 +397,7 @@ pub fn invokePendingStartCallback(
         };
 
         // Create fulfill handler
-        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
+        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
             context,
             onStartPromiseFulfilled,
             callback_ctx,
@@ -409,24 +409,24 @@ pub fn invokePendingStartCallback(
         };
 
         // Create reject handler
-        const reject_handler = v8.v8_CreateZigRejectHandler(
+        const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
             context,
             onStartPromiseRejected,
             callback_ctx,
         ) orelse {
             // Failed to create handler - clean up and fall back
-            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onStartFulfilledImmediate(controller_internal);
             return;
         };
 
         // Chain handlers onto the promise
-        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        const chained = v8.ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
         if (chained == null) {
             // Failed to chain - clean up and fall back
-            v8.v8_DisposeZigCallbackHandler(reject_handler);
-            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onStartFulfilledImmediate(controller_internal);
             return;
@@ -508,13 +508,13 @@ pub fn invokePendingByteStartCallback(
 
     // Call the V8 function with the controller as argument
     // Use 'undefined' as 'this' since start() is not called as a method
-    const undefined_recv = v8.v8_Undefined(isolate) orelse {
+    const undefined_recv = v8.ffi.v8_Undefined(isolate) orelse {
         // Couldn't get undefined - mark as started and return
         onByteStartFulfilledImmediate(controller_internal, controller_instance);
         return;
     };
     var args = [_]*v8.Value{@ptrCast(controller_obj)};
-    const result = v8.v8_Function_Call(func, context, undefined_recv, 1, &args);
+    const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
 
     // Check if call succeeded
     if (result == null) {
@@ -541,7 +541,7 @@ pub fn invokePendingByteStartCallback(
     const is_promise = v8.ffi.v8_Value_IsPromise(result_value);
     if (is_promise) {
         // Result is a Promise - chain handlers to wait for it to settle
-        const promise: *v8.Promise = @ptrCast(result_value);
+        const promise: *v8.ffi.Promise = @ptrCast(result_value);
 
         // Create context for the callbacks (store pointer to controller internal state)
         // We need to allocate this because the callbacks are called asynchronously
@@ -557,7 +557,7 @@ pub fn invokePendingByteStartCallback(
         };
 
         // Create fulfill handler
-        const fulfill_handler = v8.v8_CreateZigFulfillHandler(
+        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
             context,
             onByteStartPromiseFulfilled,
             callback_ctx,
@@ -569,24 +569,24 @@ pub fn invokePendingByteStartCallback(
         };
 
         // Create reject handler
-        const reject_handler = v8.v8_CreateZigRejectHandler(
+        const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
             context,
             onByteStartPromiseRejected,
             callback_ctx,
         ) orelse {
             // Failed to create handler - clean up and fall back
-            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onByteStartFulfilledImmediate(controller_internal, controller_instance);
             return;
         };
 
         // Chain handlers onto the promise
-        const chained = v8.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
+        const chained = v8.ffi.v8_Promise_Then(promise, context, fulfill_handler, reject_handler);
         if (chained == null) {
             // Failed to chain - clean up and fall back
-            v8.v8_DisposeZigCallbackHandler(reject_handler);
-            v8.v8_DisposeZigCallbackHandler(fulfill_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
+            v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
             controller_internal.allocator.destroy(callback_ctx);
             onByteStartFulfilledImmediate(controller_internal, controller_instance);
             return;
@@ -667,7 +667,7 @@ pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
 /// 4. Let cancelAlgorithm = steps that call IteratorReturn
 /// 5. SetUpReadableStreamDefaultController with pullAlgorithm and cancelAlgorithm
 /// 6. Return stream
-pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
+pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
     const allocator = instance.ctx.getAllocator();
 
     // Step 1: Create new ReadableStream instance

@@ -41,10 +41,10 @@ pub const IDBKeyRange = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "only", "call_only", 1 },
-            .{ "lowerBound", "call_lowerBound", 1 },
-            .{ "upperBound", "call_upperBound", 1 },
-            .{ "bound", "call_bound", 2 },
+            .{ "only", "call_static_only", 1 },
+            .{ "lowerBound", "call_static_lowerBound", 1 },
+            .{ "upperBound", "call_static_upperBound", 1 },
+            .{ "bound", "call_static_bound", 2 },
         };
         
         /// Methods defined/overridden by this interface
@@ -127,36 +127,36 @@ pub const IDBKeyRange = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+    pub fn call_static_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try IDBKeyRangeImpl.call_only(instance, value);
+        return try IDBKeyRangeImpl.call_static_only(instance, value);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBKeyRangeImpl.call_static_lowerBound(instance, lower, open);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBKeyRangeImpl.call_static_upperBound(instance, upper, open);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBKeyRangeImpl.call_static_bound(instance, lower, upper, lowerOpen, upperOpen);
     }
 
     pub fn call_includes(instance: *runtime.Instance, key: runtime.JSValue) anyerror!bool {
         
         return try IDBKeyRangeImpl.call_includes(instance, key);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBKeyRangeImpl.call_bound(instance, lower, upper, lowerOpen, upperOpen);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBKeyRangeImpl.call_upperBound(instance, upper, open);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBKeyRangeImpl.call_lowerBound(instance, lower, open);
     }
 
 };

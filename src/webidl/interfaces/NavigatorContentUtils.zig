@@ -79,15 +79,15 @@ pub const NavigatorContentUtils = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
-        
-        return try NavigatorContentUtilsImpl.call_unregisterProtocolHandler(instance, scheme, url);
-    }
-
-    /// Extended attributes: [SecureContext]
     pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
         
         return try NavigatorContentUtilsImpl.call_registerProtocolHandler(instance, scheme, url);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
+        
+        return try NavigatorContentUtilsImpl.call_unregisterProtocolHandler(instance, scheme, url);
     }
 
 };

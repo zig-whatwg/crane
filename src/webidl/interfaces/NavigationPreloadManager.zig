@@ -93,21 +93,21 @@ pub const NavigationPreloadManager = struct {
         NavigationPreloadManagerImpl.deinit(instance);
     }
 
+    pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigationPreloadManagerImpl.call_getState(instance);
+    }
+
     pub fn call_setHeaderValue(instance: *runtime.Instance, value: runtime.ByteString) anyerror!*const anyopaque {
         
         return try NavigationPreloadManagerImpl.call_setHeaderValue(instance, value);
     }
 
-    pub fn call_disable(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigationPreloadManagerImpl.call_disable(instance);
-    }
-
-    pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigationPreloadManagerImpl.call_getState(instance);
-    }
-
     pub fn call_enable(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try NavigationPreloadManagerImpl.call_enable(instance);
+    }
+
+    pub fn call_disable(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigationPreloadManagerImpl.call_disable(instance);
     }
 
 };

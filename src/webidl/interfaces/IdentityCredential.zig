@@ -42,7 +42,7 @@ pub const IdentityCredential = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "disconnect", "call_disconnect", 1 },
+            .{ "disconnect", "call_static_disconnect", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -113,9 +113,9 @@ pub const IdentityCredential = struct {
         return try IdentityCredentialImpl.get_configURL(instance);
     }
 
-    pub fn call_disconnect(instance: *runtime.Instance, options: IdentityCredentialDisconnectOptions) anyerror!*const anyopaque {
+    pub fn call_static_disconnect(instance: *runtime.Instance, options: IdentityCredentialDisconnectOptions) anyerror!*const anyopaque {
         
-        return try IdentityCredentialImpl.call_disconnect(instance, options);
+        return try IdentityCredentialImpl.call_static_disconnect(instance, options);
     }
 
 };

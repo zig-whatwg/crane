@@ -157,19 +157,47 @@ fn deduplicateConstructors(allocator: std.mem.Allocator, constructors: *std.Arra
     try constructors.appendSlice(allocator, unique.items);
 }
 
-/// Deduplicate operations by name (keep first occurrence)
+/// Key for deduplicating operations by name AND static status
+const OperationDedupeKey = struct {
+    name: []const u8,
+    is_static: bool,
+
+    pub fn hash(self: OperationDedupeKey) u64 {
+        var h = std.hash.Wyhash.init(0);
+        h.update(self.name);
+        h.update(&[_]u8{if (self.is_static) 1 else 0});
+        return h.final();
+    }
+
+    pub fn eql(self: OperationDedupeKey, other: OperationDedupeKey) bool {
+        return self.is_static == other.is_static and std.mem.eql(u8, self.name, other.name);
+    }
+};
+
+const OperationDedupeContext = struct {
+    pub fn hash(_: OperationDedupeContext, key: OperationDedupeKey) u64 {
+        return key.hash();
+    }
+    pub fn eql(_: OperationDedupeContext, a: OperationDedupeKey, b: OperationDedupeKey) bool {
+        return a.eql(b);
+    }
+};
+
+/// Deduplicate operations by name AND static status (keep first occurrence)
+/// Static and instance methods with the same name are NOT deduplicated against each other
 fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types.Operation)) !void {
     if (ops.items.len <= 1) return;
 
     var unique = std.ArrayList(types.Operation).empty;
     defer unique.deinit(allocator);
 
-    var seen = std.StringHashMap(void).init(allocator);
+    var seen = std.HashMap(OperationDedupeKey, void, OperationDedupeContext, std.hash_map.default_max_load_percentage).init(allocator);
     defer seen.deinit();
 
     for (ops.items) |op| {
         const op_name = op.name orelse continue;
-        const entry = try seen.getOrPut(op_name);
+        const key = OperationDedupeKey{ .name = op_name, .is_static = op.static };
+        const entry = try seen.getOrPut(key);
         if (!entry.found_existing) {
             // First occurrence - keep it
             try unique.append(allocator, op);

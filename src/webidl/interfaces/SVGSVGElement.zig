@@ -724,35 +724,9 @@ pub const SVGSVGElement = struct {
         try SVGSVGElementImpl.set_onportalactivate(instance, value);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try SVGSVGElementImpl.call_createSVGPoint(instance);
-    }
-
-    pub fn call_suspendRedraw(instance: *runtime.Instance, maxWaitMilliseconds: u32) anyerror!u32 {
+    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
         
-        return try SVGSVGElementImpl.call_suspendRedraw(instance, maxWaitMilliseconds);
-    }
-
-    pub fn call_setCurrentTime(instance: *runtime.Instance, seconds: f32) anyerror!void {
-        
-        return try SVGSVGElementImpl.call_setCurrentTime(instance, seconds);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_createSVGLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try SVGSVGElementImpl.call_createSVGLength(instance);
-    }
-
-    pub fn call_animationsPaused(instance: *runtime.Instance) anyerror!bool {
-        return try SVGSVGElementImpl.call_animationsPaused(instance);
-    }
-
-    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
+        return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
@@ -760,24 +734,31 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_getElementById(instance, elementId);
     }
 
-    pub fn call_unsuspendRedraw(instance: *runtime.Instance, suspendHandleID: u32) anyerror!void {
+    pub fn call_setCurrentTime(instance: *runtime.Instance, seconds: f32) anyerror!void {
         
-        return try SVGSVGElementImpl.call_unsuspendRedraw(instance, suspendHandleID);
+        return try SVGSVGElementImpl.call_setCurrentTime(instance, seconds);
     }
 
-    pub fn call_getEnclosureList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_suspendRedraw(instance: *runtime.Instance, maxWaitMilliseconds: u32) anyerror!u32 {
         
-        return try SVGSVGElementImpl.call_getEnclosureList(instance, rect, referenceElement);
+        return try SVGSVGElementImpl.call_suspendRedraw(instance, maxWaitMilliseconds);
     }
 
-    pub fn call_pauseAnimations(instance: *runtime.Instance) anyerror!void {
-        return try SVGSVGElementImpl.call_pauseAnimations(instance);
+    pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+        
+        return try SVGSVGElementImpl.call_checkEnclosure(instance, element, rect);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_createSVGAngle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try SVGSVGElementImpl.call_createSVGAngle(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try SVGSVGElementImpl.call_createSVGMatrix(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -791,32 +772,56 @@ pub const SVGSVGElement = struct {
         return try SVGSVGElementImpl.call_forceRedraw(instance);
     }
 
-    pub fn call_unsuspendRedrawAll(instance: *runtime.Instance) anyerror!void {
-        return try SVGSVGElementImpl.call_unsuspendRedrawAll(instance);
-    }
-
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createSVGTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        return try SVGSVGElementImpl.call_createSVGMatrix(instance);
+        return try SVGSVGElementImpl.call_createSVGTransform(instance);
     }
 
     pub fn call_getCurrentTime(instance: *runtime.Instance) anyerror!f32 {
         return try SVGSVGElementImpl.call_getCurrentTime(instance);
     }
 
-    pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
-        
-        return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
+    pub fn call_pauseAnimations(instance: *runtime.Instance) anyerror!void {
+        return try SVGSVGElementImpl.call_pauseAnimations(instance);
     }
 
-    pub fn call_checkEnclosure(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+    pub fn call_unsuspendRedraw(instance: *runtime.Instance, suspendHandleID: u32) anyerror!void {
         
-        return try SVGSVGElementImpl.call_checkEnclosure(instance, element, rect);
+        return try SVGSVGElementImpl.call_unsuspendRedraw(instance, suspendHandleID);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_createSVGLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try SVGSVGElementImpl.call_createSVGLength(instance);
+    }
+
+    pub fn call_getIntersectionList(instance: *runtime.Instance, rect: *runtime.Instance, referenceElement: ?*runtime.Instance) anyerror!*runtime.Instance {
+        
+        return try SVGSVGElementImpl.call_getIntersectionList(instance, rect, referenceElement);
+    }
+
+    pub fn call_unsuspendRedrawAll(instance: *runtime.Instance) anyerror!void {
+        return try SVGSVGElementImpl.call_unsuspendRedrawAll(instance);
+    }
+
+    pub fn call_deselectAll(instance: *runtime.Instance) anyerror!void {
+        return try SVGSVGElementImpl.call_deselectAll(instance);
     }
 
     pub fn call_unpauseAnimations(instance: *runtime.Instance) anyerror!void {
         return try SVGSVGElementImpl.call_unpauseAnimations(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_createSVGNumber(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try SVGSVGElementImpl.call_createSVGNumber(instance);
+    }
+
+    pub fn call_animationsPaused(instance: *runtime.Instance) anyerror!bool {
+        return try SVGSVGElementImpl.call_animationsPaused(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -826,19 +831,14 @@ pub const SVGSVGElement = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_createSVGTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_createSVGPoint(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        return try SVGSVGElementImpl.call_createSVGTransform(instance);
+        return try SVGSVGElementImpl.call_createSVGPoint(instance);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_createSVGNumber(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try SVGSVGElementImpl.call_createSVGNumber(instance);
-    }
-
-    pub fn call_deselectAll(instance: *runtime.Instance) anyerror!void {
-        return try SVGSVGElementImpl.call_deselectAll(instance);
+    pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
+        
+        return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
 
 };

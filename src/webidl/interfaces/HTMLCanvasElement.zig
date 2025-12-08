@@ -297,19 +297,13 @@ pub const HTMLCanvasElement = struct {
         try HTMLCanvasElementImpl.set_height(instance, value);
     }
 
-    pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
-        return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
-    }
-
     pub fn call_getContext(instance: *runtime.Instance, contextId: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?RenderingContext {
         
         return try HTMLCanvasElementImpl.call_getContext(instance, contextId, options);
     }
 
-    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
-        
-        return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
+    pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLCanvasElementImpl.call_transferControlToOffscreen(instance);
     }
 
     pub fn call_toBlob(instance: *runtime.Instance, _callback: BlobCallback, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
@@ -317,8 +311,14 @@ pub const HTMLCanvasElement = struct {
         return try HTMLCanvasElementImpl.call_toBlob(instance, _callback, @"type", quality);
     }
 
-    pub fn call_transferControlToOffscreen(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try HTMLCanvasElementImpl.call_transferControlToOffscreen(instance);
+    pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.Opt(f64)) anyerror!*runtime.Instance {
+        
+        return try HTMLCanvasElementImpl.call_captureStream(instance, frameRequestRate);
+    }
+
+    pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
+        
+        return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
 
 };

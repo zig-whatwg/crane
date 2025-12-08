@@ -340,6 +340,11 @@ pub const HTMLTableSectionElement = struct {
         try HTMLTableSectionElementImpl.set_vAlign(instance, value);
     }
 
+    pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
+        
+        return try HTMLTableSectionElementImpl.call_insertRow(instance, index);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_deleteRow(instance: *runtime.Instance, index: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -348,11 +353,6 @@ pub const HTMLTableSectionElement = struct {
         
         
         return try HTMLTableSectionElementImpl.call_deleteRow(instance, index);
-    }
-
-    pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
-        
-        return try HTMLTableSectionElementImpl.call_insertRow(instance, index);
     }
 
 };

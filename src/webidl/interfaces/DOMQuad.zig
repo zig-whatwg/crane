@@ -48,8 +48,8 @@ pub const DOMQuad = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromRect", "call_fromRect", 0 },
-            .{ "fromQuad", "call_fromQuad", 0 },
+            .{ "fromRect", "call_static_fromRect", 0 },
+            .{ "fromQuad", "call_static_fromQuad", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -179,23 +179,23 @@ pub const DOMQuad = struct {
         return try DOMQuadImpl.call_getBounds(instance);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(DOMQuadInit)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMQuadImpl.call_fromQuad(instance, other);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMQuadImpl.call_fromRect(instance, other);
-    }
-
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DOMQuadImpl.call_toJSON(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMQuadImpl.call_static_fromRect(instance, other);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(DOMQuadInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMQuadImpl.call_static_fromQuad(instance, other);
     }
 
 };

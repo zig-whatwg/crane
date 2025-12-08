@@ -185,11 +185,6 @@ pub const BackgroundFetchRegistration = struct {
         try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
     }
 
-    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        
-        return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
-    }
-
     pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try BackgroundFetchRegistrationImpl.call_abort(instance);
     }
@@ -197,6 +192,11 @@ pub const BackgroundFetchRegistration = struct {
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         
         return try BackgroundFetchRegistrationImpl.call_match(instance, request, options);
+    }
+
+    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
+        
+        return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
 
 };

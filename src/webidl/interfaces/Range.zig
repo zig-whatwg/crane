@@ -203,53 +203,34 @@ pub const Range = struct {
         return try RangeImpl.get_commonAncestorContainer(instance);
     }
 
+    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try RangeImpl.call_getClientRects(instance);
+    }
+
+    pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
+        
+        return try RangeImpl.call_setEnd(instance, node, offset);
+    }
+
     pub fn call_setStartBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
         
         return try RangeImpl.call_setStartBefore(instance, node);
     }
 
-    pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
-        return try RangeImpl.call_setEndBefore(instance, node);
-    }
-
-    /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_extractContents(instance);
-    }
-
-    pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
-        return try RangeImpl.call_selectNode(instance, node);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try RangeImpl.call_surroundContents(instance, newParent);
-    }
-
-    pub fn call_detach(instance: *runtime.Instance) anyerror!void {
-        return try RangeImpl.call_detach(instance);
-    }
-
-    pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!bool {
-        
-        return try RangeImpl.call_isPointInRange(instance, node, offset);
-    }
-
     pub fn call_setEndAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
         
         return try RangeImpl.call_setEndAfter(instance, node);
+    }
+
+    pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
+        
+        return try RangeImpl.call_selectNodeContents(instance, node);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try RangeImpl.call_getBoundingClientRect(instance);
     }
 
     /// Extended attributes: [CEReactions]
@@ -260,21 +241,6 @@ pub const Range = struct {
         
         
         return try RangeImpl.call_insertNode(instance, node);
-    }
-
-    pub fn call_setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
-        
-        return try RangeImpl.call_setEnd(instance, node, offset);
-    }
-
-    pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
-        return try RangeImpl.call_setStartAfter(instance, node);
-    }
-
-    pub fn call_selectNodeContents(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
-        
-        return try RangeImpl.call_selectNodeContents(instance, node);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -288,29 +254,29 @@ pub const Range = struct {
         return try RangeImpl.call_createContextualFragment(instance, string);
     }
 
-    pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
         
-        return try RangeImpl.call_collapse(instance, toStart);
-    }
-
-    pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!i16 {
-        
-        return try RangeImpl.call_comparePoint(instance, node, offset);
-    }
-
-    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try RangeImpl.call_getClientRects(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_cloneRange(instance);
+        return try RangeImpl.call_cloneContents(instance);
     }
 
-    pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
+    pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
         
-        return try RangeImpl.call_setStart(instance, node, offset);
+        return try RangeImpl.call_setStartAfter(instance, node);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try RangeImpl.call_surroundContents(instance, newParent);
     }
 
     /// Extended attributes: [CEReactions]
@@ -322,20 +288,19 @@ pub const Range = struct {
         return try RangeImpl.call_deleteContents(instance);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_getBoundingClientRect(instance);
+    pub fn call_selectNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
+        
+        return try RangeImpl.call_selectNode(instance, node);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_cloneContents(instance);
+        return try RangeImpl.call_extractContents(instance);
     }
 
     pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!bool {
@@ -343,9 +308,44 @@ pub const Range = struct {
         return try RangeImpl.call_intersectsNode(instance, node);
     }
 
+    pub fn call_setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!void {
+        
+        return try RangeImpl.call_setStart(instance, node, offset);
+    }
+
+    pub fn call_collapse(instance: *runtime.Instance, toStart: webidl.Opt(bool)) anyerror!void {
+        
+        return try RangeImpl.call_collapse(instance, toStart);
+    }
+
+    pub fn call_detach(instance: *runtime.Instance) anyerror!void {
+        return try RangeImpl.call_detach(instance);
+    }
+
+    pub fn call_isPointInRange(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!bool {
+        
+        return try RangeImpl.call_isPointInRange(instance, node, offset);
+    }
+
+    pub fn call_setEndBefore(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
+        
+        return try RangeImpl.call_setEndBefore(instance, node);
+    }
+
+    pub fn call_comparePoint(instance: *runtime.Instance, node: *runtime.Instance, offset: u32) anyerror!i16 {
+        
+        return try RangeImpl.call_comparePoint(instance, node, offset);
+    }
+
     pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceRange: *runtime.Instance) anyerror!i16 {
         
         return try RangeImpl.call_compareBoundaryPoints(instance, how, sourceRange);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try RangeImpl.call_cloneRange(instance);
     }
 
 };

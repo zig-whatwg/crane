@@ -156,8 +156,9 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
 
-    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try StorageAccessHandleImpl.call_estimate(instance);
+    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+        
+        return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }
 
     pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
@@ -165,9 +166,8 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
-    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
-        return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
+    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try StorageAccessHandleImpl.call_estimate(instance);
     }
 
     pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {

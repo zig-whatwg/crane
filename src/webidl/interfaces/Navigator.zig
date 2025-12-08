@@ -1078,15 +1078,40 @@ pub const Navigator = struct {
         return try NavigatorImpl.get_userAgentData(instance);
     }
 
+    pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: DOMString, supportedConfigurations: *const anyopaque) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
+    }
+
+    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorImpl.call_clearAppBadge(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!bool {
+        
+        return try NavigatorImpl.call_canShare(instance, data);
+    }
+
+    pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorImpl.call_createAuctionNonce(instance);
+    }
+
+    pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_queryHandwritingRecognizer(instance, constraint);
+    }
+
     /// Extended attributes: [SecureContext]
     pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(MIDIOptions)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_requestMIDIAccess(instance, options);
-    }
-
-    pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_adAuctionComponents(instance, numAdComponents);
     }
 
     pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: AuctionAdInterestGroup) anyerror!*const anyopaque {
@@ -1094,9 +1119,38 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_joinAdInterestGroup(instance, group);
     }
 
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
+        return try NavigatorImpl.call_taintEnabled(instance);
+    }
+
+    pub fn call_runAdAuction(instance: *runtime.Instance, config: AuctionAdConfig) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_runAdAuction(instance, config);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
+        
+        return try NavigatorImpl.call_registerProtocolHandler(instance, scheme, url);
+    }
+
     pub fn call_vibrate(instance: *runtime.Instance, pattern: VibratePattern) anyerror!bool {
         
         return try NavigatorImpl.call_vibrate(instance, pattern);
+    }
+
+    pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
+        return try NavigatorImpl.call_javaEnabled(instance);
+    }
+
+    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
+        
+        return try NavigatorImpl.call_sendBeacon(instance, url, data);
+    }
+
+    pub fn call_getGamepads(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorImpl.call_getGamepads(instance);
     }
 
     pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!*const anyopaque {
@@ -1104,26 +1158,53 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_createHandwritingRecognizer(instance, constraint);
     }
 
-    pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
+    pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
+        return try NavigatorImpl.call_canLoadAdAuctionFencedFrame(instance);
     }
 
-    pub fn call_getGamepads(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorImpl.call_getGamepads(instance);
+    pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, replacements: *const anyopaque) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
+    }
+
+    pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
+    }
+
+    pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_adAuctionComponents(instance, numAdComponents);
     }
 
     pub fn call_updateAdInterestGroups(instance: *runtime.Instance) anyerror!void {
         return try NavigatorImpl.call_updateAdInterestGroups(instance);
     }
 
-    pub fn call_getBattery(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorImpl.call_getBattery(instance);
+    /// Extended attributes: [SecureContext]
+    pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
+        
+        return try NavigatorImpl.call_unregisterProtocolHandler(instance, scheme, url);
     }
 
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_taintEnabled(instance);
+    pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
+        
+        return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!*const anyopaque {
+        
+        return try NavigatorImpl.call_share(instance, data);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorImpl.call_getInstalledRelatedApps(instance);
+    }
+
+    pub fn call_getBattery(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorImpl.call_getBattery(instance);
     }
 
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
@@ -1133,95 +1214,14 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_setAppBadge(instance, contents);
     }
 
-    pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_canLoadAdAuctionFencedFrame(instance);
-    }
-
-    pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorImpl.call_createAuctionNonce(instance);
-    }
-
-    pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?BodyInit)) anyerror!bool {
+    pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!*const anyopaque {
         
-        return try NavigatorImpl.call_sendBeacon(instance, url, data);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
-        
-        return try NavigatorImpl.call_unregisterProtocolHandler(instance, scheme, url);
-    }
-
-    pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: HandwritingModelConstraint) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_queryHandwritingRecognizer(instance, constraint);
-    }
-
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorImpl.call_clearAppBadge(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_share(instance, data);
-    }
-
-    pub fn call_runAdAuction(instance: *runtime.Instance, config: AuctionAdConfig) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_runAdAuction(instance, config);
-    }
-
-    pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, replacements: *const anyopaque) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_deprecatedReplaceInURN(instance, urnOrConfig, replacements);
-    }
-
-    pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
-        
-        return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
-    }
-
-    pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try NavigatorImpl.call_javaEnabled(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorImpl.call_getInstalledRelatedApps(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(ShareData)) anyerror!bool {
-        
-        return try NavigatorImpl.call_canShare(instance, data);
+        return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
     }
 
     pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try NavigatorImpl.call_clearOriginJoinedAdInterestGroups(instance, owner, interestGroupsToKeep);
-    }
-
-    pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(AdAuctionDataConfig)) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_getInterestGroupAdAuctionData(instance, config);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: DOMString, supportedConfigurations: *const anyopaque) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
-    }
-
-    pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!*const anyopaque {
-        
-        return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
-        
-        return try NavigatorImpl.call_registerProtocolHandler(instance, scheme, url);
     }
 
 };

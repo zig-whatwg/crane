@@ -71,8 +71,8 @@ pub const SpeechRecognition = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "available", "call_available", 1 },
-            .{ "install", "call_install", 1 },
+            .{ "available", "call_static_available", 1 },
+            .{ "install", "call_static_install", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -356,15 +356,6 @@ pub const SpeechRecognition = struct {
         try SpeechRecognitionImpl.set_onend(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try SpeechRecognitionImpl.call_stop(instance);
-    }
-
-    pub fn call_available(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
-        
-        return try SpeechRecognitionImpl.call_available(instance, options);
-    }
-
     pub fn call_abort(instance: *runtime.Instance) anyerror!void {
         return try SpeechRecognitionImpl.call_abort(instance);
     }
@@ -373,9 +364,18 @@ pub const SpeechRecognition = struct {
         return try SpeechRecognitionImpl.call_start(instance);
     }
 
-    pub fn call_install(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try SpeechRecognitionImpl.call_stop(instance);
+    }
+
+    pub fn call_static_install(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
         
-        return try SpeechRecognitionImpl.call_install(instance, options);
+        return try SpeechRecognitionImpl.call_static_install(instance, options);
+    }
+
+    pub fn call_static_available(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
+        
+        return try SpeechRecognitionImpl.call_static_available(instance, options);
     }
 
 };

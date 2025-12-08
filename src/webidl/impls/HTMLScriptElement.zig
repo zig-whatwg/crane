@@ -715,7 +715,7 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
 ///
 /// Note: The type argument has to exactly match these values; we do not perform
 /// an ASCII case-insensitive match.
-pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance; // Static method - instance not used
 
     const type_str = @"type".asSlice();

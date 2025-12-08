@@ -251,6 +251,15 @@ pub const FileReader = struct {
         try FileReaderImpl.set_onloadend(instance, value);
     }
 
+    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
+        
+        return try FileReaderImpl.call_readAsDataURL(instance, blob);
+    }
+
+    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
+        return try FileReaderImpl.call_abort(instance);
+    }
+
     pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
         
         return try FileReaderImpl.call_readAsArrayBuffer(instance, blob);
@@ -259,15 +268,6 @@ pub const FileReader = struct {
     pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
         
         return try FileReaderImpl.call_readAsBinaryString(instance, blob);
-    }
-
-    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!void {
-        
-        return try FileReaderImpl.call_readAsDataURL(instance, blob);
-    }
-
-    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
-        return try FileReaderImpl.call_abort(instance);
     }
 
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!void {

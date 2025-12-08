@@ -157,13 +157,13 @@ pub const Worker = struct {
         try WorkerImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
-        return try WorkerImpl.call_terminate(instance);
-    }
-
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try WorkerImpl.call_postMessage(instance, message, transfer);
+    }
+
+    pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
+        return try WorkerImpl.call_terminate(instance);
     }
 
 };

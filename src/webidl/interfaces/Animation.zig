@@ -348,12 +348,29 @@ pub const Animation = struct {
         return try AnimationImpl.get_overallProgress(instance);
     }
 
-    pub fn call_reverse(instance: *runtime.Instance) anyerror!void {
-        return try AnimationImpl.call_reverse(instance);
+    pub fn call_finish(instance: *runtime.Instance) anyerror!void {
+        return try AnimationImpl.call_finish(instance);
+    }
+
+    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
+        return try AnimationImpl.call_pause(instance);
     }
 
     pub fn call_persist(instance: *runtime.Instance) anyerror!void {
         return try AnimationImpl.call_persist(instance);
+    }
+
+    pub fn call_play(instance: *runtime.Instance) anyerror!void {
+        return try AnimationImpl.call_play(instance);
+    }
+
+    pub fn call_reverse(instance: *runtime.Instance) anyerror!void {
+        return try AnimationImpl.call_reverse(instance);
+    }
+
+    pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) anyerror!void {
+        
+        return try AnimationImpl.call_updatePlaybackRate(instance, playbackRate);
     }
 
     /// Extended attributes: [CEReactions]
@@ -365,25 +382,8 @@ pub const Animation = struct {
         return try AnimationImpl.call_commitStyles(instance);
     }
 
-    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
-        return try AnimationImpl.call_pause(instance);
-    }
-
-    pub fn call_play(instance: *runtime.Instance) anyerror!void {
-        return try AnimationImpl.call_play(instance);
-    }
-
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try AnimationImpl.call_cancel(instance);
-    }
-
-    pub fn call_finish(instance: *runtime.Instance) anyerror!void {
-        return try AnimationImpl.call_finish(instance);
-    }
-
-    pub fn call_updatePlaybackRate(instance: *runtime.Instance, playbackRate: f64) anyerror!void {
-        
-        return try AnimationImpl.call_updatePlaybackRate(instance, playbackRate);
     }
 
 };

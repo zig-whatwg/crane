@@ -218,13 +218,18 @@ pub const Navigation = struct {
         return try NavigationImpl.call_reload(instance, options);
     }
 
+    pub fn call_entries(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigationImpl.call_entries(instance);
+    }
+
     pub fn call_back(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_back(instance, options);
     }
 
-    pub fn call_entries(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigationImpl.call_entries(instance);
+    pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: NavigationUpdateCurrentEntryOptions) anyerror!void {
+        
+        return try NavigationImpl.call_updateCurrentEntry(instance, options);
     }
 
     pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!NavigationResult {
@@ -240,11 +245,6 @@ pub const Navigation = struct {
     pub fn call_forward(instance: *runtime.Instance, options: webidl.Opt(NavigationOptions)) anyerror!NavigationResult {
         
         return try NavigationImpl.call_forward(instance, options);
-    }
-
-    pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: NavigationUpdateCurrentEntryOptions) anyerror!void {
-        
-        return try NavigationImpl.call_updateCurrentEntry(instance, options);
     }
 
 };

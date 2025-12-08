@@ -90,14 +90,14 @@ pub const WEBGL_draw_instanced_base_vertex_base_instance = struct {
         WEBGL_draw_instanced_base_vertex_base_instanceImpl.deinit(instance);
     }
 
-    pub fn call_drawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei, baseInstance: GLuint) anyerror!void {
-        
-        return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawArraysInstancedBaseInstanceWEBGL(instance, mode, first, count, instanceCount, baseInstance);
-    }
-
     pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, instanceCount: GLsizei, baseVertex: GLint, baseInstance: GLuint) anyerror!void {
         
         return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, count, @"type", offset, instanceCount, baseVertex, baseInstance);
+    }
+
+    pub fn call_drawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei, baseInstance: GLuint) anyerror!void {
+        
+        return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawArraysInstancedBaseInstanceWEBGL(instance, mode, first, count, instanceCount, baseInstance);
     }
 
 };

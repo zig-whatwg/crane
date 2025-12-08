@@ -48,7 +48,7 @@ pub const DeviceMotionEvent = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "requestPermission", "call_requestPermission", 0 },
+            .{ "requestPermission", "call_static_requestPermission", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -135,8 +135,8 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.get_interval(instance);
     }
 
-    pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try DeviceMotionEventImpl.call_requestPermission(instance);
+    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try DeviceMotionEventImpl.call_static_requestPermission(instance);
     }
 
 };

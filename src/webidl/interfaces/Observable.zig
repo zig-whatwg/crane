@@ -62,7 +62,7 @@ pub const Observable = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "from", "call_from", 1 },
+            .{ "from", "call_static_from", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -154,19 +154,54 @@ pub const Observable = struct {
         return try ObservableImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_map(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
+    pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
-        return try ObservableImpl.call_map(instance, mapper);
+        return try ObservableImpl.call_toArray(instance, options);
     }
 
-    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(ObservableInspectorUnion)) anyerror!*runtime.Instance {
+    pub fn call_filter(instance: *runtime.Instance, predicate: Predicate) anyerror!*runtime.Instance {
         
-        return try ObservableImpl.call_inspect(instance, inspectorUnion);
+        return try ObservableImpl.call_filter(instance, predicate);
+    }
+
+    pub fn call_drop(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_drop(instance, amount);
+    }
+
+    pub fn call_catch(instance: *runtime.Instance, callback: CatchCallback) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_catch(instance, callback);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: Visitor, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_forEach(instance, callback, options);
+    }
+
+    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(runtime.JSValue), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
+        
+        return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
+    }
+
+    pub fn call_takeUntil(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_takeUntil(instance, value);
+    }
+
+    pub fn call_map(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_map(instance, mapper);
+    }
+
+    pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_take(instance, amount);
+    }
+
+    pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
+        
+        return try ObservableImpl.call_last(instance, options);
     }
 
     pub fn call_every(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
@@ -179,34 +214,9 @@ pub const Observable = struct {
         return try ObservableImpl.call_some(instance, predicate, options);
     }
 
-    pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
-        return try ObservableImpl.call_first(instance, options);
-    }
-
-    pub fn call_takeUntil(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_takeUntil(instance, value);
-    }
-
     pub fn call_find(instance: *runtime.Instance, predicate: Predicate, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
         return try ObservableImpl.call_find(instance, predicate, options);
-    }
-
-    pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
-        return try ObservableImpl.call_last(instance, options);
-    }
-
-    pub fn call_filter(instance: *runtime.Instance, predicate: Predicate) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_filter(instance, predicate);
-    }
-
-    pub fn call_switchMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_switchMap(instance, mapper);
     }
 
     pub fn call_finally(instance: *runtime.Instance, callback: VoidFunction) anyerror!*runtime.Instance {
@@ -214,44 +224,34 @@ pub const Observable = struct {
         return try ObservableImpl.call_finally(instance, callback);
     }
 
-    pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
+    pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
         
-        return try ObservableImpl.call_take(instance, amount);
-    }
-
-    pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
-        return try ObservableImpl.call_toArray(instance, options);
-    }
-
-    pub fn call_reduce(instance: *runtime.Instance, reducer: Reducer, initialValue: webidl.Opt(runtime.JSValue), options: webidl.Opt(SubscribeOptions)) anyerror!*const anyopaque {
-        
-        return try ObservableImpl.call_reduce(instance, reducer, initialValue, options);
-    }
-
-    pub fn call_drop(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_drop(instance, amount);
-    }
-
-    pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_flatMap(instance, mapper);
-    }
-
-    pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_from(instance, value);
-    }
-
-    pub fn call_catch(instance: *runtime.Instance, callback: CatchCallback) anyerror!*runtime.Instance {
-        
-        return try ObservableImpl.call_catch(instance, callback);
+        return try ObservableImpl.call_first(instance, options);
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(ObserverUnion), options: webidl.Opt(SubscribeOptions)) anyerror!void {
         
         return try ObservableImpl.call_subscribe(instance, observer, options);
+    }
+
+    pub fn call_static_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_static_from(instance, value);
+    }
+
+    pub fn call_switchMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_switchMap(instance, mapper);
+    }
+
+    pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(ObservableInspectorUnion)) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_inspect(instance, inspectorUnion);
+    }
+
+    pub fn call_flatMap(instance: *runtime.Instance, mapper: Mapper) anyerror!*runtime.Instance {
+        
+        return try ObservableImpl.call_flatMap(instance, mapper);
     }
 
 };

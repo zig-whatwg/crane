@@ -265,6 +265,11 @@ pub const SVGGeometryElement = struct {
         return value;
     }
 
+    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
+        
+        return try SVGGeometryElementImpl.call_getPointAtLength(instance, distance);
+    }
+
     pub fn call_isPointInStroke(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {
         
         return try SVGGeometryElementImpl.call_isPointInStroke(instance, point);
@@ -272,11 +277,6 @@ pub const SVGGeometryElement = struct {
 
     pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
         return try SVGGeometryElementImpl.call_getTotalLength(instance);
-    }
-
-    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
-        
-        return try SVGGeometryElementImpl.call_getPointAtLength(instance, distance);
     }
 
     pub fn call_isPointInFill(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!bool {

@@ -167,8 +167,11 @@ pub const ServiceWorkerContainer = struct {
         try ServiceWorkerContainerImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
-        return try ServiceWorkerContainerImpl.call_startMessages(instance);
+    /// Extended attributes: [NewObject]
+    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL);
     }
 
     /// Extended attributes: [NewObject]
@@ -177,11 +180,8 @@ pub const ServiceWorkerContainer = struct {
         return try ServiceWorkerContainerImpl.call_getRegistrations(instance);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        
-        return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL);
+    pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
+        return try ServiceWorkerContainerImpl.call_startMessages(instance);
     }
 
     /// Extended attributes: [NewObject]

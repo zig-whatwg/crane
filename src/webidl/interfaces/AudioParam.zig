@@ -149,6 +149,21 @@ pub const AudioParam = struct {
         return try AudioParamImpl.get_maxValue(instance);
     }
 
+    pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) anyerror!*runtime.Instance {
+        
+        return try AudioParamImpl.call_setValueAtTime(instance, value, startTime);
+    }
+
+    pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) anyerror!*runtime.Instance {
+        
+        return try AudioParamImpl.call_setTargetAtTime(instance, target, startTime, timeConstant);
+    }
+
+    pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) anyerror!*runtime.Instance {
+        
+        return try AudioParamImpl.call_cancelScheduledValues(instance, cancelTime);
+    }
+
     pub fn call_exponentialRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) anyerror!*runtime.Instance {
         
         return try AudioParamImpl.call_exponentialRampToValueAtTime(instance, value, endTime);
@@ -159,29 +174,14 @@ pub const AudioParam = struct {
         return try AudioParamImpl.call_cancelAndHoldAtTime(instance, cancelTime);
     }
 
-    pub fn call_setValueAtTime(instance: *runtime.Instance, value: f32, startTime: f64) anyerror!*runtime.Instance {
-        
-        return try AudioParamImpl.call_setValueAtTime(instance, value, startTime);
-    }
-
-    pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) anyerror!*runtime.Instance {
-        
-        return try AudioParamImpl.call_cancelScheduledValues(instance, cancelTime);
-    }
-
-    pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) anyerror!*runtime.Instance {
-        
-        return try AudioParamImpl.call_setValueCurveAtTime(instance, values, startTime, duration);
-    }
-
     pub fn call_linearRampToValueAtTime(instance: *runtime.Instance, value: f32, endTime: f64) anyerror!*runtime.Instance {
         
         return try AudioParamImpl.call_linearRampToValueAtTime(instance, value, endTime);
     }
 
-    pub fn call_setTargetAtTime(instance: *runtime.Instance, target: f32, startTime: f64, timeConstant: f32) anyerror!*runtime.Instance {
+    pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) anyerror!*runtime.Instance {
         
-        return try AudioParamImpl.call_setTargetAtTime(instance, target, startTime, timeConstant);
+        return try AudioParamImpl.call_setValueCurveAtTime(instance, values, startTime, duration);
     }
 
 };

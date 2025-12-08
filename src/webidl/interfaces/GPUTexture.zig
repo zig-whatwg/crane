@@ -175,13 +175,13 @@ pub const GPUTexture = struct {
         try GPUTextureImpl.set_label(instance, value);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try GPUTextureImpl.call_destroy(instance);
-    }
-
     pub fn call_createView(instance: *runtime.Instance, descriptor: webidl.Opt(GPUTextureViewDescriptor)) anyerror!*runtime.Instance {
         
         return try GPUTextureImpl.call_createView(instance, descriptor);
+    }
+
+    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
+        return try GPUTextureImpl.call_destroy(instance);
     }
 
 };

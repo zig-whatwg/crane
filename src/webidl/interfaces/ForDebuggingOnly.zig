@@ -82,14 +82,14 @@ pub const ForDebuggingOnly = struct {
         ForDebuggingOnlyImpl.deinit(instance);
     }
 
-    pub fn call_reportAdAuctionLoss(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
-        
-        return try ForDebuggingOnlyImpl.call_reportAdAuctionLoss(instance, url);
-    }
-
     pub fn call_reportAdAuctionWin(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
         
         return try ForDebuggingOnlyImpl.call_reportAdAuctionWin(instance, url);
+    }
+
+    pub fn call_reportAdAuctionLoss(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
+        
+        return try ForDebuggingOnlyImpl.call_reportAdAuctionLoss(instance, url);
     }
 
 };

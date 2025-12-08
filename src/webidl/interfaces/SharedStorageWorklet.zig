@@ -92,14 +92,14 @@ pub const SharedStorageWorklet = struct {
         SharedStorageWorkletImpl.deinit(instance);
     }
 
-    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
-        
-        return try SharedStorageWorkletImpl.call_run(instance, name, options);
-    }
-
     pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
         return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options);
+    }
+
+    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
+        
+        return try SharedStorageWorkletImpl.call_run(instance, name, options);
     }
 
 };

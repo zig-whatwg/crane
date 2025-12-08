@@ -105,7 +105,7 @@ pub fn get_left(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Operation: fromRect
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
+pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

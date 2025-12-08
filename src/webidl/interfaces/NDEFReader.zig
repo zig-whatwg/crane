@@ -137,14 +137,14 @@ pub const NDEFReader = struct {
         try NDEFReaderImpl.set_onreadingerror(instance, value);
     }
 
-    pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
-        
-        return try NDEFReaderImpl.call_scan(instance, options);
-    }
-
     pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!*const anyopaque {
         
         return try NDEFReaderImpl.call_write(instance, message, options);
+    }
+
+    pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
+        
+        return try NDEFReaderImpl.call_scan(instance, options);
     }
 
     pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {

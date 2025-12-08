@@ -56,10 +56,10 @@ pub const URL = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "parse", "call_parse", 1 },
-            .{ "canParse", "call_canParse", 1 },
-            .{ "createObjectURL", "call_createObjectURL", 1 },
-            .{ "revokeObjectURL", "call_revokeObjectURL", 1 },
+            .{ "parse", "call_static_parse", 1 },
+            .{ "canParse", "call_static_canParse", 1 },
+            .{ "createObjectURL", "call_static_createObjectURL", 1 },
+            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -263,28 +263,28 @@ pub const URL = struct {
         try URLImpl.set_hash(instance, value);
     }
 
-    pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
-        
-        return try URLImpl.call_createObjectURL(instance, obj);
-    }
-
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try URLImpl.call_toJSON(instance);
     }
 
-    pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
+    pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
         
-        return try URLImpl.call_canParse(instance, url, base);
+        return try URLImpl.call_static_canParse(instance, url, base);
     }
 
-    pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
+    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
         
-        return try URLImpl.call_parse(instance, url, base);
+        return try URLImpl.call_static_createObjectURL(instance, obj);
     }
 
-    pub fn call_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+    pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
         
-        return try URLImpl.call_revokeObjectURL(instance, url);
+        return try URLImpl.call_static_parse(instance, url, base);
+    }
+
+    pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+        
+        return try URLImpl.call_static_revokeObjectURL(instance, url);
     }
 
 };

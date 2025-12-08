@@ -145,6 +145,14 @@ pub const SpeechSynthesis = struct {
         try SpeechSynthesisImpl.set_onvoiceschanged(instance, value);
     }
 
+    pub fn call_resume(instance: *runtime.Instance) anyerror!void {
+        return try SpeechSynthesisImpl.call_resume(instance);
+    }
+
+    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
+        return try SpeechSynthesisImpl.call_pause(instance);
+    }
+
     pub fn call_speak(instance: *runtime.Instance, utterance: *runtime.Instance) anyerror!void {
         
         return try SpeechSynthesisImpl.call_speak(instance, utterance);
@@ -156,14 +164,6 @@ pub const SpeechSynthesis = struct {
 
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try SpeechSynthesisImpl.call_cancel(instance);
-    }
-
-    pub fn call_resume(instance: *runtime.Instance) anyerror!void {
-        return try SpeechSynthesisImpl.call_resume(instance);
-    }
-
-    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
-        return try SpeechSynthesisImpl.call_pause(instance);
     }
 
 };

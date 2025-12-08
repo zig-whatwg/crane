@@ -58,8 +58,8 @@ pub const Summarizer = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "create", "call_create", 0 },
-            .{ "availability", "call_availability", 0 },
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -173,9 +173,13 @@ pub const Summarizer = struct {
         return try SummarizerImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_availability(instance, options);
+        return try SummarizerImpl.call_measureInputUsage(instance, input, options);
+    }
+
+    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
+        return try SummarizerImpl.call_destroy(instance);
     }
 
     pub fn call_summarizeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*runtime.Instance {
@@ -183,23 +187,19 @@ pub const Summarizer = struct {
         return try SummarizerImpl.call_summarizeStreaming(instance, input, options);
     }
 
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateOptions)) anyerror!*const anyopaque {
         
-        return try SummarizerImpl.call_measureInputUsage(instance, input, options);
+        return try SummarizerImpl.call_static_create(instance, options);
+    }
+
+    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateCoreOptions)) anyerror!*const anyopaque {
+        
+        return try SummarizerImpl.call_static_availability(instance, options);
     }
 
     pub fn call_summarize(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(SummarizerSummarizeOptions)) anyerror!*const anyopaque {
         
         return try SummarizerImpl.call_summarize(instance, input, options);
-    }
-
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try SummarizerImpl.call_destroy(instance);
-    }
-
-    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(SummarizerCreateOptions)) anyerror!*const anyopaque {
-        
-        return try SummarizerImpl.call_create(instance, options);
     }
 
 };

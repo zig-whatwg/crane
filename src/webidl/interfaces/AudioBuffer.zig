@@ -129,14 +129,14 @@ pub const AudioBuffer = struct {
         return try AudioBufferImpl.call_getChannelData(instance, channel);
     }
 
-    pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
-        
-        return try AudioBufferImpl.call_copyFromChannel(instance, destination, channelNumber, bufferOffset);
-    }
-
     pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
         
         return try AudioBufferImpl.call_copyToChannel(instance, source, channelNumber, bufferOffset);
+    }
+
+    pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
+        
+        return try AudioBufferImpl.call_copyFromChannel(instance, destination, channelNumber, bufferOffset);
     }
 
 };

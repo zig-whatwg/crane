@@ -122,6 +122,16 @@ pub const CanvasFillStrokeStyles = struct {
         try CanvasFillStrokeStylesImpl.set_fillStyle(instance, value);
     }
 
+    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
+        
+        return try CanvasFillStrokeStylesImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
+    }
+
+    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
+        
+        return try CanvasFillStrokeStylesImpl.call_createConicGradient(instance, startAngle, x, y);
+    }
+
     pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
         
         return try CanvasFillStrokeStylesImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
@@ -130,16 +140,6 @@ pub const CanvasFillStrokeStyles = struct {
     pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
         
         return try CanvasFillStrokeStylesImpl.call_createPattern(instance, image, repetition);
-    }
-
-    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-        
-        return try CanvasFillStrokeStylesImpl.call_createConicGradient(instance, startAngle, x, y);
-    }
-
-    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-        
-        return try CanvasFillStrokeStylesImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
 };

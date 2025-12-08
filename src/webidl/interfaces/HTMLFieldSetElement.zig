@@ -355,17 +355,17 @@ pub const HTMLFieldSetElement = struct {
         return try HTMLFieldSetElementImpl.get_validationMessage(instance);
     }
 
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLFieldSetElementImpl.call_checkValidity(instance);
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+        
+        return try HTMLFieldSetElementImpl.call_setCustomValidity(instance, @"error");
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLFieldSetElementImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
-        return try HTMLFieldSetElementImpl.call_setCustomValidity(instance, @"error");
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLFieldSetElementImpl.call_checkValidity(instance);
     }
 
 };

@@ -96,8 +96,9 @@ pub const SmartCardContext = struct {
         SmartCardContextImpl.deinit(instance);
     }
 
-    pub fn call_listReaders(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SmartCardContextImpl.call_listReaders(instance);
+    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
+        
+        return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }
 
     pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
@@ -105,9 +106,8 @@ pub const SmartCardContext = struct {
         return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
-    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
-        
-        return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
+    pub fn call_listReaders(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SmartCardContextImpl.call_listReaders(instance);
     }
 
 };

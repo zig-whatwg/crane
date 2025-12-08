@@ -98,9 +98,8 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.get_length(instance);
     }
 
-    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!?*runtime.Instance {
-        
-        return try DataTransferItemListImpl.call_add(instance, data, @"type");
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try DataTransferItemListImpl.call_clear(instance);
     }
 
     pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {
@@ -108,8 +107,9 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.call_remove(instance, index);
     }
 
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try DataTransferItemListImpl.call_clear(instance);
+    pub fn call_add(instance: *runtime.Instance, data: DOMString, @"type": DOMString) anyerror!?*runtime.Instance {
+        
+        return try DataTransferItemListImpl.call_add(instance, data, @"type");
     }
 
 };

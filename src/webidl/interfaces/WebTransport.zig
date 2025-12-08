@@ -228,12 +228,18 @@ pub const WebTransport = struct {
         return try WebTransportImpl.get_supportsReliableOnly(instance);
     }
 
-    pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebTransportImpl.call_createSendGroup(instance);
-    }
-
     pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WebTransportImpl.call_getStats(instance);
+    }
+
+    pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
+        
+        return try WebTransportImpl.call_createUnidirectionalStream(instance, options);
+    }
+
+    pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(WebTransportCloseInfo)) anyerror!void {
+        
+        return try WebTransportImpl.call_close(instance, closeInfo);
     }
 
     /// Extended attributes: [NewObject]
@@ -243,19 +249,13 @@ pub const WebTransport = struct {
         return try WebTransportImpl.call_exportKeyingMaterial(instance, label, context);
     }
 
-    pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(WebTransportCloseInfo)) anyerror!void {
-        
-        return try WebTransportImpl.call_close(instance, closeInfo);
+    pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WebTransportImpl.call_createSendGroup(instance);
     }
 
     pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
         
         return try WebTransportImpl.call_createBidirectionalStream(instance, options);
-    }
-
-    pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(WebTransportSendStreamOptions)) anyerror!*const anyopaque {
-        
-        return try WebTransportImpl.call_createUnidirectionalStream(instance, options);
     }
 
 };

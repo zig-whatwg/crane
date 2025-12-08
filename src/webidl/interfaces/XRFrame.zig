@@ -213,24 +213,34 @@ pub const XRFrame = struct {
         return try XRFrameImpl.get_metaData(instance);
     }
 
+    pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
+        
+        return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
+    }
+
+    pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) anyerror!bool {
+        
+        return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
+    }
+
+    pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) anyerror!bool {
+        
+        return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
+    }
+
     pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!*const anyopaque {
         
         return try XRFrameImpl.call_createAnchor(instance, pose, space);
     }
 
-    pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
         
-        return try XRFrameImpl.call_getViewerPose(instance, referenceSpace);
+        return try XRFrameImpl.call_getDepthInformation(instance, view);
     }
 
     pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
         
         return try XRFrameImpl.call_getHitTestResults(instance, hitTestSource);
-    }
-
-    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
-        
-        return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
     }
 
     pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -243,24 +253,14 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getHitTestResultsForTransientInput(instance, hitTestSource);
     }
 
-    pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) anyerror!bool {
+    pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) anyerror!?*runtime.Instance {
         
-        return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
+        return try XRFrameImpl.call_getViewerPose(instance, referenceSpace);
     }
 
-    pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
+    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
         
-        return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
-    }
-
-    pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) anyerror!bool {
-        
-        return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
-    }
-
-    pub fn call_getDepthInformation(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
-        
-        return try XRFrameImpl.call_getDepthInformation(instance, view);
+        return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
     }
 
 };

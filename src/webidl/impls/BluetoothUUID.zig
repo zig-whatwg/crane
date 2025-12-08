@@ -39,29 +39,29 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Operation: getService
-pub fn call_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+/// Operation: getService (static)
+pub fn call_static_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
-/// Operation: canonicalUUID
-pub fn call_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!typedefs.UUID {
+/// Operation: canonicalUUID (static)
+pub fn call_static_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!typedefs.UUID {
     _ = instance;
     _ = alias;
     return error.NotImplemented;
 }
 
-/// Operation: getCharacteristic
-pub fn call_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+/// Operation: getCharacteristic (static)
+pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
-/// Operation: getDescriptor
-pub fn call_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+/// Operation: getDescriptor (static)
+pub fn call_static_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;

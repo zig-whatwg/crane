@@ -3267,13 +3267,15 @@ fn invokeReadableStreamStartCallback(
     _ = allocator;
     _ = this_obj;
 
-    // Import interfaces module (should be available via build dependencies)
-    const ReadableStreamInterface = @import("interfaces").ReadableStream;
+    // Import impls module for internal V8-specific callbacks
+    // Note: These methods (invokePendingStartCallback, invokePendingByteStartCallback)
+    // are V8-internal implementation details, not WebIDL interface methods.
+    // Since this is V8 engine code, we call impls directly.
+    const ReadableStreamImpl = @import("impls").ReadableStream;
     const ReadableByteStreamControllerInterface = @import("interfaces").ReadableByteStreamController;
 
     // Get the controller from the stream's internal state
-    // Use interface's State type (per Golden Rule #12)
-    const state = instance.getState(ReadableStreamInterface.State);
+    const state = instance.getState(ReadableStreamImpl.State);
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller;
 
@@ -3293,16 +3295,16 @@ fn invokeReadableStreamStartCallback(
     };
 
     // Invoke the appropriate pending start callback based on controller type
-    // Call through the interface (per Golden Rule #12)
+    // Call the impl directly since these are V8-internal methods, not WebIDL interface methods
     if (is_byte_stream) {
-        ReadableStreamInterface.invokePendingByteStartCallback(
+        ReadableStreamImpl.invokePendingByteStartCallback(
             instance,
             @ptrCast(controller_v8),
             @ptrCast(isolate),
             @ptrCast(v8_context),
         );
     } else {
-        ReadableStreamInterface.invokePendingStartCallback(
+        ReadableStreamImpl.invokePendingStartCallback(
             instance,
             @ptrCast(controller_v8),
             @ptrCast(isolate),
@@ -3327,11 +3329,13 @@ fn invokeWritableStreamStartCallback(
     _ = allocator;
     _ = this_obj;
 
-    // Import interfaces module
-    const WritableStreamInterface = @import("interfaces").WritableStream;
+    // Import impls module for internal V8-specific callbacks
+    // Note: invokePendingStartCallback is a V8-internal implementation detail,
+    // not a WebIDL interface method. Since this is V8 engine code, we call impls directly.
+    const WritableStreamImpl = @import("impls").WritableStream;
 
     // Get the controller from the stream's internal state
-    const state = instance.getState(WritableStreamInterface.State);
+    const state = instance.getState(WritableStreamImpl.State);
     const internal = state.own._internal orelse return;
     const controller_instance = internal.controller orelse return;
 
@@ -3346,8 +3350,8 @@ fn invokeWritableStreamStartCallback(
     };
 
     // Invoke the pending start callback with the controller wrapper
-    // Call through the interface (per Golden Rule #12)
-    WritableStreamInterface.invokePendingStartCallback(
+    // Call the impl directly since this is a V8-internal method, not a WebIDL interface method
+    WritableStreamImpl.invokePendingStartCallback(
         instance,
         @ptrCast(controller_v8),
         @ptrCast(isolate),

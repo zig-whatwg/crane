@@ -334,12 +334,22 @@ pub const SVGAnimationElement = struct {
         return value;
     }
 
-    pub fn call_getCurrentTime(instance: *runtime.Instance) anyerror!f32 {
-        return try SVGAnimationElementImpl.call_getCurrentTime(instance);
-    }
-
     pub fn call_getStartTime(instance: *runtime.Instance) anyerror!f32 {
         return try SVGAnimationElementImpl.call_getStartTime(instance);
+    }
+
+    pub fn call_beginElementAt(instance: *runtime.Instance, offset: f32) anyerror!void {
+        
+        return try SVGAnimationElementImpl.call_beginElementAt(instance, offset);
+    }
+
+    pub fn call_endElementAt(instance: *runtime.Instance, offset: f32) anyerror!void {
+        
+        return try SVGAnimationElementImpl.call_endElementAt(instance, offset);
+    }
+
+    pub fn call_getCurrentTime(instance: *runtime.Instance) anyerror!f32 {
+        return try SVGAnimationElementImpl.call_getCurrentTime(instance);
     }
 
     pub fn call_getSimpleDuration(instance: *runtime.Instance) anyerror!f32 {
@@ -352,16 +362,6 @@ pub const SVGAnimationElement = struct {
 
     pub fn call_beginElement(instance: *runtime.Instance) anyerror!void {
         return try SVGAnimationElementImpl.call_beginElement(instance);
-    }
-
-    pub fn call_beginElementAt(instance: *runtime.Instance, offset: f32) anyerror!void {
-        
-        return try SVGAnimationElementImpl.call_beginElementAt(instance, offset);
-    }
-
-    pub fn call_endElementAt(instance: *runtime.Instance, offset: f32) anyerror!void {
-        
-        return try SVGAnimationElementImpl.call_endElementAt(instance, offset);
     }
 
 };

@@ -183,11 +183,6 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_shippingOptions(instance);
     }
 
-    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!*const anyopaque {
-        
-        return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
-    }
-
     pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: *const anyopaque) anyerror!void {
         
         return try PaymentRequestEventImpl.call_respondWith(instance, handlerResponsePromise);
@@ -198,14 +193,19 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.call_openWindow(instance, url);
     }
 
+    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!*const anyopaque {
+        
+        return try PaymentRequestEventImpl.call_changeShippingOption(instance, shippingOption);
+    }
+
     pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
     }
 
-    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!*const anyopaque {
+    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!*const anyopaque {
         
-        return try PaymentRequestEventImpl.call_changeShippingOption(instance, shippingOption);
+        return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }
 
 };

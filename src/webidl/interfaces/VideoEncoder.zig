@@ -61,7 +61,7 @@ pub const VideoEncoder = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isConfigSupported", "call_isConfigSupported", 1 },
+            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -157,16 +157,6 @@ pub const VideoEncoder = struct {
         try VideoEncoderImpl.set_ondequeue(instance, value);
     }
 
-    pub fn call_isConfigSupported(instance: *runtime.Instance, config: VideoEncoderConfig) anyerror!*const anyopaque {
-        
-        return try VideoEncoderImpl.call_isConfigSupported(instance, config);
-    }
-
-    pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(VideoEncoderEncodeOptions)) anyerror!void {
-        
-        return try VideoEncoderImpl.call_encode(instance, frame, options);
-    }
-
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         return try VideoEncoderImpl.call_reset(instance);
     }
@@ -176,12 +166,22 @@ pub const VideoEncoder = struct {
         return try VideoEncoderImpl.call_configure(instance, config);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try VideoEncoderImpl.call_close(instance);
+    pub fn call_encode(instance: *runtime.Instance, frame: *runtime.Instance, options: webidl.Opt(VideoEncoderEncodeOptions)) anyerror!void {
+        
+        return try VideoEncoderImpl.call_encode(instance, frame, options);
     }
 
     pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try VideoEncoderImpl.call_flush(instance);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try VideoEncoderImpl.call_close(instance);
+    }
+
+    pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: VideoEncoderConfig) anyerror!*const anyopaque {
+        
+        return try VideoEncoderImpl.call_static_isConfigSupported(instance, config);
     }
 
 };

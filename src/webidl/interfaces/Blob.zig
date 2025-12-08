@@ -123,6 +123,12 @@ pub const Blob = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try BlobImpl.call_arrayBuffer(instance);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_text(instance);
@@ -138,21 +144,15 @@ pub const Blob = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try BlobImpl.call_stream(instance);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_bytes(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        return try BlobImpl.call_arrayBuffer(instance);
+        return try BlobImpl.call_stream(instance);
     }
 
 };

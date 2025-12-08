@@ -74,7 +74,7 @@ pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) any
 }
 
 /// Operation: supports
-pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

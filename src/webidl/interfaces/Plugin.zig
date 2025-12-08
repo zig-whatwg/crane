@@ -117,14 +117,14 @@ pub const Plugin = struct {
         return try PluginImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
-        return try PluginImpl.call_item(instance, index);
-    }
-
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
         
         return try PluginImpl.call_namedItem(instance, name);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+        
+        return try PluginImpl.call_item(instance, index);
     }
 
 };

@@ -136,16 +136,16 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.get_filter(instance);
     }
 
-    pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try NodeIteratorImpl.call_nextNode(instance);
+    pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try NodeIteratorImpl.call_previousNode(instance);
     }
 
     pub fn call_detach(instance: *runtime.Instance) anyerror!void {
         return try NodeIteratorImpl.call_detach(instance);
     }
 
-    pub fn call_previousNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try NodeIteratorImpl.call_previousNode(instance);
+    pub fn call_nextNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try NodeIteratorImpl.call_nextNode(instance);
     }
 
 };

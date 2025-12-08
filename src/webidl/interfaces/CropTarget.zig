@@ -38,7 +38,7 @@ pub const CropTarget = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromElement", "call_fromElement", 1 },
+            .{ "fromElement", "call_static_fromElement", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -86,9 +86,9 @@ pub const CropTarget = struct {
     }
 
     /// Extended attributes: [Exposed=Window], [SecureContext]
-    pub fn call_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
         
-        return try CropTargetImpl.call_fromElement(instance, element);
+        return try CropTargetImpl.call_static_fromElement(instance, element);
     }
 
 };

@@ -2644,7 +2644,7 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: parseHTMLUnsafe
-pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!*runtime.Instance {
+pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!*runtime.Instance {
     _ = instance;
     _ = html;
     return error.NotImplemented;

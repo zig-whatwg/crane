@@ -299,13 +299,13 @@ pub const RTCDataChannel = struct {
         return try RTCDataChannelImpl.get_priority(instance);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try RTCDataChannelImpl.call_close(instance);
-    }
-
     pub fn call_send(instance: *runtime.Instance, data: runtime.USVString) anyerror!void {
         
         return try RTCDataChannelImpl.call_send(instance, data);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try RTCDataChannelImpl.call_close(instance);
     }
 
 };

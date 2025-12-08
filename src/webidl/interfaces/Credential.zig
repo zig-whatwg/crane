@@ -38,8 +38,8 @@ pub const Credential = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
-            .{ "willRequestConditionalCreation", "call_willRequestConditionalCreation", 0 },
+            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
+            .{ "willRequestConditionalCreation", "call_static_willRequestConditionalCreation", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -102,12 +102,12 @@ pub const Credential = struct {
         return try CredentialImpl.get_type(instance);
     }
 
-    pub fn call_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try CredentialImpl.call_willRequestConditionalCreation(instance);
+    pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try CredentialImpl.call_static_willRequestConditionalCreation(instance);
     }
 
-    pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try CredentialImpl.call_isConditionalMediationAvailable(instance);
+    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try CredentialImpl.call_static_isConditionalMediationAvailable(instance);
     }
 
 };

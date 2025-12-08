@@ -414,24 +414,24 @@ pub const HTMLVideoElement = struct {
         try HTMLVideoElementImpl.set_disablePictureInPicture(instance, value);
     }
 
+    pub fn call_requestVideoFrameCallback(instance: *runtime.Instance, callback: VideoFrameRequestCallback) anyerror!u32 {
+        
+        return try HTMLVideoElementImpl.call_requestVideoFrameCallback(instance, callback);
+    }
+
     pub fn call_cancelVideoFrameCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
         
         return try HTMLVideoElementImpl.call_cancelVideoFrameCallback(instance, handle);
+    }
+
+    pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLVideoElementImpl.call_getVideoPlaybackQuality(instance);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_requestPictureInPicture(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         return try HTMLVideoElementImpl.call_requestPictureInPicture(instance);
-    }
-
-    pub fn call_requestVideoFrameCallback(instance: *runtime.Instance, callback: VideoFrameRequestCallback) anyerror!u32 {
-        
-        return try HTMLVideoElementImpl.call_requestVideoFrameCallback(instance, callback);
-    }
-
-    pub fn call_getVideoPlaybackQuality(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try HTMLVideoElementImpl.call_getVideoPlaybackQuality(instance);
     }
 
 };

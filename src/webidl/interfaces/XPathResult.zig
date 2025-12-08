@@ -218,13 +218,13 @@ pub const XPathResult = struct {
         return try XPathResultImpl.get_snapshotLength(instance);
     }
 
+    pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try XPathResultImpl.call_iterateNext(instance);
+    }
+
     pub fn call_snapshotItem(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         
         return try XPathResultImpl.call_snapshotItem(instance, index);
-    }
-
-    pub fn call_iterateNext(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try XPathResultImpl.call_iterateNext(instance);
     }
 
 };

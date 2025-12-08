@@ -77,7 +77,7 @@ pub const Notification = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "requestPermission", "call_requestPermission", 0 },
+            .{ "requestPermission", "call_static_requestPermission", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -338,14 +338,14 @@ pub const Notification = struct {
         return value;
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try NotificationImpl.call_close(instance);
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
+        
+        return try NotificationImpl.call_static_requestPermission(instance, deprecatedCallback);
     }
 
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
-        
-        return try NotificationImpl.call_requestPermission(instance, deprecatedCallback);
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try NotificationImpl.call_close(instance);
     }
 
 };

@@ -282,6 +282,11 @@ pub const ServiceWorkerRegistration = struct {
         return try ServiceWorkerRegistrationImpl.call_unregister(instance);
     }
 
+    pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
+        
+        return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_update(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
@@ -291,11 +296,6 @@ pub const ServiceWorkerRegistration = struct {
     pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!*const anyopaque {
         
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
-    }
-
-    pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
-        
-        return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }
 
 };

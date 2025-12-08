@@ -65,7 +65,7 @@ pub const MediaSource = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isTypeSupported", "call_isTypeSupported", 1 },
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -226,11 +226,6 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.get_canConstructInDedicatedWorker(instance);
     }
 
-    pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(EndOfStreamError)) anyerror!void {
-        
-        return try MediaSourceImpl.call_endOfStream(instance, @"error");
-    }
-
     pub fn call_setLiveSeekableRange(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
         
         return try MediaSourceImpl.call_setLiveSeekableRange(instance, start, end);
@@ -240,9 +235,9 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.call_clearLiveSeekableRange(instance);
     }
 
-    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!*runtime.Instance {
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         
-        return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
+        return try MediaSourceImpl.call_static_isTypeSupported(instance, @"type");
     }
 
     pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runtime.Instance) anyerror!void {
@@ -250,9 +245,14 @@ pub const MediaSource = struct {
         return try MediaSourceImpl.call_removeSourceBuffer(instance, sourceBuffer);
     }
 
-    pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_endOfStream(instance: *runtime.Instance, @"error": webidl.Opt(EndOfStreamError)) anyerror!void {
         
-        return try MediaSourceImpl.call_isTypeSupported(instance, @"type");
+        return try MediaSourceImpl.call_endOfStream(instance, @"error");
+    }
+
+    pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!*runtime.Instance {
+        
+        return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
 
 };

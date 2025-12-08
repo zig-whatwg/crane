@@ -89,14 +89,14 @@ pub const CookieStoreManager = struct {
         CookieStoreManagerImpl.deinit(instance);
     }
 
-    pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
-        
-        return try CookieStoreManagerImpl.call_unsubscribe(instance, subscriptions);
-    }
-
     pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
         
         return try CookieStoreManagerImpl.call_subscribe(instance, subscriptions);
+    }
+
+    pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
+        
+        return try CookieStoreManagerImpl.call_unsubscribe(instance, subscriptions);
     }
 
     pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!*const anyopaque {

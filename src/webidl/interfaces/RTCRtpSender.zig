@@ -52,7 +52,7 @@ pub const RTCRtpSender = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "getCapabilities", "call_getCapabilities", 1 },
+            .{ "getCapabilities", "call_static_getCapabilities", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -145,20 +145,6 @@ pub const RTCRtpSender = struct {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 
-    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
-        
-        return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
-    }
-
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
-        
-        return try RTCRtpSenderImpl.call_getCapabilities(instance, kind);
-    }
-
-    pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCRtpSenderImpl.call_getStats(instance);
-    }
-
     pub fn call_getParameters(instance: *runtime.Instance) anyerror!RTCRtpSendParameters {
         return try RTCRtpSenderImpl.call_getParameters(instance);
     }
@@ -166,6 +152,20 @@ pub const RTCRtpSender = struct {
     pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.Instance) anyerror!void {
         
         return try RTCRtpSenderImpl.call_setStreams(instance, streams);
+    }
+
+    pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCRtpSenderImpl.call_getStats(instance);
+    }
+
+    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
+        
+        return try RTCRtpSenderImpl.call_static_getCapabilities(instance, kind);
+    }
+
+    pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
+        
+        return try RTCRtpSenderImpl.call_replaceTrack(instance, withTrack);
     }
 
     pub fn call_setParameters(instance: *runtime.Instance, parameters: RTCRtpSendParameters, setParameterOptions: webidl.Opt(RTCSetParameterOptions)) anyerror!*const anyopaque {

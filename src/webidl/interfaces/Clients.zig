@@ -92,10 +92,9 @@ pub const Clients = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!*const anyopaque {
+    pub fn call_claim(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        
-        return try ClientsImpl.call_get(instance, id);
+        return try ClientsImpl.call_claim(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -106,16 +105,17 @@ pub const Clients = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try ClientsImpl.call_get(instance, id);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try ClientsImpl.call_openWindow(instance, url);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_claim(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try ClientsImpl.call_claim(instance);
     }
 
 };

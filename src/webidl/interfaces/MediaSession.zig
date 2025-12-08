@@ -133,11 +133,6 @@ pub const MediaSession = struct {
         return try MediaSessionImpl.call_setCameraActive(instance, active);
     }
 
-    pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
-        
-        return try MediaSessionImpl.call_setPositionState(instance, state);
-    }
-
     pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
         
         return try MediaSessionImpl.call_setScreenshareActive(instance, active);
@@ -146,6 +141,11 @@ pub const MediaSession = struct {
     pub fn call_setActionHandler(instance: *runtime.Instance, action: MediaSessionAction, handler: ?MediaSessionActionHandler) anyerror!void {
         
         return try MediaSessionImpl.call_setActionHandler(instance, action, handler);
+    }
+
+    pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(MediaPositionState)) anyerror!void {
+        
+        return try MediaSessionImpl.call_setPositionState(instance, state);
     }
 
 };

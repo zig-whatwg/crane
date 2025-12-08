@@ -190,26 +190,26 @@ pub const IDBDatabase = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_createObjectStore(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(IDBObjectStoreParameters)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBDatabaseImpl.call_createObjectStore(instance, name, options);
     }
 
+    pub fn call_deleteObjectStore(instance: *runtime.Instance, name: DOMString) anyerror!void {
+        
+        return try IDBDatabaseImpl.call_deleteObjectStore(instance, name);
+    }
+
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try IDBDatabaseImpl.call_close(instance);
     }
 
-    pub fn call_deleteObjectStore(instance: *runtime.Instance, name: DOMString) anyerror!void {
+    /// Extended attributes: [NewObject]
+    pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(IDBTransactionMode), options: webidl.Opt(IDBTransactionOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
         
-        return try IDBDatabaseImpl.call_deleteObjectStore(instance, name);
+        return try IDBDatabaseImpl.call_transaction(instance, storeNames, mode, options);
     }
 
 };

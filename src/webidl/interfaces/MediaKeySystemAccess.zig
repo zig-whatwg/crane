@@ -94,12 +94,12 @@ pub const MediaKeySystemAccess = struct {
         return try MediaKeySystemAccessImpl.get_keySystem(instance);
     }
 
-    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!MediaKeySystemConfiguration {
-        return try MediaKeySystemAccessImpl.call_getConfiguration(instance);
-    }
-
     pub fn call_createMediaKeys(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MediaKeySystemAccessImpl.call_createMediaKeys(instance);
+    }
+
+    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!MediaKeySystemConfiguration {
+        return try MediaKeySystemAccessImpl.call_getConfiguration(instance);
     }
 
 };

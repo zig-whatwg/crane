@@ -220,18 +220,8 @@ pub const Performance = struct {
         try PerformanceImpl.set_onresourcetimingbufferfull(instance, value);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
-        
-        return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
-    }
-
     pub fn call_clearResourceTimings(instance: *runtime.Instance) anyerror!void {
         return try PerformanceImpl.call_clearResourceTimings(instance);
-    }
-
-    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
-        
-        return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 
     pub fn call_clearMeasures(instance: *runtime.Instance, measureName: webidl.Opt(DOMString)) anyerror!void {
@@ -244,8 +234,9 @@ pub const Performance = struct {
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }
 
-    pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
-        return try PerformanceImpl.call_getEntries(instance);
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
+        
+        return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }
 
     pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) anyerror!void {
@@ -253,18 +244,22 @@ pub const Performance = struct {
         return try PerformanceImpl.call_setResourceTimingBufferSize(instance, maxSize);
     }
 
-    pub fn call_now(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
-        return try PerformanceImpl.call_now(instance);
-    }
-
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_toJSON(instance);
     }
 
-    /// Extended attributes: [Exposed=(Window,ServiceWorker,SharedWorker)], [CrossOriginIsolated]
-    pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
+    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+        
+        return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
+    }
+
+    pub fn call_now(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+        return try PerformanceImpl.call_now(instance);
+    }
+
+    pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
+        return try PerformanceImpl.call_getEntries(instance);
     }
 
     pub fn call_clearMarks(instance: *runtime.Instance, markName: webidl.Opt(DOMString)) anyerror!void {
@@ -272,9 +267,14 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
         
-        return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
+        return try PerformanceImpl.call_getEntriesByType(instance, @"type");
+    }
+
+    /// Extended attributes: [Exposed=(Window,ServiceWorker,SharedWorker)], [CrossOriginIsolated]
+    pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
     }
 
 };

@@ -47,9 +47,9 @@ pub const AbortSignal = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "abort", "call_abort", 0 },
-            .{ "timeout", "call_timeout", 1 },
-            .{ "_any", "call__any", 1 },
+            .{ "abort", "call_static_abort", 0 },
+            .{ "timeout", "call_static_timeout", 1 },
+            .{ "_any", "call_static__any", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -133,31 +133,31 @@ pub const AbortSignal = struct {
         try AbortSignalImpl.set_onabort(instance, value);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try AbortSignalImpl.call__any(instance, signals);
+    pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
+        return try AbortSignalImpl.call_throwIfAborted(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try AbortSignalImpl.call_abort(instance, reason);
+        return try AbortSignalImpl.call_static_abort(instance, reason);
     }
 
     /// Extended attributes: [Exposed=(Window,Worker)], [NewObject]
-    pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
+    pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on milliseconds
         if (!runtime.isInRange(u64, milliseconds)) return error.TypeError;
         
-        return try AbortSignalImpl.call_timeout(instance, milliseconds);
+        return try AbortSignalImpl.call_static_timeout(instance, milliseconds);
     }
 
-    pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
-        return try AbortSignalImpl.call_throwIfAborted(instance);
+    /// Extended attributes: [NewObject]
+    pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try AbortSignalImpl.call_static__any(instance, signals);
     }
 
 };

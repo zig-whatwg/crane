@@ -128,8 +128,8 @@ pub const NavigatorManagedData = struct {
         return try NavigatorManagedDataImpl.call_getManagedConfiguration(instance, keys);
     }
 
-    pub fn call_getHostname(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorManagedDataImpl.call_getHostname(instance);
+    pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorManagedDataImpl.call_getAnnotatedLocation(instance);
     }
 
     pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -140,8 +140,8 @@ pub const NavigatorManagedData = struct {
         return try NavigatorManagedDataImpl.call_getDirectoryId(instance);
     }
 
-    pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorManagedDataImpl.call_getAnnotatedLocation(instance);
+    pub fn call_getHostname(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorManagedDataImpl.call_getHostname(instance);
     }
 
     pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!*const anyopaque {

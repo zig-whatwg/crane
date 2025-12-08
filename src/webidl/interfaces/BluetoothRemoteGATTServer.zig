@@ -117,6 +117,15 @@ pub const BluetoothRemoteGATTServer = struct {
         return try BluetoothRemoteGATTServerImpl.get_connected(instance);
     }
 
+    pub fn call_getPrimaryService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+        
+        return try BluetoothRemoteGATTServerImpl.call_getPrimaryService(instance, service);
+    }
+
+    pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try BluetoothRemoteGATTServerImpl.call_connect(instance);
+    }
+
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
         return try BluetoothRemoteGATTServerImpl.call_disconnect(instance);
     }
@@ -124,15 +133,6 @@ pub const BluetoothRemoteGATTServer = struct {
     pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
         
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service);
-    }
-
-    pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try BluetoothRemoteGATTServerImpl.call_connect(instance);
-    }
-
-    pub fn call_getPrimaryService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
-        
-        return try BluetoothRemoteGATTServerImpl.call_getPrimaryService(instance, service);
     }
 
 };

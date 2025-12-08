@@ -108,9 +108,15 @@ pub const SmartCardConnection = struct {
         SmartCardConnectionImpl.deinit(instance);
     }
 
-    pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!*const anyopaque {
+    pub fn call_status(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SmartCardConnectionImpl.call_status(instance);
+    }
+
+    pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: BufferSource) anyerror!*const anyopaque {
+        // [EnforceRange] on controlCode
+        if (!runtime.isInRange(u32, controlCode)) return error.TypeError;
         
-        return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
+        return try SmartCardConnectionImpl.call_control(instance, controlCode, data);
     }
 
     pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!*const anyopaque {
@@ -120,18 +126,14 @@ pub const SmartCardConnection = struct {
         return try SmartCardConnectionImpl.call_getAttribute(instance, tag);
     }
 
-    pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: webidl.Opt(SmartCardTransmitOptions)) anyerror!*const anyopaque {
-        
-        return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options);
-    }
-
-    pub fn call_status(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SmartCardConnectionImpl.call_status(instance);
-    }
-
     pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(SmartCardDisposition)) anyerror!*const anyopaque {
         
         return try SmartCardConnectionImpl.call_disconnect(instance, disposition);
+    }
+
+    pub fn call_transmit(instance: *runtime.Instance, sendBuffer: BufferSource, options: webidl.Opt(SmartCardTransmitOptions)) anyerror!*const anyopaque {
+        
+        return try SmartCardConnectionImpl.call_transmit(instance, sendBuffer, options);
     }
 
     pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: BufferSource) anyerror!*const anyopaque {
@@ -141,11 +143,9 @@ pub const SmartCardConnection = struct {
         return try SmartCardConnectionImpl.call_setAttribute(instance, tag, value);
     }
 
-    pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: BufferSource) anyerror!*const anyopaque {
-        // [EnforceRange] on controlCode
-        if (!runtime.isInRange(u32, controlCode)) return error.TypeError;
+    pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!*const anyopaque {
         
-        return try SmartCardConnectionImpl.call_control(instance, controlCode, data);
+        return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
 
 };

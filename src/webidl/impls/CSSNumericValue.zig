@@ -109,7 +109,7 @@ pub fn call_type(instance: *runtime.Instance) anyerror!dictionaries.CSSNumericTy
 }
 
 /// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
+pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = cssText;
     return error.NotImplemented;

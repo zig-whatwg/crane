@@ -15,9 +15,9 @@ pub const WebAssembly = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name)
         pub const methods = .{
-            .{ "compile", "call_compile" },
             .{ "instantiate_BufferSource_object_WebAssemblyCompileOptions", "call_instantiate_BufferSource_object_WebAssemblyCompileOptions" },
             .{ "instantiate_Module_object", "call_instantiate_Module_object" },
+            .{ "compile", "call_compile" },
             .{ "validate", "call_validate" },
         };
         
@@ -27,16 +27,16 @@ pub const WebAssembly = struct {
 
     pub const State = struct {};
 
-    pub fn call_compile(ctx: runtime.Context, bytes: *const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
-        return try WebAssembly_impl.call_compile(ctx, bytes, options);
-    }
-
     pub fn call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx: runtime.Context, bytes: *const anyopaque, importObject: webidl.Opt(runtime.JSValue), options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         return try WebAssembly_impl.call_instantiate_BufferSource_object_WebAssemblyCompileOptions(ctx, bytes, importObject, options);
     }
 
     pub fn call_instantiate_Module_object(ctx: runtime.Context, moduleObject: *const anyopaque, importObject: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         return try WebAssembly_impl.call_instantiate_Module_object(ctx, moduleObject, importObject);
+    }
+
+    pub fn call_compile(ctx: runtime.Context, bytes: *const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+        return try WebAssembly_impl.call_compile(ctx, bytes, options);
     }
 
     pub fn call_validate(ctx: runtime.Context, bytes: *const anyopaque, options: webidl.Opt(*const anyopaque)) anyerror!bool {

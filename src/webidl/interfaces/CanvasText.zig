@@ -81,6 +81,11 @@ pub const CanvasText = struct {
         CanvasTextImpl.deinit(instance);
     }
 
+    pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
+        
+        return try CanvasTextImpl.call_measureText(instance, text);
+    }
+
     pub fn call_strokeText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
         return try CanvasTextImpl.call_strokeText(instance, text, x, y, maxWidth);
@@ -89,11 +94,6 @@ pub const CanvasText = struct {
     pub fn call_fillText(instance: *runtime.Instance, text: DOMString, x: f64, y: f64, maxWidth: webidl.Opt(f64)) anyerror!void {
         
         return try CanvasTextImpl.call_fillText(instance, text, x, y, maxWidth);
-    }
-
-    pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
-        
-        return try CanvasTextImpl.call_measureText(instance, text);
     }
 
 };

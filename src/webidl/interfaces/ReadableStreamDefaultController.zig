@@ -93,18 +93,18 @@ pub const ReadableStreamDefaultController = struct {
         return try ReadableStreamDefaultControllerImpl.get_desiredSize(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
         
-        return try ReadableStreamDefaultControllerImpl.call_error(instance, e);
+        return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try ReadableStreamDefaultControllerImpl.call_close(instance);
     }
 
-    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
         
-        return try ReadableStreamDefaultControllerImpl.call_enqueue(instance, chunk);
+        return try ReadableStreamDefaultControllerImpl.call_error(instance, e);
     }
 
 };

@@ -127,12 +127,12 @@ pub const PushSubscription = struct {
         return value;
     }
 
-    pub fn call_unsubscribe(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PushSubscriptionImpl.call_unsubscribe(instance);
-    }
-
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!PushSubscriptionJSON {
         return try PushSubscriptionImpl.call_toJSON(instance);
+    }
+
+    pub fn call_unsubscribe(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PushSubscriptionImpl.call_unsubscribe(instance);
     }
 
     pub fn call_getKey(instance: *runtime.Instance, name: PushEncryptionKeyName) anyerror!?*const anyopaque {

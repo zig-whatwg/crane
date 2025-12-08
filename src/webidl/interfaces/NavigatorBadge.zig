@@ -78,15 +78,15 @@ pub const NavigatorBadge = struct {
         NavigatorBadgeImpl.deinit(instance);
     }
 
+    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NavigatorBadgeImpl.call_clearAppBadge(instance);
+    }
+
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         
         return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
-    }
-
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NavigatorBadgeImpl.call_clearAppBadge(instance);
     }
 
 };

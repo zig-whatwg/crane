@@ -119,13 +119,13 @@ pub const Keyboard = struct {
         return try KeyboardImpl.call_unlock(instance);
     }
 
+    pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try KeyboardImpl.call_getLayoutMap(instance);
+    }
+
     pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         
         return try KeyboardImpl.call_lock(instance, keyCodes);
-    }
-
-    pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try KeyboardImpl.call_getLayoutMap(instance);
     }
 
 };

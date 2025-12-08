@@ -126,6 +126,11 @@ pub const GPUQueue = struct {
         return try GPUQueueImpl.call_onSubmittedWorkDone(instance);
     }
 
+    pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
+        
+        return try GPUQueueImpl.call_submit(instance, commandBuffers);
+    }
+
     pub fn call_writeBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, bufferOffset: GPUSize64, data: AllowSharedBufferSource, dataOffset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
         return try GPUQueueImpl.call_writeBuffer(instance, buffer, bufferOffset, data, dataOffset, size);
@@ -134,11 +139,6 @@ pub const GPUQueue = struct {
     pub fn call_writeTexture(instance: *runtime.Instance, destination: GPUTexelCopyTextureInfo, data: AllowSharedBufferSource, dataLayout: GPUTexelCopyBufferLayout, size: GPUExtent3D) anyerror!void {
         
         return try GPUQueueImpl.call_writeTexture(instance, destination, data, dataLayout, size);
-    }
-
-    pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
-        
-        return try GPUQueueImpl.call_submit(instance, commandBuffers);
     }
 
     pub fn call_copyExternalImageToTexture(instance: *runtime.Instance, source: GPUCopyExternalImageSourceInfo, destination: GPUCopyExternalImageDestInfo, copySize: GPUExtent3D) anyerror!void {

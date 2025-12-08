@@ -110,16 +110,16 @@ pub const AuthenticatorAttestationResponse = struct {
         return value;
     }
 
-    pub fn call_getPublicKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
-        return try AuthenticatorAttestationResponseImpl.call_getPublicKey(instance);
-    }
-
     pub fn call_getTransports(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try AuthenticatorAttestationResponseImpl.call_getTransports(instance);
     }
 
     pub fn call_getPublicKeyAlgorithm(instance: *runtime.Instance) anyerror!COSEAlgorithmIdentifier {
         return try AuthenticatorAttestationResponseImpl.call_getPublicKeyAlgorithm(instance);
+    }
+
+    pub fn call_getPublicKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
+        return try AuthenticatorAttestationResponseImpl.call_getPublicKey(instance);
     }
 
     pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {

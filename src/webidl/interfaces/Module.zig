@@ -39,9 +39,9 @@ pub const Module = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "exports", "call_exports", 1 },
-            .{ "imports", "call_imports", 1 },
-            .{ "customSections", "call_customSections", 2 },
+            .{ "exports", "call_static_exports", 1 },
+            .{ "imports", "call_static_imports", 1 },
+            .{ "customSections", "call_static_customSections", 2 },
         };
         
         /// Methods defined/overridden by this interface
@@ -96,19 +96,19 @@ pub const Module = struct {
         return try ModuleImpl.call_constructor(allocator, ctx, bytes, options);
     }
 
-    pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
         
-        return try ModuleImpl.call_exports(instance, moduleObject);
+        return try ModuleImpl.call_static_imports(instance, moduleObject);
     }
 
-    pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: DOMString) anyerror!*const anyopaque {
         
-        return try ModuleImpl.call_imports(instance, moduleObject);
+        return try ModuleImpl.call_static_customSections(instance, moduleObject, sectionName);
     }
 
-    pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: DOMString) anyerror!*const anyopaque {
+    pub fn call_static_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
         
-        return try ModuleImpl.call_customSections(instance, moduleObject, sectionName);
+        return try ModuleImpl.call_static_exports(instance, moduleObject);
     }
 
 };

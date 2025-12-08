@@ -201,17 +201,17 @@ pub const PresentationConnection = struct {
         try PresentationConnectionImpl.set_onmessage(instance, value);
     }
 
-    pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
-        return try PresentationConnectionImpl.call_terminate(instance);
+    pub fn call_send(instance: *runtime.Instance, message: DOMString) anyerror!void {
+        
+        return try PresentationConnectionImpl.call_send(instance, message);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try PresentationConnectionImpl.call_close(instance);
     }
 
-    pub fn call_send(instance: *runtime.Instance, message: DOMString) anyerror!void {
-        
-        return try PresentationConnectionImpl.call_send(instance, message);
+    pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
+        return try PresentationConnectionImpl.call_terminate(instance);
     }
 
 };

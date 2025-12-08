@@ -60,7 +60,7 @@ pub const AudioEncoder = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isConfigSupported", "call_isConfigSupported", 1 },
+            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -156,16 +156,6 @@ pub const AudioEncoder = struct {
         try AudioEncoderImpl.set_ondequeue(instance, value);
     }
 
-    pub fn call_isConfigSupported(instance: *runtime.Instance, config: AudioEncoderConfig) anyerror!*const anyopaque {
-        
-        return try AudioEncoderImpl.call_isConfigSupported(instance, config);
-    }
-
-    pub fn call_encode(instance: *runtime.Instance, data: *runtime.Instance) anyerror!void {
-        
-        return try AudioEncoderImpl.call_encode(instance, data);
-    }
-
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         return try AudioEncoderImpl.call_reset(instance);
     }
@@ -175,12 +165,22 @@ pub const AudioEncoder = struct {
         return try AudioEncoderImpl.call_configure(instance, config);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try AudioEncoderImpl.call_close(instance);
+    pub fn call_encode(instance: *runtime.Instance, data: *runtime.Instance) anyerror!void {
+        
+        return try AudioEncoderImpl.call_encode(instance, data);
     }
 
     pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try AudioEncoderImpl.call_flush(instance);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try AudioEncoderImpl.call_close(instance);
+    }
+
+    pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: AudioEncoderConfig) anyerror!*const anyopaque {
+        
+        return try AudioEncoderImpl.call_static_isConfigSupported(instance, config);
     }
 
 };

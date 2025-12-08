@@ -291,8 +291,8 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     return error.NotImplemented;
 }
 
-/// Operation: available
-pub fn call_available(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!*const anyopaque {
+/// Operation: available (static)
+pub fn call_static_available(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -310,8 +310,8 @@ pub fn call_start(instance: *runtime.Instance) anyerror!void {
     return error.NotImplemented;
 }
 
-/// Operation: install
-pub fn call_install(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!*const anyopaque {
+/// Operation: install (static)
+pub fn call_static_install(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

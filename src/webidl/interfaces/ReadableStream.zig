@@ -49,7 +49,7 @@ pub const ReadableStream = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "from", "call_from", 1 },
+            .{ "from", "call_static_from", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -132,28 +132,9 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(StreamPipeOptions)) anyerror!*const anyopaque {
+    pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
-        return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
-    }
-
-    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: webidl.Opt(StreamPipeOptions)) anyerror!*runtime.Instance {
-        
-        return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
-    }
-
-    pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
-        
-        return try ReadableStreamImpl.call_from(instance, asyncIterable);
-    }
-
-    pub fn call_tee(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ReadableStreamImpl.call_tee(instance);
-    }
-
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
-        
-        return try ReadableStreamImpl.call_cancel(instance, reason);
+        return try ReadableStreamImpl.call_values(instance, options);
     }
 
     pub fn call_getReader(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamGetReaderOptions)) anyerror!ReadableStreamReader {
@@ -161,14 +142,33 @@ pub const ReadableStream = struct {
         return try ReadableStreamImpl.call_getReader(instance, options);
     }
 
-    pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
+    pub fn call_tee(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ReadableStreamImpl.call_tee(instance);
+    }
+
+    pub fn call_pipeThrough(instance: *runtime.Instance, transform: ReadableWritablePair, options: webidl.Opt(StreamPipeOptions)) anyerror!*runtime.Instance {
         
-        return try ReadableStreamImpl.call_values(instance, options);
+        return try ReadableStreamImpl.call_pipeThrough(instance, transform, options);
+    }
+
+    pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
+        
+        return try ReadableStreamImpl.call_static_from(instance, asyncIterable);
+    }
+
+    pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, options: webidl.Opt(StreamPipeOptions)) anyerror!*const anyopaque {
+        
+        return try ReadableStreamImpl.call_pipeTo(instance, destination, options);
     }
 
     pub fn call_getAsyncIterator(instance: *runtime.Instance, options: webidl.Opt(ReadableStreamIteratorOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamImpl.call_getAsyncIterator(instance, options);
+    }
+
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+        
+        return try ReadableStreamImpl.call_cancel(instance, reason);
     }
 
 };

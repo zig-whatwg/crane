@@ -96,9 +96,22 @@ pub const FileSystemSyncAccessHandle = struct {
         FileSystemSyncAccessHandleImpl.deinit(instance);
     }
 
+    pub fn call_getSize(instance: *runtime.Instance) anyerror!u64 {
+        return try FileSystemSyncAccessHandleImpl.call_getSize(instance);
+    }
+
+    pub fn call_flush(instance: *runtime.Instance) anyerror!void {
+        return try FileSystemSyncAccessHandleImpl.call_flush(instance);
+    }
+
     pub fn call_read(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
         
         return try FileSystemSyncAccessHandleImpl.call_read(instance, buffer, options);
+    }
+
+    pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
+        
+        return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options);
     }
 
     pub fn call_truncate(instance: *runtime.Instance, newSize: u64) anyerror!void {
@@ -108,21 +121,8 @@ pub const FileSystemSyncAccessHandle = struct {
         return try FileSystemSyncAccessHandleImpl.call_truncate(instance, newSize);
     }
 
-    pub fn call_write(instance: *runtime.Instance, buffer: AllowSharedBufferSource, options: webidl.Opt(FileSystemReadWriteOptions)) anyerror!u64 {
-        
-        return try FileSystemSyncAccessHandleImpl.call_write(instance, buffer, options);
-    }
-
-    pub fn call_getSize(instance: *runtime.Instance) anyerror!u64 {
-        return try FileSystemSyncAccessHandleImpl.call_getSize(instance);
-    }
-
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try FileSystemSyncAccessHandleImpl.call_close(instance);
-    }
-
-    pub fn call_flush(instance: *runtime.Instance) anyerror!void {
-        return try FileSystemSyncAccessHandleImpl.call_flush(instance);
     }
 
 };

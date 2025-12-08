@@ -110,6 +110,11 @@ pub const StylePropertyMapReadOnly = struct {
         return try StylePropertyMapReadOnlyImpl.get_size(instance);
     }
 
+    pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerror!bool {
+        
+        return try StylePropertyMapReadOnlyImpl.call_has(instance, property);
+    }
+
     pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
         
         return try StylePropertyMapReadOnlyImpl.call_get(instance, property);
@@ -118,11 +123,6 @@ pub const StylePropertyMapReadOnly = struct {
     pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
         
         return try StylePropertyMapReadOnlyImpl.call_getAll(instance, property);
-    }
-
-    pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerror!bool {
-        
-        return try StylePropertyMapReadOnlyImpl.call_has(instance, property);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {

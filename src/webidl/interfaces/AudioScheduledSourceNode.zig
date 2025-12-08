@@ -123,14 +123,14 @@ pub const AudioScheduledSourceNode = struct {
         try AudioScheduledSourceNodeImpl.set_onended(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
-        
-        return try AudioScheduledSourceNodeImpl.call_stop(instance, when);
-    }
-
     pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
         
         return try AudioScheduledSourceNodeImpl.call_start(instance, when);
+    }
+
+    pub fn call_stop(instance: *runtime.Instance, when: webidl.Opt(f64)) anyerror!void {
+        
+        return try AudioScheduledSourceNodeImpl.call_stop(instance, when);
     }
 
 };

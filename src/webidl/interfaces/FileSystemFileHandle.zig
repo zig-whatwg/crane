@@ -102,6 +102,11 @@ pub const FileSystemFileHandle = struct {
         FileSystemFileHandleImpl.deinit(instance);
     }
 
+    /// Extended attributes: [Exposed=DedicatedWorker]
+    pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try FileSystemFileHandleImpl.call_createSyncAccessHandle(instance);
+    }
+
     pub fn call_getFile(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try FileSystemFileHandleImpl.call_getFile(instance);
     }
@@ -109,11 +114,6 @@ pub const FileSystemFileHandle = struct {
     pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(FileSystemCreateWritableOptions)) anyerror!*const anyopaque {
         
         return try FileSystemFileHandleImpl.call_createWritable(instance, options);
-    }
-
-    /// Extended attributes: [Exposed=DedicatedWorker]
-    pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try FileSystemFileHandleImpl.call_createSyncAccessHandle(instance);
     }
 
 };

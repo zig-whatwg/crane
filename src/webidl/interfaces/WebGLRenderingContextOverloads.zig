@@ -142,6 +142,36 @@ pub const WebGLRenderingContextOverloads = struct {
         WebGLRenderingContextOverloadsImpl.deinit(instance);
     }
 
+    pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
+    }
+
+    pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix4fv(instance, location, transpose, value);
+    }
+
+    pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, data: ArrayBufferView) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_compressedTexImage2D(instance, target, level, internalformat, width, height, border, data);
+    }
+
+    pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniform4iv(instance, location, v);
+    }
+
+    pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_texImage2D(instance, target, level, internalformat, width, height, border, format, @"type", pixels);
+    }
+
+    pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix3fv(instance, location, transpose, value);
+    }
+
     pub fn call_bufferData(instance: *runtime.Instance, target: GLenum, size: GLsizeiptr, usage: GLenum) anyerror!void {
         
         return try WebGLRenderingContextOverloadsImpl.call_bufferData(instance, target, size, usage);
@@ -152,29 +182,9 @@ pub const WebGLRenderingContextOverloads = struct {
         return try WebGLRenderingContextOverloadsImpl.call_compressedTexSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, data);
     }
 
-    pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
-    }
-
     pub fn call_readPixels(instance: *runtime.Instance, x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
         
         return try WebGLRenderingContextOverloadsImpl.call_readPixels(instance, x, y, width, height, format, @"type", pixels);
-    }
-
-    pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix2fv(instance, location, transpose, value);
-    }
-
-    pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniform4fv(instance, location, v);
-    }
-
-    pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniform2fv(instance, location, v);
     }
 
     pub fn call_bufferSubData(instance: *runtime.Instance, target: GLenum, offset: GLintptr, data: AllowSharedBufferSource) anyerror!void {
@@ -182,44 +192,9 @@ pub const WebGLRenderingContextOverloads = struct {
         return try WebGLRenderingContextOverloadsImpl.call_bufferSubData(instance, target, offset, data);
     }
 
-    pub fn call_uniform4iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
+    pub fn call_uniform4fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
-        return try WebGLRenderingContextOverloadsImpl.call_uniform4iv(instance, location, v);
-    }
-
-    pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix4fv(instance, location, transpose, value);
-    }
-
-    pub fn call_texImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_texImage2D(instance, target, level, internalformat, width, height, border, format, @"type", pixels);
-    }
-
-    pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniform1fv(instance, location, v);
-    }
-
-    pub fn call_compressedTexImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, data: ArrayBufferView) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_compressedTexImage2D(instance, target, level, internalformat, width, height, border, data);
-    }
-
-    pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniform1iv(instance, location, v);
-    }
-
-    pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniform2iv(instance, location, v);
-    }
-
-    pub fn call_uniformMatrix3fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
-        
-        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix3fv(instance, location, transpose, value);
+        return try WebGLRenderingContextOverloadsImpl.call_uniform4fv(instance, location, v);
     }
 
     pub fn call_uniform3iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
@@ -230,6 +205,31 @@ pub const WebGLRenderingContextOverloads = struct {
     pub fn call_uniform3fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
         
         return try WebGLRenderingContextOverloadsImpl.call_uniform3fv(instance, location, v);
+    }
+
+    pub fn call_uniform1iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniform1iv(instance, location, v);
+    }
+
+    pub fn call_uniformMatrix2fv(instance: *runtime.Instance, location: ?*runtime.Instance, transpose: GLboolean, value: Float32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniformMatrix2fv(instance, location, transpose, value);
+    }
+
+    pub fn call_uniform2iv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Int32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniform2iv(instance, location, v);
+    }
+
+    pub fn call_uniform2fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniform2fv(instance, location, v);
+    }
+
+    pub fn call_uniform1fv(instance: *runtime.Instance, location: ?*runtime.Instance, v: Float32List) anyerror!void {
+        
+        return try WebGLRenderingContextOverloadsImpl.call_uniform1fv(instance, location, v);
     }
 
 };

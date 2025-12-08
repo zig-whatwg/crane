@@ -110,13 +110,14 @@ pub const OES_vertex_array_object = struct {
         OES_vertex_array_objectImpl.deinit(instance);
     }
 
-    pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
-        
-        return try OES_vertex_array_objectImpl.call_bindVertexArrayOES(instance, arrayObject);
-    }
-
     pub fn call_createVertexArrayOES(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OES_vertex_array_objectImpl.call_createVertexArrayOES(instance);
+    }
+
+    /// Extended attributes: [WebGLHandlesContextLoss]
+    pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!GLboolean {
+        
+        return try OES_vertex_array_objectImpl.call_isVertexArrayOES(instance, arrayObject);
     }
 
     pub fn call_deleteVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
@@ -124,10 +125,9 @@ pub const OES_vertex_array_object = struct {
         return try OES_vertex_array_objectImpl.call_deleteVertexArrayOES(instance, arrayObject);
     }
 
-    /// Extended attributes: [WebGLHandlesContextLoss]
-    pub fn call_isVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!GLboolean {
+    pub fn call_bindVertexArrayOES(instance: *runtime.Instance, arrayObject: ?*runtime.Instance) anyerror!void {
         
-        return try OES_vertex_array_objectImpl.call_isVertexArrayOES(instance, arrayObject);
+        return try OES_vertex_array_objectImpl.call_bindVertexArrayOES(instance, arrayObject);
     }
 
 };

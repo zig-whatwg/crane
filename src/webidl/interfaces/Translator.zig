@@ -50,8 +50,8 @@ pub const Translator = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "create", "call_create", 1 },
-            .{ "availability", "call_availability", 1 },
+            .{ "create", "call_static_create", 1 },
+            .{ "availability", "call_static_availability", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -130,23 +130,9 @@ pub const Translator = struct {
         return try TranslatorImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: TranslatorCreateCoreOptions) anyerror!*const anyopaque {
-        
-        return try TranslatorImpl.call_availability(instance, options);
-    }
-
     pub fn call_translate(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
         
         return try TranslatorImpl.call_translate(instance, input, options);
-    }
-
-    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
-        
-        return try TranslatorImpl.call_measureInputUsage(instance, input, options);
-    }
-
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try TranslatorImpl.call_destroy(instance);
     }
 
     pub fn call_translateStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*runtime.Instance {
@@ -154,9 +140,23 @@ pub const Translator = struct {
         return try TranslatorImpl.call_translateStreaming(instance, input, options);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: TranslatorCreateOptions) anyerror!*const anyopaque {
+    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
+        return try TranslatorImpl.call_destroy(instance);
+    }
+
+    pub fn call_static_create(instance: *runtime.Instance, options: TranslatorCreateOptions) anyerror!*const anyopaque {
         
-        return try TranslatorImpl.call_create(instance, options);
+        return try TranslatorImpl.call_static_create(instance, options);
+    }
+
+    pub fn call_static_availability(instance: *runtime.Instance, options: TranslatorCreateCoreOptions) anyerror!*const anyopaque {
+        
+        return try TranslatorImpl.call_static_availability(instance, options);
+    }
+
+    pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(TranslatorTranslateOptions)) anyerror!*const anyopaque {
+        
+        return try TranslatorImpl.call_measureInputUsage(instance, input, options);
     }
 
 };

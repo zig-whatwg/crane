@@ -106,23 +106,23 @@ pub const Subscriber = struct {
         return try SubscriberImpl.get_signal(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, @"error": runtime.JSValue) anyerror!void {
-        
-        return try SubscriberImpl.call_error(instance, @"error");
-    }
-
     pub fn call_complete(instance: *runtime.Instance) anyerror!void {
         return try SubscriberImpl.call_complete(instance);
-    }
-
-    pub fn call_addTeardown(instance: *runtime.Instance, teardown: VoidFunction) anyerror!void {
-        
-        return try SubscriberImpl.call_addTeardown(instance, teardown);
     }
 
     pub fn call_next(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         
         return try SubscriberImpl.call_next(instance, value);
+    }
+
+    pub fn call_error(instance: *runtime.Instance, @"error": runtime.JSValue) anyerror!void {
+        
+        return try SubscriberImpl.call_error(instance, @"error");
+    }
+
+    pub fn call_addTeardown(instance: *runtime.Instance, teardown: VoidFunction) anyerror!void {
+        
+        return try SubscriberImpl.call_addTeardown(instance, teardown);
     }
 
 };

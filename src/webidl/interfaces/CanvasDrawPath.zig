@@ -105,11 +105,6 @@ pub const CanvasDrawPath = struct {
         return try CanvasDrawPathImpl.call_clip(instance, fillRule);
     }
 
-    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
-        
-        return try CanvasDrawPathImpl.call_isPointInPath(instance, x, y, fillRule);
-    }
-
     pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
         
         return try CanvasDrawPathImpl.call_isPointInStroke(instance, x, y);
@@ -117,6 +112,11 @@ pub const CanvasDrawPath = struct {
 
     pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
         return try CanvasDrawPathImpl.call_beginPath(instance);
+    }
+
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
+        
+        return try CanvasDrawPathImpl.call_isPointInPath(instance, x, y, fillRule);
     }
 
     pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {

@@ -218,22 +218,9 @@ pub const EditContext = struct {
         try EditContextImpl.set_oncompositionend(instance, value);
     }
 
-    pub fn call_updateSelection(instance: *runtime.Instance, start: u32, end: u32) anyerror!void {
+    pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: *const anyopaque) anyerror!void {
         
-        return try EditContextImpl.call_updateSelection(instance, start, end);
-    }
-
-    pub fn call_characterBounds(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try EditContextImpl.call_characterBounds(instance);
-    }
-
-    pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: *runtime.Instance) anyerror!void {
-        
-        return try EditContextImpl.call_updateSelectionBounds(instance, selectionBounds);
-    }
-
-    pub fn call_attachedElements(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try EditContextImpl.call_attachedElements(instance);
+        return try EditContextImpl.call_updateCharacterBounds(instance, rangeStart, characterBounds);
     }
 
     pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: *runtime.Instance) anyerror!void {
@@ -241,9 +228,22 @@ pub const EditContext = struct {
         return try EditContextImpl.call_updateControlBounds(instance, controlBounds);
     }
 
-    pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: *const anyopaque) anyerror!void {
+    pub fn call_attachedElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try EditContextImpl.call_attachedElements(instance);
+    }
+
+    pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: *runtime.Instance) anyerror!void {
         
-        return try EditContextImpl.call_updateCharacterBounds(instance, rangeStart, characterBounds);
+        return try EditContextImpl.call_updateSelectionBounds(instance, selectionBounds);
+    }
+
+    pub fn call_updateSelection(instance: *runtime.Instance, start: u32, end: u32) anyerror!void {
+        
+        return try EditContextImpl.call_updateSelection(instance, start, end);
+    }
+
+    pub fn call_characterBounds(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try EditContextImpl.call_characterBounds(instance);
     }
 
     pub fn call_updateText(instance: *runtime.Instance, rangeStart: u32, rangeEnd: u32, text: DOMString) anyerror!void {

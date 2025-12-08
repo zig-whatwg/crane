@@ -29,12 +29,39 @@ pub const ConstructorSet = struct {
     }
 };
 
-/// Group operations by name to detect overloads
+/// Compound key for grouping operations by name AND static/instance status
+const OperationKey = struct {
+    name: []const u8,
+    is_static: bool,
+
+    pub fn hash(self: OperationKey) u64 {
+        var h = std.hash.Wyhash.init(0);
+        h.update(self.name);
+        h.update(&[_]u8{if (self.is_static) 1 else 0});
+        return h.final();
+    }
+
+    pub fn eql(self: OperationKey, other: OperationKey) bool {
+        return self.is_static == other.is_static and std.mem.eql(u8, self.name, other.name);
+    }
+};
+
+const OperationKeyContext = struct {
+    pub fn hash(_: OperationKeyContext, key: OperationKey) u64 {
+        return key.hash();
+    }
+    pub fn eql(_: OperationKeyContext, a: OperationKey, b: OperationKey) bool {
+        return a.eql(b);
+    }
+};
+
+/// Group operations by name AND static status to detect overloads
+/// Static and instance methods with the same name are NOT grouped together
 pub fn groupOperationsByName(
     allocator: std.mem.Allocator,
     operations: []const types.Operation,
 ) ![]OverloadSet {
-    var groups = std.StringHashMap(std.ArrayList(types.Operation)).init(allocator);
+    var groups = std.HashMap(OperationKey, std.ArrayList(types.Operation), OperationKeyContext, std.hash_map.default_max_load_percentage).init(allocator);
     defer {
         var iter = groups.iterator();
         while (iter.next()) |entry| {
@@ -43,11 +70,13 @@ pub fn groupOperationsByName(
         groups.deinit();
     }
 
-    // Group operations by name
+    // Group operations by name AND static status
+    // This ensures static json(data, init) and instance json() are separate groups
     for (operations) |op| {
         const name = op.name orelse continue; // Skip unnamed operations
 
-        const entry = try groups.getOrPut(name);
+        const key = OperationKey{ .name = name, .is_static = op.static };
+        const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
             entry.value_ptr.* = std.ArrayList(types.Operation).empty;
         }
@@ -61,8 +90,13 @@ pub fn groupOperationsByName(
 
     var iter = groups.iterator();
     while (iter.next()) |entry| {
-        const owned_name = try allocator.dupe(u8, entry.key_ptr.*);
+        const owned_name = try allocator.dupe(u8, entry.key_ptr.name);
         const owned_ops = try entry.value_ptr.toOwnedSlice(allocator);
+
+        // Debug: Print overload set info
+        if (std.mem.eql(u8, owned_name, "json")) {
+            std.debug.print("DEBUG groupOperationsByName: Creating OverloadSet for 'json', is_static={}, ops_count={}\n", .{ entry.key_ptr.is_static, owned_ops.len });
+        }
 
         try result.append(allocator, .{
             .name = owned_name,
@@ -70,6 +104,7 @@ pub fn groupOperationsByName(
         });
     }
 
+    std.debug.print("DEBUG groupOperationsByName: Returning {} overload sets\n", .{result.items.len});
     return try result.toOwnedSlice(allocator);
 }
 

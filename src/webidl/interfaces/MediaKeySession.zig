@@ -177,13 +177,13 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.call_remove(instance);
     }
 
+    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MediaKeySessionImpl.call_close(instance);
+    }
+
     pub fn call_load(instance: *runtime.Instance, sessionId: DOMString) anyerror!*const anyopaque {
         
         return try MediaKeySessionImpl.call_load(instance, sessionId);
-    }
-
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MediaKeySessionImpl.call_close(instance);
     }
 
     pub fn call_generateRequest(instance: *runtime.Instance, initDataType: DOMString, initData: BufferSource) anyerror!*const anyopaque {

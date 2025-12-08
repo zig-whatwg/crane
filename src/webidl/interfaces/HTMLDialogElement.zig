@@ -304,31 +304,12 @@ pub const HTMLDialogElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try HTMLDialogElementImpl.call_requestClose(instance, returnValue);
-    }
-
-    /// Extended attributes: [CEReactions]
     pub fn call_showModal(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         return try HTMLDialogElementImpl.call_showModal(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_show(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        return try HTMLDialogElementImpl.call_show(instance);
     }
 
     /// Extended attributes: [CEReactions]
@@ -339,6 +320,25 @@ pub const HTMLDialogElement = struct {
         
         
         return try HTMLDialogElementImpl.call_close(instance, returnValue);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try HTMLDialogElementImpl.call_requestClose(instance, returnValue);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_show(instance: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        return try HTMLDialogElementImpl.call_show(instance);
     }
 
 };

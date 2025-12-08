@@ -199,9 +199,9 @@ pub const BluetoothRemoteGATTService = struct {
         try BluetoothRemoteGATTServiceImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!*const anyopaque {
+    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
         
-        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristic(instance, characteristic);
+        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }
 
     pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
@@ -209,9 +209,9 @@ pub const BluetoothRemoteGATTService = struct {
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service);
     }
 
-    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
+    pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!*const anyopaque {
         
-        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
+        return try BluetoothRemoteGATTServiceImpl.call_getCharacteristic(instance, characteristic);
     }
 
     pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {

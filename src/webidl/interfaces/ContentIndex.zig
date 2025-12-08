@@ -94,13 +94,13 @@ pub const ContentIndex = struct {
         return try ContentIndexImpl.call_delete(instance, id);
     }
 
+    pub fn call_getAll(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ContentIndexImpl.call_getAll(instance);
+    }
+
     pub fn call_add(instance: *runtime.Instance, description: ContentDescription) anyerror!*const anyopaque {
         
         return try ContentIndexImpl.call_add(instance, description);
-    }
-
-    pub fn call_getAll(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ContentIndexImpl.call_getAll(instance);
     }
 
 };

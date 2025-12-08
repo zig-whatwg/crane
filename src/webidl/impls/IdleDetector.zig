@@ -85,7 +85,7 @@ pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

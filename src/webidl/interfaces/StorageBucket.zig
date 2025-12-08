@@ -146,8 +146,17 @@ pub const StorageBucket = struct {
         return value;
     }
 
+    pub fn call_setExpires(instance: *runtime.Instance, expires: DOMHighResTimeStamp) anyerror!*const anyopaque {
+        
+        return try StorageBucketImpl.call_setExpires(instance, expires);
+    }
+
     pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try StorageBucketImpl.call_getDirectory(instance);
+    }
+
+    pub fn call_expires(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try StorageBucketImpl.call_expires(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
@@ -155,21 +164,12 @@ pub const StorageBucket = struct {
         return try StorageBucketImpl.call_persist(instance);
     }
 
-    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try StorageBucketImpl.call_estimate(instance);
-    }
-
-    pub fn call_setExpires(instance: *runtime.Instance, expires: DOMHighResTimeStamp) anyerror!*const anyopaque {
-        
-        return try StorageBucketImpl.call_setExpires(instance, expires);
-    }
-
-    pub fn call_expires(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try StorageBucketImpl.call_expires(instance);
-    }
-
     pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try StorageBucketImpl.call_persisted(instance);
+    }
+
+    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try StorageBucketImpl.call_estimate(instance);
     }
 
 };

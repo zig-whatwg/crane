@@ -126,24 +126,14 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.get_defaultPolicy(instance);
     }
 
-    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: webidl.Opt(TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
-        
-        return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
-    }
-
-    pub fn call_isScript(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
-        
-        return try TrustedTypePolicyFactoryImpl.call_isScript(instance, value);
-    }
-
-    pub fn call_isScriptURL(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
-        
-        return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
-    }
-
     pub fn call_getPropertyType(instance: *runtime.Instance, tagName: DOMString, property: DOMString, elementNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getPropertyType(instance, tagName, property, elementNs);
+    }
+
+    pub fn call_createPolicy(instance: *runtime.Instance, policyName: DOMString, policyOptions: webidl.Opt(TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
+        
+        return try TrustedTypePolicyFactoryImpl.call_createPolicy(instance, policyName, policyOptions);
     }
 
     pub fn call_isHTML(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
@@ -151,9 +141,19 @@ pub const TrustedTypePolicyFactory = struct {
         return try TrustedTypePolicyFactoryImpl.call_isHTML(instance, value);
     }
 
+    pub fn call_isScript(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
+        
+        return try TrustedTypePolicyFactoryImpl.call_isScript(instance, value);
+    }
+
     pub fn call_getAttributeType(instance: *runtime.Instance, tagName: DOMString, attribute: DOMString, elementNs: webidl.Opt(?DOMString), attrNs: webidl.Opt(?DOMString)) anyerror!?DOMString {
         
         return try TrustedTypePolicyFactoryImpl.call_getAttributeType(instance, tagName, attribute, elementNs, attrNs);
+    }
+
+    pub fn call_isScriptURL(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
+        
+        return try TrustedTypePolicyFactoryImpl.call_isScriptURL(instance, value);
     }
 
 };

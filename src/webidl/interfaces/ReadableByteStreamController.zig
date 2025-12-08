@@ -103,18 +103,18 @@ pub const ReadableByteStreamController = struct {
         return try ReadableByteStreamControllerImpl.get_desiredSize(instance);
     }
 
-    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
+    pub fn call_enqueue(instance: *runtime.Instance, chunk: ArrayBufferView) anyerror!void {
         
-        return try ReadableByteStreamControllerImpl.call_error(instance, e);
+        return try ReadableByteStreamControllerImpl.call_enqueue(instance, chunk);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try ReadableByteStreamControllerImpl.call_close(instance);
     }
 
-    pub fn call_enqueue(instance: *runtime.Instance, chunk: ArrayBufferView) anyerror!void {
+    pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) anyerror!void {
         
-        return try ReadableByteStreamControllerImpl.call_enqueue(instance, chunk);
+        return try ReadableByteStreamControllerImpl.call_error(instance, e);
     }
 
 };

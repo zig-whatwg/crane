@@ -312,16 +312,16 @@ pub const HTMLPortalElement = struct {
         try HTMLPortalElementImpl.set_onmessageerror(instance, value);
     }
 
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
+        
+        return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_activate(instance: *runtime.Instance, options: webidl.Opt(PortalActivateOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try HTMLPortalElementImpl.call_activate(instance, options);
-    }
-
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(PostMessageOptions)) anyerror!void {
-        
-        return try HTMLPortalElementImpl.call_postMessage(instance, message, options);
     }
 
 };

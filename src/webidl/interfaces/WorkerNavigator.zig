@@ -484,9 +484,8 @@ pub const WorkerNavigator = struct {
         return try WorkerNavigatorImpl.get_userAgentData(instance);
     }
 
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try WorkerNavigatorImpl.call_taintEnabled(instance);
+    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try WorkerNavigatorImpl.call_clearAppBadge(instance);
     }
 
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
@@ -496,8 +495,9 @@ pub const WorkerNavigator = struct {
         return try WorkerNavigatorImpl.call_setAppBadge(instance, contents);
     }
 
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try WorkerNavigatorImpl.call_clearAppBadge(instance);
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
+        return try WorkerNavigatorImpl.call_taintEnabled(instance);
     }
 
 };

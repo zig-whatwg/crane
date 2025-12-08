@@ -45,7 +45,7 @@ pub const DOMRect = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromRect", "call_fromRect", 0 },
+            .{ "fromRect", "call_static_fromRect", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -129,10 +129,10 @@ pub const DOMRect = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
+    pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMRectImpl.call_fromRect(instance, other);
+        return try DOMRectImpl.call_static_fromRect(instance, other);
     }
 
 };

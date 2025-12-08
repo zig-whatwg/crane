@@ -125,14 +125,14 @@ pub const CSSMediaRule = struct {
         return try CSSMediaRuleImpl.get_cssRules(instance);
     }
 
-    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
-        
-        return try CSSMediaRuleImpl.call_deleteRule(instance, index);
-    }
-
     pub fn call_insertRule(instance: *runtime.Instance, rule: DOMString, index: u32) anyerror!u32 {
         
         return try CSSMediaRuleImpl.call_insertRule(instance, rule, index);
+    }
+
+    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
+        
+        return try CSSMediaRuleImpl.call_deleteRule(instance, index);
     }
 
 };

@@ -114,10 +114,6 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         BrowserCaptureMediaStreamTrackImpl.deinit(instance);
     }
 
-    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
-    }
-
     pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
@@ -126,6 +122,10 @@ pub const BrowserCaptureMediaStreamTrack = struct {
     pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
+    }
+
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BrowserCaptureMediaStreamTrackImpl.call_clone(instance);
     }
 
 };

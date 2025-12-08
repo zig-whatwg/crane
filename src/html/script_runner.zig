@@ -36,7 +36,9 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const impls = @import("impls");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
+const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const Document = interfaces.Document;
 const html_core = @import("html_core");
 const EventLoop = html_core.EventLoop;
@@ -135,7 +137,7 @@ pub const ScriptRunner = struct {
         const script = self.pending_parsing_blocking_script orelse return;
 
         // Check if script is ready
-        if (!HTMLScriptElement.isReadyToBeParserExecuted(script)) {
+        if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
             return;
         }
 
@@ -173,8 +175,8 @@ pub const ScriptRunner = struct {
     pub fn executeDeferredScripts(self: *ScriptRunner) !void {
         // Execute in document order
         for (self.deferred_scripts.items) |script| {
-            // Check if ready
-            if (HTMLScriptElement.isReadyToBeParserExecuted(script)) {
+            // Check if ready (internal state accessor - use impl directly)
+            if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
                 try self.executeScript(script);
             }
         }
@@ -221,7 +223,7 @@ pub const ScriptRunner = struct {
         var i: usize = 0;
         while (i < self.async_scripts.items.len) {
             const script = self.async_scripts.items[i];
-            if (HTMLScriptElement.isReadyToBeParserExecuted(script)) {
+            if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
                 _ = self.async_scripts.orderedRemove(i);
                 try self.executeScript(script);
                 // Don't increment i - list shifted
@@ -258,7 +260,7 @@ pub const ScriptRunner = struct {
             const script = self.in_order_async_scripts.items[0];
 
             // Check if ready
-            if (!HTMLScriptElement.isReadyToBeParserExecuted(script)) {
+            if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
                 // Not ready - must maintain order, so stop here
                 break;
             }
@@ -334,7 +336,7 @@ pub const ScriptRunner = struct {
     /// Mark a script as ready (when fetch completes)
     /// This triggers execution checks
     pub fn markScriptReady(self: *ScriptRunner, script: *runtime.Instance) !void {
-        HTMLScriptElement.setReadyToBeParserExecuted(script, true);
+        HTMLScriptElementImpl.setReadyToBeParserExecuted(script, true);
 
         // Try to execute pending scripts
         try self.processReadyScripts();

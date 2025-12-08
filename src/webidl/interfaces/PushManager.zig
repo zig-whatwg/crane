@@ -108,11 +108,6 @@ pub const PushManager = struct {
         return value;
     }
 
-    pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
-        
-        return try PushManagerImpl.call_permissionState(instance, options);
-    }
-
     pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
         
         return try PushManagerImpl.call_subscribe(instance, options);
@@ -120,6 +115,11 @@ pub const PushManager = struct {
 
     pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PushManagerImpl.call_getSubscription(instance);
+    }
+
+    pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
+        
+        return try PushManagerImpl.call_permissionState(instance, options);
     }
 
 };

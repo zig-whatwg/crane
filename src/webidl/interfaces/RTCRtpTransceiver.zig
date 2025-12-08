@@ -151,13 +151,13 @@ pub const RTCRtpTransceiver = struct {
         return try RTCRtpTransceiverImpl.get_currentDirection(instance);
     }
 
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try RTCRtpTransceiverImpl.call_stop(instance);
+    }
+
     pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: *const anyopaque) anyerror!void {
         
         return try RTCRtpTransceiverImpl.call_setCodecPreferences(instance, codecs);
-    }
-
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try RTCRtpTransceiverImpl.call_stop(instance);
     }
 
 };

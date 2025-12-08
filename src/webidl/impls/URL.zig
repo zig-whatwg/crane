@@ -627,7 +627,7 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 
 /// parse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-parse (lines 1835-1845)
-pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
+pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
     // Static method - instance is not used
     _ = instance;
     _ = url;
@@ -637,7 +637,7 @@ pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: web
 
 /// canParse static method
 /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
-pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
+pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
     // Static method - instance is not used
     _ = instance;
 
@@ -669,14 +669,14 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// createObjectURL static method (Blob URLs)
-pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!runtime.DOMString {
+pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!runtime.DOMString {
     _ = instance;
     _ = obj;
     return error.NotImplemented;
 }
 
 /// revokeObjectURL static method (Blob URLs)
-pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
+pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
     _ = instance;
     _ = url;
     return error.NotImplemented;

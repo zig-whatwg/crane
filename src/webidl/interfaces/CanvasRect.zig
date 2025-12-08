@@ -79,9 +79,9 @@ pub const CanvasRect = struct {
         CanvasRectImpl.deinit(instance);
     }
 
-    pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
+    pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
         
-        return try CanvasRectImpl.call_clearRect(instance, x, y, w, h);
+        return try CanvasRectImpl.call_strokeRect(instance, x, y, w, h);
     }
 
     pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
@@ -89,9 +89,9 @@ pub const CanvasRect = struct {
         return try CanvasRectImpl.call_fillRect(instance, x, y, w, h);
     }
 
-    pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
+    pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
         
-        return try CanvasRectImpl.call_strokeRect(instance, x, y, w, h);
+        return try CanvasRectImpl.call_clearRect(instance, x, y, w, h);
     }
 
 };

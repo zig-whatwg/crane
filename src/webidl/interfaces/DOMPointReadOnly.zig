@@ -46,7 +46,7 @@ pub const DOMPointReadOnly = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromPoint", "call_fromPoint", 0 },
+            .{ "fromPoint", "call_static_fromPoint", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -133,6 +133,13 @@ pub const DOMPointReadOnly = struct {
         return try DOMPointReadOnlyImpl.get_w(instance);
     }
 
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMPointReadOnlyImpl.call_static_fromPoint(instance, other);
+    }
+
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DOMPointReadOnlyImpl.call_toJSON(instance);
@@ -143,13 +150,6 @@ pub const DOMPointReadOnly = struct {
         // [NewObject] - Caller owns the returned object
         
         return try DOMPointReadOnlyImpl.call_matrixTransform(instance, matrix);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMPointReadOnlyImpl.call_fromPoint(instance, other);
     }
 
 };

@@ -106,6 +106,11 @@ pub const ReadableStreamBYOBReader = struct {
         return try ReadableStreamBYOBReaderImpl.get_closed(instance);
     }
 
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+        
+        return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason);
+    }
+
     pub fn call_read(instance: *runtime.Instance, view: ArrayBufferView, options: webidl.Opt(ReadableStreamBYOBReaderReadOptions)) anyerror!*const anyopaque {
         
         return try ReadableStreamBYOBReaderImpl.call_read(instance, view, options);
@@ -113,11 +118,6 @@ pub const ReadableStreamBYOBReader = struct {
 
     pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
         return try ReadableStreamBYOBReaderImpl.call_releaseLock(instance);
-    }
-
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
-        
-        return try ReadableStreamBYOBReaderImpl.call_cancel(instance, reason);
     }
 
 };

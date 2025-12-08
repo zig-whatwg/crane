@@ -197,6 +197,10 @@ pub const IDBTransaction = struct {
         try IDBTransactionImpl.set_onerror(instance, value);
     }
 
+    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
+        return try IDBTransactionImpl.call_abort(instance);
+    }
+
     pub fn call_objectStore(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         
         return try IDBTransactionImpl.call_objectStore(instance, name);
@@ -204,10 +208,6 @@ pub const IDBTransaction = struct {
 
     pub fn call_commit(instance: *runtime.Instance) anyerror!void {
         return try IDBTransactionImpl.call_commit(instance);
-    }
-
-    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
-        return try IDBTransactionImpl.call_abort(instance);
     }
 
 };

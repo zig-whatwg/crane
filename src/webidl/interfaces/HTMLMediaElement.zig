@@ -790,26 +790,6 @@ pub const HTMLMediaElement = struct {
         try HTMLMediaElementImpl.set_onwaitingforkey(instance, value);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!*const anyopaque {
-        
-        return try HTMLMediaElementImpl.call_setSinkId(instance, sinkId);
-    }
-
-    pub fn call_load(instance: *runtime.Instance) anyerror!void {
-        return try HTMLMediaElementImpl.call_load(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
-        
-        return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
-    }
-
-    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
-        return try HTMLMediaElementImpl.call_pause(instance);
-    }
-
     pub fn call_canPlayType(instance: *runtime.Instance, @"type": DOMString) anyerror!CanPlayTypeResult {
         
         return try HTMLMediaElementImpl.call_canPlayType(instance, @"type");
@@ -820,6 +800,10 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_fastSeek(instance, time);
     }
 
+    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
+        return try HTMLMediaElementImpl.call_pause(instance);
+    }
+
     pub fn call_captureStream(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMediaElementImpl.call_captureStream(instance);
     }
@@ -828,13 +812,29 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_play(instance);
     }
 
+    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+        
+        return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
+    }
+
     pub fn call_getStartDate(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HTMLMediaElementImpl.call_getStartDate(instance);
     }
 
-    pub fn call_addTextTrack(instance: *runtime.Instance, kind: TextTrackKind, label: webidl.Opt(DOMString), language: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    /// Extended attributes: [SecureContext]
+    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!*const anyopaque {
         
-        return try HTMLMediaElementImpl.call_addTextTrack(instance, kind, label, language);
+        return try HTMLMediaElementImpl.call_setSinkId(instance, sinkId);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
+        
+        return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
+    }
+
+    pub fn call_load(instance: *runtime.Instance) anyerror!void {
+        return try HTMLMediaElementImpl.call_load(instance);
     }
 
 };

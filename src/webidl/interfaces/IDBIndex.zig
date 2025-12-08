@@ -164,40 +164,10 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        // [EnforceRange] on count
-        if (!runtime.isInRange(u32, count)) return error.TypeError;
-        
-        return try IDBIndexImpl.call_getAll(instance, queryOrOptions, count);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_openKeyCursor(instance, query, direction);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBIndexImpl.call_getAllRecords(instance, options);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBIndexImpl.call_count(instance, query);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try IDBIndexImpl.call_getKey(instance, query);
     }
 
     /// Extended attributes: [NewObject]
@@ -217,10 +187,40 @@ pub const IDBIndex = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBIndexImpl.call_count(instance, query);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        // [EnforceRange] on count
+        if (!runtime.isInRange(u32, count)) return error.TypeError;
+        
+        return try IDBIndexImpl.call_getAll(instance, queryOrOptions, count);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(IDBGetAllOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBIndexImpl.call_getAllRecords(instance, options);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(IDBCursorDirection)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try IDBIndexImpl.call_openCursor(instance, query, direction);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try IDBIndexImpl.call_getKey(instance, query);
     }
 
 };

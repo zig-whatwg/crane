@@ -46,7 +46,7 @@ pub const DeviceOrientationEvent = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "requestPermission", "call_requestPermission", 0 },
+            .{ "requestPermission", "call_static_requestPermission", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -133,9 +133,9 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.get_absolute(instance);
     }
 
-    pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
+    pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
         
-        return try DeviceOrientationEventImpl.call_requestPermission(instance, absolute);
+        return try DeviceOrientationEventImpl.call_static_requestPermission(instance, absolute);
     }
 
 };

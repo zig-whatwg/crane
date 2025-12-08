@@ -54,14 +54,14 @@ pub const PublicKeyCredential = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isConditionalMediationAvailable", "call_isConditionalMediationAvailable", 0 },
-            .{ "isUserVerifyingPlatformAuthenticatorAvailable", "call_isUserVerifyingPlatformAuthenticatorAvailable", 0 },
-            .{ "getClientCapabilities", "call_getClientCapabilities", 0 },
-            .{ "parseCreationOptionsFromJSON", "call_parseCreationOptionsFromJSON", 1 },
-            .{ "parseRequestOptionsFromJSON", "call_parseRequestOptionsFromJSON", 1 },
-            .{ "signalUnknownCredential", "call_signalUnknownCredential", 1 },
-            .{ "signalAllAcceptedCredentials", "call_signalAllAcceptedCredentials", 1 },
-            .{ "signalCurrentUserDetails", "call_signalCurrentUserDetails", 1 },
+            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
+            .{ "isUserVerifyingPlatformAuthenticatorAvailable", "call_static_isUserVerifyingPlatformAuthenticatorAvailable", 0 },
+            .{ "getClientCapabilities", "call_static_getClientCapabilities", 0 },
+            .{ "parseCreationOptionsFromJSON", "call_static_parseCreationOptionsFromJSON", 1 },
+            .{ "parseRequestOptionsFromJSON", "call_static_parseRequestOptionsFromJSON", 1 },
+            .{ "signalUnknownCredential", "call_static_signalUnknownCredential", 1 },
+            .{ "signalAllAcceptedCredentials", "call_static_signalAllAcceptedCredentials", 1 },
+            .{ "signalCurrentUserDetails", "call_static_signalCurrentUserDetails", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -161,49 +161,49 @@ pub const PublicKeyCredential = struct {
         return try PublicKeyCredentialImpl.get_authenticatorAttachment(instance);
     }
 
-    pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PublicKeyCredentialImpl.call_isUserVerifyingPlatformAuthenticatorAvailable(instance);
+    pub fn call_static_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PublicKeyCredentialImpl.call_static_isUserVerifyingPlatformAuthenticatorAvailable(instance);
     }
 
-    pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PublicKeyCredentialImpl.call_isConditionalMediationAvailable(instance);
-    }
-
-    pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!*const anyopaque {
+    pub fn call_static_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialCreationOptionsJSON) anyerror!PublicKeyCredentialCreationOptions {
         
-        return try PublicKeyCredentialImpl.call_signalUnknownCredential(instance, options);
+        return try PublicKeyCredentialImpl.call_static_parseCreationOptionsFromJSON(instance, options);
     }
 
-    pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!*const anyopaque {
-        
-        return try PublicKeyCredentialImpl.call_signalCurrentUserDetails(instance, options);
+    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PublicKeyCredentialImpl.call_static_isConditionalMediationAvailable(instance);
     }
 
-    pub fn call_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialRequestOptionsJSON) anyerror!PublicKeyCredentialRequestOptions {
+    pub fn call_static_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
         
-        return try PublicKeyCredentialImpl.call_parseRequestOptionsFromJSON(instance, options);
+        return try PublicKeyCredentialImpl.call_static_signalAllAcceptedCredentials(instance, options);
+    }
+
+    pub fn call_static_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!*const anyopaque {
+        
+        return try PublicKeyCredentialImpl.call_static_signalUnknownCredential(instance, options);
+    }
+
+    pub fn call_static_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!*const anyopaque {
+        
+        return try PublicKeyCredentialImpl.call_static_signalCurrentUserDetails(instance, options);
     }
 
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!PublicKeyCredentialJSON {
         return try PublicKeyCredentialImpl.call_toJSON(instance);
     }
 
-    pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PublicKeyCredentialImpl.call_getClientCapabilities(instance);
-    }
-
     pub fn call_getClientExtensionResults(instance: *runtime.Instance) anyerror!AuthenticationExtensionsClientOutputs {
         return try PublicKeyCredentialImpl.call_getClientExtensionResults(instance);
     }
 
-    pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
+    pub fn call_static_parseRequestOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialRequestOptionsJSON) anyerror!PublicKeyCredentialRequestOptions {
         
-        return try PublicKeyCredentialImpl.call_signalAllAcceptedCredentials(instance, options);
+        return try PublicKeyCredentialImpl.call_static_parseRequestOptionsFromJSON(instance, options);
     }
 
-    pub fn call_parseCreationOptionsFromJSON(instance: *runtime.Instance, options: PublicKeyCredentialCreationOptionsJSON) anyerror!PublicKeyCredentialCreationOptions {
-        
-        return try PublicKeyCredentialImpl.call_parseCreationOptionsFromJSON(instance, options);
+    pub fn call_static_getClientCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PublicKeyCredentialImpl.call_static_getClientCapabilities(instance);
     }
 
 };

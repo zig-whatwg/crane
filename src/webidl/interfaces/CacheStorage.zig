@@ -99,6 +99,20 @@ pub const CacheStorage = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(MultiCacheQueryOptions)) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try CacheStorageImpl.call_match(instance, request, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_has(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try CacheStorageImpl.call_has(instance, cacheName);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_delete(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
@@ -112,24 +126,10 @@ pub const CacheStorage = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_has(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        
-        return try CacheStorageImpl.call_has(instance, cacheName);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_open(instance: *runtime.Instance, cacheName: DOMString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try CacheStorageImpl.call_open(instance, cacheName);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(MultiCacheQueryOptions)) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        
-        return try CacheStorageImpl.call_match(instance, request, options);
     }
 
 };

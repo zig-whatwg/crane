@@ -182,16 +182,16 @@ pub const PaymentResponse = struct {
         try PaymentResponseImpl.set_onpayerdetailchange(instance, value);
     }
 
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PaymentResponseImpl.call_toJSON(instance);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentResponseImpl.call_complete(instance, result, details);
-    }
-
-    /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try PaymentResponseImpl.call_toJSON(instance);
     }
 
     /// Extended attributes: [NewObject]

@@ -41,7 +41,7 @@ pub const ClipboardItem = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "supports", "call_supports", 1 },
+            .{ "supports", "call_static_supports", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -117,9 +117,9 @@ pub const ClipboardItem = struct {
         return try ClipboardItemImpl.call_getType(instance, @"type");
     }
 
-    pub fn call_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         
-        return try ClipboardItemImpl.call_supports(instance, @"type");
+        return try ClipboardItemImpl.call_static_supports(instance, @"type");
     }
 
 };

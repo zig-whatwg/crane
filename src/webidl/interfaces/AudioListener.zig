@@ -155,14 +155,14 @@ pub const AudioListener = struct {
         return try AudioListenerImpl.get_upZ(instance);
     }
 
-    pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
-        
-        return try AudioListenerImpl.call_setPosition(instance, x, y, z);
-    }
-
     pub fn call_setOrientation(instance: *runtime.Instance, x: f32, y: f32, z: f32, xUp: f32, yUp: f32, zUp: f32) anyerror!void {
         
         return try AudioListenerImpl.call_setOrientation(instance, x, y, z, xUp, yUp, zUp);
+    }
+
+    pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
+        
+        return try AudioListenerImpl.call_setPosition(instance, x, y, z);
     }
 
 };

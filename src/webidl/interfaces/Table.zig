@@ -102,6 +102,11 @@ pub const Table = struct {
         return try TableImpl.get_length(instance);
     }
 
+    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(runtime.JSValue)) anyerror!void {
+        
+        return try TableImpl.call_set(instance, index, value);
+    }
+
     pub fn call_get(instance: *runtime.Instance, index: AddressValue) anyerror!runtime.JSValue {
         
         return try TableImpl.call_get(instance, index);
@@ -110,11 +115,6 @@ pub const Table = struct {
     pub fn call_grow(instance: *runtime.Instance, delta: AddressValue, value: webidl.Opt(runtime.JSValue)) anyerror!AddressValue {
         
         return try TableImpl.call_grow(instance, delta, value);
-    }
-
-    pub fn call_set(instance: *runtime.Instance, index: AddressValue, value: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
-        return try TableImpl.call_set(instance, index, value);
     }
 
 };

@@ -289,33 +289,9 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_clone(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_blob(instance);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_arrayBuffer(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_formData(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try RequestImpl.call_text(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -325,9 +301,33 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try RequestImpl.call_text(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try RequestImpl.call_blob(instance);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_bytes(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try RequestImpl.call_formData(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try RequestImpl.call_clone(instance);
     }
 
 };

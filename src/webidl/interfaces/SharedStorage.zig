@@ -145,26 +145,14 @@ pub const SharedStorage = struct {
         return try SharedStorageImpl.get_worklet(instance);
     }
 
-    pub fn call_delete(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
+    pub fn call_clear(instance: *runtime.Instance, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_delete(instance, key, options);
+        return try SharedStorageImpl.call_clear(instance, options);
     }
 
-    pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, key: DOMString) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_batchUpdate(instance, methods, options);
-    }
-
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
-        
-        return try SharedStorageImpl.call_run(instance, name, options);
-    }
-
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(SharedStorageWorkletOptions)) anyerror!*const anyopaque {
-        
-        return try SharedStorageImpl.call_createWorklet(instance, moduleURL, options);
+        return try SharedStorageImpl.call_get(instance, key);
     }
 
     /// Extended attributes: [Exposed=Window]
@@ -173,22 +161,10 @@ pub const SharedStorage = struct {
         return try SharedStorageImpl.call_selectURL(instance, name, urls, options);
     }
 
-    pub fn call_set(instance: *runtime.Instance, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageSetMethodOptions)) anyerror!*const anyopaque {
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
         
-        return try SharedStorageImpl.call_set(instance, key, value, options);
-    }
-
-    pub fn call_clear(instance: *runtime.Instance, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
-        
-        return try SharedStorageImpl.call_clear(instance, options);
-    }
-
-    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SharedStorageImpl.call_values(instance);
-    }
-
-    pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SharedStorageImpl.call_getAsyncIterator(instance);
+        return try SharedStorageImpl.call_run(instance, name, options);
     }
 
     pub fn call_append(instance: *runtime.Instance, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
@@ -196,19 +172,43 @@ pub const SharedStorage = struct {
         return try SharedStorageImpl.call_append(instance, key, value, options);
     }
 
+    pub fn call_delete(instance: *runtime.Instance, key: DOMString, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
+        
+        return try SharedStorageImpl.call_delete(instance, key, options);
+    }
+
     /// Extended attributes: [Exposed=SharedStorageWorklet]
     pub fn call_remainingBudget(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try SharedStorageImpl.call_remainingBudget(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, key: DOMString) anyerror!*const anyopaque {
-        
-        return try SharedStorageImpl.call_get(instance, key);
-    }
-
     /// Extended attributes: [Exposed=SharedStorageWorklet]
     pub fn call_length(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try SharedStorageImpl.call_length(instance);
+    }
+
+    pub fn call_batchUpdate(instance: *runtime.Instance, methods: *const anyopaque, options: webidl.Opt(SharedStorageModifierMethodOptions)) anyerror!*const anyopaque {
+        
+        return try SharedStorageImpl.call_batchUpdate(instance, methods, options);
+    }
+
+    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SharedStorageImpl.call_values(instance);
+    }
+
+    pub fn call_set(instance: *runtime.Instance, key: DOMString, value: DOMString, options: webidl.Opt(SharedStorageSetMethodOptions)) anyerror!*const anyopaque {
+        
+        return try SharedStorageImpl.call_set(instance, key, value, options);
+    }
+
+    pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SharedStorageImpl.call_getAsyncIterator(instance);
+    }
+
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_createWorklet(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(SharedStorageWorkletOptions)) anyerror!*const anyopaque {
+        
+        return try SharedStorageImpl.call_createWorklet(instance, moduleURL, options);
     }
 
 };

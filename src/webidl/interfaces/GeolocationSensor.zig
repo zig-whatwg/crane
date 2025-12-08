@@ -58,7 +58,7 @@ pub const GeolocationSensor = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "read", "call_read", 0 },
+            .{ "read", "call_static_read", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -167,9 +167,9 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.get_speed(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
+    pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
         
-        return try GeolocationSensorImpl.call_read(instance, readOptions);
+        return try GeolocationSensorImpl.call_static_read(instance, readOptions);
     }
 
 };

@@ -93,14 +93,14 @@ pub const Permissions = struct {
         return try PermissionsImpl.call_revoke(instance, permissionDesc);
     }
 
-    pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
-        
-        return try PermissionsImpl.call_request(instance, permissionDesc);
-    }
-
     pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
         
         return try PermissionsImpl.call_query(instance, permissionDesc);
+    }
+
+    pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
+        
+        return try PermissionsImpl.call_request(instance, permissionDesc);
     }
 
 };

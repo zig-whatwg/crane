@@ -296,9 +296,8 @@ pub const CSSPrimitiveValue = struct {
         return try CSSPrimitiveValueImpl.get_primitiveType(instance);
     }
 
-    pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringValue: DOMString) anyerror!void {
-        
-        return try CSSPrimitiveValueImpl.call_setStringValue(instance, stringType, stringValue);
+    pub fn call_getRGBColorValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try CSSPrimitiveValueImpl.call_getRGBColorValue(instance);
     }
 
     pub fn call_getFloatValue(instance: *runtime.Instance, unitType: u16) anyerror!f32 {
@@ -306,8 +305,8 @@ pub const CSSPrimitiveValue = struct {
         return try CSSPrimitiveValueImpl.call_getFloatValue(instance, unitType);
     }
 
-    pub fn call_getRGBColorValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try CSSPrimitiveValueImpl.call_getRGBColorValue(instance);
+    pub fn call_getRectValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try CSSPrimitiveValueImpl.call_getRectValue(instance);
     }
 
     pub fn call_setFloatValue(instance: *runtime.Instance, unitType: u16, floatValue: f32) anyerror!void {
@@ -315,12 +314,13 @@ pub const CSSPrimitiveValue = struct {
         return try CSSPrimitiveValueImpl.call_setFloatValue(instance, unitType, floatValue);
     }
 
-    pub fn call_getStringValue(instance: *runtime.Instance) anyerror!DOMString {
-        return try CSSPrimitiveValueImpl.call_getStringValue(instance);
+    pub fn call_setStringValue(instance: *runtime.Instance, stringType: u16, stringValue: DOMString) anyerror!void {
+        
+        return try CSSPrimitiveValueImpl.call_setStringValue(instance, stringType, stringValue);
     }
 
-    pub fn call_getRectValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try CSSPrimitiveValueImpl.call_getRectValue(instance);
+    pub fn call_getStringValue(instance: *runtime.Instance) anyerror!DOMString {
+        return try CSSPrimitiveValueImpl.call_getStringValue(instance);
     }
 
     pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Instance {

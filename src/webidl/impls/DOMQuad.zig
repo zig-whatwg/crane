@@ -86,15 +86,15 @@ pub fn call_getBounds(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error.NotImplemented;
 }
 
-/// Operation: fromQuad
-pub fn call_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMQuadInit)) anyerror!*runtime.Instance {
+/// Operation: fromQuad (static)
+pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMQuadInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
-/// Operation: fromRect
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
+/// Operation: fromRect (static)
+pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

@@ -136,21 +136,6 @@ pub const MLContext = struct {
         return try MLContextImpl.call_opSupportLimits(instance);
     }
 
-    pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, inputData: AllowSharedBufferSource) anyerror!void {
-        
-        return try MLContextImpl.call_writeTensor(instance, tensor, inputData);
-    }
-
-    pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*const anyopaque {
-        
-        return try MLContextImpl.call_readTensor(instance, tensor);
-    }
-
-    pub fn call_createTensor(instance: *runtime.Instance, descriptor: MLTensorDescriptor) anyerror!*const anyopaque {
-        
-        return try MLContextImpl.call_createTensor(instance, descriptor);
-    }
-
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try MLContextImpl.call_destroy(instance);
     }
@@ -158,6 +143,21 @@ pub const MLContext = struct {
     pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: MLOperandDescriptor, inputData: AllowSharedBufferSource) anyerror!*const anyopaque {
         
         return try MLContextImpl.call_createConstantTensor(instance, descriptor, inputData);
+    }
+
+    pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, inputData: AllowSharedBufferSource) anyerror!void {
+        
+        return try MLContextImpl.call_writeTensor(instance, tensor, inputData);
+    }
+
+    pub fn call_createTensor(instance: *runtime.Instance, descriptor: MLTensorDescriptor) anyerror!*const anyopaque {
+        
+        return try MLContextImpl.call_createTensor(instance, descriptor);
+    }
+
+    pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*const anyopaque {
+        
+        return try MLContextImpl.call_readTensor(instance, tensor);
     }
 
 };

@@ -101,9 +101,9 @@ pub const SpeechGrammarList = struct {
         return try SpeechGrammarListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    pub fn call_addFromString(instance: *runtime.Instance, string: DOMString, weight: webidl.Opt(f32)) anyerror!void {
         
-        return try SpeechGrammarListImpl.call_item(instance, index);
+        return try SpeechGrammarListImpl.call_addFromString(instance, string, weight);
     }
 
     pub fn call_addFromURI(instance: *runtime.Instance, src: DOMString, weight: webidl.Opt(f32)) anyerror!void {
@@ -111,9 +111,9 @@ pub const SpeechGrammarList = struct {
         return try SpeechGrammarListImpl.call_addFromURI(instance, src, weight);
     }
 
-    pub fn call_addFromString(instance: *runtime.Instance, string: DOMString, weight: webidl.Opt(f32)) anyerror!void {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
-        return try SpeechGrammarListImpl.call_addFromString(instance, string, weight);
+        return try SpeechGrammarListImpl.call_item(instance, index);
     }
 
 };

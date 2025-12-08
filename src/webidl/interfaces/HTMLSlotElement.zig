@@ -269,6 +269,11 @@ pub const HTMLSlotElement = struct {
         try HTMLSlotElementImpl.set_name(instance, value);
     }
 
+    pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
+        
+        return try HTMLSlotElementImpl.call_assign(instance, nodes);
+    }
+
     pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
         return try HTMLSlotElementImpl.call_assignedElements(instance, options);
@@ -277,11 +282,6 @@ pub const HTMLSlotElement = struct {
     pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
         
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
-    }
-
-    pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
-        
-        return try HTMLSlotElementImpl.call_assign(instance, nodes);
     }
 
 };

@@ -86,13 +86,13 @@ pub const Scheduler = struct {
         SchedulerImpl.deinit(instance);
     }
 
+    pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SchedulerImpl.call_yield(instance);
+    }
+
     pub fn call_postTask(instance: *runtime.Instance, callback: SchedulerPostTaskCallback, options: webidl.Opt(SchedulerPostTaskOptions)) anyerror!*const anyopaque {
         
         return try SchedulerImpl.call_postTask(instance, callback, options);
-    }
-
-    pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SchedulerImpl.call_yield(instance);
     }
 
 };

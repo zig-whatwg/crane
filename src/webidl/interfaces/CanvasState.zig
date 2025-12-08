@@ -82,20 +82,20 @@ pub const CanvasState = struct {
         CanvasStateImpl.deinit(instance);
     }
 
-    pub fn call_restore(instance: *runtime.Instance) anyerror!void {
-        return try CanvasStateImpl.call_restore(instance);
-    }
-
-    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
-        return try CanvasStateImpl.call_isContextLost(instance);
-    }
-
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         return try CanvasStateImpl.call_reset(instance);
     }
 
     pub fn call_save(instance: *runtime.Instance) anyerror!void {
         return try CanvasStateImpl.call_save(instance);
+    }
+
+    pub fn call_restore(instance: *runtime.Instance) anyerror!void {
+        return try CanvasStateImpl.call_restore(instance);
+    }
+
+    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
+        return try CanvasStateImpl.call_isContextLost(instance);
     }
 
 };

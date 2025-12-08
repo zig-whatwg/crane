@@ -95,26 +95,6 @@ pub const CanvasTransform = struct {
         CanvasTransformImpl.deinit(instance);
     }
 
-    pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
-        return try CanvasTransformImpl.call_resetTransform(instance);
-    }
-
-    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
-        return try CanvasTransformImpl.call_setTransform(instance, a, b, c, d, e, f);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        return try CanvasTransformImpl.call_getTransform(instance);
-    }
-
-    pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
-        return try CanvasTransformImpl.call_transform(instance, a, b, c, d, e, f);
-    }
-
     pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
         
         return try CanvasTransformImpl.call_rotate(instance, angle);
@@ -128,6 +108,26 @@ pub const CanvasTransform = struct {
     pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
         
         return try CanvasTransformImpl.call_translate(instance, x, y);
+    }
+
+    pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
+        return try CanvasTransformImpl.call_resetTransform(instance);
+    }
+
+    pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try CanvasTransformImpl.call_transform(instance, a, b, c, d, e, f);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_getTransform(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        return try CanvasTransformImpl.call_getTransform(instance);
+    }
+
+    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try CanvasTransformImpl.call_setTransform(instance, a, b, c, d, e, f);
     }
 
 };

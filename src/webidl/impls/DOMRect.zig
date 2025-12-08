@@ -134,7 +134,7 @@ pub fn set_height(instance: *runtime.Instance, value: f64) ImplError!void {
 /// Operation: fromRect (static)
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-fromrect
 /// Creates a new DOMRect from a DOMRectInit dictionary
-pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
+pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
     const ctx = instance.ctx;
 
     // Extract values from dictionary with defaults

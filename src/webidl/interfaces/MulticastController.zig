@@ -96,14 +96,14 @@ pub const MulticastController = struct {
         return try MulticastControllerImpl.get_joinedGroups(instance);
     }
 
-    pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
-        
-        return try MulticastControllerImpl.call_joinGroup(instance, ipAddress);
-    }
-
     pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
         
         return try MulticastControllerImpl.call_leaveGroup(instance, ipAddress);
+    }
+
+    pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
+        
+        return try MulticastControllerImpl.call_joinGroup(instance, ipAddress);
     }
 
 };

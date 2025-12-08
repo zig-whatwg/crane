@@ -169,14 +169,6 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.get_collections(instance);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try HIDDeviceImpl.call_forget(instance);
-    }
-
-    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try HIDDeviceImpl.call_open(instance);
-    }
-
     pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
@@ -184,15 +176,23 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.call_sendFeatureReport(instance, reportId, data);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try HIDDeviceImpl.call_close(instance);
-    }
-
     pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!*const anyopaque {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
         
         return try HIDDeviceImpl.call_receiveFeatureReport(instance, reportId);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try HIDDeviceImpl.call_close(instance);
+    }
+
+    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try HIDDeviceImpl.call_forget(instance);
+    }
+
+    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try HIDDeviceImpl.call_open(instance);
     }
 
     pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {

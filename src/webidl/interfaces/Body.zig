@@ -110,9 +110,21 @@ pub const Body = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_blob(instance);
+        return try BodyImpl.call_arrayBuffer(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try BodyImpl.call_bytes(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try BodyImpl.call_json(instance);
     }
 
     /// Extended attributes: [NewObject]
@@ -128,21 +140,9 @@ pub const Body = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_json(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_bytes(instance);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try BodyImpl.call_arrayBuffer(instance);
+        return try BodyImpl.call_blob(instance);
     }
 
 };

@@ -94,7 +94,7 @@ pub fn call_matrixTransform(instance: *runtime.Instance, matrix: webidl.Opt(dict
 }
 
 /// Operation: fromPoint
-pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
+pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

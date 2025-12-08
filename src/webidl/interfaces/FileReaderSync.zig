@@ -98,6 +98,11 @@ pub const FileReaderSync = struct {
         return try FileReaderSyncImpl.call_constructor(allocator, ctx);
     }
 
+    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
+        
+        return try FileReaderSyncImpl.call_readAsDataURL(instance, blob);
+    }
+
     pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!*const anyopaque {
         
         return try FileReaderSyncImpl.call_readAsArrayBuffer(instance, blob);
@@ -106,11 +111,6 @@ pub const FileReaderSync = struct {
     pub fn call_readAsBinaryString(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
         
         return try FileReaderSyncImpl.call_readAsBinaryString(instance, blob);
-    }
-
-    pub fn call_readAsDataURL(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!DOMString {
-        
-        return try FileReaderSyncImpl.call_readAsDataURL(instance, blob);
     }
 
     pub fn call_readAsText(instance: *runtime.Instance, blob: *runtime.Instance, encoding: webidl.Opt(DOMString)) anyerror!DOMString {

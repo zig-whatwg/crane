@@ -58,7 +58,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: userAgentAllowsProtocol
-pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) anyerror!bool {
+pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = protocol;
     return error.NotImplemented;

@@ -103,14 +103,9 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_constructor(allocator, ctx);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+    pub fn call_whenDefined(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
         
-        
-        return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
+        return try CustomElementRegistryImpl.call_whenDefined(instance, name);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
@@ -124,13 +119,13 @@ pub const CustomElementRegistry = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+    pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         
-        return try CustomElementRegistryImpl.call_upgrade(instance, root);
+        return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
 
     pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
@@ -138,9 +133,14 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }
 
-    pub fn call_whenDefined(instance: *runtime.Instance, name: DOMString) anyerror!*const anyopaque {
+    /// Extended attributes: [CEReactions]
+    pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
         
-        return try CustomElementRegistryImpl.call_whenDefined(instance, name);
+        
+        return try CustomElementRegistryImpl.call_upgrade(instance, root);
     }
 
 };

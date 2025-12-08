@@ -35,10 +35,10 @@ pub const BluetoothUUID = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "getService", "call_getService", 1 },
-            .{ "getCharacteristic", "call_getCharacteristic", 1 },
-            .{ "getDescriptor", "call_getDescriptor", 1 },
-            .{ "canonicalUUID", "call_canonicalUUID", 1 },
+            .{ "getService", "call_static_getService", 1 },
+            .{ "getCharacteristic", "call_static_getCharacteristic", 1 },
+            .{ "getDescriptor", "call_static_getDescriptor", 1 },
+            .{ "canonicalUUID", "call_static_canonicalUUID", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -88,26 +88,26 @@ pub const BluetoothUUID = struct {
         BluetoothUUIDImpl.deinit(instance);
     }
 
-    pub fn call_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
         
-        return try BluetoothUUIDImpl.call_getService(instance, name);
+        return try BluetoothUUIDImpl.call_static_getService(instance, name);
     }
 
-    pub fn call_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!UUID {
+    pub fn call_static_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!UUID {
         // [EnforceRange] on alias
         if (!runtime.isInRange(u32, alias)) return error.TypeError;
         
-        return try BluetoothUUIDImpl.call_canonicalUUID(instance, alias);
+        return try BluetoothUUIDImpl.call_static_canonicalUUID(instance, alias);
     }
 
-    pub fn call_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
         
-        return try BluetoothUUIDImpl.call_getCharacteristic(instance, name);
+        return try BluetoothUUIDImpl.call_static_getCharacteristic(instance, name);
     }
 
-    pub fn call_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
         
-        return try BluetoothUUIDImpl.call_getDescriptor(instance, name);
+        return try BluetoothUUIDImpl.call_static_getDescriptor(instance, name);
     }
 
 };

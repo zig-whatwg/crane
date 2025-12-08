@@ -95,14 +95,14 @@ pub const WEBGL_multi_draw = struct {
         WEBGL_multi_drawImpl.deinit(instance);
     }
 
-    pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, drawcount: GLsizei) anyerror!void {
-        
-        return try WEBGL_multi_drawImpl.call_multiDrawArraysWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, drawcount);
-    }
-
     pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, drawcount: GLsizei) anyerror!void {
         
         return try WEBGL_multi_drawImpl.call_multiDrawElementsWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, drawcount);
+    }
+
+    pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
+        
+        return try WEBGL_multi_drawImpl.call_multiDrawElementsInstancedWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, drawcount);
     }
 
     pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
@@ -110,9 +110,9 @@ pub const WEBGL_multi_draw = struct {
         return try WEBGL_multi_drawImpl.call_multiDrawArraysInstancedWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, drawcount);
     }
 
-    pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, drawcount: GLsizei) anyerror!void {
         
-        return try WEBGL_multi_drawImpl.call_multiDrawElementsInstancedWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, drawcount);
+        return try WEBGL_multi_drawImpl.call_multiDrawArraysWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, drawcount);
     }
 
 };

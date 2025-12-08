@@ -58,7 +58,7 @@ pub fn get_configURL(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance, options: dictionaries.IdentityCredentialDisconnectOptions) anyerror!*const anyopaque {
+pub fn call_static_disconnect(instance: *runtime.Instance, options: dictionaries.IdentityCredentialDisconnectOptions) anyerror!*const anyopaque {
     _ = instance;
     _ = options;
     return error.NotImplemented;

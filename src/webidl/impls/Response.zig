@@ -192,8 +192,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
 }
 
 // === Static Methods ===
+// Static methods use call_static_<name> convention
 
-pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
+pub fn call_static_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Static method - use context directly, not instance state
     // (instance is just a template for context/allocator access)
     const allocator = instance.ctx.allocator;
@@ -209,7 +210,7 @@ pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return error_instance;
 }
 
-pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
+pub fn call_static_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
     // Unwrap Opt for status (default to 302 per spec)
     const status_val = if (status.wasPassed()) status.value else 302;
     if (status_val != 301 and status_val != 302 and status_val != 303 and status_val != 307 and status_val != 308) {
@@ -233,7 +234,13 @@ pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status
 /// Response.json(data, init) - static method
 /// Creates a Response from JSON-serialized data
 /// Named call_json_static to avoid collision with instance method call_json
-pub fn call_json_static(allocator: std.mem.Allocator, ctx: runtime.Context, data: runtime.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
+///
+/// Note: Takes instance as first param to match V8 static method calling convention.
+/// The instance is a template instance that provides allocator/context.
+pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
     // Step 1: Let bytes be the result of running serialize a JavaScript value to JSON bytes on data
     // For now, convert JSValue to string representation
     const body_bytes: []const u8 = switch (data) {

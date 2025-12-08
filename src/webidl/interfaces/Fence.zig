@@ -99,6 +99,11 @@ pub const Fence = struct {
         return try FenceImpl.call_reportEvent(instance, event);
     }
 
+    pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
+        
+        return try FenceImpl.call_notifyEvent(instance, event);
+    }
+
     pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try FenceImpl.call_getNestedConfigs(instance);
     }
@@ -110,11 +115,6 @@ pub const Fence = struct {
 
     pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try FenceImpl.call_disableUntrustedNetwork(instance);
-    }
-
-    pub fn call_notifyEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
-        
-        return try FenceImpl.call_notifyEvent(instance, event);
     }
 
 };

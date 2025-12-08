@@ -41,7 +41,7 @@ pub const DigitalCredential = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "userAgentAllowsProtocol", "call_userAgentAllowsProtocol", 1 },
+            .{ "userAgentAllowsProtocol", "call_static_userAgentAllowsProtocol", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -117,14 +117,14 @@ pub const DigitalCredential = struct {
         return value;
     }
 
+    pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: DOMString) anyerror!bool {
+        
+        return try DigitalCredentialImpl.call_static_userAgentAllowsProtocol(instance, protocol);
+    }
+
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalCredentialImpl.call_toJSON(instance);
-    }
-
-    pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: DOMString) anyerror!bool {
-        
-        return try DigitalCredentialImpl.call_userAgentAllowsProtocol(instance, protocol);
     }
 
 };

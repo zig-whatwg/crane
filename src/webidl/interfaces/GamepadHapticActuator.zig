@@ -109,14 +109,14 @@ pub const GamepadHapticActuator = struct {
         return try GamepadHapticActuatorImpl.call_reset(instance);
     }
 
-    pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!*const anyopaque {
-        
-        return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
-    }
-
     pub fn call_playEffect(instance: *runtime.Instance, @"type": GamepadHapticEffectType, params: webidl.Opt(GamepadEffectParameters)) anyerror!*const anyopaque {
         
         return try GamepadHapticActuatorImpl.call_playEffect(instance, @"type", params);
+    }
+
+    pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!*const anyopaque {
+        
+        return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
     }
 
 };

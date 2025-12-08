@@ -119,13 +119,13 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.get_ready(instance);
     }
 
-    pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
-        return try WritableStreamDefaultWriterImpl.call_releaseLock(instance);
-    }
-
     pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
         
         return try WritableStreamDefaultWriterImpl.call_abort(instance, reason);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try WritableStreamDefaultWriterImpl.call_close(instance);
     }
 
     pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
@@ -133,8 +133,8 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.call_write(instance, chunk);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try WritableStreamDefaultWriterImpl.call_close(instance);
+    pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
+        return try WritableStreamDefaultWriterImpl.call_releaseLock(instance);
     }
 
 };

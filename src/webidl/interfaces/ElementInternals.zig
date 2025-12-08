@@ -1157,13 +1157,13 @@ pub const ElementInternals = struct {
         try ElementInternalsImpl.set_ariaValueText(instance, value);
     }
 
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try ElementInternalsImpl.call_checkValidity(instance);
+    }
+
     pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(ValidityStateFlags), message: webidl.Opt(DOMString), anchor: webidl.Opt(*runtime.Instance)) anyerror!void {
         
         return try ElementInternalsImpl.call_setValidity(instance, flags, message, anchor);
-    }
-
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try ElementInternalsImpl.call_checkValidity(instance);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {

@@ -294,9 +294,8 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
-        
-        return try ShadowRootImpl.call_getHTML(instance, options);
+    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ShadowRootImpl.call_getAnimations(instance);
     }
 
     /// Extended attributes: [CEReactions]
@@ -309,8 +308,9 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ShadowRootImpl.call_getAnimations(instance);
+    pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
+        
+        return try ShadowRootImpl.call_getHTML(instance, options);
     }
 
 };

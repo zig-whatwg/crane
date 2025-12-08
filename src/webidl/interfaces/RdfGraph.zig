@@ -95,14 +95,14 @@ pub const RdfGraph = struct {
         return try RdfGraphImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) anyerror!void {
-        
-        return try RdfGraphImpl.call_add(instance, triple);
-    }
-
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try RdfGraphImpl.call_forEach(instance, callback);
+    }
+
+    pub fn call_add(instance: *runtime.Instance, triple: *runtime.Instance) anyerror!void {
+        
+        return try RdfGraphImpl.call_add(instance, triple);
     }
 
 };

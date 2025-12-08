@@ -127,13 +127,13 @@ pub const PresentationRequest = struct {
         return try PresentationRequestImpl.call_start(instance);
     }
 
+    pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PresentationRequestImpl.call_getAvailability(instance);
+    }
+
     pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!*const anyopaque {
         
         return try PresentationRequestImpl.call_reconnect(instance, presentationId);
-    }
-
-    pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PresentationRequestImpl.call_getAvailability(instance);
     }
 
 };

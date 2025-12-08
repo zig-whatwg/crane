@@ -195,23 +195,23 @@ pub const DedicatedWorkerGlobalScope = struct {
         try DedicatedWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        
-        return try DedicatedWorkerGlobalScopeImpl.call_requestAnimationFrame(instance, callback);
-    }
-
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
         
         return try DedicatedWorkerGlobalScopeImpl.call_cancelAnimationFrame(instance, handle);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try DedicatedWorkerGlobalScopeImpl.call_close(instance);
-    }
-
     pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
         
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
+    }
+
+    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
+        
+        return try DedicatedWorkerGlobalScopeImpl.call_requestAnimationFrame(instance, callback);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try DedicatedWorkerGlobalScopeImpl.call_close(instance);
     }
 
 };

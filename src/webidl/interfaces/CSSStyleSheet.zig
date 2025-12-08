@@ -162,14 +162,9 @@ pub const CSSStyleSheet = struct {
         return value;
     }
 
-    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
+    pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) anyerror!void {
         
-        return try CSSStyleSheetImpl.call_deleteRule(instance, index);
-    }
-
-    pub fn call_replaceSync(instance: *runtime.Instance, text: runtime.USVString) anyerror!void {
-        
-        return try CSSStyleSheetImpl.call_replaceSync(instance, text);
+        return try CSSStyleSheetImpl.call_removeRule(instance, index);
     }
 
     pub fn call_replace(instance: *runtime.Instance, text: runtime.USVString) anyerror!*const anyopaque {
@@ -182,14 +177,19 @@ pub const CSSStyleSheet = struct {
         return try CSSStyleSheetImpl.call_insertRule(instance, rule, index);
     }
 
+    pub fn call_replaceSync(instance: *runtime.Instance, text: runtime.USVString) anyerror!void {
+        
+        return try CSSStyleSheetImpl.call_replaceSync(instance, text);
+    }
+
     pub fn call_addRule(instance: *runtime.Instance, selector: webidl.Opt(DOMString), style: webidl.Opt(DOMString), index: webidl.Opt(u32)) anyerror!i32 {
         
         return try CSSStyleSheetImpl.call_addRule(instance, selector, style, index);
     }
 
-    pub fn call_removeRule(instance: *runtime.Instance, index: webidl.Opt(u32)) anyerror!void {
+    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
         
-        return try CSSStyleSheetImpl.call_removeRule(instance, index);
+        return try CSSStyleSheetImpl.call_deleteRule(instance, index);
     }
 
 };

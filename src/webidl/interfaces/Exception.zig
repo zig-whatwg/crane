@@ -107,16 +107,16 @@ pub const Exception = struct {
         return try ExceptionImpl.get_stack(instance);
     }
 
-    pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) anyerror!bool {
-        
-        return try ExceptionImpl.call_is(instance, exceptionTag);
-    }
-
     pub fn call_getArg(instance: *runtime.Instance, index: u32) anyerror!runtime.JSValue {
         // [EnforceRange] on index
         if (!runtime.isInRange(u32, index)) return error.TypeError;
         
         return try ExceptionImpl.call_getArg(instance, index);
+    }
+
+    pub fn call_is(instance: *runtime.Instance, exceptionTag: *runtime.Instance) anyerror!bool {
+        
+        return try ExceptionImpl.call_is(instance, exceptionTag);
     }
 
 };

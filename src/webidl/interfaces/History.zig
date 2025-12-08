@@ -128,6 +128,11 @@ pub const History = struct {
         return try HistoryImpl.call_forward(instance);
     }
 
+    pub fn call_replaceState(instance: *runtime.Instance, data: runtime.JSValue, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
+        
+        return try HistoryImpl.call_replaceState(instance, data, unused, url);
+    }
+
     pub fn call_pushState(instance: *runtime.Instance, data: runtime.JSValue, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
         
         return try HistoryImpl.call_pushState(instance, data, unused, url);
@@ -140,11 +145,6 @@ pub const History = struct {
 
     pub fn call_back(instance: *runtime.Instance) anyerror!void {
         return try HistoryImpl.call_back(instance);
-    }
-
-    pub fn call_replaceState(instance: *runtime.Instance, data: runtime.JSValue, unused: DOMString, url: webidl.Opt(?runtime.USVString)) anyerror!void {
-        
-        return try HistoryImpl.call_replaceState(instance, data, unused, url);
     }
 
 };

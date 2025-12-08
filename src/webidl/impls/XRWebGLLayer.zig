@@ -99,7 +99,7 @@ pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void
 }
 
 /// Operation: getNativeFramebufferScaleFactor
-pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
+pub fn call_static_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
     _ = instance;
     _ = session;
     return error.NotImplemented;

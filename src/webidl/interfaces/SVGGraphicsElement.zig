@@ -294,12 +294,12 @@ pub const SVGGraphicsElement = struct {
         return value;
     }
 
-    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try SVGGraphicsElementImpl.call_getScreenCTM(instance);
-    }
-
     pub fn call_getCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try SVGGraphicsElementImpl.call_getCTM(instance);
+    }
+
+    pub fn call_getScreenCTM(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try SVGGraphicsElementImpl.call_getScreenCTM(instance);
     }
 
     pub fn call_getBBox(instance: *runtime.Instance, options: webidl.Opt(SVGBoundingBoxOptions)) anyerror!*runtime.Instance {

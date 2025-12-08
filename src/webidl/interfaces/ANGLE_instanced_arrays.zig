@@ -114,14 +114,14 @@ pub const ANGLE_instanced_arrays = struct {
         return try ANGLE_instanced_arraysImpl.call_drawArraysInstancedANGLE(instance, mode, first, count, primcount);
     }
 
-    pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: GLuint, divisor: GLuint) anyerror!void {
-        
-        return try ANGLE_instanced_arraysImpl.call_vertexAttribDivisorANGLE(instance, index, divisor);
-    }
-
     pub fn call_drawElementsInstancedANGLE(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, primcount: GLsizei) anyerror!void {
         
         return try ANGLE_instanced_arraysImpl.call_drawElementsInstancedANGLE(instance, mode, count, @"type", offset, primcount);
+    }
+
+    pub fn call_vertexAttribDivisorANGLE(instance: *runtime.Instance, index: GLuint, divisor: GLuint) anyerror!void {
+        
+        return try ANGLE_instanced_arraysImpl.call_vertexAttribDivisorANGLE(instance, index, divisor);
     }
 
 };

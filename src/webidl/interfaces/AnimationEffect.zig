@@ -125,9 +125,9 @@ pub const AnimationEffect = struct {
         return try AnimationEffectImpl.get_nextSibling(instance);
     }
 
-    pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(OptionalEffectTiming)) anyerror!void {
+    pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
-        return try AnimationEffectImpl.call_updateTiming(instance, timing);
+        return try AnimationEffectImpl.call_before(instance, effects);
     }
 
     pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
@@ -135,9 +135,8 @@ pub const AnimationEffect = struct {
         return try AnimationEffectImpl.call_replace(instance, effects);
     }
 
-    pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
-        
-        return try AnimationEffectImpl.call_before(instance, effects);
+    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
+        return try AnimationEffectImpl.call_remove(instance);
     }
 
     pub fn call_after(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
@@ -145,16 +144,17 @@ pub const AnimationEffect = struct {
         return try AnimationEffectImpl.call_after(instance, effects);
     }
 
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-        return try AnimationEffectImpl.call_remove(instance);
+    pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!ComputedEffectTiming {
+        return try AnimationEffectImpl.call_getComputedTiming(instance);
+    }
+
+    pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(OptionalEffectTiming)) anyerror!void {
+        
+        return try AnimationEffectImpl.call_updateTiming(instance, timing);
     }
 
     pub fn call_getTiming(instance: *runtime.Instance) anyerror!EffectTiming {
         return try AnimationEffectImpl.call_getTiming(instance);
-    }
-
-    pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!ComputedEffectTiming {
-        return try AnimationEffectImpl.call_getComputedTiming(instance);
     }
 
 };

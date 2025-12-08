@@ -84,7 +84,7 @@ pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!*const 
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
+pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;
     return null;

@@ -46,7 +46,7 @@ pub const DOMPoint = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromPoint", "call_fromPoint", 0 },
+            .{ "fromPoint", "call_static_fromPoint", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -131,10 +131,10 @@ pub const DOMPoint = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
+    pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
-        return try DOMPointImpl.call_fromPoint(instance, other);
+        return try DOMPointImpl.call_static_fromPoint(instance, other);
     }
 
 };

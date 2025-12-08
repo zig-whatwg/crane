@@ -142,21 +142,6 @@ pub const DOMTokenList = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_replace(instance: *runtime.Instance, token: DOMString, newToken: DOMString) anyerror!bool {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try DOMTokenListImpl.call_replace(instance, token, newToken);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
-        return try DOMTokenListImpl.call_forEach(instance, callback);
-    }
-
-    /// Extended attributes: [CEReactions]
     pub fn call_toggle(instance: *runtime.Instance, token: DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
@@ -166,19 +151,14 @@ pub const DOMTokenList = struct {
         return try DOMTokenListImpl.call_toggle(instance, token, force);
     }
 
-    pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {
-        
-        return try DOMTokenListImpl.call_contains(instance, token);
-    }
-
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
+    pub fn call_replace(instance: *runtime.Instance, token: DOMString, newToken: DOMString) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         
-        return try DOMTokenListImpl.call_add(instance, tokens);
+        return try DOMTokenListImpl.call_replace(instance, token, newToken);
     }
 
     /// Extended attributes: [CEReactions]
@@ -191,9 +171,29 @@ pub const DOMTokenList = struct {
         return try DOMTokenListImpl.call_remove(instance, tokens);
     }
 
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
+        
+        return try DOMTokenListImpl.call_forEach(instance, callback);
+    }
+
+    pub fn call_contains(instance: *runtime.Instance, token: DOMString) anyerror!bool {
+        
+        return try DOMTokenListImpl.call_contains(instance, token);
+    }
+
     pub fn call_supports(instance: *runtime.Instance, token: DOMString) anyerror!bool {
         
         return try DOMTokenListImpl.call_supports(instance, token);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_add(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try DOMTokenListImpl.call_add(instance, tokens);
     }
 
 };

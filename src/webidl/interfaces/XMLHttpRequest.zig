@@ -307,24 +307,9 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.get_responseXML(instance);
     }
 
-    pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: PrivateToken) anyerror!void {
+    pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
         
-        return try XMLHttpRequestImpl.call_setPrivateToken(instance, privateToken);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_setAttributionReporting(instance: *runtime.Instance, options: AttributionReportingRequestOptions) anyerror!void {
-        
-        return try XMLHttpRequestImpl.call_setAttributionReporting(instance, options);
-    }
-
-    pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
-        
-        return try XMLHttpRequestImpl.call_open(instance, method, url);
-    }
-
-    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
-        return try XMLHttpRequestImpl.call_abort(instance);
+        return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
     }
 
     pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
@@ -332,14 +317,23 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_send(instance, body);
     }
 
-    pub fn call_setRequestHeader(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
-        return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
+    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
+        return try XMLHttpRequestImpl.call_abort(instance);
     }
 
     pub fn call_getResponseHeader(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
         
         return try XMLHttpRequestImpl.call_getResponseHeader(instance, name);
+    }
+
+    pub fn call_setPrivateToken(instance: *runtime.Instance, privateToken: PrivateToken) anyerror!void {
+        
+        return try XMLHttpRequestImpl.call_setPrivateToken(instance, privateToken);
+    }
+
+    pub fn call_open(instance: *runtime.Instance, method: runtime.ByteString, url: runtime.USVString) anyerror!void {
+        
+        return try XMLHttpRequestImpl.call_open(instance, method, url);
     }
 
     pub fn call_overrideMimeType(instance: *runtime.Instance, mime: DOMString) anyerror!void {
@@ -349,6 +343,12 @@ pub const XMLHttpRequest = struct {
 
     pub fn call_getAllResponseHeaders(instance: *runtime.Instance) anyerror!runtime.ByteString {
         return try XMLHttpRequestImpl.call_getAllResponseHeaders(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_setAttributionReporting(instance: *runtime.Instance, options: AttributionReportingRequestOptions) anyerror!void {
+        
+        return try XMLHttpRequestImpl.call_setAttributionReporting(instance, options);
     }
 
 };

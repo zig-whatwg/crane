@@ -149,9 +149,28 @@ pub const MediaDevices = struct {
         try MediaDevicesImpl.set_oncaptureaction(instance, value);
     }
 
+    pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {
+        
+        return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config);
+    }
+
+    pub fn call_enumerateDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MediaDevicesImpl.call_enumerateDevices(instance);
+    }
+
+    pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: *const anyopaque) anyerror!void {
+        
+        return try MediaDevicesImpl.call_setSupportedCaptureActions(instance, actions);
+    }
+
     pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(AudioOutputOptions)) anyerror!*const anyopaque {
         
         return try MediaDevicesImpl.call_selectAudioOutput(instance, options);
+    }
+
+    pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
+        
+        return try MediaDevicesImpl.call_getViewportMedia(instance, options);
     }
 
     pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
@@ -164,27 +183,8 @@ pub const MediaDevices = struct {
         return try MediaDevicesImpl.call_getUserMedia(instance, constraints);
     }
 
-    pub fn call_enumerateDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MediaDevicesImpl.call_enumerateDevices(instance);
-    }
-
     pub fn call_getSupportedConstraints(instance: *runtime.Instance) anyerror!MediaTrackSupportedConstraints {
         return try MediaDevicesImpl.call_getSupportedConstraints(instance);
-    }
-
-    pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(DisplayMediaStreamOptions)) anyerror!*const anyopaque {
-        
-        return try MediaDevicesImpl.call_getViewportMedia(instance, options);
-    }
-
-    pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: *const anyopaque) anyerror!void {
-        
-        return try MediaDevicesImpl.call_setSupportedCaptureActions(instance, actions);
-    }
-
-    pub fn call_setCaptureHandleConfig(instance: *runtime.Instance, config: webidl.Opt(CaptureHandleConfig)) anyerror!void {
-        
-        return try MediaDevicesImpl.call_setCaptureHandleConfig(instance, config);
     }
 
 };

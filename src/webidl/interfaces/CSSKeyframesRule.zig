@@ -122,9 +122,9 @@ pub const CSSKeyframesRule = struct {
         return try CSSKeyframesRuleImpl.get_length(instance);
     }
 
-    pub fn call_deleteRule(instance: *runtime.Instance, select: CSSOMString) anyerror!void {
+    pub fn call_appendRule(instance: *runtime.Instance, rule: CSSOMString) anyerror!void {
         
-        return try CSSKeyframesRuleImpl.call_deleteRule(instance, select);
+        return try CSSKeyframesRuleImpl.call_appendRule(instance, rule);
     }
 
     pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!?*runtime.Instance {
@@ -132,9 +132,9 @@ pub const CSSKeyframesRule = struct {
         return try CSSKeyframesRuleImpl.call_findRule(instance, select);
     }
 
-    pub fn call_appendRule(instance: *runtime.Instance, rule: CSSOMString) anyerror!void {
+    pub fn call_deleteRule(instance: *runtime.Instance, select: CSSOMString) anyerror!void {
         
-        return try CSSKeyframesRuleImpl.call_appendRule(instance, rule);
+        return try CSSKeyframesRuleImpl.call_deleteRule(instance, select);
     }
 
 };

@@ -102,12 +102,12 @@ pub const StorageManager = struct {
         return try StorageManagerImpl.call_persist(instance);
     }
 
-    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try StorageManagerImpl.call_estimate(instance);
-    }
-
     pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try StorageManagerImpl.call_persisted(instance);
+    }
+
+    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try StorageManagerImpl.call_estimate(instance);
     }
 
 };

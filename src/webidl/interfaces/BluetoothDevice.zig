@@ -217,13 +217,13 @@ pub const BluetoothDevice = struct {
         try BluetoothDeviceImpl.set_onserviceremoved(instance, value);
     }
 
+    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try BluetoothDeviceImpl.call_forget(instance);
+    }
+
     pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!*const anyopaque {
         
         return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options);
-    }
-
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try BluetoothDeviceImpl.call_forget(instance);
     }
 
 };

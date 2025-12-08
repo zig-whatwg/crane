@@ -119,9 +119,23 @@ pub const SVGLengthList = struct {
         return try SVGLengthListImpl.call_removeItem(instance, index);
     }
 
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try SVGLengthListImpl.call_clear(instance);
+    }
+
+    pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
+        
+        return try SVGLengthListImpl.call_appendItem(instance, newItem);
+    }
+
     pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGLengthListImpl.call_insertItemBefore(instance, newItem, index);
+    }
+
+    pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
+        
+        return try SVGLengthListImpl.call_initialize(instance, newItem);
     }
 
     pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
@@ -132,20 +146,6 @@ pub const SVGLengthList = struct {
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGLengthListImpl.call_replaceItem(instance, newItem, index);
-    }
-
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try SVGLengthListImpl.call_clear(instance);
-    }
-
-    pub fn call_initialize(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try SVGLengthListImpl.call_initialize(instance, newItem);
-    }
-
-    pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try SVGLengthListImpl.call_appendItem(instance, newItem);
     }
 
 };

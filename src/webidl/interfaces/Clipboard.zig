@@ -103,6 +103,10 @@ pub const Clipboard = struct {
         ClipboardImpl.deinit(instance);
     }
 
+    pub fn call_readText(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ClipboardImpl.call_readText(instance);
+    }
+
     pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
         
         return try ClipboardImpl.call_read(instance, formats);
@@ -111,10 +115,6 @@ pub const Clipboard = struct {
     pub fn call_write(instance: *runtime.Instance, data: ClipboardItems) anyerror!*const anyopaque {
         
         return try ClipboardImpl.call_write(instance, data);
-    }
-
-    pub fn call_readText(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ClipboardImpl.call_readText(instance);
     }
 
     pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!*const anyopaque {

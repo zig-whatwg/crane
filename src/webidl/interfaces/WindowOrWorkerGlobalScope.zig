@@ -226,39 +226,9 @@ pub const WindowOrWorkerGlobalScope = struct {
         return value;
     }
 
-    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
+    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_reportError(instance, e);
-    }
-
-    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
-    }
-
-    pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_atob(instance, data);
-    }
-
-    pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
-    }
-
-    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
-    }
-
-    pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
-    }
-
-    pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
-        
-        return try WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
+        return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
     }
 
     pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(StructuredSerializeOptions)) anyerror!runtime.JSValue {
@@ -266,14 +236,34 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
     }
 
-    pub fn call_setTimeout(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
+    pub fn call_atob(instance: *runtime.Instance, data: DOMString) anyerror!runtime.ByteString {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
+        return try WindowOrWorkerGlobalScopeImpl.call_atob(instance, data);
     }
 
-    pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+    pub fn call_setInterval(instance: *runtime.Instance, handler: TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
         
-        return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
+        return try WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
+    }
+
+    pub fn call_btoa(instance: *runtime.Instance, data: DOMString) anyerror!DOMString {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_btoa(instance, data);
+    }
+
+    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_reportError(instance, e);
+    }
+
+    pub fn call_queueMicrotask(instance: *runtime.Instance, callback: VoidFunction) anyerror!void {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
+    }
+
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -281,6 +271,16 @@ pub const WindowOrWorkerGlobalScope = struct {
         // [NewObject] - Caller owns the returned object
         
         return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
+    }
+
+    pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
+    }
+
+    pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
+        
+        return try WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
     }
 
 };

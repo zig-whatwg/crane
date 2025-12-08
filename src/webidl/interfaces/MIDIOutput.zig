@@ -105,13 +105,13 @@ pub const MIDIOutput = struct {
         MIDIOutputImpl.deinit(instance);
     }
 
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try MIDIOutputImpl.call_clear(instance);
-    }
-
     pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(DOMHighResTimeStamp)) anyerror!void {
         
         return try MIDIOutputImpl.call_send(instance, data, timestamp);
+    }
+
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try MIDIOutputImpl.call_clear(instance);
     }
 
 };

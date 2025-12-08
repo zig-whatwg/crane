@@ -40,7 +40,7 @@ pub const BarcodeDetector = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "getSupportedFormats", "call_getSupportedFormats", 0 },
+            .{ "getSupportedFormats", "call_static_getSupportedFormats", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -96,8 +96,8 @@ pub const BarcodeDetector = struct {
         return try BarcodeDetectorImpl.call_constructor(allocator, ctx, barcodeDetectorOptions);
     }
 
-    pub fn call_getSupportedFormats(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try BarcodeDetectorImpl.call_getSupportedFormats(instance);
+    pub fn call_static_getSupportedFormats(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try BarcodeDetectorImpl.call_static_getSupportedFormats(instance);
     }
 
     pub fn call_detect(instance: *runtime.Instance, image: ImageBitmapSource) anyerror!*const anyopaque {

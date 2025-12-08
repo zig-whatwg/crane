@@ -188,7 +188,7 @@ pub fn call_start(instance: *runtime.Instance, timeslice: webidl.Opt(u32)) anyer
 }
 
 /// Operation: isTypeSupported
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

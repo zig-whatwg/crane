@@ -186,19 +186,9 @@ pub const SVGTransform = struct {
         return try SVGTransformImpl.get_angle(instance);
     }
 
-    pub fn call_setSkewX(instance: *runtime.Instance, angle: f32) anyerror!void {
-        
-        return try SVGTransformImpl.call_setSkewX(instance, angle);
-    }
-
     pub fn call_setMatrix(instance: *runtime.Instance, matrix: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         
         return try SVGTransformImpl.call_setMatrix(instance, matrix);
-    }
-
-    pub fn call_setRotate(instance: *runtime.Instance, angle: f32, cx: f32, cy: f32) anyerror!void {
-        
-        return try SVGTransformImpl.call_setRotate(instance, angle, cx, cy);
     }
 
     pub fn call_setSkewY(instance: *runtime.Instance, angle: f32) anyerror!void {
@@ -214,6 +204,16 @@ pub const SVGTransform = struct {
     pub fn call_setScale(instance: *runtime.Instance, sx: f32, sy: f32) anyerror!void {
         
         return try SVGTransformImpl.call_setScale(instance, sx, sy);
+    }
+
+    pub fn call_setSkewX(instance: *runtime.Instance, angle: f32) anyerror!void {
+        
+        return try SVGTransformImpl.call_setSkewX(instance, angle);
+    }
+
+    pub fn call_setRotate(instance: *runtime.Instance, angle: f32, cx: f32, cy: f32) anyerror!void {
+        
+        return try SVGTransformImpl.call_setRotate(instance, angle, cx, cy);
     }
 
 };

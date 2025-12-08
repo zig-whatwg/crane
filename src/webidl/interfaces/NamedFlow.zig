@@ -129,13 +129,13 @@ pub const NamedFlow = struct {
         return try NamedFlowImpl.call_getRegions(instance);
     }
 
-    pub fn call_getContent(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try NamedFlowImpl.call_getContent(instance);
-    }
-
     pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*const anyopaque {
         
         return try NamedFlowImpl.call_getRegionsByContent(instance, node);
+    }
+
+    pub fn call_getContent(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try NamedFlowImpl.call_getContent(instance);
     }
 
 };

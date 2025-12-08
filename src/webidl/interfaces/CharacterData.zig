@@ -181,24 +181,9 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.get_nextElementSibling(instance);
     }
 
-    pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: DOMString) anyerror!void {
+    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: DOMString) anyerror!void {
         
-        return try CharacterDataImpl.call_insertData(instance, offset, data);
-    }
-
-    pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!DOMString {
-        
-        return try CharacterDataImpl.call_substringData(instance, offset, count);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try CharacterDataImpl.call_replaceWith(instance, nodes);
+        return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -209,6 +194,20 @@ pub const CharacterData = struct {
         
         
         return try CharacterDataImpl.call_before(instance, nodes);
+    }
+
+    pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
+        
+        return try CharacterDataImpl.call_deleteData(instance, offset, count);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        return try CharacterDataImpl.call_remove(instance);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -226,23 +225,24 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_appendData(instance, data);
     }
 
-    pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
+    pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!DOMString {
         
-        return try CharacterDataImpl.call_deleteData(instance, offset, count);
+        return try CharacterDataImpl.call_substringData(instance, offset, count);
     }
 
-    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: DOMString) anyerror!void {
+    pub fn call_insertData(instance: *runtime.Instance, offset: u32, data: DOMString) anyerror!void {
         
-        return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
+        return try CharacterDataImpl.call_insertData(instance, offset, data);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_remove(instance: *runtime.Instance) anyerror!void {
+    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
-        return try CharacterDataImpl.call_remove(instance);
+        
+        return try CharacterDataImpl.call_replaceWith(instance, nodes);
     }
 
 };

@@ -103,14 +103,14 @@ pub const OES_draw_buffers_indexed = struct {
         OES_draw_buffers_indexedImpl.deinit(instance);
     }
 
+    pub fn call_blendFunciOES(instance: *runtime.Instance, buf: GLuint, src: GLenum, dst: GLenum) anyerror!void {
+        
+        return try OES_draw_buffers_indexedImpl.call_blendFunciOES(instance, buf, src, dst);
+    }
+
     pub fn call_enableiOES(instance: *runtime.Instance, target: GLenum, index: GLuint) anyerror!void {
         
         return try OES_draw_buffers_indexedImpl.call_enableiOES(instance, target, index);
-    }
-
-    pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: GLuint, mode: GLenum) anyerror!void {
-        
-        return try OES_draw_buffers_indexedImpl.call_blendEquationiOES(instance, buf, mode);
     }
 
     pub fn call_blendEquationSeparateiOES(instance: *runtime.Instance, buf: GLuint, modeRGB: GLenum, modeAlpha: GLenum) anyerror!void {
@@ -118,14 +118,14 @@ pub const OES_draw_buffers_indexed = struct {
         return try OES_draw_buffers_indexedImpl.call_blendEquationSeparateiOES(instance, buf, modeRGB, modeAlpha);
     }
 
-    pub fn call_blendFunciOES(instance: *runtime.Instance, buf: GLuint, src: GLenum, dst: GLenum) anyerror!void {
-        
-        return try OES_draw_buffers_indexedImpl.call_blendFunciOES(instance, buf, src, dst);
-    }
-
     pub fn call_blendFuncSeparateiOES(instance: *runtime.Instance, buf: GLuint, srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum) anyerror!void {
         
         return try OES_draw_buffers_indexedImpl.call_blendFuncSeparateiOES(instance, buf, srcRGB, dstRGB, srcAlpha, dstAlpha);
+    }
+
+    pub fn call_blendEquationiOES(instance: *runtime.Instance, buf: GLuint, mode: GLenum) anyerror!void {
+        
+        return try OES_draw_buffers_indexedImpl.call_blendEquationiOES(instance, buf, mode);
     }
 
     pub fn call_colorMaskiOES(instance: *runtime.Instance, buf: GLuint, r: GLboolean, g: GLboolean, b: GLboolean, a: GLboolean) anyerror!void {

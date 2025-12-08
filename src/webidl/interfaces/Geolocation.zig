@@ -92,14 +92,14 @@ pub const Geolocation = struct {
         return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback, options);
     }
 
-    pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) anyerror!void {
-        
-        return try GeolocationImpl.call_clearWatch(instance, watchId);
-    }
-
     pub fn call_watchPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!i32 {
         
         return try GeolocationImpl.call_watchPosition(instance, successCallback, errorCallback, options);
+    }
+
+    pub fn call_clearWatch(instance: *runtime.Instance, watchId: i32) anyerror!void {
+        
+        return try GeolocationImpl.call_clearWatch(instance, watchId);
     }
 
 };

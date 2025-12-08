@@ -58,8 +58,8 @@ pub const Rewriter = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "create", "call_create", 0 },
-            .{ "availability", "call_availability", 0 },
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -173,16 +173,6 @@ pub const Rewriter = struct {
         return try RewriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!*const anyopaque {
-        
-        return try RewriterImpl.call_availability(instance, options);
-    }
-
-    pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
-        
-        return try RewriterImpl.call_rewrite(instance, input, options);
-    }
-
     pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
         
         return try RewriterImpl.call_rewriteStreaming(instance, input, options);
@@ -197,9 +187,19 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_destroy(instance);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!*const anyopaque {
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!*const anyopaque {
         
-        return try RewriterImpl.call_create(instance, options);
+        return try RewriterImpl.call_static_create(instance, options);
+    }
+
+    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!*const anyopaque {
+        
+        return try RewriterImpl.call_static_availability(instance, options);
+    }
+
+    pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*const anyopaque {
+        
+        return try RewriterImpl.call_rewrite(instance, input, options);
     }
 
 };

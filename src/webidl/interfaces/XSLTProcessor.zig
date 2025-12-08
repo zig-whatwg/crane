@@ -119,32 +119,18 @@ pub const XSLTProcessor = struct {
         return try XSLTProcessorImpl.call_transformToDocument(instance, source);
     }
 
-    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!runtime.JSValue {
-        
-        return try XSLTProcessorImpl.call_getParameter(instance, namespaceURI, localName);
-    }
-
-    pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!void {
-        
-        return try XSLTProcessorImpl.call_removeParameter(instance, namespaceURI, localName);
-    }
-
     pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: runtime.JSValue) anyerror!void {
         
         return try XSLTProcessorImpl.call_setParameter(instance, namespaceURI, localName, value);
-    }
-
-    pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
-        
-        return try XSLTProcessorImpl.call_importStylesheet(instance, style);
     }
 
     pub fn call_clearParameters(instance: *runtime.Instance) anyerror!void {
         return try XSLTProcessorImpl.call_clearParameters(instance);
     }
 
-    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-        return try XSLTProcessorImpl.call_reset(instance);
+    pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!void {
+        
+        return try XSLTProcessorImpl.call_removeParameter(instance, namespaceURI, localName);
     }
 
     /// Extended attributes: [CEReactions]
@@ -155,6 +141,20 @@ pub const XSLTProcessor = struct {
         
         
         return try XSLTProcessorImpl.call_transformToFragment(instance, source, output);
+    }
+
+    pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!runtime.JSValue {
+        
+        return try XSLTProcessorImpl.call_getParameter(instance, namespaceURI, localName);
+    }
+
+    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
+        return try XSLTProcessorImpl.call_reset(instance);
+    }
+
+    pub fn call_importStylesheet(instance: *runtime.Instance, style: *runtime.Instance) anyerror!void {
+        
+        return try XSLTProcessorImpl.call_importStylesheet(instance, style);
     }
 
 };

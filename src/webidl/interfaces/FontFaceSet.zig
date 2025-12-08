@@ -176,13 +176,13 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_delete(instance, font);
     }
 
-    pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try FontFaceSetImpl.call_add(instance, font);
-    }
-
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try FontFaceSetImpl.call_clear(instance);
+    }
+
+    pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!bool {
+        
+        return try FontFaceSetImpl.call_check(instance, font, text);
     }
 
     pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!*const anyopaque {
@@ -190,9 +190,9 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_load(instance, font, text);
     }
 
-    pub fn call_check(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!bool {
+    pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {
         
-        return try FontFaceSetImpl.call_check(instance, font, text);
+        return try FontFaceSetImpl.call_add(instance, font);
     }
 
 };

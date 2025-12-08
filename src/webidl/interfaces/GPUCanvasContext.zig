@@ -107,21 +107,21 @@ pub const GPUCanvasContext = struct {
         return try GPUCanvasContextImpl.get_canvas(instance);
     }
 
-    pub fn call_unconfigure(instance: *runtime.Instance) anyerror!void {
-        return try GPUCanvasContextImpl.call_unconfigure(instance);
-    }
-
     pub fn call_configure(instance: *runtime.Instance, configuration: GPUCanvasConfiguration) anyerror!void {
         
         return try GPUCanvasContextImpl.call_configure(instance, configuration);
     }
 
-    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!?GPUCanvasConfiguration {
-        return try GPUCanvasContextImpl.call_getConfiguration(instance);
-    }
-
     pub fn call_getCurrentTexture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GPUCanvasContextImpl.call_getCurrentTexture(instance);
+    }
+
+    pub fn call_unconfigure(instance: *runtime.Instance) anyerror!void {
+        return try GPUCanvasContextImpl.call_unconfigure(instance);
+    }
+
+    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!?GPUCanvasConfiguration {
+        return try GPUCanvasContextImpl.call_getConfiguration(instance);
     }
 
 };

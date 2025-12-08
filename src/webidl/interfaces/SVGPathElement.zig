@@ -261,18 +261,18 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.get_pathLength(instance);
     }
 
+    pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
+        return try SVGPathElementImpl.call_getTotalLength(instance);
+    }
+
     pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
         
         return try SVGPathElementImpl.call_setPathData(instance, pathData);
     }
 
-    pub fn call_getTotalLength(instance: *runtime.Instance) anyerror!f32 {
-        return try SVGPathElementImpl.call_getTotalLength(instance);
-    }
-
-    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
+    pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!?*runtime.Instance {
         
-        return try SVGPathElementImpl.call_getPointAtLength(instance, distance);
+        return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
     }
 
     pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!*const anyopaque {
@@ -280,9 +280,9 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getPathData(instance, settings);
     }
 
-    pub fn call_getPathSegmentAtLength(instance: *runtime.Instance, distance: f32) anyerror!?*runtime.Instance {
+    pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         
-        return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
+        return try SVGPathElementImpl.call_getPointAtLength(instance, distance);
     }
 
 };

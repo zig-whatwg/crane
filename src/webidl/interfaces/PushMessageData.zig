@@ -93,24 +93,24 @@ pub const PushMessageData = struct {
         PushMessageDataImpl.deinit(instance);
     }
 
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try PushMessageDataImpl.call_blob(instance);
-    }
-
-    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.USVString {
-        return try PushMessageDataImpl.call_text(instance);
-    }
-
-    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try PushMessageDataImpl.call_json(instance);
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PushMessageDataImpl.call_arrayBuffer(instance);
     }
 
     pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PushMessageDataImpl.call_bytes(instance);
     }
 
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PushMessageDataImpl.call_arrayBuffer(instance);
+    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PushMessageDataImpl.call_json(instance);
+    }
+
+    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try PushMessageDataImpl.call_text(instance);
+    }
+
+    pub fn call_blob(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try PushMessageDataImpl.call_blob(instance);
     }
 
 };

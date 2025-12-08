@@ -455,12 +455,12 @@ pub const HTMLMarqueeElement = struct {
         try HTMLMarqueeElementImpl.set_width(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try HTMLMarqueeElementImpl.call_stop(instance);
-    }
-
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try HTMLMarqueeElementImpl.call_start(instance);
+    }
+
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try HTMLMarqueeElementImpl.call_stop(instance);
     }
 
 };

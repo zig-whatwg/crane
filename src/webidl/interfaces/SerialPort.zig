@@ -169,19 +169,6 @@ pub const SerialPort = struct {
         return try SerialPortImpl.get_writable(instance);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try SerialPortImpl.call_forget(instance);
-    }
-
-    pub fn call_getInfo(instance: *runtime.Instance) anyerror!SerialPortInfo {
-        return try SerialPortImpl.call_getInfo(instance);
-    }
-
-    pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!*const anyopaque {
-        
-        return try SerialPortImpl.call_open(instance, options);
-    }
-
     pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(SerialOutputSignals)) anyerror!*const anyopaque {
         
         return try SerialPortImpl.call_setSignals(instance, signals);
@@ -193,6 +180,19 @@ pub const SerialPort = struct {
 
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try SerialPortImpl.call_close(instance);
+    }
+
+    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try SerialPortImpl.call_forget(instance);
+    }
+
+    pub fn call_getInfo(instance: *runtime.Instance) anyerror!SerialPortInfo {
+        return try SerialPortImpl.call_getInfo(instance);
+    }
+
+    pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!*const anyopaque {
+        
+        return try SerialPortImpl.call_open(instance, options);
     }
 
 };

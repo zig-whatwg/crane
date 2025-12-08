@@ -443,60 +443,42 @@ pub const PaintRenderingContext2D = struct {
         try PaintRenderingContext2DImpl.set_lineDashOffset(instance, value);
     }
 
-    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
+    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
         
-        return try PaintRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
+        return try PaintRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
     }
 
-    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PaintRenderingContext2DImpl.call_getLineDash(instance);
+    pub fn call_save(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_save(instance);
     }
 
-    pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
+    pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
         
-        return try PaintRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
-    }
-
-    pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
-    }
-
-    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-        
-        return try PaintRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
-    }
-
-    pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_transform(instance, a, b, c, d, e, f);
-    }
-
-    pub fn call_restore(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_restore(instance);
-    }
-
-    pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_clip(instance, fillRule);
-    }
-
-    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_reset(instance);
+        return try PaintRenderingContext2DImpl.call_moveTo(instance, x, y);
     }
 
     pub fn call_stroke(instance: *runtime.Instance) anyerror!void {
         return try PaintRenderingContext2DImpl.call_stroke(instance);
     }
 
-    pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
+    pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
         
-        return try PaintRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
+        return try PaintRenderingContext2DImpl.call_setLineDash(instance, segments);
     }
 
-    pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
+    pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
         
-        return try PaintRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
+        return try PaintRenderingContext2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
+    }
+
+    pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_fillRect(instance, x, y, w, h);
+    }
+
+    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
+        
+        return try PaintRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
     }
 
     /// Extended attributes: [NewObject]
@@ -505,109 +487,19 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_getTransform(instance);
     }
 
-    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-        
-        return try PaintRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
-    }
-
-    pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_closePath(instance);
-    }
-
     pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
+    pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
+        return try PaintRenderingContext2DImpl.call_ellipse(instance, x, y, radiusX, radiusY, rotation, startAngle, endAngle, counterclockwise);
     }
 
-    pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
+    pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
         
-        return try PaintRenderingContext2DImpl.call_lineTo(instance, x, y);
-    }
-
-    pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_resetTransform(instance);
-    }
-
-    pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
-    }
-
-    pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_setLineDash(instance, segments);
-    }
-
-    pub fn call_moveTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_moveTo(instance, x, y);
-    }
-
-    pub fn call_save(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_save(instance);
-    }
-
-    pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_quadraticCurveTo(instance, cpx, cpy, x, y);
-    }
-
-    pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
-    }
-
-    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
-        return try PaintRenderingContext2DImpl.call_isContextLost(instance);
-    }
-
-    pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
-        
-        return try PaintRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
-    }
-
-    pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_rotate(instance, angle);
-    }
-
-    pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_scale(instance, x, y);
-    }
-
-    pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_translate(instance, x, y);
-    }
-
-    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-        
-        return try PaintRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
-    }
-
-    pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
-    }
-
-    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
-    }
-
-    pub fn call_fillRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
-        
-        return try PaintRenderingContext2DImpl.call_fillRect(instance, x, y, w, h);
-    }
-
-    pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
-        return try PaintRenderingContext2DImpl.call_beginPath(instance);
+        return try PaintRenderingContext2DImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
     }
 
     pub fn call_rect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
@@ -615,9 +507,117 @@ pub const PaintRenderingContext2D = struct {
         return try PaintRenderingContext2DImpl.call_rect(instance, x, y, w, h);
     }
 
+    pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule: webidl.Opt(CanvasFillRule)) anyerror!bool {
+        
+        return try PaintRenderingContext2DImpl.call_isPointInPath(instance, x, y, fillRule);
+    }
+
+    pub fn call_isContextLost(instance: *runtime.Instance) anyerror!bool {
+        return try PaintRenderingContext2DImpl.call_isContextLost(instance);
+    }
+
+    pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_rotate(instance, angle);
+    }
+
+    pub fn call_beginPath(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_beginPath(instance);
+    }
+
+    pub fn call_clearRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_clearRect(instance, x, y, w, h);
+    }
+
+    pub fn call_scale(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_scale(instance, x, y);
+    }
+
+    pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_strokeRect(instance, x, y, w, h);
+    }
+
+    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_reset(instance);
+    }
+
+    pub fn call_translate(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_translate(instance, x, y);
+    }
+
+    pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_drawImage(instance, image, dx, dy);
+    }
+
+    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
+        
+        return try PaintRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
+    }
+
+    pub fn call_setTransform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_setTransform(instance, a, b, c, d, e, f);
+    }
+
     pub fn call_fill(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
         
         return try PaintRenderingContext2DImpl.call_fill(instance, fillRule);
+    }
+
+    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PaintRenderingContext2DImpl.call_getLineDash(instance);
+    }
+
+    pub fn call_restore(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_restore(instance);
+    }
+
+    pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
+    }
+
+    pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_closePath(instance);
+    }
+
+    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: DOMString) anyerror!?*runtime.Instance {
+        
+        return try PaintRenderingContext2DImpl.call_createPattern(instance, image, repetition);
+    }
+
+    pub fn call_resetTransform(instance: *runtime.Instance) anyerror!void {
+        return try PaintRenderingContext2DImpl.call_resetTransform(instance);
+    }
+
+    pub fn call_isPointInStroke(instance: *runtime.Instance, x: f64, y: f64) anyerror!bool {
+        
+        return try PaintRenderingContext2DImpl.call_isPointInStroke(instance, x, y);
+    }
+
+    pub fn call_transform(instance: *runtime.Instance, a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_transform(instance, a, b, c, d, e, f);
+    }
+
+    pub fn call_quadraticCurveTo(instance: *runtime.Instance, cpx: f64, cpy: f64, x: f64, y: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_quadraticCurveTo(instance, cpx, cpy, x, y);
+    }
+
+    pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_lineTo(instance, x, y);
+    }
+
+    pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
+        
+        return try PaintRenderingContext2DImpl.call_clip(instance, fillRule);
     }
 
 };

@@ -269,23 +269,23 @@ pub const SourceBuffer = struct {
         try SourceBufferImpl.set_onabort(instance, value);
     }
 
+    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
+        return try SourceBufferImpl.call_abort(instance);
+    }
+
     pub fn call_appendBuffer(instance: *runtime.Instance, data: BufferSource) anyerror!void {
         
         return try SourceBufferImpl.call_appendBuffer(instance, data);
     }
 
-    pub fn call_abort(instance: *runtime.Instance) anyerror!void {
-        return try SourceBufferImpl.call_abort(instance);
+    pub fn call_changeType(instance: *runtime.Instance, @"type": DOMString) anyerror!void {
+        
+        return try SourceBufferImpl.call_changeType(instance, @"type");
     }
 
     pub fn call_remove(instance: *runtime.Instance, start: f64, end: f64) anyerror!void {
         
         return try SourceBufferImpl.call_remove(instance, start, end);
-    }
-
-    pub fn call_changeType(instance: *runtime.Instance, @"type": DOMString) anyerror!void {
-        
-        return try SourceBufferImpl.call_changeType(instance, @"type");
     }
 
 };

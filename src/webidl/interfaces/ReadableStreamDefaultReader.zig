@@ -104,17 +104,17 @@ pub const ReadableStreamDefaultReader = struct {
         return try ReadableStreamDefaultReaderImpl.get_closed(instance);
     }
 
+    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+        
+        return try ReadableStreamDefaultReaderImpl.call_cancel(instance, reason);
+    }
+
     pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try ReadableStreamDefaultReaderImpl.call_read(instance);
     }
 
     pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
         return try ReadableStreamDefaultReaderImpl.call_releaseLock(instance);
-    }
-
-    pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
-        
-        return try ReadableStreamDefaultReaderImpl.call_cancel(instance, reason);
     }
 
 };

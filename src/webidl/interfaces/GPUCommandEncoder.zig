@@ -153,33 +153,13 @@ pub const GPUCommandEncoder = struct {
         try GPUCommandEncoderImpl.set_label(instance, value);
     }
 
-    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(GPUSize64)) anyerror!void {
+    pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
         
-        return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
-    }
-
-    pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, copySize: GPUExtent3D) anyerror!void {
-        
-        return try GPUCommandEncoderImpl.call_copyTextureToBuffer(instance, source, destination, copySize);
-    }
-
-    pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
-        
-        return try GPUCommandEncoderImpl.call_copyBufferToTexture(instance, source, destination, copySize);
+        return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
     }
 
     pub fn call_popDebugGroup(instance: *runtime.Instance) anyerror!void {
         return try GPUCommandEncoderImpl.call_popDebugGroup(instance);
-    }
-
-    pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
-        
-        return try GPUCommandEncoderImpl.call_copyTextureToTexture(instance, source, destination, copySize);
-    }
-
-    pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: GPUSize32, queryCount: GPUSize32, destination: *runtime.Instance, destinationOffset: GPUSize64) anyerror!void {
-        
-        return try GPUCommandEncoderImpl.call_resolveQuerySet(instance, querySet, firstQuery, queryCount, destination, destinationOffset);
     }
 
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
@@ -187,14 +167,19 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_insertDebugMarker(instance, markerLabel);
     }
 
-    pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
+    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         
-        return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
+        return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
     }
 
-    pub fn call_finish(instance: *runtime.Instance, descriptor: webidl.Opt(GPUCommandBufferDescriptor)) anyerror!*runtime.Instance {
+    pub fn call_resolveQuerySet(instance: *runtime.Instance, querySet: *runtime.Instance, firstQuery: GPUSize32, queryCount: GPUSize32, destination: *runtime.Instance, destinationOffset: GPUSize64) anyerror!void {
         
-        return try GPUCommandEncoderImpl.call_finish(instance, descriptor);
+        return try GPUCommandEncoderImpl.call_resolveQuerySet(instance, querySet, firstQuery, queryCount, destination, destinationOffset);
+    }
+
+    pub fn call_copyTextureToBuffer(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, copySize: GPUExtent3D) anyerror!void {
+        
+        return try GPUCommandEncoderImpl.call_copyTextureToBuffer(instance, source, destination, copySize);
     }
 
     pub fn call_beginComputePass(instance: *runtime.Instance, descriptor: webidl.Opt(GPUComputePassDescriptor)) anyerror!*runtime.Instance {
@@ -202,14 +187,29 @@ pub const GPUCommandEncoder = struct {
         return try GPUCommandEncoderImpl.call_beginComputePass(instance, descriptor);
     }
 
+    pub fn call_copyBufferToBuffer(instance: *runtime.Instance, source: *runtime.Instance, destination: *runtime.Instance, size: webidl.Opt(GPUSize64)) anyerror!void {
+        
+        return try GPUCommandEncoderImpl.call_copyBufferToBuffer(instance, source, destination, size);
+    }
+
+    pub fn call_copyBufferToTexture(instance: *runtime.Instance, source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
+        
+        return try GPUCommandEncoderImpl.call_copyBufferToTexture(instance, source, destination, copySize);
+    }
+
     pub fn call_beginRenderPass(instance: *runtime.Instance, descriptor: GPURenderPassDescriptor) anyerror!*runtime.Instance {
         
         return try GPUCommandEncoderImpl.call_beginRenderPass(instance, descriptor);
     }
 
-    pub fn call_clearBuffer(instance: *runtime.Instance, buffer: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
+    pub fn call_copyTextureToTexture(instance: *runtime.Instance, source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, copySize: GPUExtent3D) anyerror!void {
         
-        return try GPUCommandEncoderImpl.call_clearBuffer(instance, buffer, offset, size);
+        return try GPUCommandEncoderImpl.call_copyTextureToTexture(instance, source, destination, copySize);
+    }
+
+    pub fn call_pushDebugGroup(instance: *runtime.Instance, groupLabel: runtime.USVString) anyerror!void {
+        
+        return try GPUCommandEncoderImpl.call_pushDebugGroup(instance, groupLabel);
     }
 
 };

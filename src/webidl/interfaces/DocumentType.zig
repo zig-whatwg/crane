@@ -149,16 +149,6 @@ pub const DocumentType = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try DocumentTypeImpl.call_replaceWith(instance, nodes);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
@@ -169,13 +159,13 @@ pub const DocumentType = struct {
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+    pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         
-        return try DocumentTypeImpl.call_after(instance, nodes);
+        return try DocumentTypeImpl.call_replaceWith(instance, nodes);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -185,6 +175,16 @@ pub const DocumentType = struct {
         defer runtime.CEReactions.end();
         
         return try DocumentTypeImpl.call_remove(instance);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try DocumentTypeImpl.call_after(instance, nodes);
     }
 
 };

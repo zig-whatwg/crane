@@ -216,14 +216,14 @@ pub const SVGLength = struct {
         try SVGLengthImpl.set_valueAsString(instance, value);
     }
 
-    pub fn call_convertToSpecifiedUnits(instance: *runtime.Instance, unitType: u16) anyerror!void {
-        
-        return try SVGLengthImpl.call_convertToSpecifiedUnits(instance, unitType);
-    }
-
     pub fn call_newValueSpecifiedUnits(instance: *runtime.Instance, unitType: u16, valueInSpecifiedUnits: f32) anyerror!void {
         
         return try SVGLengthImpl.call_newValueSpecifiedUnits(instance, unitType, valueInSpecifiedUnits);
+    }
+
+    pub fn call_convertToSpecifiedUnits(instance: *runtime.Instance, unitType: u16) anyerror!void {
+        
+        return try SVGLengthImpl.call_convertToSpecifiedUnits(instance, unitType);
     }
 
 };

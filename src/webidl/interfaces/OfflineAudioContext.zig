@@ -184,17 +184,17 @@ pub const OfflineAudioContext = struct {
         try OfflineAudioContextImpl.set_oncomplete(instance, value);
     }
 
-    pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!*const anyopaque {
-        
-        return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
+    pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try OfflineAudioContextImpl.call_resume(instance);
     }
 
     pub fn call_startRendering(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try OfflineAudioContextImpl.call_startRendering(instance);
     }
 
-    pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try OfflineAudioContextImpl.call_resume(instance);
+    pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!*const anyopaque {
+        
+        return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
     }
 
 };

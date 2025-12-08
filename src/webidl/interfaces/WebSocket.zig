@@ -252,16 +252,16 @@ pub const WebSocket = struct {
         try WebSocketImpl.set_binaryType(instance, value);
     }
 
+    pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
+        
+        return try WebSocketImpl.call_send(instance, data);
+    }
+
     pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) anyerror!void {
         // [Clamp] on code
         const clamped_code = if (code.wasPassed()) webidl.Opt(u16).passed(runtime.clamp(u16, code.value)) else webidl.Opt(u16).notPassed();
         
         return try WebSocketImpl.call_close(instance, clamped_code, reason);
-    }
-
-    pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
-        
-        return try WebSocketImpl.call_send(instance, data);
     }
 
 };

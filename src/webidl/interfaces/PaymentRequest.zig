@@ -62,7 +62,7 @@ pub const PaymentRequest = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "securePaymentConfirmationAvailability", "call_securePaymentConfirmationAvailability", 0 },
+            .{ "securePaymentConfirmationAvailability", "call_static_securePaymentConfirmationAvailability", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -199,20 +199,20 @@ pub const PaymentRequest = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try PaymentRequestImpl.call_canMakePayment(instance);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentRequestImpl.call_show(instance, detailsPromise);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try PaymentRequestImpl.call_canMakePayment(instance);
-    }
-
-    pub fn call_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PaymentRequestImpl.call_securePaymentConfirmationAvailability(instance);
+    pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PaymentRequestImpl.call_static_securePaymentConfirmationAvailability(instance);
     }
 
 };

@@ -119,7 +119,8 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) an
 ///
 /// Spec: § 3.3.2 "Returns a signal that is aborted when any of the given signals are aborted"
 /// Note: Full implementation requires DOM event infrastructure
-pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
+/// Static methods use call_static_<name> convention (_any has underscore prefix in IDL)
+pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     // Requires iteration over signals and event listener setup
@@ -130,7 +131,8 @@ pub fn call__any(instance: *runtime.Instance, signals: *const anyopaque) anyerro
 /// Static operation: abort(reason)
 ///
 /// Spec: § 3.3.2 "Returns an immediately aborted signal"
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+/// Static methods use call_static_<name> convention
+pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = reason;
     // Static method that creates a new AbortSignal and immediately aborts it
@@ -141,7 +143,8 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
 /// Static operation: timeout(milliseconds)
 ///
 /// Spec: § 3.3.2 "Returns a signal that will abort after the given milliseconds"
-pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
+/// Static methods use call_static_<name> convention
+pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
     _ = instance;
     _ = milliseconds;
     // Requires timer/scheduling infrastructure

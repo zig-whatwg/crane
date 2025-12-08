@@ -2217,13 +2217,8 @@ pub const HTMLElement = struct {
         try HTMLElementImpl.set_tabIndex(instance, value);
     }
 
-    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
-        
-        return try HTMLElementImpl.call_togglePopover(instance, options);
-    }
-
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try HTMLElementImpl.call_blur(instance);
+    pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLElementImpl.call_attachInternals(instance);
     }
 
     pub fn call_click(instance: *runtime.Instance) anyerror!void {
@@ -2235,6 +2230,15 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_showPopover(instance, options);
     }
 
+    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
+        return try HTMLElementImpl.call_blur(instance);
+    }
+
+    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
+        
+        return try HTMLElementImpl.call_togglePopover(instance, options);
+    }
+
     pub fn call_hidePopover(instance: *runtime.Instance) anyerror!void {
         return try HTMLElementImpl.call_hidePopover(instance);
     }
@@ -2242,10 +2246,6 @@ pub const HTMLElement = struct {
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
         return try HTMLElementImpl.call_focus(instance, options);
-    }
-
-    pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try HTMLElementImpl.call_attachInternals(instance);
     }
 
 };

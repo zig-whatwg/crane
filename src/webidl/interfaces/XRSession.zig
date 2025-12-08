@@ -448,14 +448,56 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_interactionMode(instance);
     }
 
+    pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!*const anyopaque {
+        
+        return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
+    }
+
+    pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
+        
+        return try XRSessionImpl.call_updateRenderState(instance, state);
+    }
+
+    pub fn call_resumeDepthSensing(instance: *runtime.Instance) anyerror!void {
+        return try XRSessionImpl.call_resumeDepthSensing(instance);
+    }
+
+    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: XRFrameRequestCallback) anyerror!u32 {
+        
+        return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
+    }
+
+    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
+        
+        return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
+    }
+
     pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
         
         return try XRSessionImpl.call_deletePersistentAnchor(instance, uuid);
     }
 
+    pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try XRSessionImpl.call_initiateRoomCapture(instance);
+    }
+
+    pub fn call_pauseDepthSensing(instance: *runtime.Instance) anyerror!void {
+        return try XRSessionImpl.call_pauseDepthSensing(instance);
+    }
+
     pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: XRTransientInputHitTestOptionsInit) anyerror!*const anyopaque {
         
         return try XRSessionImpl.call_requestHitTestSourceForTransientInput(instance, options);
+    }
+
+    pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
+        
+        return try XRSessionImpl.call_requestLightProbe(instance, options);
+    }
+
+    pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
+        
+        return try XRSessionImpl.call_cancelAnimationFrame(instance, handle);
     }
 
     /// Extended attributes: [NewObject]
@@ -465,55 +507,13 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_requestReferenceSpace(instance, @"type");
     }
 
-    pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
-        
-        return try XRSessionImpl.call_cancelAnimationFrame(instance, handle);
-    }
-
-    pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
-        
-        return try XRSessionImpl.call_requestLightProbe(instance, options);
-    }
-
-    pub fn call_end(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try XRSessionImpl.call_end(instance);
-    }
-
-    pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try XRSessionImpl.call_initiateRoomCapture(instance);
-    }
-
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: XRFrameRequestCallback) anyerror!u32 {
-        
-        return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
-    }
-
-    pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!*const anyopaque {
-        
-        return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
-    }
-
     pub fn call_requestHitTestSource(instance: *runtime.Instance, options: XRHitTestOptionsInit) anyerror!*const anyopaque {
         
         return try XRSessionImpl.call_requestHitTestSource(instance, options);
     }
 
-    pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(XRRenderStateInit)) anyerror!void {
-        
-        return try XRSessionImpl.call_updateRenderState(instance, state);
-    }
-
-    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
-        
-        return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
-    }
-
-    pub fn call_pauseDepthSensing(instance: *runtime.Instance) anyerror!void {
-        return try XRSessionImpl.call_pauseDepthSensing(instance);
-    }
-
-    pub fn call_resumeDepthSensing(instance: *runtime.Instance) anyerror!void {
-        return try XRSessionImpl.call_resumeDepthSensing(instance);
+    pub fn call_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try XRSessionImpl.call_end(instance);
     }
 
 };

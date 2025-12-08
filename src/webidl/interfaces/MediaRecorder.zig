@@ -64,7 +64,7 @@ pub const MediaRecorder = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isTypeSupported", "call_isTypeSupported", 1 },
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -248,30 +248,30 @@ pub const MediaRecorder = struct {
         return try MediaRecorderImpl.get_audioBitrateMode(instance);
     }
 
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try MediaRecorderImpl.call_stop(instance);
-    }
-
-    pub fn call_requestData(instance: *runtime.Instance) anyerror!void {
-        return try MediaRecorderImpl.call_requestData(instance);
-    }
-
     pub fn call_start(instance: *runtime.Instance, timeslice: webidl.Opt(u32)) anyerror!void {
         
         return try MediaRecorderImpl.call_start(instance, timeslice);
     }
 
-    pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
-        
-        return try MediaRecorderImpl.call_isTypeSupported(instance, @"type");
+    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
+        return try MediaRecorderImpl.call_pause(instance);
     }
 
     pub fn call_resume(instance: *runtime.Instance) anyerror!void {
         return try MediaRecorderImpl.call_resume(instance);
     }
 
-    pub fn call_pause(instance: *runtime.Instance) anyerror!void {
-        return try MediaRecorderImpl.call_pause(instance);
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+        
+        return try MediaRecorderImpl.call_static_isTypeSupported(instance, @"type");
+    }
+
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try MediaRecorderImpl.call_stop(instance);
+    }
+
+    pub fn call_requestData(instance: *runtime.Instance) anyerror!void {
+        return try MediaRecorderImpl.call_requestData(instance);
     }
 
 };

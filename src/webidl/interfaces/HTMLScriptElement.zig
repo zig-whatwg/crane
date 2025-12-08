@@ -116,7 +116,7 @@ pub const HTMLScriptElement = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "supports", "call_supports", 1 },
+            .{ "supports", "call_static_supports", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -531,9 +531,9 @@ pub const HTMLScriptElement = struct {
         try HTMLScriptElementImpl.set_attributionSrc(instance, value);
     }
 
-    pub fn call_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
+    pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         
-        return try HTMLScriptElementImpl.call_supports(instance, @"type");
+        return try HTMLScriptElementImpl.call_static_supports(instance, @"type");
     }
 
 };

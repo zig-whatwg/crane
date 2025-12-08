@@ -123,12 +123,12 @@ pub const WebTransportSendStream = struct {
         try WebTransportSendStreamImpl.set_sendOrder(instance, value);
     }
 
-    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WebTransportSendStreamImpl.call_getWriter(instance);
-    }
-
     pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try WebTransportSendStreamImpl.call_getStats(instance);
+    }
+
+    pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WebTransportSendStreamImpl.call_getWriter(instance);
     }
 
 };

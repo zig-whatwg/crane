@@ -58,8 +58,8 @@ pub const Writer = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "create", "call_create", 0 },
-            .{ "availability", "call_availability", 0 },
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -173,23 +173,9 @@ pub const Writer = struct {
         return try WriterImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(WriterCreateCoreOptions)) anyerror!*const anyopaque {
-        
-        return try WriterImpl.call_availability(instance, options);
-    }
-
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
         
         return try WriterImpl.call_measureInputUsage(instance, input, options);
-    }
-
-    pub fn call_write(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
-        
-        return try WriterImpl.call_write(instance, input, options);
-    }
-
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try WriterImpl.call_destroy(instance);
     }
 
     pub fn call_writeStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*runtime.Instance {
@@ -197,9 +183,23 @@ pub const Writer = struct {
         return try WriterImpl.call_writeStreaming(instance, input, options);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(WriterCreateOptions)) anyerror!*const anyopaque {
+    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
+        return try WriterImpl.call_destroy(instance);
+    }
+
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(WriterCreateOptions)) anyerror!*const anyopaque {
         
-        return try WriterImpl.call_create(instance, options);
+        return try WriterImpl.call_static_create(instance, options);
+    }
+
+    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(WriterCreateCoreOptions)) anyerror!*const anyopaque {
+        
+        return try WriterImpl.call_static_availability(instance, options);
+    }
+
+    pub fn call_write(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(WriterWriteOptions)) anyerror!*const anyopaque {
+        
+        return try WriterImpl.call_write(instance, input, options);
     }
 
 };

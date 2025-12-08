@@ -92,6 +92,10 @@ pub const HandwritingDrawing = struct {
         HandwritingDrawingImpl.deinit(instance);
     }
 
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try HandwritingDrawingImpl.call_clear(instance);
+    }
+
     pub fn call_addStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {
         
         return try HandwritingDrawingImpl.call_addStroke(instance, stroke);
@@ -103,10 +107,6 @@ pub const HandwritingDrawing = struct {
 
     pub fn call_getPrediction(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try HandwritingDrawingImpl.call_getPrediction(instance);
-    }
-
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try HandwritingDrawingImpl.call_clear(instance);
     }
 
     pub fn call_removeStroke(instance: *runtime.Instance, stroke: *runtime.Instance) anyerror!void {

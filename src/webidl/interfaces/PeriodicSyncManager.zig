@@ -89,13 +89,13 @@ pub const PeriodicSyncManager = struct {
         PeriodicSyncManagerImpl.deinit(instance);
     }
 
-    pub fn call_getTags(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PeriodicSyncManagerImpl.call_getTags(instance);
-    }
-
     pub fn call_unregister(instance: *runtime.Instance, tag: DOMString) anyerror!*const anyopaque {
         
         return try PeriodicSyncManagerImpl.call_unregister(instance, tag);
+    }
+
+    pub fn call_getTags(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PeriodicSyncManagerImpl.call_getTags(instance);
     }
 
     pub fn call_register(instance: *runtime.Instance, tag: DOMString, options: webidl.Opt(BackgroundSyncOptions)) anyerror!*const anyopaque {

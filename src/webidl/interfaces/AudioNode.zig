@@ -177,13 +177,13 @@ pub const AudioNode = struct {
         try AudioNodeImpl.set_channelInterpretation(instance, value);
     }
 
-    pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
-        return try AudioNodeImpl.call_disconnect(instance);
-    }
-
     pub fn call_connect(instance: *runtime.Instance, destinationNode: *runtime.Instance, output: webidl.Opt(u32), input: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try AudioNodeImpl.call_connect(instance, destinationNode, output, input);
+    }
+
+    pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
+        return try AudioNodeImpl.call_disconnect(instance);
     }
 
 };

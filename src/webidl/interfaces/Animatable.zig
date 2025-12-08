@@ -79,14 +79,14 @@ pub const Animatable = struct {
         AnimatableImpl.deinit(instance);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
-        
-        return try AnimatableImpl.call_animate(instance, keyframes, options);
-    }
-
     pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
         
         return try AnimatableImpl.call_getAnimations(instance, options);
+    }
+
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+        
+        return try AnimatableImpl.call_animate(instance, keyframes, options);
     }
 
 };

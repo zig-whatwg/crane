@@ -125,7 +125,7 @@ pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
 }
 
 /// Operation: supports
-pub fn call_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
+pub fn call_static_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
     _ = instance;
     _ = operation;
     _ = algorithm;

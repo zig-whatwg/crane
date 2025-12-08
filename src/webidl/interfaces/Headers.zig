@@ -119,26 +119,6 @@ pub const Headers = struct {
         return try HeadersImpl.call_delete(instance, name);
     }
 
-    pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
-        return try HeadersImpl.call_append(instance, name, value);
-    }
-
-    pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {
-        
-        return try HeadersImpl.call_has(instance, name);
-    }
-
-    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
-        return try HeadersImpl.call_forEach(instance, callback);
-    }
-
-    pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-        
-        return try HeadersImpl.call_set(instance, name, value);
-    }
-
     pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
         
         return try HeadersImpl.call_get(instance, name);
@@ -146,6 +126,26 @@ pub const Headers = struct {
 
     pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try HeadersImpl.call_getSetCookie(instance);
+    }
+
+    pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
+        
+        return try HeadersImpl.call_forEach(instance, callback);
+    }
+
+    pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!bool {
+        
+        return try HeadersImpl.call_has(instance, name);
+    }
+
+    pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
+        
+        return try HeadersImpl.call_set(instance, name, value);
+    }
+
+    pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
+        
+        return try HeadersImpl.call_append(instance, name, value);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

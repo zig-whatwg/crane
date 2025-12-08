@@ -102,16 +102,16 @@ pub const TextEncoder = struct {
         return try TextEncoderImpl.get_encoding(instance);
     }
 
+    pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) anyerror!TextEncoderEncodeIntoResult {
+        
+        return try TextEncoderImpl.call_encodeInto(instance, source, destination);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try TextEncoderImpl.call_encode(instance, input);
-    }
-
-    pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) anyerror!TextEncoderEncodeIntoResult {
-        
-        return try TextEncoderImpl.call_encodeInto(instance, source, destination);
     }
 
 };

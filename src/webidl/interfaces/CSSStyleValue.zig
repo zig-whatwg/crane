@@ -40,8 +40,8 @@ pub const CSSStyleValue = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "parse", "call_parse", 2 },
-            .{ "parseAll", "call_parseAll", 2 },
+            .{ "parse", "call_static_parse", 2 },
+            .{ "parseAll", "call_static_parseAll", 2 },
         };
         
         /// Methods defined/overridden by this interface
@@ -90,15 +90,15 @@ pub const CSSStyleValue = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_static_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*const anyopaque {
         
-        return try CSSStyleValueImpl.call_parseAll(instance, property, cssText);
+        return try CSSStyleValueImpl.call_static_parseAll(instance, property, cssText);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
+    pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
         
-        return try CSSStyleValueImpl.call_parse(instance, property, cssText);
+        return try CSSStyleValueImpl.call_static_parse(instance, property, cssText);
     }
 
 };

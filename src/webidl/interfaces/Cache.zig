@@ -104,13 +104,6 @@ pub const Cache = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_delete(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        
-        return try CacheImpl.call_delete(instance, request, options);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
@@ -118,10 +111,10 @@ pub const Cache = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
+    pub fn call_delete(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
-        return try CacheImpl.call_keys(instance, request, options);
+        return try CacheImpl.call_delete(instance, request, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -129,13 +122,6 @@ pub const Cache = struct {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_matchAll(instance, request, options);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_add(instance: *runtime.Instance, request: RequestInfo) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        
-        return try CacheImpl.call_add(instance, request);
     }
 
     /// Extended attributes: [NewObject]
@@ -150,6 +136,20 @@ pub const Cache = struct {
         // [NewObject] - Caller owns the returned object
         
         return try CacheImpl.call_put(instance, request, response);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try CacheImpl.call_keys(instance, request, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_add(instance: *runtime.Instance, request: RequestInfo) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        
+        return try CacheImpl.call_add(instance, request);
     }
 
 };

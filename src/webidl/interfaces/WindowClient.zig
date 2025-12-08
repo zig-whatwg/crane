@@ -127,16 +127,16 @@ pub const WindowClient = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_focus(instance: *runtime.Instance) anyerror!*const anyopaque {
-        // [NewObject] - Caller owns the returned object
-        return try WindowClientImpl.call_focus(instance);
-    }
-
-    /// Extended attributes: [NewObject]
     pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
         // [NewObject] - Caller owns the returned object
         
         return try WindowClientImpl.call_navigate(instance, url);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_focus(instance: *runtime.Instance) anyerror!*const anyopaque {
+        // [NewObject] - Caller owns the returned object
+        return try WindowClientImpl.call_focus(instance);
     }
 
 };

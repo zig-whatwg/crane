@@ -536,17 +536,17 @@ pub const HTMLTableElement = struct {
         return try HTMLTableElementImpl.call_createTFoot(instance);
     }
 
+    pub fn call_createCaption(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try HTMLTableElementImpl.call_createCaption(instance);
+    }
+
     /// Extended attributes: [CEReactions]
-    pub fn call_deleteTHead(instance: *runtime.Instance) anyerror!void {
+    pub fn call_deleteCaption(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
-        return try HTMLTableElementImpl.call_deleteTHead(instance);
-    }
-
-    pub fn call_createCaption(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try HTMLTableElementImpl.call_createCaption(instance);
+        return try HTMLTableElementImpl.call_deleteCaption(instance);
     }
 
     pub fn call_insertRow(instance: *runtime.Instance, index: webidl.Opt(i32)) anyerror!*runtime.Instance {
@@ -573,21 +573,21 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_deleteCaption(instance: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        return try HTMLTableElementImpl.call_deleteCaption(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
     pub fn call_deleteTFoot(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
         
         return try HTMLTableElementImpl.call_deleteTFoot(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_deleteTHead(instance: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        return try HTMLTableElementImpl.call_deleteTHead(instance);
     }
 
 };

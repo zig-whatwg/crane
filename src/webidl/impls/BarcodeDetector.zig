@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, barc
 }
 
 /// Operation: getSupportedFormats
-pub fn call_getSupportedFormats(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_getSupportedFormats(instance: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     return error.NotImplemented;
 }

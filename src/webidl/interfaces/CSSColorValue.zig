@@ -42,7 +42,7 @@ pub const CSSColorValue = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "parse", "call_parse", 1 },
+            .{ "parse", "call_static_parse", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -91,9 +91,9 @@ pub const CSSColorValue = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*const anyopaque {
         
-        return try CSSColorValueImpl.call_parse(instance, cssText);
+        return try CSSColorValueImpl.call_static_parse(instance, cssText);
     }
 
 };

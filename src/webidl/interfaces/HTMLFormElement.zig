@@ -491,11 +491,6 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.get_length(instance);
     }
 
-    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
-        
-        return try HTMLFormElementImpl.call_requestSubmit(instance, submitter);
-    }
-
     /// Extended attributes: [CEReactions]
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -505,16 +500,21 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.call_reset(instance);
     }
 
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLFormElementImpl.call_checkValidity(instance);
-    }
-
     pub fn call_submit(instance: *runtime.Instance) anyerror!void {
         return try HTMLFormElementImpl.call_submit(instance);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLFormElementImpl.call_reportValidity(instance);
+    }
+
+    pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
+        
+        return try HTMLFormElementImpl.call_requestSubmit(instance, submitter);
+    }
+
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLFormElementImpl.call_checkValidity(instance);
     }
 
 };

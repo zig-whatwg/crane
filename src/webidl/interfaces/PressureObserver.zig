@@ -118,14 +118,14 @@ pub const PressureObserver = struct {
         return value;
     }
 
-    pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: webidl.Opt(PressureObserverOptions)) anyerror!*const anyopaque {
-        
-        return try PressureObserverImpl.call_observe(instance, source, options);
-    }
-
     pub fn call_unobserve(instance: *runtime.Instance, source: PressureSource) anyerror!void {
         
         return try PressureObserverImpl.call_unobserve(instance, source);
+    }
+
+    pub fn call_observe(instance: *runtime.Instance, source: PressureSource, options: webidl.Opt(PressureObserverOptions)) anyerror!*const anyopaque {
+        
+        return try PressureObserverImpl.call_observe(instance, source, options);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {

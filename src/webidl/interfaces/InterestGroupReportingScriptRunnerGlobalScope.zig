@@ -91,9 +91,9 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
         InterestGroupReportingScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn call_registerAdMacro(instance: *runtime.Instance, name: DOMString, value: runtime.USVString) anyerror!void {
+    pub fn call_sendReportTo(instance: *runtime.Instance, url: DOMString) anyerror!void {
         
-        return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdMacro(instance, name, value);
+        return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_sendReportTo(instance, url);
     }
 
     pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) anyerror!void {
@@ -101,9 +101,9 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdBeacon(instance, map);
     }
 
-    pub fn call_sendReportTo(instance: *runtime.Instance, url: DOMString) anyerror!void {
+    pub fn call_registerAdMacro(instance: *runtime.Instance, name: DOMString, value: runtime.USVString) anyerror!void {
         
-        return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_sendReportTo(instance, url);
+        return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdMacro(instance, name, value);
     }
 
 };

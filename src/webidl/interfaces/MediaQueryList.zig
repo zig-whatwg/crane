@@ -127,14 +127,14 @@ pub const MediaQueryList = struct {
         try MediaQueryListImpl.set_onchange(instance, value);
     }
 
-    pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
-        
-        return try MediaQueryListImpl.call_removeListener(instance, callback);
-    }
-
     pub fn call_addListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
         
         return try MediaQueryListImpl.call_addListener(instance, callback);
+    }
+
+    pub fn call_removeListener(instance: *runtime.Instance, callback: ??*runtime.CallbackWrapper) anyerror!void {
+        
+        return try MediaQueryListImpl.call_removeListener(instance, callback);
     }
 
 };

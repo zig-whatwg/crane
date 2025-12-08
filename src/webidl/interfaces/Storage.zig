@@ -98,6 +98,11 @@ pub const Storage = struct {
         return try StorageImpl.get_length(instance);
     }
 
+    pub fn call_getItem(instance: *runtime.Instance, key: DOMString) anyerror!?DOMString {
+        
+        return try StorageImpl.call_getItem(instance, key);
+    }
+
     pub fn call_removeItem(instance: *runtime.Instance, key: DOMString) anyerror!void {
         
         return try StorageImpl.call_removeItem(instance, key);
@@ -107,19 +112,14 @@ pub const Storage = struct {
         return try StorageImpl.call_clear(instance);
     }
 
-    pub fn call_key(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
-        
-        return try StorageImpl.call_key(instance, index);
-    }
-
-    pub fn call_getItem(instance: *runtime.Instance, key: DOMString) anyerror!?DOMString {
-        
-        return try StorageImpl.call_getItem(instance, key);
-    }
-
     pub fn call_setItem(instance: *runtime.Instance, key: DOMString, value: DOMString) anyerror!void {
         
         return try StorageImpl.call_setItem(instance, key, value);
+    }
+
+    pub fn call_key(instance: *runtime.Instance, index: u32) anyerror!?DOMString {
+        
+        return try StorageImpl.call_key(instance, index);
     }
 
 };

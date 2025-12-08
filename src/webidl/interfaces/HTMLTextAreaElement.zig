@@ -620,17 +620,22 @@ pub const HTMLTextAreaElement = struct {
         try HTMLTextAreaElementImpl.set_selectionDirection(instance, value);
     }
 
-    pub fn call_select(instance: *runtime.Instance) anyerror!void {
-        return try HTMLTextAreaElementImpl.call_select(instance);
-    }
-
     pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
         
         return try HTMLTextAreaElementImpl.call_setRangeText(instance, replacement);
     }
 
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTextAreaElementImpl.call_checkValidity(instance);
+    pub fn call_select(instance: *runtime.Instance) anyerror!void {
+        return try HTMLTextAreaElementImpl.call_select(instance);
+    }
+
+    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
+        
+        return try HTMLTextAreaElementImpl.call_setCustomValidity(instance, @"error");
+    }
+
+    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLTextAreaElementImpl.call_reportValidity(instance);
     }
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
@@ -638,13 +643,8 @@ pub const HTMLTextAreaElement = struct {
         return try HTMLTextAreaElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
 
-    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLTextAreaElementImpl.call_reportValidity(instance);
-    }
-
-    pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
-        
-        return try HTMLTextAreaElementImpl.call_setCustomValidity(instance, @"error");
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLTextAreaElementImpl.call_checkValidity(instance);
     }
 
 };

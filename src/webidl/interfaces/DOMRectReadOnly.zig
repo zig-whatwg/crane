@@ -47,7 +47,7 @@ pub const DOMRectReadOnly = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromRect", "call_fromRect", 0 },
+            .{ "fromRect", "call_static_fromRect", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -160,16 +160,16 @@ pub const DOMRectReadOnly = struct {
         return try DOMRectReadOnlyImpl.get_left(instance);
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMRectReadOnlyImpl.call_fromRect(instance, other);
-    }
-
     /// Extended attributes: [Default]
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DOMRectReadOnlyImpl.call_toJSON(instance);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(DOMRectInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMRectReadOnlyImpl.call_static_fromRect(instance, other);
     }
 
 };

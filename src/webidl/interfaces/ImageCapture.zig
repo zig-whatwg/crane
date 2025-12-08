@@ -108,21 +108,21 @@ pub const ImageCapture = struct {
         return try ImageCaptureImpl.get_track(instance);
     }
 
-    pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ImageCaptureImpl.call_getPhotoCapabilities(instance);
+    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!*const anyopaque {
+        
+        return try ImageCaptureImpl.call_takePhoto(instance, photoSettings);
     }
 
-    pub fn call_grabFrame(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try ImageCaptureImpl.call_grabFrame(instance);
+    pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ImageCaptureImpl.call_getPhotoCapabilities(instance);
     }
 
     pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try ImageCaptureImpl.call_getPhotoSettings(instance);
     }
 
-    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!*const anyopaque {
-        
-        return try ImageCaptureImpl.call_takePhoto(instance, photoSettings);
+    pub fn call_grabFrame(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try ImageCaptureImpl.call_grabFrame(instance);
     }
 
 };

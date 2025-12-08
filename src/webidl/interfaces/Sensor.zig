@@ -165,12 +165,12 @@ pub const Sensor = struct {
         try SensorImpl.set_onerror(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try SensorImpl.call_stop(instance);
-    }
-
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try SensorImpl.call_start(instance);
+    }
+
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try SensorImpl.call_stop(instance);
     }
 
 };

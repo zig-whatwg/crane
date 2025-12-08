@@ -91,14 +91,14 @@ pub const CredentialsContainer = struct {
         CredentialsContainerImpl.deinit(instance);
     }
 
-    pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!*const anyopaque {
-        
-        return try CredentialsContainerImpl.call_store(instance, credential);
-    }
-
     pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!*const anyopaque {
         
         return try CredentialsContainerImpl.call_get(instance, options);
+    }
+
+    pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!*const anyopaque {
+        
+        return try CredentialsContainerImpl.call_store(instance, credential);
     }
 
     pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!*const anyopaque {

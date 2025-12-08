@@ -56,7 +56,7 @@ pub const CSSNumericValue = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "parse", "call_parse", 1 },
+            .{ "parse", "call_static_parse", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -125,19 +125,30 @@ pub const CSSNumericValue = struct {
         CSSNumericValueImpl.deinit(instance);
     }
 
-    pub fn call_equals(instance: *runtime.Instance, value: []const CSSNumberish) anyerror!bool {
+    pub fn call_toSum(instance: *runtime.Instance, units: []const runtime.USVString) anyerror!*runtime.Instance {
         
-        return try CSSNumericValueImpl.call_equals(instance, value);
-    }
-
-    pub fn call_max(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
-        return try CSSNumericValueImpl.call_max(instance, values);
+        return try CSSNumericValueImpl.call_toSum(instance, units);
     }
 
     pub fn call_sub(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_sub(instance, values);
+    }
+
+    pub fn call_equals(instance: *runtime.Instance, value: []const CSSNumberish) anyerror!bool {
+        
+        return try CSSNumericValueImpl.call_equals(instance, value);
+    }
+
+    pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!*runtime.Instance {
+        
+        return try CSSNumericValueImpl.call_to(instance, unit);
+    }
+
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
+        
+        return try CSSNumericValueImpl.call_static_parse(instance, cssText);
     }
 
     pub fn call_min(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
@@ -150,34 +161,23 @@ pub const CSSNumericValue = struct {
         return try CSSNumericValueImpl.call_mul(instance, values);
     }
 
-    pub fn call_add(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
-        
-        return try CSSNumericValueImpl.call_add(instance, values);
-    }
-
-    pub fn call_to(instance: *runtime.Instance, unit: runtime.USVString) anyerror!*runtime.Instance {
-        
-        return try CSSNumericValueImpl.call_to(instance, unit);
-    }
-
-    pub fn call_toSum(instance: *runtime.Instance, units: []const runtime.USVString) anyerror!*runtime.Instance {
-        
-        return try CSSNumericValueImpl.call_toSum(instance, units);
-    }
-
     pub fn call_div(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
         
         return try CSSNumericValueImpl.call_div(instance, values);
+    }
+
+    pub fn call_max(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
+        
+        return try CSSNumericValueImpl.call_max(instance, values);
     }
 
     pub fn call_type(instance: *runtime.Instance) anyerror!CSSNumericType {
         return try CSSNumericValueImpl.call_type(instance);
     }
 
-    /// Extended attributes: [Exposed=Window]
-    pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
+    pub fn call_add(instance: *runtime.Instance, values: []const CSSNumberish) anyerror!*runtime.Instance {
         
-        return try CSSNumericValueImpl.call_parse(instance, cssText);
+        return try CSSNumericValueImpl.call_add(instance, values);
     }
 
 };

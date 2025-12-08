@@ -78,7 +78,7 @@ pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Operation: isConfigSupported
-pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.AudioEncoderConfig) anyerror!*const anyopaque {
+pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: dictionaries.AudioEncoderConfig) anyerror!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;

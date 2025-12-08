@@ -223,15 +223,6 @@ pub const Bluetooth = struct {
         try BluetoothImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try BluetoothImpl.call_getDevices(instance);
-    }
-
-    pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!*const anyopaque {
-        
-        return try BluetoothImpl.call_requestDevice(instance, options);
-    }
-
     /// Extended attributes: [SecureContext]
     pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(BluetoothLEScanOptions)) anyerror!*const anyopaque {
         
@@ -240,6 +231,15 @@ pub const Bluetooth = struct {
 
     pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try BluetoothImpl.call_getAvailability(instance);
+    }
+
+    pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try BluetoothImpl.call_getDevices(instance);
+    }
+
+    pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!*const anyopaque {
+        
+        return try BluetoothImpl.call_requestDevice(instance, options);
     }
 
 };

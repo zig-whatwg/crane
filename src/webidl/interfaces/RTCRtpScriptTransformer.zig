@@ -136,13 +136,13 @@ pub const RTCRtpScriptTransformer = struct {
         return try RTCRtpScriptTransformerImpl.get_options(instance);
     }
 
-    pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCRtpScriptTransformerImpl.call_sendKeyFrameRequest(instance);
-    }
-
     pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!*const anyopaque {
         
         return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid);
+    }
+
+    pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCRtpScriptTransformerImpl.call_sendKeyFrameRequest(instance);
     }
 
 };

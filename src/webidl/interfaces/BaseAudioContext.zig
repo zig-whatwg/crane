@@ -251,73 +251,13 @@ pub const BaseAudioContext = struct {
         try BaseAudioContextImpl.set_onstatechange(instance, value);
     }
 
-    pub fn call_createPanner(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createPanner(instance);
-    }
-
-    pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
-        return try BaseAudioContextImpl.call_createChannelMerger(instance, numberOfInputs);
-    }
-
-    pub fn call_createDynamicsCompressor(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createDynamicsCompressor(instance);
-    }
-
-    pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: webidl.Opt(PeriodicWaveConstraints)) anyerror!*runtime.Instance {
-        
-        return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
-    }
-
-    pub fn call_createConvolver(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createConvolver(instance);
-    }
-
-    pub fn call_createBufferSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createBufferSource(instance);
-    }
-
-    pub fn call_createStereoPanner(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createStereoPanner(instance);
-    }
-
-    pub fn call_createGain(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createGain(instance);
-    }
-
-    pub fn call_createWaveShaper(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createWaveShaper(instance);
-    }
-
-    pub fn call_createConstantSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createConstantSource(instance);
+        return try BaseAudioContextImpl.call_createScriptProcessor(instance, bufferSize, numberOfInputChannels, numberOfOutputChannels);
     }
 
     pub fn call_createAnalyser(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try BaseAudioContextImpl.call_createAnalyser(instance);
-    }
-
-    pub fn call_createIIRFilter(instance: *runtime.Instance, feedforward: *const anyopaque, feedback: *const anyopaque) anyerror!*runtime.Instance {
-        
-        return try BaseAudioContextImpl.call_createIIRFilter(instance, feedforward, feedback);
-    }
-
-    pub fn call_createBiquadFilter(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createBiquadFilter(instance);
-    }
-
-    pub fn call_createOscillator(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try BaseAudioContextImpl.call_createOscillator(instance);
-    }
-
-    pub fn call_createBuffer(instance: *runtime.Instance, numberOfChannels: u32, length: u32, sampleRate: f32) anyerror!*runtime.Instance {
-        
-        return try BaseAudioContextImpl.call_createBuffer(instance, numberOfChannels, length, sampleRate);
-    }
-
-    pub fn call_createScriptProcessor(instance: *runtime.Instance, bufferSize: webidl.Opt(u32), numberOfInputChannels: webidl.Opt(u32), numberOfOutputChannels: webidl.Opt(u32)) anyerror!*runtime.Instance {
-        
-        return try BaseAudioContextImpl.call_createScriptProcessor(instance, bufferSize, numberOfInputChannels, numberOfOutputChannels);
     }
 
     pub fn call_createDelay(instance: *runtime.Instance, maxDelayTime: webidl.Opt(f64)) anyerror!*runtime.Instance {
@@ -325,14 +265,74 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createDelay(instance, maxDelayTime);
     }
 
+    pub fn call_createChannelMerger(instance: *runtime.Instance, numberOfInputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
+        
+        return try BaseAudioContextImpl.call_createChannelMerger(instance, numberOfInputs);
+    }
+
+    pub fn call_createOscillator(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createOscillator(instance);
+    }
+
+    pub fn call_createBiquadFilter(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createBiquadFilter(instance);
+    }
+
+    pub fn call_createIIRFilter(instance: *runtime.Instance, feedforward: *const anyopaque, feedback: *const anyopaque) anyerror!*runtime.Instance {
+        
+        return try BaseAudioContextImpl.call_createIIRFilter(instance, feedforward, feedback);
+    }
+
+    pub fn call_createBufferSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createBufferSource(instance);
+    }
+
     pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: webidl.Opt(u32)) anyerror!*runtime.Instance {
         
         return try BaseAudioContextImpl.call_createChannelSplitter(instance, numberOfOutputs);
     }
 
+    pub fn call_createStereoPanner(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createStereoPanner(instance);
+    }
+
+    pub fn call_createConstantSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createConstantSource(instance);
+    }
+
+    pub fn call_createWaveShaper(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createWaveShaper(instance);
+    }
+
     pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: webidl.Opt(?DecodeSuccessCallback), errorCallback: webidl.Opt(?DecodeErrorCallback)) anyerror!*const anyopaque {
         
         return try BaseAudioContextImpl.call_decodeAudioData(instance, audioData, successCallback, errorCallback);
+    }
+
+    pub fn call_createConvolver(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createConvolver(instance);
+    }
+
+    pub fn call_createGain(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createGain(instance);
+    }
+
+    pub fn call_createDynamicsCompressor(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createDynamicsCompressor(instance);
+    }
+
+    pub fn call_createPanner(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try BaseAudioContextImpl.call_createPanner(instance);
+    }
+
+    pub fn call_createBuffer(instance: *runtime.Instance, numberOfChannels: u32, length: u32, sampleRate: f32) anyerror!*runtime.Instance {
+        
+        return try BaseAudioContextImpl.call_createBuffer(instance, numberOfChannels, length, sampleRate);
+    }
+
+    pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: webidl.Opt(PeriodicWaveConstraints)) anyerror!*runtime.Instance {
+        
+        return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
 
 };

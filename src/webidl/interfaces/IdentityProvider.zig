@@ -36,9 +36,9 @@ pub const IdentityProvider = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "close", "call_close", 0 },
-            .{ "resolve", "call_resolve", 1 },
-            .{ "getUserInfo", "call_getUserInfo", 1 },
+            .{ "close", "call_static_close", 0 },
+            .{ "resolve", "call_static_resolve", 1 },
+            .{ "getUserInfo", "call_static_getUserInfo", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -87,18 +87,18 @@ pub const IdentityProvider = struct {
         IdentityProviderImpl.deinit(instance);
     }
 
-    pub fn call_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(IdentityResolveOptions)) anyerror!*const anyopaque {
+    pub fn call_static_getUserInfo(instance: *runtime.Instance, config: IdentityProviderConfig) anyerror!*const anyopaque {
         
-        return try IdentityProviderImpl.call_resolve(instance, token, options);
+        return try IdentityProviderImpl.call_static_getUserInfo(instance, config);
     }
 
-    pub fn call_getUserInfo(instance: *runtime.Instance, config: IdentityProviderConfig) anyerror!*const anyopaque {
+    pub fn call_static_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(IdentityResolveOptions)) anyerror!*const anyopaque {
         
-        return try IdentityProviderImpl.call_getUserInfo(instance, config);
+        return try IdentityProviderImpl.call_static_resolve(instance, token, options);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try IdentityProviderImpl.call_close(instance);
+    pub fn call_static_close(instance: *runtime.Instance) anyerror!void {
+        return try IdentityProviderImpl.call_static_close(instance);
     }
 
 };

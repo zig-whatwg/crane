@@ -133,12 +133,12 @@ pub const VirtualKeyboard = struct {
         try VirtualKeyboardImpl.set_ongeometrychange(instance, value);
     }
 
-    pub fn call_hide(instance: *runtime.Instance) anyerror!void {
-        return try VirtualKeyboardImpl.call_hide(instance);
-    }
-
     pub fn call_show(instance: *runtime.Instance) anyerror!void {
         return try VirtualKeyboardImpl.call_show(instance);
+    }
+
+    pub fn call_hide(instance: *runtime.Instance) anyerror!void {
+        return try VirtualKeyboardImpl.call_hide(instance);
     }
 
 };

@@ -93,12 +93,12 @@ pub const XRAnchor = struct {
         return try XRAnchorImpl.get_anchorSpace(instance);
     }
 
-    pub fn call_delete(instance: *runtime.Instance) anyerror!void {
-        return try XRAnchorImpl.call_delete(instance);
-    }
-
     pub fn call_requestPersistentHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try XRAnchorImpl.call_requestPersistentHandle(instance);
+    }
+
+    pub fn call_delete(instance: *runtime.Instance) anyerror!void {
+        return try XRAnchorImpl.call_delete(instance);
     }
 
 };

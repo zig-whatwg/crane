@@ -135,13 +135,13 @@ pub const PreferenceObject = struct {
         try PreferenceObjectImpl.set_onchange(instance, value);
     }
 
-    pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
-        return try PreferenceObjectImpl.call_clearOverride(instance);
-    }
-
     pub fn call_requestOverride(instance: *runtime.Instance, value: ?DOMString) anyerror!*const anyopaque {
         
         return try PreferenceObjectImpl.call_requestOverride(instance, value);
+    }
+
+    pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
+        return try PreferenceObjectImpl.call_clearOverride(instance);
     }
 
 };

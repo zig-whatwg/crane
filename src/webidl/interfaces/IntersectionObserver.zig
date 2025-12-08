@@ -151,14 +151,14 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.get_trackVisibility(instance);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
-        
-        return try IntersectionObserverImpl.call_observe(instance, target);
-    }
-
     pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
         
         return try IntersectionObserverImpl.call_unobserve(instance, target);
+    }
+
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
+        
+        return try IntersectionObserverImpl.call_observe(instance, target);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {

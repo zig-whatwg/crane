@@ -136,9 +136,9 @@ pub const CookieStore = struct {
         try CookieStoreImpl.set_onchange(instance, value);
     }
 
-    pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
         
-        return try CookieStoreImpl.call_delete(instance, name);
+        return try CookieStoreImpl.call_set(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
@@ -151,9 +151,9 @@ pub const CookieStore = struct {
         return try CookieStoreImpl.call_getAll(instance, name);
     }
 
-    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
         
-        return try CookieStoreImpl.call_set(instance, name, value);
+        return try CookieStoreImpl.call_delete(instance, name);
     }
 
 };

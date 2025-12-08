@@ -38,12 +38,12 @@ pub const JsonLdProcessor = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "compact", "call_compact", 1 },
-            .{ "expand", "call_expand", 1 },
-            .{ "flatten", "call_flatten", 1 },
-            .{ "fromRdf", "call_fromRdf", 1 },
-            .{ "toRdf", "call_toRdf", 1 },
-            .{ "frame", "call_frame", 2 },
+            .{ "compact", "call_static_compact", 1 },
+            .{ "expand", "call_static_expand", 1 },
+            .{ "flatten", "call_static_flatten", 1 },
+            .{ "fromRdf", "call_static_fromRdf", 1 },
+            .{ "toRdf", "call_static_toRdf", 1 },
+            .{ "frame", "call_static_frame", 2 },
         };
         
         /// Methods defined/overridden by this interface
@@ -101,34 +101,34 @@ pub const JsonLdProcessor = struct {
         return try JsonLdProcessorImpl.call_constructor(allocator, ctx);
     }
 
-    pub fn call_toRdf(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_compact(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_toRdf(instance, input, options);
+        return try JsonLdProcessorImpl.call_static_compact(instance, input, context, options);
     }
 
-    pub fn call_flatten(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_flatten(instance, input, context, options);
+        return try JsonLdProcessorImpl.call_static_fromRdf(instance, input, options);
     }
 
-    pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_toRdf(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_fromRdf(instance, input, options);
+        return try JsonLdProcessorImpl.call_static_toRdf(instance, input, options);
     }
 
-    pub fn call_expand(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_expand(instance: *runtime.Instance, input: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_expand(instance, input, options);
+        return try JsonLdProcessorImpl.call_static_expand(instance, input, options);
     }
 
-    pub fn call_compact(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_frame(instance: *runtime.Instance, input: JsonLdInput, frame: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_compact(instance, input, context, options);
+        return try JsonLdProcessorImpl.call_static_frame(instance, input, frame, options);
     }
 
-    pub fn call_frame(instance: *runtime.Instance, input: JsonLdInput, frame: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
+    pub fn call_static_flatten(instance: *runtime.Instance, input: JsonLdInput, context: webidl.Opt(JsonLdContext), options: webidl.Opt(JsonLdOptions)) anyerror!*const anyopaque {
         
-        return try JsonLdProcessorImpl.call_frame(instance, input, frame, options);
+        return try JsonLdProcessorImpl.call_static_flatten(instance, input, context, options);
     }
 
 };

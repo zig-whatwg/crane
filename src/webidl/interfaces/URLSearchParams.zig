@@ -130,19 +130,9 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_delete(instance, name, value);
     }
 
-    pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
         
-        return try URLSearchParamsImpl.call_append(instance, name, value);
-    }
-
-    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
-        
-        return try URLSearchParamsImpl.call_getAll(instance, name);
-    }
-
-    pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
-        
-        return try URLSearchParamsImpl.call_has(instance, name, value);
+        return try URLSearchParamsImpl.call_get(instance, name);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
@@ -150,18 +140,28 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
+    pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
+        
+        return try URLSearchParamsImpl.call_has(instance, name, value);
+    }
+
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+        
+        return try URLSearchParamsImpl.call_getAll(instance, name);
+    }
+
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
         
         return try URLSearchParamsImpl.call_set(instance, name, value);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
-        
-        return try URLSearchParamsImpl.call_get(instance, name);
-    }
-
     pub fn call_sort(instance: *runtime.Instance) anyerror!void {
         return try URLSearchParamsImpl.call_sort(instance);
+    }
+
+    pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
+        
+        return try URLSearchParamsImpl.call_append(instance, name, value);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)

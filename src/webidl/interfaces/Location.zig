@@ -235,11 +235,6 @@ pub const Location = struct {
     }
 
     /// Extended attributes: [LegacyUnforgeable]
-    pub fn call_reload(instance: *runtime.Instance) anyerror!void {
-        return try LocationImpl.call_reload(instance);
-    }
-
-    /// Extended attributes: [LegacyUnforgeable]
     pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
         
         return try LocationImpl.call_replace(instance, url);
@@ -249,6 +244,11 @@ pub const Location = struct {
     pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
         
         return try LocationImpl.call_assign(instance, url);
+    }
+
+    /// Extended attributes: [LegacyUnforgeable]
+    pub fn call_reload(instance: *runtime.Instance) anyerror!void {
+        return try LocationImpl.call_reload(instance);
     }
 
 };

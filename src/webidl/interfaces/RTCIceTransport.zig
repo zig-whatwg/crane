@@ -230,26 +230,35 @@ pub const RTCIceTransport = struct {
         try RTCIceTransportImpl.set_onicecandidate(instance, value);
     }
 
-    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
-        return try RTCIceTransportImpl.call_stop(instance);
-    }
-
-    pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(RTCIceGatherOptions)) anyerror!void {
-        
-        return try RTCIceTransportImpl.call_gather(instance, options);
-    }
-
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(RTCIceCandidateInit)) anyerror!void {
         
         return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
+    }
+
+    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
+        return try RTCIceTransportImpl.call_getLocalParameters(instance);
+    }
+
+    pub fn call_getRemoteCandidates(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCIceTransportImpl.call_getRemoteCandidates(instance);
+    }
+
+    pub fn call_stop(instance: *runtime.Instance) anyerror!void {
+        return try RTCIceTransportImpl.call_stop(instance);
     }
 
     pub fn call_getRemoteParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
         return try RTCIceTransportImpl.call_getRemoteParameters(instance);
     }
 
-    pub fn call_getLocalParameters(instance: *runtime.Instance) anyerror!?RTCIceParameters {
-        return try RTCIceTransportImpl.call_getLocalParameters(instance);
+    pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(RTCIceParameters), role: webidl.Opt(RTCIceRole)) anyerror!void {
+        
+        return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
+    }
+
+    pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(RTCIceGatherOptions)) anyerror!void {
+        
+        return try RTCIceTransportImpl.call_gather(instance, options);
     }
 
     pub fn call_getSelectedCandidatePair(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -258,15 +267,6 @@ pub const RTCIceTransport = struct {
 
     pub fn call_getLocalCandidates(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCIceTransportImpl.call_getLocalCandidates(instance);
-    }
-
-    pub fn call_getRemoteCandidates(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCIceTransportImpl.call_getRemoteCandidates(instance);
-    }
-
-    pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(RTCIceParameters), role: webidl.Opt(RTCIceRole)) anyerror!void {
-        
-        return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
     }
 
 };

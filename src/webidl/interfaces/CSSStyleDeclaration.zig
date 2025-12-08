@@ -150,21 +150,6 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.get_parentRule(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
-        
-        return try CSSStyleDeclarationImpl.call_item(instance, index);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_removeProperty(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try CSSStyleDeclarationImpl.call_removeProperty(instance, property);
-    }
-
     pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!*runtime.Instance {
         
         return try CSSStyleDeclarationImpl.call_getPropertyCSSValue(instance, propertyName);
@@ -185,9 +170,24 @@ pub const CSSStyleDeclaration = struct {
         return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn call_removeProperty(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try CSSStyleDeclarationImpl.call_removeProperty(instance, property);
+    }
+
     pub fn call_getPropertyValue(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
         
         return try CSSStyleDeclarationImpl.call_getPropertyValue(instance, property);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
+        
+        return try CSSStyleDeclarationImpl.call_item(instance, index);
     }
 
 };

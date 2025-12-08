@@ -526,14 +526,8 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.call_setCustomValidity(instance, @"error");
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try HTMLSelectElementImpl.call_add(instance, element, before);
+    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLSelectElementImpl.call_reportValidity(instance);
     }
 
     /// Extended attributes: [CEReactions]
@@ -553,8 +547,14 @@ pub const HTMLSelectElement = struct {
         return try HTMLSelectElementImpl.call_showPicker(instance);
     }
 
-    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLSelectElementImpl.call_reportValidity(instance);
+    /// Extended attributes: [CEReactions]
+    pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try HTMLSelectElementImpl.call_add(instance, element, before);
     }
 
 };

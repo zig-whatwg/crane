@@ -56,7 +56,7 @@ pub const XRWebGLLayer = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "getNativeFramebufferScaleFactor", "call_getNativeFramebufferScaleFactor", 1 },
+            .{ "getNativeFramebufferScaleFactor", "call_static_getNativeFramebufferScaleFactor", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -174,14 +174,14 @@ pub const XRWebGLLayer = struct {
         return try XRWebGLLayerImpl.get_framebufferHeight(instance);
     }
 
-    pub fn call_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
-        
-        return try XRWebGLLayerImpl.call_getNativeFramebufferScaleFactor(instance, session);
-    }
-
     pub fn call_getViewport(instance: *runtime.Instance, view: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRWebGLLayerImpl.call_getViewport(instance, view);
+    }
+
+    pub fn call_static_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
+        
+        return try XRWebGLLayerImpl.call_static_getNativeFramebufferScaleFactor(instance, session);
     }
 
 };

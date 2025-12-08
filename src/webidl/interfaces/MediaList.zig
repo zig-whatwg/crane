@@ -121,9 +121,9 @@ pub const MediaList = struct {
         return try MediaListImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?CSSOMString {
+    pub fn call_appendMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
         
-        return try MediaListImpl.call_item(instance, index);
+        return try MediaListImpl.call_appendMedium(instance, medium);
     }
 
     pub fn call_deleteMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
@@ -131,9 +131,9 @@ pub const MediaList = struct {
         return try MediaListImpl.call_deleteMedium(instance, medium);
     }
 
-    pub fn call_appendMedium(instance: *runtime.Instance, medium: CSSOMString) anyerror!void {
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?CSSOMString {
         
-        return try MediaListImpl.call_appendMedium(instance, medium);
+        return try MediaListImpl.call_item(instance, index);
     }
 
 };

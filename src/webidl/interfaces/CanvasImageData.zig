@@ -85,17 +85,13 @@ pub const CanvasImageData = struct {
         CanvasImageDataImpl.deinit(instance);
     }
 
-    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
-        // [EnforceRange] on sx
-        if (!runtime.isInRange(i32, sx)) return error.TypeError;
-        // [EnforceRange] on sy
-        if (!runtime.isInRange(i32, sy)) return error.TypeError;
-        // [EnforceRange] on sw
-        if (!runtime.isInRange(i32, sw)) return error.TypeError;
-        // [EnforceRange] on sh
-        if (!runtime.isInRange(i32, sh)) return error.TypeError;
+    pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
+        // [EnforceRange] on dx
+        if (!runtime.isInRange(i32, dx)) return error.TypeError;
+        // [EnforceRange] on dy
+        if (!runtime.isInRange(i32, dy)) return error.TypeError;
         
-        return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
+        return try CanvasImageDataImpl.call_putImageData(instance, imageData, dx, dy);
     }
 
     pub fn call_createImageData(instance: *runtime.Instance, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
@@ -107,13 +103,17 @@ pub const CanvasImageData = struct {
         return try CanvasImageDataImpl.call_createImageData(instance, sw, sh, settings);
     }
 
-    pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
-        // [EnforceRange] on dx
-        if (!runtime.isInRange(i32, dx)) return error.TypeError;
-        // [EnforceRange] on dy
-        if (!runtime.isInRange(i32, dy)) return error.TypeError;
+    pub fn call_getImageData(instance: *runtime.Instance, sx: i32, sy: i32, sw: i32, sh: i32, settings: webidl.Opt(ImageDataSettings)) anyerror!*runtime.Instance {
+        // [EnforceRange] on sx
+        if (!runtime.isInRange(i32, sx)) return error.TypeError;
+        // [EnforceRange] on sy
+        if (!runtime.isInRange(i32, sy)) return error.TypeError;
+        // [EnforceRange] on sw
+        if (!runtime.isInRange(i32, sw)) return error.TypeError;
+        // [EnforceRange] on sh
+        if (!runtime.isInRange(i32, sh)) return error.TypeError;
         
-        return try CanvasImageDataImpl.call_putImageData(instance, imageData, dx, dy);
+        return try CanvasImageDataImpl.call_getImageData(instance, sx, sy, sw, sh, settings);
     }
 
 };

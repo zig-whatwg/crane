@@ -233,23 +233,6 @@ pub const AudioContext = struct {
         try AudioContextImpl.set_onerror(instance, value);
     }
 
-    pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
-    }
-
-    pub fn call_suspend(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try AudioContextImpl.call_suspend(instance);
-    }
-
-    pub fn call_createMediaStreamDestination(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try AudioContextImpl.call_createMediaStreamDestination(instance);
-    }
-
-    pub fn call_getOutputTimestamp(instance: *runtime.Instance) anyerror!AudioTimestamp {
-        return try AudioContextImpl.call_getOutputTimestamp(instance);
-    }
-
     pub fn call_createMediaStreamTrackSource(instance: *runtime.Instance, mediaStreamTrack: *runtime.Instance) anyerror!*runtime.Instance {
         
         return try AudioContextImpl.call_createMediaStreamTrackSource(instance, mediaStreamTrack);
@@ -260,8 +243,8 @@ pub const AudioContext = struct {
         return try AudioContextImpl.call_createMediaElementSource(instance, mediaElement);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try AudioContextImpl.call_close(instance);
+    pub fn call_createMediaStreamDestination(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try AudioContextImpl.call_createMediaStreamDestination(instance);
     }
 
     pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
@@ -272,6 +255,23 @@ pub const AudioContext = struct {
     pub fn call_setSinkId(instance: *runtime.Instance, sinkId: *const anyopaque) anyerror!*const anyopaque {
         
         return try AudioContextImpl.call_setSinkId(instance, sinkId);
+    }
+
+    pub fn call_suspend(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try AudioContextImpl.call_suspend(instance);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try AudioContextImpl.call_close(instance);
+    }
+
+    pub fn call_getOutputTimestamp(instance: *runtime.Instance) anyerror!AudioTimestamp {
+        return try AudioContextImpl.call_getOutputTimestamp(instance);
+    }
+
+    pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *runtime.Instance) anyerror!*runtime.Instance {
+        
+        return try AudioContextImpl.call_createMediaStreamSource(instance, mediaStream);
     }
 
 };

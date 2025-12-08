@@ -124,13 +124,13 @@ pub const CSSTransformValue = struct {
         return try CSSTransformValueImpl.get_is2D(instance);
     }
 
+    pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try CSSTransformValueImpl.call_toMatrix(instance);
+    }
+
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try CSSTransformValueImpl.call_forEach(instance, callback);
-    }
-
-    pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try CSSTransformValueImpl.call_toMatrix(instance);
     }
 
 };

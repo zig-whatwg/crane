@@ -130,13 +130,13 @@ pub const ViewTransition = struct {
         return try ViewTransitionImpl.get_transitionRoot(instance);
     }
 
+    pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {
+        return try ViewTransitionImpl.call_skipTransition(instance);
+    }
+
     pub fn call_waitUntil(instance: *runtime.Instance, promise: *const anyopaque) anyerror!void {
         
         return try ViewTransitionImpl.call_waitUntil(instance, promise);
-    }
-
-    pub fn call_skipTransition(instance: *runtime.Instance) anyerror!void {
-        return try ViewTransitionImpl.call_skipTransition(instance);
     }
 
 };

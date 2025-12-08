@@ -95,9 +95,9 @@ pub const GeometryUtils = struct {
         return try GeometryUtilsImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
+        return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
@@ -105,9 +105,9 @@ pub const GeometryUtils = struct {
         return try GeometryUtilsImpl.call_getBoxQuads(instance, options);
     }
 
-    pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         
-        return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
+        return try GeometryUtilsImpl.call_convertPointFromNode(instance, point, from, options);
     }
 
 };

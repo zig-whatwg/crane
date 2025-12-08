@@ -344,7 +344,7 @@ pub fn call_getReceivers(instance: *runtime.Instance) anyerror!*const anyopaque 
 }
 
 /// Operation: generateCertificate
-pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: typedefs.AlgorithmIdentifier) anyerror!*const anyopaque {
+pub fn call_static_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: typedefs.AlgorithmIdentifier) anyerror!*const anyopaque {
     _ = instance;
     _ = keygenAlgorithm;
     return error.NotImplemented;

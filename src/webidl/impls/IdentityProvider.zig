@@ -40,23 +40,23 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Operation: resolve
-pub fn call_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
+/// Operation: resolve (static)
+pub fn call_static_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = token;
     _ = options;
     return error.NotImplemented;
 }
 
-/// Operation: getUserInfo
-pub fn call_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!*const anyopaque {
+/// Operation: getUserInfo (static)
+pub fn call_static_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!*const anyopaque {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
-/// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!void {
+/// Operation: close (static)
+pub fn call_static_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }

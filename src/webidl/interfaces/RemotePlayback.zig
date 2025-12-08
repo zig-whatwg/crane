@@ -149,14 +149,14 @@ pub const RemotePlayback = struct {
         try RemotePlaybackImpl.set_ondisconnect(instance, value);
     }
 
-    pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
-        
-        return try RemotePlaybackImpl.call_watchAvailability(instance, callback);
-    }
-
     pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
         
         return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
+    }
+
+    pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
+        
+        return try RemotePlaybackImpl.call_watchAvailability(instance, callback);
     }
 
     pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {

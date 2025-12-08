@@ -85,13 +85,13 @@ pub const XRHitTestResult = struct {
         XRHitTestResultImpl.deinit(instance);
     }
 
-    pub fn call_createAnchor(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try XRHitTestResultImpl.call_createAnchor(instance);
-    }
-
     pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
         
         return try XRHitTestResultImpl.call_getPose(instance, baseSpace);
+    }
+
+    pub fn call_createAnchor(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try XRHitTestResultImpl.call_createAnchor(instance);
     }
 
 };

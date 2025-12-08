@@ -91,13 +91,13 @@ pub const LockManager = struct {
         LockManagerImpl.deinit(instance);
     }
 
+    pub fn call_query(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try LockManagerImpl.call_query(instance);
+    }
+
     pub fn call_request(instance: *runtime.Instance, name: DOMString, callback: LockGrantedCallback) anyerror!*const anyopaque {
         
         return try LockManagerImpl.call_request(instance, name, callback);
-    }
-
-    pub fn call_query(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try LockManagerImpl.call_query(instance);
     }
 
 };

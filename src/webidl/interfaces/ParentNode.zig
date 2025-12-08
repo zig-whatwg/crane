@@ -135,11 +135,36 @@ pub const ParentNode = struct {
         return try ParentNodeImpl.get_childElementCount(instance);
     }
 
+    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
+        
+        return try ParentNodeImpl.call_querySelector(instance, selectors);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
         return try ParentNodeImpl.call_querySelectorAll(instance, selectors);
+    }
+
+    /// Extended attributes: [CEReactions], [Unscopable]
+    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ParentNodeImpl.call_prepend(instance, nodes);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try ParentNodeImpl.call_moveBefore(instance, node, child);
     }
 
     /// Extended attributes: [CEReactions], [Unscopable]
@@ -160,31 +185,6 @@ pub const ParentNode = struct {
         
         
         return try ParentNodeImpl.call_replaceChildren(instance, nodes);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ParentNodeImpl.call_moveBefore(instance, node, child);
-    }
-
-    /// Extended attributes: [CEReactions], [Unscopable]
-    pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        
-        return try ParentNodeImpl.call_prepend(instance, nodes);
-    }
-
-    pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
-        return try ParentNodeImpl.call_querySelector(instance, selectors);
     }
 
 };

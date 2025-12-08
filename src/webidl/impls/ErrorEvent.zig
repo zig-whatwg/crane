@@ -246,7 +246,7 @@ pub fn createErrorEvent(
         .filename = filename, // USVString is []const u8
         .lineno = lineno,
         .colno = colno,
-        .@"error" = err,
+        .@"error" = if (err) |e| runtime.JSValue.fromAnyopaque(e) else null,
     };
 
     // Construct the ErrorEvent

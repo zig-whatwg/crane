@@ -156,6 +156,10 @@ pub const AudioData = struct {
         return try AudioDataImpl.call_allocationSize(instance, options);
     }
 
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try AudioDataImpl.call_close(instance);
+    }
+
     pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: AudioDataCopyToOptions) anyerror!void {
         
         return try AudioDataImpl.call_copyTo(instance, destination, options);
@@ -163,10 +167,6 @@ pub const AudioData = struct {
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioDataImpl.call_clone(instance);
-    }
-
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try AudioDataImpl.call_close(instance);
     }
 
 };

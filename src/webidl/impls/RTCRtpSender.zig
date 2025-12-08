@@ -79,7 +79,7 @@ pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Insta
 }
 
 /// Operation: getCapabilities
-pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
+pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;
     return null;

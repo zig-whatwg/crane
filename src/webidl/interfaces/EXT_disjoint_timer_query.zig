@@ -163,9 +163,19 @@ pub const EXT_disjoint_timer_query = struct {
         EXT_disjoint_timer_queryImpl.deinit(instance);
     }
 
+    pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
+        
+        return try EXT_disjoint_timer_queryImpl.call_getQueryObjectEXT(instance, query, pname);
+    }
+
     pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: GLenum) anyerror!void {
         
         return try EXT_disjoint_timer_queryImpl.call_queryCounterEXT(instance, query, target);
+    }
+
+    pub fn call_beginQueryEXT(instance: *runtime.Instance, target: GLenum, query: *runtime.Instance) anyerror!void {
+        
+        return try EXT_disjoint_timer_queryImpl.call_beginQueryEXT(instance, target, query);
     }
 
     pub fn call_createQueryEXT(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -177,25 +187,15 @@ pub const EXT_disjoint_timer_query = struct {
         return try EXT_disjoint_timer_queryImpl.call_endQueryEXT(instance, target);
     }
 
+    pub fn call_getQueryEXT(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
+        
+        return try EXT_disjoint_timer_queryImpl.call_getQueryEXT(instance, target, pname);
+    }
+
     /// Extended attributes: [WebGLHandlesContextLoss]
     pub fn call_isQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!bool {
         
         return try EXT_disjoint_timer_queryImpl.call_isQueryEXT(instance, query);
-    }
-
-    pub fn call_beginQueryEXT(instance: *runtime.Instance, target: GLenum, query: *runtime.Instance) anyerror!void {
-        
-        return try EXT_disjoint_timer_queryImpl.call_beginQueryEXT(instance, target, query);
-    }
-
-    pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
-        
-        return try EXT_disjoint_timer_queryImpl.call_getQueryObjectEXT(instance, query, pname);
-    }
-
-    pub fn call_getQueryEXT(instance: *runtime.Instance, target: GLenum, pname: GLenum) anyerror!runtime.JSValue {
-        
-        return try EXT_disjoint_timer_queryImpl.call_getQueryEXT(instance, target, pname);
     }
 
     pub fn call_deleteQueryEXT(instance: *runtime.Instance, query: ?*runtime.Instance) anyerror!void {

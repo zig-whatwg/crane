@@ -173,12 +173,12 @@ pub const MIDIPort = struct {
         try MIDIPortImpl.set_onstatechange(instance, value);
     }
 
-    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MIDIPortImpl.call_open(instance);
-    }
-
     pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MIDIPortImpl.call_close(instance);
+    }
+
+    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MIDIPortImpl.call_open(instance);
     }
 
 };

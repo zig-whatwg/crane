@@ -212,6 +212,14 @@ pub const VideoFrame = struct {
         return try VideoFrameImpl.call_allocationSize(instance, options);
     }
 
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try VideoFrameImpl.call_close(instance);
+    }
+
+    pub fn call_metadata(instance: *runtime.Instance) anyerror!VideoFrameMetadata {
+        return try VideoFrameImpl.call_metadata(instance);
+    }
+
     pub fn call_copyTo(instance: *runtime.Instance, destination: AllowSharedBufferSource, options: webidl.Opt(VideoFrameCopyToOptions)) anyerror!*const anyopaque {
         
         return try VideoFrameImpl.call_copyTo(instance, destination, options);
@@ -219,14 +227,6 @@ pub const VideoFrame = struct {
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try VideoFrameImpl.call_clone(instance);
-    }
-
-    pub fn call_metadata(instance: *runtime.Instance) anyerror!VideoFrameMetadata {
-        return try VideoFrameImpl.call_metadata(instance);
-    }
-
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try VideoFrameImpl.call_close(instance);
     }
 
 };

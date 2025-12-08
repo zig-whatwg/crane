@@ -88,15 +88,6 @@ pub const PermissionsPolicy = struct {
         PermissionsPolicyImpl.deinit(instance);
     }
 
-    pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: webidl.Opt(DOMString)) anyerror!bool {
-        
-        return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin);
-    }
-
-    pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try PermissionsPolicyImpl.call_allowedFeatures(instance);
-    }
-
     pub fn call_features(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PermissionsPolicyImpl.call_features(instance);
     }
@@ -104,6 +95,15 @@ pub const PermissionsPolicy = struct {
     pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: DOMString) anyerror!*const anyopaque {
         
         return try PermissionsPolicyImpl.call_getAllowlistForFeature(instance, feature);
+    }
+
+    pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try PermissionsPolicyImpl.call_allowedFeatures(instance);
+    }
+
+    pub fn call_allowsFeature(instance: *runtime.Instance, feature: DOMString, origin: webidl.Opt(DOMString)) anyerror!bool {
+        
+        return try PermissionsPolicyImpl.call_allowsFeature(instance, feature, origin);
     }
 
 };

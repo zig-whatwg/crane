@@ -51,7 +51,7 @@ pub const RTCRtpReceiver = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "getCapabilities", "call_getCapabilities", 1 },
+            .{ "getCapabilities", "call_static_getCapabilities", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -147,25 +147,25 @@ pub const RTCRtpReceiver = struct {
         try RTCRtpReceiverImpl.set_transform(instance, value);
     }
 
-    pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCRtpReceiverImpl.call_getContributingSources(instance);
-    }
-
-    pub fn call_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
-        
-        return try RTCRtpReceiverImpl.call_getCapabilities(instance, kind);
+    pub fn call_getParameters(instance: *runtime.Instance) anyerror!RTCRtpReceiveParameters {
+        return try RTCRtpReceiverImpl.call_getParameters(instance);
     }
 
     pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCRtpReceiverImpl.call_getStats(instance);
     }
 
-    pub fn call_getParameters(instance: *runtime.Instance) anyerror!RTCRtpReceiveParameters {
-        return try RTCRtpReceiverImpl.call_getParameters(instance);
+    pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: DOMString) anyerror!?RTCRtpCapabilities {
+        
+        return try RTCRtpReceiverImpl.call_static_getCapabilities(instance, kind);
     }
 
     pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCRtpReceiverImpl.call_getSynchronizationSources(instance);
+    }
+
+    pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCRtpReceiverImpl.call_getContributingSources(instance);
     }
 
 };

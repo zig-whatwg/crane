@@ -193,13 +193,43 @@ pub const Selection = struct {
         return try SelectionImpl.get_direction(instance);
     }
 
+    pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
+        
+        return try SelectionImpl.call_setBaseAndExtent(instance, anchorNode, anchorOffset, focusNode, focusOffset);
+    }
+
+    pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(DOMString), direction: webidl.Opt(DOMString), granularity: webidl.Opt(DOMString)) anyerror!void {
+        
+        return try SelectionImpl.call_modify(instance, alter, direction, granularity);
+    }
+
     pub fn call_setPosition(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
         
         return try SelectionImpl.call_setPosition(instance, node, offset);
     }
 
-    pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
-        return try SelectionImpl.call_removeAllRanges(instance);
+    pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
+        
+        return try SelectionImpl.call_addRange(instance, range);
+    }
+
+    pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(GetComposedRangesOptions)) anyerror!*const anyopaque {
+        
+        return try SelectionImpl.call_getComposedRanges(instance, options);
+    }
+
+    pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
+        
+        return try SelectionImpl.call_extend(instance, node, offset);
+    }
+
+    pub fn call_empty(instance: *runtime.Instance) anyerror!void {
+        return try SelectionImpl.call_empty(instance);
+    }
+
+    pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try SelectionImpl.call_getRangeAt(instance, index);
     }
 
     pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
@@ -216,17 +246,17 @@ pub const Selection = struct {
         return try SelectionImpl.call_deleteFromDocument(instance);
     }
 
-    pub fn call_empty(instance: *runtime.Instance) anyerror!void {
-        return try SelectionImpl.call_empty(instance);
+    pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) anyerror!bool {
+        
+        return try SelectionImpl.call_containsNode(instance, node, allowPartialContainment);
     }
 
     pub fn call_collapseToEnd(instance: *runtime.Instance) anyerror!void {
         return try SelectionImpl.call_collapseToEnd(instance);
     }
 
-    pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(GetComposedRangesOptions)) anyerror!*const anyopaque {
-        
-        return try SelectionImpl.call_getComposedRanges(instance, options);
+    pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
+        return try SelectionImpl.call_collapseToStart(instance);
     }
 
     pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
@@ -234,43 +264,13 @@ pub const Selection = struct {
         return try SelectionImpl.call_collapse(instance, node, offset);
     }
 
-    pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
-        
-        return try SelectionImpl.call_extend(instance, node, offset);
-    }
-
-    pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
-        return try SelectionImpl.call_collapseToStart(instance);
-    }
-
-    pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
-        
-        return try SelectionImpl.call_addRange(instance, range);
-    }
-
-    pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.Instance, anchorOffset: u32, focusNode: *runtime.Instance, focusOffset: u32) anyerror!void {
-        
-        return try SelectionImpl.call_setBaseAndExtent(instance, anchorNode, anchorOffset, focusNode, focusOffset);
-    }
-
-    pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-        
-        return try SelectionImpl.call_getRangeAt(instance, index);
-    }
-
-    pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(DOMString), direction: webidl.Opt(DOMString), granularity: webidl.Opt(DOMString)) anyerror!void {
-        
-        return try SelectionImpl.call_modify(instance, alter, direction, granularity);
-    }
-
-    pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, allowPartialContainment: webidl.Opt(bool)) anyerror!bool {
-        
-        return try SelectionImpl.call_containsNode(instance, node, allowPartialContainment);
-    }
-
     pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) anyerror!void {
         
         return try SelectionImpl.call_removeRange(instance, range);
+    }
+
+    pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
+        return try SelectionImpl.call_removeAllRanges(instance);
     }
 
 };

@@ -52,41 +52,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     return instance;
 }
 
-/// Operation: toRdf
-pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+/// Operation: toRdf (static)
+pub fn call_static_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = options;
     return error.NotImplemented;
 }
 
-/// Operation: flatten
-pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = input;
-    _ = context;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: fromRdf
-pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = input;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
-    _ = instance;
-    _ = input;
-    _ = options;
-    return error.NotImplemented;
-}
-
-/// Operation: compact
-pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+/// Operation: flatten (static)
+pub fn call_static_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = context;
@@ -94,8 +69,33 @@ pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, co
     return error.NotImplemented;
 }
 
-/// Operation: frame
-pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+/// Operation: fromRdf (static)
+pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = input;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: expand (static)
+pub fn call_static_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = input;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: compact (static)
+pub fn call_static_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = input;
+    _ = context;
+    _ = options;
+    return error.NotImplemented;
+}
+
+/// Operation: frame (static)
+pub fn call_static_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
     _ = instance;
     _ = input;
     _ = frame;

@@ -171,6 +171,10 @@ pub const OffscreenCanvas = struct {
         try OffscreenCanvasImpl.set_oncontextrestored(instance, value);
     }
 
+    pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try OffscreenCanvasImpl.call_transferToImageBitmap(instance);
+    }
+
     pub fn call_getContext(instance: *runtime.Instance, contextId: OffscreenRenderingContextId, options: webidl.Opt(runtime.JSValue)) anyerror!?OffscreenRenderingContext {
         
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
@@ -179,10 +183,6 @@ pub const OffscreenCanvas = struct {
     pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!*const anyopaque {
         
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
-    }
-
-    pub fn call_transferToImageBitmap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try OffscreenCanvasImpl.call_transferToImageBitmap(instance);
     }
 
 };

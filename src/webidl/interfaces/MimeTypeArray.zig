@@ -93,14 +93,14 @@ pub const MimeTypeArray = struct {
         return try MimeTypeArrayImpl.get_length(instance);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-        
-        return try MimeTypeArrayImpl.call_item(instance, index);
-    }
-
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*runtime.Instance {
         
         return try MimeTypeArrayImpl.call_namedItem(instance, name);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+        
+        return try MimeTypeArrayImpl.call_item(instance, index);
     }
 
 };

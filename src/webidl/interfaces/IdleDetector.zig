@@ -55,7 +55,7 @@ pub const IdleDetector = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "requestPermission", "call_requestPermission", 0 },
+            .{ "requestPermission", "call_static_requestPermission", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -149,8 +149,8 @@ pub const IdleDetector = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try IdleDetectorImpl.call_requestPermission(instance);
+    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try IdleDetectorImpl.call_static_requestPermission(instance);
     }
 
 };

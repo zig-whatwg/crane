@@ -118,12 +118,12 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.call_getAsFileSystemHandle(instance);
     }
 
-    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DataTransferItemImpl.call_webkitGetAsEntry(instance);
-    }
-
     pub fn call_getAsFile(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DataTransferItemImpl.call_getAsFile(instance);
+    }
+
+    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DataTransferItemImpl.call_webkitGetAsEntry(instance);
     }
 
 };

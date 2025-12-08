@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: fromElement
-pub fn call_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
     _ = instance;
     _ = element;
     return error.NotImplemented;

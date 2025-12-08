@@ -170,7 +170,7 @@ pub fn call_removeSourceBuffer(instance: *runtime.Instance, sourceBuffer: *runti
 }
 
 /// Operation: isTypeSupported
-pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

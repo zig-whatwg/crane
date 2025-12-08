@@ -120,7 +120,7 @@ pub const RTCPeerConnection = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "generateCertificate", "call_generateCertificate", 1 },
+            .{ "generateCertificate", "call_static_generateCertificate", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -436,23 +436,23 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 
-    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
-        
-        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
+    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!RTCConfiguration {
+        return try RTCPeerConnectionImpl.call_getConfiguration(instance);
     }
 
-    pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {
+    pub fn call_static_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: AlgorithmIdentifier) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options);
+        return try RTCPeerConnectionImpl.call_static_generateCertificate(instance, keygenAlgorithm);
     }
 
-    pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
+    pub fn call_getStats(instance: *runtime.Instance, selector: webidl.Opt(?*runtime.Instance)) anyerror!*const anyopaque {
         
-        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
+        return try RTCPeerConnectionImpl.call_getStats(instance, selector);
     }
 
-    pub fn call_getSenders(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCPeerConnectionImpl.call_getSenders(instance);
+    pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance, streams: []const *runtime.Instance) anyerror!*runtime.Instance {
+        
+        return try RTCPeerConnectionImpl.call_addTrack(instance, track, streams);
     }
 
     pub fn call_setRemoteDescription(instance: *runtime.Instance, description: RTCSessionDescriptionInit) anyerror!*const anyopaque {
@@ -465,55 +465,18 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate);
     }
 
-    pub fn call_setLocalDescription(instance: *runtime.Instance, description: webidl.Opt(RTCLocalSessionDescriptionInit)) anyerror!*const anyopaque {
+    pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description);
-    }
-
-    pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance, streams: []const *runtime.Instance) anyerror!*runtime.Instance {
-        
-        return try RTCPeerConnectionImpl.call_addTrack(instance, track, streams);
+        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
     pub fn call_getIdentityAssertion(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
     }
 
-    pub fn call_removeTrack(instance: *runtime.Instance, sender: *runtime.Instance) anyerror!void {
+    pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {
         
-        return try RTCPeerConnectionImpl.call_removeTrack(instance, sender);
-    }
-
-    pub fn call_restartIce(instance: *runtime.Instance) anyerror!void {
-        return try RTCPeerConnectionImpl.call_restartIce(instance);
-    }
-
-    pub fn call_getReceivers(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try RTCPeerConnectionImpl.call_getReceivers(instance);
-    }
-
-    pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: AlgorithmIdentifier) anyerror!*const anyopaque {
-        
-        return try RTCPeerConnectionImpl.call_generateCertificate(instance, keygenAlgorithm);
-    }
-
-    pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: webidl.Opt(RTCDataChannelInit)) anyerror!*runtime.Instance {
-        
-        return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
-    }
-
-    pub fn call_getStats(instance: *runtime.Instance, selector: webidl.Opt(?*runtime.Instance)) anyerror!*const anyopaque {
-        
-        return try RTCPeerConnectionImpl.call_getStats(instance, selector);
-    }
-
-    pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!RTCConfiguration {
-        return try RTCPeerConnectionImpl.call_getConfiguration(instance);
-    }
-
-    pub fn call_createOffer(instance: *runtime.Instance, options: webidl.Opt(RTCOfferOptions)) anyerror!*const anyopaque {
-        
-        return try RTCPeerConnectionImpl.call_createOffer(instance, options);
+        return try RTCPeerConnectionImpl.call_setIdentityProvider(instance, provider, options);
     }
 
     pub fn call_createAnswer(instance: *runtime.Instance, options: webidl.Opt(RTCAnswerOptions)) anyerror!*const anyopaque {
@@ -521,12 +484,49 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_createAnswer(instance, options);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!void {
-        return try RTCPeerConnectionImpl.call_close(instance);
+    pub fn call_createDataChannel(instance: *runtime.Instance, label: runtime.USVString, dataChannelDict: webidl.Opt(RTCDataChannelInit)) anyerror!*runtime.Instance {
+        
+        return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
+    }
+
+    pub fn call_getReceivers(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCPeerConnectionImpl.call_getReceivers(instance);
+    }
+
+    pub fn call_createOffer(instance: *runtime.Instance, options: webidl.Opt(RTCOfferOptions)) anyerror!*const anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_createOffer(instance, options);
+    }
+
+    pub fn call_restartIce(instance: *runtime.Instance) anyerror!void {
+        return try RTCPeerConnectionImpl.call_restartIce(instance);
     }
 
     pub fn call_getTransceivers(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try RTCPeerConnectionImpl.call_getTransceivers(instance);
+    }
+
+    pub fn call_removeTrack(instance: *runtime.Instance, sender: *runtime.Instance) anyerror!void {
+        
+        return try RTCPeerConnectionImpl.call_removeTrack(instance, sender);
+    }
+
+    pub fn call_close(instance: *runtime.Instance) anyerror!void {
+        return try RTCPeerConnectionImpl.call_close(instance);
+    }
+
+    pub fn call_setLocalDescription(instance: *runtime.Instance, description: webidl.Opt(RTCLocalSessionDescriptionInit)) anyerror!*const anyopaque {
+        
+        return try RTCPeerConnectionImpl.call_setLocalDescription(instance, description);
+    }
+
+    pub fn call_getSenders(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try RTCPeerConnectionImpl.call_getSenders(instance);
+    }
+
+    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: *const anyopaque, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
+        
+        return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
 
 };

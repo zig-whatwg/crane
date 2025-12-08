@@ -119,9 +119,23 @@ pub const SVGStringList = struct {
         return try SVGStringListImpl.call_removeItem(instance, index);
     }
 
+    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
+        return try SVGStringListImpl.call_clear(instance);
+    }
+
+    pub fn call_appendItem(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
+        
+        return try SVGStringListImpl.call_appendItem(instance, newItem);
+    }
+
     pub fn call_insertItemBefore(instance: *runtime.Instance, newItem: DOMString, index: u32) anyerror!DOMString {
         
         return try SVGStringListImpl.call_insertItemBefore(instance, newItem, index);
+    }
+
+    pub fn call_initialize(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
+        
+        return try SVGStringListImpl.call_initialize(instance, newItem);
     }
 
     pub fn call_getItem(instance: *runtime.Instance, index: u32) anyerror!DOMString {
@@ -132,20 +146,6 @@ pub const SVGStringList = struct {
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: DOMString, index: u32) anyerror!DOMString {
         
         return try SVGStringListImpl.call_replaceItem(instance, newItem, index);
-    }
-
-    pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-        return try SVGStringListImpl.call_clear(instance);
-    }
-
-    pub fn call_initialize(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
-        
-        return try SVGStringListImpl.call_initialize(instance, newItem);
-    }
-
-    pub fn call_appendItem(instance: *runtime.Instance, newItem: DOMString) anyerror!DOMString {
-        
-        return try SVGStringListImpl.call_appendItem(instance, newItem);
     }
 
 };

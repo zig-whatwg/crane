@@ -1135,8 +1135,9 @@ pub const HTMLInputElement = struct {
         try HTMLInputElementImpl.set_popoverTargetAction(instance, value);
     }
 
-    pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
-        return try HTMLInputElementImpl.call_showPicker(instance);
+    pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
+        
+        return try HTMLInputElementImpl.call_stepDown(instance, n);
     }
 
     pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": DOMString) anyerror!void {
@@ -1144,22 +1145,8 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_setCustomValidity(instance, @"error");
     }
 
-    pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
-        
-        return try HTMLInputElementImpl.call_setRangeText(instance, replacement);
-    }
-
-    pub fn call_select(instance: *runtime.Instance) anyerror!void {
-        return try HTMLInputElementImpl.call_select(instance);
-    }
-
-    pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
-        
-        return try HTMLInputElementImpl.call_stepUp(instance, n);
-    }
-
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.call_checkValidity(instance);
+    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLInputElementImpl.call_reportValidity(instance);
     }
 
     pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(DOMString)) anyerror!void {
@@ -1167,13 +1154,26 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.call_setSelectionRange(instance, start, end, direction);
     }
 
-    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.call_reportValidity(instance);
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLInputElementImpl.call_checkValidity(instance);
     }
 
-    pub fn call_stepDown(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
+    pub fn call_setRangeText(instance: *runtime.Instance, replacement: DOMString) anyerror!void {
         
-        return try HTMLInputElementImpl.call_stepDown(instance, n);
+        return try HTMLInputElementImpl.call_setRangeText(instance, replacement);
+    }
+
+    pub fn call_stepUp(instance: *runtime.Instance, n: webidl.Opt(i32)) anyerror!void {
+        
+        return try HTMLInputElementImpl.call_stepUp(instance, n);
+    }
+
+    pub fn call_select(instance: *runtime.Instance) anyerror!void {
+        return try HTMLInputElementImpl.call_select(instance);
+    }
+
+    pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
+        return try HTMLInputElementImpl.call_showPicker(instance);
     }
 
 };

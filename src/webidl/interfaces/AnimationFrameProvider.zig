@@ -77,14 +77,14 @@ pub const AnimationFrameProvider = struct {
         AnimationFrameProviderImpl.deinit(instance);
     }
 
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        
-        return try AnimationFrameProviderImpl.call_requestAnimationFrame(instance, callback);
-    }
-
     pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
         
         return try AnimationFrameProviderImpl.call_cancelAnimationFrame(instance, handle);
+    }
+
+    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
+        
+        return try AnimationFrameProviderImpl.call_requestAnimationFrame(instance, callback);
     }
 
 };

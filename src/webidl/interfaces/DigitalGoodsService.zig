@@ -89,22 +89,22 @@ pub const DigitalGoodsService = struct {
         DigitalGoodsServiceImpl.deinit(instance);
     }
 
-    pub fn call_consume(instance: *runtime.Instance, purchaseToken: DOMString) anyerror!*const anyopaque {
-        
-        return try DigitalGoodsServiceImpl.call_consume(instance, purchaseToken);
-    }
-
     pub fn call_listPurchases(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try DigitalGoodsServiceImpl.call_listPurchases(instance);
-    }
-
-    pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try DigitalGoodsServiceImpl.call_listPurchaseHistory(instance);
     }
 
     pub fn call_getDetails(instance: *runtime.Instance, itemIds: *const anyopaque) anyerror!*const anyopaque {
         
         return try DigitalGoodsServiceImpl.call_getDetails(instance, itemIds);
+    }
+
+    pub fn call_consume(instance: *runtime.Instance, purchaseToken: DOMString) anyerror!*const anyopaque {
+        
+        return try DigitalGoodsServiceImpl.call_consume(instance, purchaseToken);
+    }
+
+    pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try DigitalGoodsServiceImpl.call_listPurchaseHistory(instance);
     }
 
 };

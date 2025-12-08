@@ -612,16 +612,16 @@ pub const HTMLObjectElement = struct {
         return try HTMLObjectElementImpl.call_setCustomValidity(instance, @"error");
     }
 
-    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLObjectElementImpl.call_checkValidity(instance);
+    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLObjectElementImpl.call_reportValidity(instance);
     }
 
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLObjectElementImpl.call_getSVGDocument(instance);
     }
 
-    pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLObjectElementImpl.call_reportValidity(instance);
+    pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLObjectElementImpl.call_checkValidity(instance);
     }
 
 };

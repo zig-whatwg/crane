@@ -47,8 +47,8 @@ pub const LanguageDetector = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "create", "call_create", 0 },
-            .{ "availability", "call_availability", 0 },
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -118,11 +118,6 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.get_inputQuota(instance);
     }
 
-    pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
-        
-        return try LanguageDetectorImpl.call_availability(instance, options);
-    }
-
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_measureInputUsage(instance, input, options);
@@ -132,14 +127,19 @@ pub const LanguageDetector = struct {
         return try LanguageDetectorImpl.call_destroy(instance);
     }
 
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
+        
+        return try LanguageDetectorImpl.call_static_create(instance, options);
+    }
+
+    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
+        
+        return try LanguageDetectorImpl.call_static_availability(instance, options);
+    }
+
     pub fn call_detect(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(LanguageDetectorDetectOptions)) anyerror!*const anyopaque {
         
         return try LanguageDetectorImpl.call_detect(instance, input, options);
-    }
-
-    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
-        
-        return try LanguageDetectorImpl.call_create(instance, options);
     }
 
 };

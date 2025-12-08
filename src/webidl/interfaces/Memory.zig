@@ -102,6 +102,10 @@ pub const Memory = struct {
         return try MemoryImpl.get_buffer(instance);
     }
 
+    pub fn call_toResizableBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MemoryImpl.call_toResizableBuffer(instance);
+    }
+
     pub fn call_grow(instance: *runtime.Instance, delta: AddressValue) anyerror!AddressValue {
         
         return try MemoryImpl.call_grow(instance, delta);
@@ -109,10 +113,6 @@ pub const Memory = struct {
 
     pub fn call_toFixedLengthBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MemoryImpl.call_toFixedLengthBuffer(instance);
-    }
-
-    pub fn call_toResizableBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MemoryImpl.call_toResizableBuffer(instance);
     }
 
 };

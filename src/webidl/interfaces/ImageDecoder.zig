@@ -49,7 +49,7 @@ pub const ImageDecoder = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "isTypeSupported", "call_isTypeSupported", 1 },
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -138,18 +138,18 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.get_tracks(instance);
     }
 
+    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
+        return try ImageDecoderImpl.call_reset(instance);
+    }
+
     pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!*const anyopaque {
         
         return try ImageDecoderImpl.call_decode(instance, options);
     }
 
-    pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-        return try ImageDecoderImpl.call_reset(instance);
-    }
-
-    pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!*const anyopaque {
+    pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!*const anyopaque {
         
-        return try ImageDecoderImpl.call_isTypeSupported(instance, @"type");
+        return try ImageDecoderImpl.call_static_isTypeSupported(instance, @"type");
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {

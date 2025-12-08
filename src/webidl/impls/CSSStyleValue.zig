@@ -39,16 +39,16 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Operation: parseAll
-pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*const anyopaque {
+/// Operation: parseAll (static)
+pub fn call_static_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*const anyopaque {
     _ = instance;
     _ = property;
     _ = cssText;
     return error.NotImplemented;
 }
 
-/// Operation: parse
-pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
+/// Operation: parse (static)
+pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
     _ = instance;
     _ = property;
     _ = cssText;

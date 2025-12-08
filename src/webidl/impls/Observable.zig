@@ -179,7 +179,7 @@ pub fn call_flatMap(instance: *runtime.Instance, mapper: callbacks.Mapper) anyer
 }
 
 /// Operation: from
-pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+pub fn call_static_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = value;
     return error.NotImplemented;

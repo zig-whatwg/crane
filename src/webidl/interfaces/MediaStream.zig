@@ -169,21 +169,12 @@ pub const MediaStream = struct {
         try MediaStreamImpl.set_onremovetrack(instance, value);
     }
 
-    pub fn call_getAudioTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MediaStreamImpl.call_getAudioTracks(instance);
+    pub fn call_getTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MediaStreamImpl.call_getTracks(instance);
     }
 
     pub fn call_getVideoTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try MediaStreamImpl.call_getVideoTracks(instance);
-    }
-
-    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try MediaStreamImpl.call_clone(instance);
-    }
-
-    pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!?*runtime.Instance {
-        
-        return try MediaStreamImpl.call_getTrackById(instance, trackId);
     }
 
     pub fn call_addTrack(instance: *runtime.Instance, track: *runtime.Instance) anyerror!void {
@@ -196,8 +187,17 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_removeTrack(instance, track);
     }
 
-    pub fn call_getTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try MediaStreamImpl.call_getTracks(instance);
+    pub fn call_getTrackById(instance: *runtime.Instance, trackId: DOMString) anyerror!?*runtime.Instance {
+        
+        return try MediaStreamImpl.call_getTrackById(instance, trackId);
+    }
+
+    pub fn call_getAudioTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try MediaStreamImpl.call_getAudioTracks(instance);
+    }
+
+    pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try MediaStreamImpl.call_clone(instance);
     }
 
 };

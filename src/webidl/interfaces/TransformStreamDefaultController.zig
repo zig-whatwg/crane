@@ -93,6 +93,11 @@ pub const TransformStreamDefaultController = struct {
         return try TransformStreamDefaultControllerImpl.get_desiredSize(instance);
     }
 
+    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
+        
+        return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk);
+    }
+
     pub fn call_error(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try TransformStreamDefaultControllerImpl.call_error(instance, reason);
@@ -100,11 +105,6 @@ pub const TransformStreamDefaultController = struct {
 
     pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         return try TransformStreamDefaultControllerImpl.call_terminate(instance);
-    }
-
-    pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!void {
-        
-        return try TransformStreamDefaultControllerImpl.call_enqueue(instance, chunk);
     }
 
 };

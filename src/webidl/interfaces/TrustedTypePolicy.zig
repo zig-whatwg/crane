@@ -100,11 +100,6 @@ pub const TrustedTypePolicy = struct {
         return try TrustedTypePolicyImpl.get_name(instance);
     }
 
-    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
-        
-        return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
-    }
-
     pub fn call_createHTML(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createHTML(instance, input, arguments);
@@ -113,6 +108,11 @@ pub const TrustedTypePolicy = struct {
     pub fn call_createScript(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
         
         return try TrustedTypePolicyImpl.call_createScript(instance, input, arguments);
+    }
+
+    pub fn call_createScriptURL(instance: *runtime.Instance, input: DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+        
+        return try TrustedTypePolicyImpl.call_createScriptURL(instance, input, arguments);
     }
 
 };

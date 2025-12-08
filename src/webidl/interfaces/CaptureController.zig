@@ -152,10 +152,6 @@ pub const CaptureController = struct {
         try CaptureControllerImpl.set_oncapturedmousechange(instance, value);
     }
 
-    pub fn call_increaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try CaptureControllerImpl.call_increaseZoomLevel(instance);
-    }
-
     pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!*const anyopaque {
         
         return try CaptureControllerImpl.call_forwardWheel(instance, element);
@@ -164,6 +160,10 @@ pub const CaptureController = struct {
     pub fn call_setFocusBehavior(instance: *runtime.Instance, focusBehavior: CaptureStartFocusBehavior) anyerror!void {
         
         return try CaptureControllerImpl.call_setFocusBehavior(instance, focusBehavior);
+    }
+
+    pub fn call_increaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try CaptureControllerImpl.call_increaseZoomLevel(instance);
     }
 
     pub fn call_decreaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {

@@ -118,18 +118,18 @@ pub const FileSystemDirectoryHandle = struct {
         FileSystemDirectoryHandleImpl.deinit(instance);
     }
 
-    pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!*const anyopaque {
+    pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
+        return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
+    }
+
+    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
+        return try FileSystemDirectoryHandleImpl.call_values(instance);
     }
 
     pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) anyerror!*const anyopaque {
         
         return try FileSystemDirectoryHandleImpl.call_resolve(instance, possibleDescendant);
-    }
-
-    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
-        return try FileSystemDirectoryHandleImpl.call_values(instance);
     }
 
     pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetDirectoryOptions)) anyerror!*const anyopaque {
@@ -141,9 +141,9 @@ pub const FileSystemDirectoryHandle = struct {
         return try FileSystemDirectoryHandleImpl.call_getAsyncIterator(instance);
     }
 
-    pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!*const anyopaque {
+    pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!*const anyopaque {
         
-        return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
+        return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
 
 };

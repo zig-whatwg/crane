@@ -253,10 +253,6 @@ pub const Event = struct {
         return try EventImpl.get_timeStamp(instance);
     }
 
-    pub fn call_stopImmediatePropagation(instance: *runtime.Instance) anyerror!void {
-        return try EventImpl.call_stopImmediatePropagation(instance);
-    }
-
     pub fn call_initEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool)) anyerror!void {
         
         return try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
@@ -268,6 +264,10 @@ pub const Event = struct {
 
     pub fn call_stopPropagation(instance: *runtime.Instance) anyerror!void {
         return try EventImpl.call_stopPropagation(instance);
+    }
+
+    pub fn call_stopImmediatePropagation(instance: *runtime.Instance) anyerror!void {
+        return try EventImpl.call_stopImmediatePropagation(instance);
     }
 
     pub fn call_preventDefault(instance: *runtime.Instance) anyerror!void {

@@ -150,17 +150,17 @@ pub const MessagePort = struct {
         try MessagePortImpl.set_onmessageerror(instance, value);
     }
 
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+        
+        return try MessagePortImpl.call_postMessage(instance, message, transfer);
+    }
+
     pub fn call_start(instance: *runtime.Instance) anyerror!void {
         return try MessagePortImpl.call_start(instance);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try MessagePortImpl.call_close(instance);
-    }
-
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
-        
-        return try MessagePortImpl.call_postMessage(instance, message, transfer);
     }
 
 };

@@ -118,6 +118,11 @@ pub const GroupEffect = struct {
         return try GroupEffectImpl.get_lastChild(instance);
     }
 
+    pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
+        return try GroupEffectImpl.call_prepend(instance, effects);
+    }
+
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GroupEffectImpl.call_clone(instance);
     }
@@ -125,11 +130,6 @@ pub const GroupEffect = struct {
     pub fn call_append(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         
         return try GroupEffectImpl.call_append(instance, effects);
-    }
-
-    pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
-        
-        return try GroupEffectImpl.call_prepend(instance, effects);
     }
 
 };

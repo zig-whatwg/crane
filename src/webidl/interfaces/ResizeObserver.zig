@@ -95,14 +95,14 @@ pub const ResizeObserver = struct {
         return try ResizeObserverImpl.call_constructor(allocator, ctx, callback);
     }
 
-    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(ResizeObserverOptions)) anyerror!void {
-        
-        return try ResizeObserverImpl.call_observe(instance, target, options);
-    }
-
     pub fn call_unobserve(instance: *runtime.Instance, target: *runtime.Instance) anyerror!void {
         
         return try ResizeObserverImpl.call_unobserve(instance, target);
+    }
+
+    pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(ResizeObserverOptions)) anyerror!void {
+        
+        return try ResizeObserverImpl.call_observe(instance, target, options);
     }
 
     pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {

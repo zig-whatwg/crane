@@ -143,9 +143,8 @@ pub const GPUBuffer = struct {
         return try GPUBufferImpl.call_unmap(instance);
     }
 
-    pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
-        
-        return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
+    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
+        return try GPUBufferImpl.call_destroy(instance);
     }
 
     pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
@@ -153,8 +152,9 @@ pub const GPUBuffer = struct {
         return try GPUBufferImpl.call_mapAsync(instance, mode, offset, size);
     }
 
-    pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
-        return try GPUBufferImpl.call_destroy(instance);
+    pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
+        
+        return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
     }
 
 };

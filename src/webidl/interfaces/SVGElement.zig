@@ -1782,13 +1782,13 @@ pub const SVGElement = struct {
         try SVGElementImpl.set_tabIndex(instance, value);
     }
 
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try SVGElementImpl.call_blur(instance);
-    }
-
     pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
         
         return try SVGElementImpl.call_focus(instance, options);
+    }
+
+    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
+        return try SVGElementImpl.call_blur(instance);
     }
 
 };

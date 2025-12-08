@@ -79,9 +79,9 @@ pub const DOMMatrix = struct {
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
-            .{ "fromMatrix", "call_fromMatrix", 0 },
-            .{ "fromFloat32Array", "call_fromFloat32Array", 1 },
-            .{ "fromFloat64Array", "call_fromFloat64Array", 1 },
+            .{ "fromMatrix", "call_static_fromMatrix", 0 },
+            .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
+            .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -333,46 +333,10 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.get_m44(instance);
     }
 
-    pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
-        return try DOMMatrixImpl.call_scaleSelf(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMMatrixImpl.call_fromFloat32Array(instance, array32);
-    }
-
-    pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
-        return try DOMMatrixImpl.call_rotateFromVectorSelf(instance, x, y);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMMatrixImpl.call_fromFloat64Array(instance, array64);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMMatrixImpl.call_fromMatrix(instance, other);
-    }
-
     /// Extended attributes: [Exposed=Window]
     pub fn call_setMatrixValue(instance: *runtime.Instance, transformList: DOMString) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_setMatrixValue(instance, transformList);
-    }
-
-    pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
-        
-        return try DOMMatrixImpl.call_rotateAxisAngleSelf(instance, x, y, z, angle);
     }
 
     pub fn call_scale3dSelf(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
@@ -385,14 +349,14 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.call_rotateSelf(instance, rotX, rotY, rotZ);
     }
 
+    pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
+        
+        return try DOMMatrixImpl.call_rotateFromVectorSelf(instance, x, y);
+    }
+
     pub fn call_translateSelf(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_translateSelf(instance, tx, ty, tz);
-    }
-
-    pub fn call_multiplySelf(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
-        
-        return try DOMMatrixImpl.call_multiplySelf(instance, other);
     }
 
     pub fn call_skewXSelf(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*runtime.Instance {
@@ -400,18 +364,54 @@ pub const DOMMatrix = struct {
         return try DOMMatrixImpl.call_skewXSelf(instance, sx);
     }
 
-    pub fn call_skewYSelf(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
         
-        return try DOMMatrixImpl.call_skewYSelf(instance, sy);
+        return try DOMMatrixImpl.call_static_fromMatrix(instance, other);
     }
 
     pub fn call_invertSelf(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DOMMatrixImpl.call_invertSelf(instance);
     }
 
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMMatrixImpl.call_static_fromFloat32Array(instance, array32);
+    }
+
     pub fn call_preMultiplySelf(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         
         return try DOMMatrixImpl.call_preMultiplySelf(instance, other);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMMatrixImpl.call_static_fromFloat64Array(instance, array64);
+    }
+
+    pub fn call_multiplySelf(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
+        
+        return try DOMMatrixImpl.call_multiplySelf(instance, other);
+    }
+
+    pub fn call_rotateAxisAngleSelf(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
+        
+        return try DOMMatrixImpl.call_rotateAxisAngleSelf(instance, x, y, z, angle);
+    }
+
+    pub fn call_skewYSelf(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
+        
+        return try DOMMatrixImpl.call_skewYSelf(instance, sy);
+    }
+
+    pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
+        
+        return try DOMMatrixImpl.call_scaleSelf(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
     }
 
 };

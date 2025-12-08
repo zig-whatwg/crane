@@ -92,6 +92,17 @@ pub const DOMImplementation = struct {
     }
 
     /// Extended attributes: [NewObject]
+    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+        
+        return try DOMImplementationImpl.call_createHTMLDocument(instance, title);
+    }
+
+    pub fn call_hasFeature(instance: *runtime.Instance) anyerror!bool {
+        return try DOMImplementationImpl.call_hasFeature(instance);
+    }
+
+    /// Extended attributes: [NewObject]
     pub fn call_createDocument(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, doctype: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         
@@ -103,17 +114,6 @@ pub const DOMImplementation = struct {
         // [NewObject] - Caller owns the returned object
         
         return try DOMImplementationImpl.call_createDocumentType(instance, name, publicId, systemId);
-    }
-
-    /// Extended attributes: [NewObject]
-    pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
-        
-        return try DOMImplementationImpl.call_createHTMLDocument(instance, title);
-    }
-
-    pub fn call_hasFeature(instance: *runtime.Instance) anyerror!bool {
-        return try DOMImplementationImpl.call_hasFeature(instance);
     }
 
 };
