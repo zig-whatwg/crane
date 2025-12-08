@@ -20,10 +20,12 @@
 //!
 //! ## Options
 //!
-//! Options are passed via -D flags to zig build:
-//! - `-Dwpt-output=path` - Output directory for results (default: wpt-results/)
-//! - `-Dwpt-verbose` - Show each test as it runs
-//! - `-Dwpt-parallel=N` - Number of parallel test runners
+//! Options are passed after `--` to zig build wpt:
+//! - `--output=path` - Output directory for results (default: wpt-results/)
+//! - `--log-mach` - Show failure details (WPT-compatible verbose mode)
+//! - `--log-mach-verbose` - Same as --log-mach
+//! - `-v` or `--verbose` - Same as --log-mach
+//! - `--parallel=N` - Number of parallel test runners
 
 const std = @import("std");
 const config = @import("config.zig");
@@ -40,7 +42,7 @@ pub const Options = struct {
     allocator: std.mem.Allocator,
     /// Output directory for results
     output_dir: []const u8 = "wpt-results",
-    /// Verbose output
+    /// Verbose output (--log-mach or -v)
     verbose: bool = false,
     /// Number of parallel runners (0 = auto)
     parallel: u32 = 0,
@@ -214,7 +216,13 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
 
         if (std.mem.startsWith(u8, arg, "--output=")) {
             options.output_dir = arg["--output=".len..];
-        } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
+        } else if (std.mem.eql(u8, arg, "--log-mach") or
+            std.mem.startsWith(u8, arg, "--log-mach=") or
+            std.mem.eql(u8, arg, "--log-mach-verbose") or
+            std.mem.eql(u8, arg, "--verbose") or
+            std.mem.eql(u8, arg, "-v"))
+        {
+            // WPT-compatible: --log-mach enables human-readable output with failure details
             options.verbose = true;
         } else if (std.mem.startsWith(u8, arg, "--parallel=")) {
             const value = arg["--parallel=".len..];
