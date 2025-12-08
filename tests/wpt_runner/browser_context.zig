@@ -144,11 +144,18 @@ pub const BrowserContext = struct {
         }
 
         // Force V8 garbage collection before isolate disposal
+        // NOTE: We set MicrotasksPolicy to Explicit and skip PerformMicrotaskCheckpoint
+        // during cleanup. Running microtasks here can trigger unhandled promise rejection
+        // handlers for promises that were created but never awaited during tests. This
+        // causes "<unknown>:764: Uncaught [object DOMException]" errors from testharness.js
+        // promise_test rejection handling. The promises are about to be garbage
+        // collected anyway, so there's no need to run their callbacks.
         if (self.isolate) |isolate| {
+            // Set microtasks policy to explicit to prevent automatic execution during disposal
+            v8.ffi.v8_Isolate_SetMicrotasksPolicy(isolate, @intFromEnum(v8.ffi.MicrotasksPolicy.Explicit));
+
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
             v8.ffi.v8_Isolate_Exit(isolate);
             v8.ffi.v8_Isolate_Dispose(isolate);
@@ -812,38 +819,59 @@ pub const BrowserContext = struct {
         // Create V8 string from content
         const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return error.StringCreateFailed;
 
-        // Compile script
-        const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
-            // Get exception message
-            const exception = v8.ffi.v8_TryCatch_Exception(context);
-            if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
-                if (exc_str) |str| {
-                    const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
-                    defer self.allocator.free(buffer);
-                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    std.debug.print("Script compile error: {s}\n", .{buffer});
-                }
-            }
-            return error.CompileError;
-        };
+        // Compile script (use safe version to capture errors)
+        const compile_result = v8.ffi.v8_Script_Compile_Safe(context, source_str);
+        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
-        // Run script
-        _ = v8.ffi.v8_Script_Run(context, script) orelse {
-            const exception = v8.ffi.v8_TryCatch_Exception(context);
-            if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
-                if (exc_str) |str| {
-                    const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
-                    defer self.allocator.free(buffer);
-                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    std.debug.print("Script runtime error: {s}\n", .{buffer});
-                }
+        if (compile_result.error_info) |err| {
+            std.debug.print("\n╔══════════════════════════════════════════════════════════════╗\n", .{});
+            std.debug.print("║ V8 COMPILE ERROR                                             ║\n", .{});
+            std.debug.print("╚══════════════════════════════════════════════════════════════╝\n", .{});
+            if (err.getMessage()) |msg| {
+                std.debug.print("Exception: {s}\n", .{msg});
             }
+            if (err.getStackTrace()) |stack| {
+                std.debug.print("Stack:\n{s}\n", .{stack});
+            }
+            if (err.getSourceLine()) |line| {
+                std.debug.print("Source line: {s}\n", .{line});
+            }
+            if (err.line_number >= 0) {
+                std.debug.print("Location: line {d}, column {d}\n", .{ err.line_number, err.column_number });
+            }
+            const preview_len = @min(content.len, 500);
+            std.debug.print("Script preview ({d} chars total):\n{s}...\n", .{ content.len, content[0..preview_len] });
+            std.debug.print("────────────────────────────────────────────────────────────────\n\n", .{});
+            return error.CompileError;
+        }
+
+        const script = compile_result.script orelse return error.CompileError;
+
+        // Run script (use safe version to capture errors)
+        const run_result = v8.ffi.v8_Script_Run_Safe(context, script);
+        defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        if (run_result.error_info) |err| {
+            std.debug.print("\n╔══════════════════════════════════════════════════════════════╗\n", .{});
+            std.debug.print("║ V8 RUNTIME ERROR                                             ║\n", .{});
+            std.debug.print("╚══════════════════════════════════════════════════════════════╝\n", .{});
+            if (err.getMessage()) |msg| {
+                std.debug.print("Exception: {s}\n", .{msg});
+            }
+            if (err.getStackTrace()) |stack| {
+                std.debug.print("Stack:\n{s}\n", .{stack});
+            }
+            if (err.getSourceLine()) |line| {
+                std.debug.print("Source line: {s}\n", .{line});
+            }
+            if (err.line_number >= 0) {
+                std.debug.print("Location: line {d}, column {d}\n", .{ err.line_number, err.column_number });
+            }
+            const preview_len = @min(content.len, 500);
+            std.debug.print("Script preview ({d} chars total):\n{s}...\n", .{ content.len, content[0..preview_len] });
+            std.debug.print("────────────────────────────────────────────────────────────────\n\n", .{});
             return error.RuntimeError;
-        };
+        }
 
         // Run microtasks
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -1093,17 +1121,32 @@ pub fn clearPendingTimers() void {
 /// Register a timer context for cleanup tracking (both one-shot and intervals)
 fn registerTimerContext(timer_id: TimerId, ctx: *V8TimerContext) void {
     if (timer_contexts) |*map| {
-        map.put(timer_id, ctx) catch {};
+        map.put(timer_id, ctx) catch |err| {
+            // If we can't track the timer, we must destroy it to prevent leaks
+            std.debug.print("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
+            ctx.destroy();
+        };
+    } else {
+        // timer_contexts is null - this shouldn't happen if setTimerInterface was called
+        // Destroy the context to prevent memory leak
+        std.debug.print("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
+        ctx.destroy();
     }
 }
 
-/// Unregister a timer context (marks intervals as cancelled, removes from tracking)
+/// Unregister a timer context (cancels and destroys it)
 fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
+            const ctx = kv.value;
             // Mark as cancelled so interval callbacks know to stop rescheduling
-            kv.value.cancelled = true;
-            // Don't destroy here - the callback will clean up when it fires
+            ctx.cancelled = true;
+            // Cancel the timer at the libuv level to prevent callback from firing
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(timer_id);
+            }
+            // Destroy the context immediately - the timer won't fire anymore
+            ctx.destroy();
         }
     }
 }

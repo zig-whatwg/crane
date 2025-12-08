@@ -410,7 +410,7 @@ pub const ProgressTracker = struct {
             .timeout => self.timeouts += 1,
         }
 
-        // Count subtests
+        // Count subtests and optionally print failures in verbose mode
         for (result.subtests.items) |sub| {
             switch (sub.status) {
                 .pass => self.passed += 1,
@@ -424,6 +424,28 @@ pub const ProgressTracker = struct {
                             entry.value_ptr.* = 0;
                         }
                         entry.value_ptr.* += 1;
+                    }
+                    // Print failure details in verbose mode
+                    if (self.verbose) {
+                        print("\n  ✗ FAIL: {s}\n", .{sub.name});
+                        if (sub.message) |msg| {
+                            print("    Message: {s}\n", .{msg});
+                        }
+                        if (sub.stack) |stack| {
+                            // Print first 3 lines of stack
+                            var line_count: usize = 0;
+                            var iter = std.mem.splitScalar(u8, stack, '\n');
+                            while (iter.next()) |line| {
+                                if (line_count >= 3) {
+                                    print("    ...\n", .{});
+                                    break;
+                                }
+                                if (line.len > 0) {
+                                    print("    {s}\n", .{line});
+                                    line_count += 1;
+                                }
+                            }
+                        }
                     }
                 },
                 .timeout => self.timeouts += 1,
@@ -564,9 +586,23 @@ pub fn executeTests(
     for (discovery.test_files.items) |test_file| {
         // Execute single test file
         const test_result = executeTestFile(allocator, options, test_file, browser) catch |err| {
-            // Create error result
+            // Create error result with stack trace
             var error_result = try test_harness.TestResult.init(allocator, test_file.path);
             error_result.status = .@"error";
+
+            // Capture and print full stack trace for debugging
+            const trace = @errorReturnTrace();
+            if (trace) |t| {
+                std.debug.print("\n=== ERROR in test: {s} ===\n", .{test_file.path});
+                std.debug.print("Error: {}\n", .{err});
+                std.debug.dumpStackTrace(t.*);
+                std.debug.print("=== END ERROR ===\n\n", .{});
+            } else {
+                std.debug.print("\n=== ERROR in test: {s} ===\n", .{test_file.path});
+                std.debug.print("Error: {} (no stack trace available)\n", .{err});
+                std.debug.print("=== END ERROR ===\n\n", .{});
+            }
+
             error_result.message = try std.fmt.allocPrint(allocator, "Execution error: {}", .{err});
 
             progress.recordResult(test_file.path, error_result);
