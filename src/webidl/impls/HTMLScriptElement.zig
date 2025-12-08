@@ -16,6 +16,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
+// Parent class implementation
+const HTMLElementImpl = @import("HTMLElement.zig");
+const NodeImpl = @import("Node.zig");
+
 pub const State = HTMLScriptElement.State;
 
 pub const ImplError = error{
@@ -203,14 +207,20 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement → Element → Node → EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
+    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    errdefer HTMLElementImpl.deinit(instance);
+
+    // Set node type to ELEMENT_NODE (already set by Element.init)
+    // Set local name to "script"
+    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
 
     // Initialize HTMLScriptElement's internal state using centralized registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -228,6 +238,9 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
     runtime.internal_state.removeInternal(instance);
+
+    // Chain to parent deinit
+    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
