@@ -932,7 +932,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Call getter (handle error union)
                         const result: PayloadType = if (return_type_info == .error_union)
                             zig_getter(instance) catch |err| {
-                                conv.throwError(isolate_inner, @errorName(err));
+                                conv.throwWebIDLError(isolate_inner, @errorName(err));
                                 return;
                             }
                         else
@@ -1119,12 +1119,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                     ) catch |err| {
-                        const err_msg = std.fmt.allocPrint(allocator, "Method '{s}' failed: {s}", .{ zig_name, @errorName(err) }) catch {
-                            conv.throwError(isolate, "Method failed");
-                            return;
-                        };
-                        defer allocator.free(err_msg);
-                        conv.throwError(isolate, err_msg);
+                        // Throw proper DOMException for WebIDL errors
+                        conv.throwWebIDLError(isolate, @errorName(err));
                         return;
                     };
 
@@ -1520,21 +1516,8 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call the interface's constructor with arguments parsed at comptime
             const instance = callConstructorWithArgs(info, allocator, ctx, v8_context, isolate) catch |err| {
                 // Throw appropriate error type based on error name
-                const err_name = @errorName(err);
-                if (std.mem.eql(u8, err_name, "TypeError")) {
-                    conv.throwTypeError(isolate, "Invalid argument");
-                } else if (std.mem.eql(u8, err_name, "RangeError")) {
-                    conv.throwRangeError(isolate, "Value out of range");
-                } else if (std.mem.eql(u8, err_name, "OutOfMemory")) {
-                    conv.throwError(isolate, "Out of memory");
-                } else {
-                    const err_msg = std.fmt.allocPrint(allocator, "Constructor failed: {s}", .{err_name}) catch {
-                        conv.throwError(isolate, "Constructor failed");
-                        return;
-                    };
-                    defer allocator.free(err_msg);
-                    conv.throwError(isolate, err_msg);
-                }
+                // Use throwWebIDLError which properly creates DOMException for WebIDL errors
+                conv.throwWebIDLError(isolate, @errorName(err));
                 return;
             };
 
@@ -1932,7 +1915,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call getter (handle error union)
             const result: PayloadType = if (return_type_info == .error_union)
                 zig_getter(instance) catch |err| {
-                    conv.throwError(isolate, @errorName(err));
+                    conv.throwWebIDLError(isolate, @errorName(err));
                     return;
                 }
             else
@@ -2911,7 +2894,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                             return;
                         }
-                        conv.throwError(isolate_inner, @errorName(err));
+                        conv.throwWebIDLError(isolate_inner, @errorName(err));
                         return;
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
@@ -2922,7 +2905,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     if (return_type_info == .error_union) {
                         zig_setter(instance, zig_value) catch |err| {
-                            conv.throwError(isolate_inner, @errorName(err));
+                            conv.throwWebIDLError(isolate_inner, @errorName(err));
                             return;
                         };
                     } else {
@@ -3075,12 +3058,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                     ) catch |err| {
-                        const err_msg = std.fmt.allocPrint(allocator, "Static method '{s}' failed: {s}", .{ zig_name, @errorName(err) }) catch {
-                            conv.throwError(isolate, "Static method failed");
-                            return;
-                        };
-                        defer allocator.free(err_msg);
-                        conv.throwError(isolate, err_msg);
+                        conv.throwWebIDLError(isolate, @errorName(err));
                         return;
                     };
 

@@ -1741,6 +1741,160 @@ pub fn throwError(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// Throw a DOMException in V8
+///
+/// Creates a proper DOMException instance with the correct name and message properties.
+/// This is essential for WebIDL error handling where tests check:
+/// - e instanceof DOMException === true
+/// - e.name === "ErrorName"
+/// - e.code === <legacy code>
+///
+/// If DOMException constructor is not available, falls back to generic Error.
+pub fn throwDOMException(
+    isolate: *v8.Isolate,
+    name: []const u8,
+    message: []const u8,
+) void {
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const global = v8.v8_Context_Global(context) orelse {
+        throwError(isolate, message);
+        return;
+    };
+
+    // Get the DOMException constructor from global
+    const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
+        // DOMException not registered, fall back to generic Error
+        throwError(isolate, message);
+        return;
+    };
+
+    if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
+        // DOMException is not a function, fall back to generic Error
+        throwError(isolate, message);
+        return;
+    }
+
+    // Create V8 strings for the arguments
+    const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
+        throwError(isolate, message);
+        return;
+    };
+
+    // Use Reflect.construct to call the constructor
+    // Reflect.construct(DOMException, [message, name])
+    const reflect_key = v8.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
+        throwError(isolate, message);
+        return;
+    };
+    if (!v8.v8_Value_IsFunction(construct_fn_value)) {
+        throwError(isolate, message);
+        return;
+    }
+    const construct_fn: *v8.Function = @ptrCast(construct_fn_value);
+
+    // Create argument array: [message, name]
+    const args_array = v8.v8_Array_New(isolate, 2);
+    _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
+    _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
+
+    // Call Reflect.construct(DOMException, [message, name])
+    var args = [_]*v8.Value{ dom_exception_ctor, @ptrCast(args_array) };
+    const exception = v8.v8_Function_Call(construct_fn, context, reflect_obj, 2, &args) orelse {
+        throwError(isolate, message);
+        return;
+    };
+
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
+/// List of DOMException names as defined by WebIDL spec
+/// Used to determine if an error name is a DOMException or a simple exception
+pub const dom_exception_names = [_][]const u8{
+    "IndexSizeError",
+    "HierarchyRequestError",
+    "WrongDocumentError",
+    "InvalidCharacterError",
+    "NoModificationAllowedError",
+    "NotFoundError",
+    "NotSupportedError",
+    "InUseAttributeError",
+    "InvalidStateError",
+    "SyntaxError",
+    "InvalidModificationError",
+    "NamespaceError",
+    "InvalidAccessError",
+    "SecurityError",
+    "NetworkError",
+    "AbortError",
+    "URLMismatchError",
+    "QuotaExceededError",
+    "TimeoutError",
+    "InvalidNodeTypeError",
+    "DataCloneError",
+    "EncodingError",
+    "NotReadableError",
+    "UnknownError",
+    "ConstraintError",
+    "DataError",
+    "TransactionInactiveError",
+    "ReadOnlyError",
+    "VersionError",
+    "OperationError",
+    "NotAllowedError",
+};
+
+/// Check if an error name is a DOMException name
+pub fn isDOMExceptionName(name: []const u8) bool {
+    for (dom_exception_names) |dom_name| {
+        if (std.mem.eql(u8, name, dom_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Throw an appropriate exception based on the error name
+///
+/// If the error name is a known DOMException name, throws a DOMException.
+/// Otherwise, throws a generic Error.
+pub fn throwWebIDLError(
+    isolate: *v8.Isolate,
+    error_name: []const u8,
+) void {
+    if (isDOMExceptionName(error_name)) {
+        throwDOMException(isolate, error_name, error_name);
+    } else if (std.mem.eql(u8, error_name, "TypeError")) {
+        throwTypeError(isolate, "TypeError");
+    } else if (std.mem.eql(u8, error_name, "RangeError")) {
+        throwRangeError(isolate, "RangeError");
+    } else {
+        throwError(isolate, error_name);
+    }
+}
+
 // ============================================================================
 // Console Value Conversion
 // ============================================================================
