@@ -42,8 +42,8 @@ pub const canonicalize = @import("canonicalize.zig");
 pub const constructor_string_parser = @import("constructor_string_parser.zig");
 pub const constructor = @import("constructor.zig");
 
-// TODO: Matcher - to be implemented
-// pub const matcher = @import("matcher.zig");
+// Matcher module
+pub const matcher = @import("matcher.zig");
 
 // Re-export tokenizer types
 pub const Token = tokenizer.Token;
@@ -101,6 +101,16 @@ pub const Component = constructor.Component;
 pub const Input = constructor.Input;
 pub const URLPatternOptions = constructor.URLPatternOptions;
 pub const ConstructorError = constructor.ConstructorError;
+
+// Re-export matcher types and functions
+pub const testMatch = matcher.testMatch;
+pub const testMatchInput = matcher.testMatchInput;
+pub const exec = matcher.exec;
+pub const execInput = matcher.execInput;
+pub const URLPatternResult = matcher.URLPatternResult;
+pub const URLPatternComponentResult = matcher.URLPatternComponentResult;
+pub const URLPatternInput = matcher.URLPatternInput;
+pub const MatchError = matcher.MatchError;
 
 test {
     // Run all module tests
