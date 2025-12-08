@@ -338,6 +338,98 @@ const URLParts = struct {
     }
 };
 
+/// Simple URL component decomposition for actual URLs (not patterns)
+/// Parses URLs like "https://user:pass@example.com:8080/path?query#hash"
+fn parseURLComponents(url: []const u8) URLParts {
+    var result = URLParts{
+        .protocol = "",
+        .username = "",
+        .password = "",
+        .hostname = "",
+        .port = "",
+        .pathname = "",
+        .search = "",
+        .hash = "",
+        ._allocator = null,
+        ._owned_slices = .{},
+    };
+
+    var remaining = url;
+
+    // Extract hash/fragment first (everything after #)
+    if (std.mem.indexOf(u8, remaining, "#")) |hash_pos| {
+        result.hash = remaining[hash_pos + 1 ..];
+        remaining = remaining[0..hash_pos];
+    }
+
+    // Extract search/query (everything after ?)
+    if (std.mem.indexOf(u8, remaining, "?")) |query_pos| {
+        result.search = remaining[query_pos + 1 ..];
+        remaining = remaining[0..query_pos];
+    }
+
+    // Extract protocol (everything before ://)
+    if (std.mem.indexOf(u8, remaining, "://")) |proto_end| {
+        result.protocol = remaining[0..proto_end];
+        remaining = remaining[proto_end + 3 ..];
+    } else if (std.mem.indexOf(u8, remaining, ":")) |colon_pos| {
+        // Check for single colon (file:, data:, etc.)
+        if (colon_pos > 0 and (colon_pos + 1 >= remaining.len or remaining[colon_pos + 1] != '/')) {
+            // Opaque scheme like "data:text/plain,hello"
+            result.protocol = remaining[0..colon_pos];
+            result.pathname = remaining[colon_pos + 1 ..];
+            return result;
+        }
+    }
+
+    // Extract pathname (from first / to end)
+    if (std.mem.indexOf(u8, remaining, "/")) |path_start| {
+        result.pathname = remaining[path_start..];
+        remaining = remaining[0..path_start];
+    }
+
+    // Now remaining should be: [user[:pass]@]host[:port]
+    // Extract credentials if present (look for @)
+    if (std.mem.indexOf(u8, remaining, "@")) |at_pos| {
+        const credentials = remaining[0..at_pos];
+        remaining = remaining[at_pos + 1 ..];
+
+        // Split credentials by : for username:password
+        if (std.mem.indexOf(u8, credentials, ":")) |colon_pos| {
+            result.username = credentials[0..colon_pos];
+            result.password = credentials[colon_pos + 1 ..];
+        } else {
+            result.username = credentials;
+        }
+    }
+
+    // Extract port (look for : in remaining host:port)
+    // Need to handle IPv6 addresses like [::1]:8080
+    if (remaining.len > 0 and remaining[0] == '[') {
+        // IPv6 address
+        if (std.mem.indexOf(u8, remaining, "]")) |bracket_end| {
+            if (bracket_end + 1 < remaining.len and remaining[bracket_end + 1] == ':') {
+                result.hostname = remaining[0 .. bracket_end + 1];
+                result.port = remaining[bracket_end + 2 ..];
+            } else {
+                result.hostname = remaining;
+            }
+        } else {
+            result.hostname = remaining;
+        }
+    } else {
+        // Regular hostname, find last colon for port
+        if (std.mem.lastIndexOf(u8, remaining, ":")) |colon_pos| {
+            result.hostname = remaining[0..colon_pos];
+            result.port = remaining[colon_pos + 1 ..];
+        } else {
+            result.hostname = remaining;
+        }
+    }
+
+    return result;
+}
+
 /// Parse input to extract URL parts
 fn parseInput(
     allocator: Allocator,
@@ -346,62 +438,52 @@ fn parseInput(
 ) MatchError!URLParts {
     switch (input) {
         .string => |s| {
-            // Use the constructor string parser to extract URL components
-            // This gives us a URL-like structure without needing the full URL parser
-            const parsed = constructor_string_parser.parse(allocator, s) catch {
-                return MatchError.InvalidURL;
-            };
-
-            // Handle base URL by merging components
-            const parsed_protocol = parsed.protocol orelse "";
-            const parsed_hostname = parsed.hostname orelse "";
-            const parsed_port = parsed.port orelse "";
-            const pathname = parsed.pathname orelse "";
-            const search = parsed.search orelse "";
-            const hash = parsed.hash orelse "";
-            const username = parsed.username orelse "";
-            const password = parsed.password orelse "";
+            // Parse URL string into components using simple URL decomposition
+            // This handles actual URLs (not patterns), e.g., "https://user:pass@example.com:8080/path?query#hash"
+            const parsed = parseURLComponents(s);
 
             // If we have a base URL and the input is relative, merge them
-            var protocol = parsed_protocol;
-            var hostname = parsed_hostname;
-            var port = parsed_port;
+            var protocol = parsed.protocol;
+            var hostname = parsed.hostname;
+            var port = parsed.port;
 
             if (base_url_str) |base| {
                 if (protocol.len == 0) {
-                    const base_parsed = constructor_string_parser.parse(allocator, base) catch {
-                        return MatchError.InvalidURL;
-                    };
-                    protocol = base_parsed.protocol orelse "";
+                    const base_parsed = parseURLComponents(base);
+                    protocol = base_parsed.protocol;
                     if (hostname.len == 0) {
-                        hostname = base_parsed.hostname orelse "";
-                        port = base_parsed.port orelse "";
+                        hostname = base_parsed.hostname;
+                        port = base_parsed.port;
                     }
                 }
             }
 
+            _ = allocator;
             return URLParts{
                 .protocol = protocol,
-                .username = username,
-                .password = password,
+                .username = parsed.username,
+                .password = parsed.password,
                 .hostname = hostname,
                 .port = port,
-                .pathname = pathname,
-                .search = search,
-                .hash = hash,
+                .pathname = parsed.pathname,
+                .search = parsed.search,
+                .hash = parsed.hash,
                 ._allocator = null,
                 ._owned_slices = .{},
             };
         },
         .init => |init| {
             // Use provided component values directly
+            // For special schemes, pathname defaults to "/" if not provided
+            const protocol = init.protocol orelse "";
+            const pathname_default: []const u8 = if (isSpecialScheme(protocol)) "/" else "";
             return URLParts{
-                .protocol = init.protocol orelse "",
+                .protocol = protocol,
                 .username = init.username orelse "",
                 .password = init.password orelse "",
                 .hostname = init.hostname orelse "",
                 .port = init.port orelse "",
-                .pathname = init.pathname orelse "",
+                .pathname = init.pathname orelse pathname_default,
                 .search = init.search orelse "",
                 .hash = init.hash orelse "",
                 ._allocator = null,
@@ -590,6 +672,17 @@ fn isIdentChar(c: u8) bool {
         (c >= 'A' and c <= 'Z') or
         (c >= '0' and c <= '9') or
         c == '_' or c == '$';
+}
+
+/// Check if a scheme is a special scheme (has default port)
+/// Per URL spec: https, http, ws, wss, ftp, file
+fn isSpecialScheme(scheme: []const u8) bool {
+    return std.mem.eql(u8, scheme, "https") or
+        std.mem.eql(u8, scheme, "http") or
+        std.mem.eql(u8, scheme, "ws") or
+        std.mem.eql(u8, scheme, "wss") or
+        std.mem.eql(u8, scheme, "ftp") or
+        std.mem.eql(u8, scheme, "file");
 }
 
 // ============================================================================

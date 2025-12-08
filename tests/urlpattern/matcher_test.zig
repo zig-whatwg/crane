@@ -235,8 +235,9 @@ test "exec - returns result with inputs array" {
 test "exec - returns all 8 component results" {
     const allocator = testing.allocator;
 
+    // Use escaped colon to treat credentials as literal username:password
     var pattern = try URLPattern.create(allocator, .{
-        .string = "https://user:pass@example.com:8080/path?query=1#section",
+        .string = "https://user\\:pass@example.com:8080/path?query=1#section",
     }, .{});
     defer pattern.deinit(allocator);
 
@@ -365,10 +366,12 @@ test "exec - with baseURL" {
 test "execInput - with init input" {
     const allocator = testing.allocator;
 
+    // Pattern with wildcard pathname to match any path
     var pattern = try URLPattern.create(allocator, .{
         .init = .{
             .protocol = "https",
             .hostname = "example.com",
+            .pathname = "*", // Wildcard to match any pathname
         },
     }, .{});
     defer pattern.deinit(allocator);
