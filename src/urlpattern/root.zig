@@ -50,6 +50,8 @@ pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const TokenizePolicy = tokenizer.TokenizePolicy;
+pub const TokenizeResult = tokenizer.TokenizeResult;
+pub const tokenize = tokenizer.tokenize;
 
 // Re-export parser types
 pub const Part = parser.Part;
@@ -57,6 +59,9 @@ pub const PartType = parser.PartType;
 pub const PartModifier = parser.PartModifier;
 pub const PatternParser = parser.PatternParser;
 pub const Options = parser.Options;
+pub const ParseResult = parser.ParseResult;
+pub const parsePatternString = parser.parsePatternString;
+pub const identityEncoding = parser.identityEncoding;
 
 // Re-export canonicalization functions
 pub const canonicalizeProtocol = canonicalize.canonicalizeProtocol;

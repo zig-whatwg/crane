@@ -120,10 +120,10 @@ pub const pathname_options = Options{
 };
 
 /// Encoding callback type
-pub const EncodingCallback = *const fn (allocator: Allocator, input: []const u8) error{InvalidInput}![]u8;
+pub const EncodingCallback = *const fn (allocator: Allocator, input: []const u8) Allocator.Error![]u8;
 
 /// Identity encoding (no transformation)
-pub fn identityEncoding(allocator: Allocator, input: []const u8) error{InvalidInput}![]u8 {
+pub fn identityEncoding(allocator: Allocator, input: []const u8) Allocator.Error![]u8 {
     const result = try allocator.alloc(u8, input.len);
     @memcpy(result, input);
     return result;
@@ -140,9 +140,9 @@ pub const PatternParser = struct {
     /// Segment wildcard regexp
     segment_wildcard_regexp: []const u8,
     /// Result part list
-    part_list: std.ArrayList(Part),
+    part_list: std.ArrayListUnmanaged(Part),
     /// Pending fixed value buffer
-    pending_fixed_value: std.ArrayList(u8),
+    pending_fixed_value: std.ArrayListUnmanaged(u8),
     /// Current token index
     index: usize,
     /// Next numeric name counter
@@ -167,8 +167,8 @@ pub const PatternParser = struct {
             .encoding_callback = encoding_callback,
             .options = options,
             .segment_wildcard_regexp = generateSegmentWildcardRegexp(options),
-            .part_list = std.ArrayList(Part).init(allocator),
-            .pending_fixed_value = std.ArrayList(u8).init(allocator),
+            .part_list = .{},
+            .pending_fixed_value = .{},
             .index = 0,
             .next_numeric_name = 0,
             .allocator = allocator,
@@ -180,8 +180,8 @@ pub const PatternParser = struct {
         for (self.part_list.items) |*part| {
             part.deinit();
         }
-        self.part_list.deinit();
-        self.pending_fixed_value.deinit();
+        self.part_list.deinit(self.allocator);
+        self.pending_fixed_value.deinit(self.allocator);
     }
 
     /// Generate segment wildcard regexp based on options
@@ -238,17 +238,17 @@ pub const PatternParser = struct {
 
     /// Consume text (char and escaped_char tokens)
     fn consumeText(self: *Self) ![]const u8 {
-        var result = std.ArrayList(u8).init(self.allocator);
-        errdefer result.deinit();
+        var result: std.ArrayListUnmanaged(u8) = .{};
+        errdefer result.deinit(self.allocator);
 
         while (true) {
             const token = self.tryConsumeToken(.char) orelse
                 self.tryConsumeToken(.escaped_char) orelse break;
 
-            try result.appendSlice(token.value);
+            try result.appendSlice(self.allocator, token.value);
         }
 
-        return result.toOwnedSlice();
+        return result.toOwnedSlice(self.allocator);
     }
 
     /// Maybe add a part from the pending fixed value
@@ -263,7 +263,7 @@ pub const PatternParser = struct {
         part._allocator = self.allocator;
         part._owned_value = encoded;
 
-        try self.part_list.append(part);
+        try self.part_list.append(self.allocator, part);
 
         self.pending_fixed_value.clearRetainingCapacity();
     }
@@ -301,7 +301,7 @@ pub const PatternParser = struct {
 
         // Handle {foo} grouping with no matching group
         if (name_token == null and regexp_or_wildcard_token == null and modifier == .none) {
-            try self.pending_fixed_value.appendSlice(prefix);
+            try self.pending_fixed_value.appendSlice(self.allocator, prefix);
             return;
         }
 
@@ -320,7 +320,7 @@ pub const PatternParser = struct {
             part._allocator = self.allocator;
             part._owned_value = encoded_prefix;
 
-            try self.part_list.append(part);
+            try self.part_list.append(self.allocator, part);
             return;
         }
 
@@ -400,7 +400,7 @@ pub const PatternParser = struct {
             ._owned_suffix = encoded_suffix,
         };
 
-        try self.part_list.append(part);
+        try self.part_list.append(self.allocator, part);
     }
 
     /// Parse the token list into parts
@@ -420,7 +420,7 @@ pub const PatternParser = struct {
 
                 // Check if prefix should be grouped with matching group or pending fixed value
                 if (prefix.len > 0 and !std.mem.eql(u8, prefix, self.options.prefix_code_point)) {
-                    try self.pending_fixed_value.appendSlice(prefix);
+                    try self.pending_fixed_value.appendSlice(self.allocator, prefix);
                     prefix = "";
                 }
 
@@ -438,7 +438,7 @@ pub const PatternParser = struct {
             }
 
             if (fixed_token) |ft| {
-                try self.pending_fixed_value.appendSlice(ft.value);
+                try self.pending_fixed_value.appendSlice(self.allocator, ft.value);
                 continue;
             }
 
@@ -470,31 +470,50 @@ pub const PatternParser = struct {
     }
 };
 
+/// Result of pattern parsing - owns the part list
+pub const ParseResult = struct {
+    parts: []Part,
+    allocator: Allocator,
+
+    pub fn deinit(self: *ParseResult) void {
+        for (self.parts) |*part| {
+            part.deinit();
+        }
+        self.allocator.free(self.parts);
+    }
+
+    /// Get parts as a slice
+    pub fn items(self: *const ParseResult) []const Part {
+        return self.parts;
+    }
+};
+
 /// Parse a pattern string into parts
 pub fn parsePatternString(
     allocator: Allocator,
     input: []const u8,
     options: Options,
     encoding_callback: EncodingCallback,
-) !std.ArrayList(Part) {
+) !ParseResult {
     // Tokenize the input
     var tokens = try tokenizer.tokenize(allocator, input, .strict);
     defer tokens.deinit();
 
     // Parse the tokens
-    var parser = PatternParser.init(allocator, tokens.items, options, encoding_callback);
+    var pat_parser = PatternParser.init(allocator, tokens.tokens, options, encoding_callback);
+    errdefer pat_parser.deinit();
 
-    parser.parse() catch |err| {
-        parser.deinit();
-        return err;
-    };
+    try pat_parser.parse();
 
     // Transfer ownership of part list
-    const result = parser.part_list;
-    parser.part_list = std.ArrayList(Part).init(allocator);
-    parser.deinit();
+    const parts = try pat_parser.part_list.toOwnedSlice(allocator);
+    pat_parser.part_list = .{};
+    pat_parser.deinit();
 
-    return result;
+    return ParseResult{
+        .parts = parts,
+        .allocator = allocator,
+    };
 }
 
 // Tests
@@ -502,121 +521,81 @@ pub fn parsePatternString(
 test "parse - simple string" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, "hello", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartType.fixed_text, parts.items[0].type);
-    try std.testing.expectEqualStrings("hello", parts.items[0].value);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartType.fixed_text, parts.parts[0].type);
+    try std.testing.expectEqualStrings("hello", parts.parts[0].value);
 }
 
 test "parse - named group" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, ":foo", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartType.segment_wildcard, parts.items[0].type);
-    try std.testing.expectEqualStrings("foo", parts.items[0].name);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartType.segment_wildcard, parts.parts[0].type);
+    try std.testing.expectEqualStrings("foo", parts.parts[0].name);
 }
 
 test "parse - named group with regexp" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, ":id(\\d+)", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartType.regexp, parts.items[0].type);
-    try std.testing.expectEqualStrings("id", parts.items[0].name);
-    try std.testing.expectEqualStrings("\\d+", parts.items[0].value);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartType.regexp, parts.parts[0].type);
+    try std.testing.expectEqualStrings("id", parts.parts[0].name);
+    try std.testing.expectEqualStrings("\\d+", parts.parts[0].value);
 }
 
 test "parse - asterisk wildcard" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, "*", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartType.full_wildcard, parts.items[0].type);
-    try std.testing.expectEqualStrings("0", parts.items[0].name);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartType.full_wildcard, parts.parts[0].type);
+    try std.testing.expectEqualStrings("0", parts.parts[0].name);
 }
 
 test "parse - optional modifier" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, ":foo?", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartModifier.optional, parts.items[0].modifier);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartModifier.optional, parts.parts[0].modifier);
 }
 
 test "parse - path pattern with prefix" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, "/:category", pathname_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqualStrings("/", parts.items[0].prefix);
-    try std.testing.expectEqualStrings("category", parts.items[0].name);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqualStrings("/", parts.parts[0].prefix);
+    try std.testing.expectEqualStrings("category", parts.parts[0].name);
 }
 
 test "parse - grouped pattern" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, "{:foo}?", default_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parts.items.len);
-    try std.testing.expectEqual(PartModifier.optional, parts.items[0].modifier);
-    try std.testing.expectEqualStrings("foo", parts.items[0].name);
+    try std.testing.expectEqual(@as(usize, 1), parts.parts.len);
+    try std.testing.expectEqual(PartModifier.optional, parts.parts[0].modifier);
+    try std.testing.expectEqualStrings("foo", parts.parts[0].name);
 }
 
 test "parse - complex pathname" {
     const allocator = std.testing.allocator;
     var parts = try parsePatternString(allocator, "/products/:id/*", pathname_options, identityEncoding);
-    defer {
-        for (parts.items) |*part| {
-            part.deinit();
-        }
-        parts.deinit();
-    }
+    defer parts.deinit();
 
     // /products + /:id + /* = 3 parts (fixed text, named group, wildcard)
     // But the way parsing works: "/products" is fixed, "/:id" has / prefix, "/*" has / prefix
-    try std.testing.expect(parts.items.len >= 2);
+    try std.testing.expect(parts.parts.len >= 2);
 }
 
 test "parse - duplicate name error" {

@@ -20,16 +20,16 @@ pub const RegexGenerationResult = struct {
     /// The generated regular expression string
     regex: []u8,
     /// List of group names in order
-    name_list: std.ArrayList([]u8),
+    name_list: [][]u8,
     /// Allocator used
     allocator: Allocator,
 
     pub fn deinit(self: *RegexGenerationResult) void {
         self.allocator.free(self.regex);
-        for (self.name_list.items) |name| {
+        for (self.name_list) |name| {
             self.allocator.free(name);
         }
-        self.name_list.deinit();
+        self.allocator.free(self.name_list);
     }
 };
 
@@ -86,19 +86,19 @@ fn convertModifierToString(modifier: PartModifier) []const u8 {
 
 /// Generate the segment wildcard regexp for given options
 pub fn generateSegmentWildcardRegexp(allocator: Allocator, options: Options) ![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result: std.ArrayListUnmanaged(u8) = .{};
+    errdefer result.deinit(allocator);
 
-    try result.appendSlice("[^");
+    try result.appendSlice(allocator, "[^");
 
     // Escape and add delimiter
     const escaped_delimiter = try escapeRegexpString(allocator, options.delimiter_code_point);
     defer allocator.free(escaped_delimiter);
-    try result.appendSlice(escaped_delimiter);
+    try result.appendSlice(allocator, escaped_delimiter);
 
-    try result.appendSlice("]+?");
+    try result.appendSlice(allocator, "]+?");
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Full wildcard regexp value
@@ -113,19 +113,19 @@ pub fn generateRegexAndNameList(
     part_list: []const Part,
     options: Options,
 ) !RegexGenerationResult {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result: std.ArrayListUnmanaged(u8) = .{};
+    errdefer result.deinit(allocator);
 
-    var name_list = std.ArrayList([]u8).init(allocator);
+    var name_list: std.ArrayListUnmanaged([]u8) = .{};
     errdefer {
         for (name_list.items) |name| {
             allocator.free(name);
         }
-        name_list.deinit();
+        name_list.deinit(allocator);
     }
 
     // Start anchor
-    try result.appendSlice("^");
+    try result.appendSlice(allocator, "^");
 
     // Generate segment wildcard regexp for this options set
     const segment_wildcard = try generateSegmentWildcardRegexp(allocator, options);
@@ -138,15 +138,15 @@ pub fn generateRegexAndNameList(
                 // Simple case: just escape and append
                 const escaped = try escapeRegexpString(allocator, part.value);
                 defer allocator.free(escaped);
-                try result.appendSlice(escaped);
+                try result.appendSlice(allocator, escaped);
             } else {
                 // Fixed text with modifier: (?:<escaped value>)<modifier>
-                try result.appendSlice("(?:");
+                try result.appendSlice(allocator, "(?:");
                 const escaped = try escapeRegexpString(allocator, part.value);
                 defer allocator.free(escaped);
-                try result.appendSlice(escaped);
-                try result.append(')');
-                try result.appendSlice(convertModifierToString(part.modifier));
+                try result.appendSlice(allocator, escaped);
+                try result.append(allocator, ')');
+                try result.appendSlice(allocator, convertModifierToString(part.modifier));
             }
             continue;
         }
@@ -154,7 +154,7 @@ pub fn generateRegexAndNameList(
         // Matching group part - add name to list
         const name_copy = try allocator.alloc(u8, part.name.len);
         @memcpy(name_copy, part.name);
-        try name_list.append(name_copy);
+        try name_list.append(allocator, name_copy);
 
         // Get the regexp value for this part
         var regexp_value: []const u8 = part.value;
@@ -171,21 +171,21 @@ pub fn generateRegexAndNameList(
             // No prefix or suffix
             if (part.modifier == .none or part.modifier == .optional) {
                 // Simple case: (?P<name><regexp>)<modifier>
-                try result.appendSlice("(?P<");
-                try result.appendSlice(part.name);
-                try result.appendSlice(">");
-                try result.appendSlice(regexp_value);
-                try result.append(')');
-                try result.appendSlice(convertModifierToString(part.modifier));
+                try result.appendSlice(allocator, "(?P<");
+                try result.appendSlice(allocator, part.name);
+                try result.appendSlice(allocator, ">");
+                try result.appendSlice(allocator, regexp_value);
+                try result.append(allocator, ')');
+                try result.appendSlice(allocator, convertModifierToString(part.modifier));
             } else {
                 // Repeating modifier: (?P<name>(?:<regexp>)<modifier>)
-                try result.appendSlice("(?P<");
-                try result.appendSlice(part.name);
-                try result.appendSlice(">(?:");
-                try result.appendSlice(regexp_value);
-                try result.append(')');
-                try result.appendSlice(convertModifierToString(part.modifier));
-                try result.append(')');
+                try result.appendSlice(allocator, "(?P<");
+                try result.appendSlice(allocator, part.name);
+                try result.appendSlice(allocator, ">(?:");
+                try result.appendSlice(allocator, regexp_value);
+                try result.append(allocator, ')');
+                try result.appendSlice(allocator, convertModifierToString(part.modifier));
+                try result.append(allocator, ')');
             }
             continue;
         }
@@ -199,47 +199,47 @@ pub fn generateRegexAndNameList(
         if (part.modifier == .none or part.modifier == .optional) {
             // Non-repeating with prefix/suffix:
             // (?:<prefix>(?P<name><regexp>)<suffix>)<modifier>
-            try result.appendSlice("(?:");
-            try result.appendSlice(escaped_prefix);
-            try result.appendSlice("(?P<");
-            try result.appendSlice(part.name);
-            try result.appendSlice(">");
-            try result.appendSlice(regexp_value);
-            try result.append(')');
-            try result.appendSlice(escaped_suffix);
-            try result.append(')');
-            try result.appendSlice(convertModifierToString(part.modifier));
+            try result.appendSlice(allocator, "(?:");
+            try result.appendSlice(allocator, escaped_prefix);
+            try result.appendSlice(allocator, "(?P<");
+            try result.appendSlice(allocator, part.name);
+            try result.appendSlice(allocator, ">");
+            try result.appendSlice(allocator, regexp_value);
+            try result.append(allocator, ')');
+            try result.appendSlice(allocator, escaped_suffix);
+            try result.append(allocator, ')');
+            try result.appendSlice(allocator, convertModifierToString(part.modifier));
             continue;
         }
 
         // Repeating with prefix/suffix - complex case
         // (?:<prefix>(?P<name>(?:<regexp>)(?:<suffix><prefix>(?:<regexp>))*)<suffix>)?
-        try result.appendSlice("(?:");
-        try result.appendSlice(escaped_prefix);
-        try result.appendSlice("(?P<");
-        try result.appendSlice(part.name);
-        try result.appendSlice(">(?:");
-        try result.appendSlice(regexp_value);
-        try result.appendSlice(")(?:");
-        try result.appendSlice(escaped_suffix);
-        try result.appendSlice(escaped_prefix);
-        try result.appendSlice("(?:");
-        try result.appendSlice(regexp_value);
-        try result.appendSlice("))*)");
-        try result.appendSlice(escaped_suffix);
-        try result.append(')');
+        try result.appendSlice(allocator, "(?:");
+        try result.appendSlice(allocator, escaped_prefix);
+        try result.appendSlice(allocator, "(?P<");
+        try result.appendSlice(allocator, part.name);
+        try result.appendSlice(allocator, ">(?:");
+        try result.appendSlice(allocator, regexp_value);
+        try result.appendSlice(allocator, ")(?:");
+        try result.appendSlice(allocator, escaped_suffix);
+        try result.appendSlice(allocator, escaped_prefix);
+        try result.appendSlice(allocator, "(?:");
+        try result.appendSlice(allocator, regexp_value);
+        try result.appendSlice(allocator, "))*)");
+        try result.appendSlice(allocator, escaped_suffix);
+        try result.append(allocator, ')');
 
         if (part.modifier == .zero_or_more) {
-            try result.append('?');
+            try result.append(allocator, '?');
         }
     }
 
     // End anchor
-    try result.appendSlice("$");
+    try result.appendSlice(allocator, "$");
 
     return RegexGenerationResult{
-        .regex = try result.toOwnedSlice(),
-        .name_list = name_list,
+        .regex = try result.toOwnedSlice(allocator),
+        .name_list = try name_list.toOwnedSlice(allocator),
         .allocator = allocator,
     };
 }
@@ -284,47 +284,47 @@ test "generateSegmentWildcardRegexp - hostname" {
 test "generateRegexAndNameList - fixed text" {
     const allocator = std.testing.allocator;
 
-    var parts = std.ArrayList(Part).init(allocator);
-    defer parts.deinit();
+    var parts: std.ArrayListUnmanaged(Part) = .{};
+    defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "hello", .none);
-    try parts.append(part);
+    try parts.append(allocator, part);
 
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.default_options);
     defer gen_result.deinit();
 
     try std.testing.expectEqualStrings("^hello$", gen_result.regex);
-    try std.testing.expectEqual(@as(usize, 0), gen_result.name_list.items.len);
+    try std.testing.expectEqual(@as(usize, 0), gen_result.name_list.len);
 }
 
 test "generateRegexAndNameList - named group" {
     const allocator = std.testing.allocator;
 
-    var parts = std.ArrayList(Part).init(allocator);
-    defer parts.deinit();
+    var parts: std.ArrayListUnmanaged(Part) = .{};
+    defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .none);
     part.name = "foo";
-    try parts.append(part);
+    try parts.append(allocator, part);
 
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.default_options);
     defer gen_result.deinit();
 
     // Should have named group
     try std.testing.expect(std.mem.indexOf(u8, gen_result.regex, "(?P<foo>") != null);
-    try std.testing.expectEqual(@as(usize, 1), gen_result.name_list.items.len);
-    try std.testing.expectEqualStrings("foo", gen_result.name_list.items[0]);
+    try std.testing.expectEqual(@as(usize, 1), gen_result.name_list.len);
+    try std.testing.expectEqualStrings("foo", gen_result.name_list[0]);
 }
 
 test "generateRegexAndNameList - full wildcard" {
     const allocator = std.testing.allocator;
 
-    var parts = std.ArrayList(Part).init(allocator);
-    defer parts.deinit();
+    var parts: std.ArrayListUnmanaged(Part) = .{};
+    defer parts.deinit(allocator);
 
     var part = Part.init(.full_wildcard, "", .none);
     part.name = "0";
-    try parts.append(part);
+    try parts.append(allocator, part);
 
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.default_options);
     defer gen_result.deinit();
@@ -336,12 +336,12 @@ test "generateRegexAndNameList - full wildcard" {
 test "generateRegexAndNameList - optional modifier" {
     const allocator = std.testing.allocator;
 
-    var parts = std.ArrayList(Part).init(allocator);
-    defer parts.deinit();
+    var parts: std.ArrayListUnmanaged(Part) = .{};
+    defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .optional);
     part.name = "id";
-    try parts.append(part);
+    try parts.append(allocator, part);
 
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.default_options);
     defer gen_result.deinit();
@@ -353,13 +353,13 @@ test "generateRegexAndNameList - optional modifier" {
 test "generateRegexAndNameList - with prefix" {
     const allocator = std.testing.allocator;
 
-    var parts = std.ArrayList(Part).init(allocator);
-    defer parts.deinit();
+    var parts: std.ArrayListUnmanaged(Part) = .{};
+    defer parts.deinit(allocator);
 
     var part = Part.init(.segment_wildcard, "", .none);
     part.name = "id";
     part.prefix = "/";
-    try parts.append(part);
+    try parts.append(allocator, part);
 
     var gen_result = try generateRegexAndNameList(allocator, parts.items, parser.pathname_options);
     defer gen_result.deinit();

@@ -454,7 +454,7 @@ test "tokenize - complex pattern" {
     defer tokens.deinit();
 
     // / p r o d u c t s / : id (\\d+) ?
-    try std.testing.expect(tokens.items.len > 0);
-    try std.testing.expectEqual(TokenType.char, tokens.items[0].type);
-    try std.testing.expectEqual(TokenType.end, tokens.items[tokens.items.len - 1].type);
+    try std.testing.expect(tokens.tokens.len > 0);
+    try std.testing.expectEqual(TokenType.char, tokens.tokens[0].type);
+    try std.testing.expectEqual(TokenType.end, tokens.tokens[tokens.tokens.len - 1].type);
 }

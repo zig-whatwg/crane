@@ -85,8 +85,10 @@ pub const URLPatternInit = struct {
 pub const ConstructorStringParser = struct {
     /// Input pattern string
     input: []const u8,
-    /// Token list from tokenizer
-    token_list: std.ArrayList(Token),
+    /// Token list from tokenizer (slice into owned array)
+    token_list: []const Token,
+    /// Owned token array
+    _owned_tokens: []Token,
     /// Result URLPatternInit
     result: URLPatternInit,
     /// Start position of current component
@@ -115,9 +117,12 @@ pub const ConstructorStringParser = struct {
         errdefer tok.deinit();
         try tok.tokenize();
 
+        const tokens = try tok.toOwnedSlice();
+
         return Self{
             .input = input,
-            .token_list = tok.token_list,
+            .token_list = tokens,
+            ._owned_tokens = tokens,
             .result = URLPatternInit{},
             .component_start = 0,
             .token_index = 0,
@@ -132,7 +137,7 @@ pub const ConstructorStringParser = struct {
 
     /// Free resources
     pub fn deinit(self: *Self) void {
-        self.token_list.deinit();
+        self.allocator.free(self._owned_tokens);
     }
 
     /// Parse the constructor string and return URLPatternInit
@@ -146,11 +151,11 @@ pub const ConstructorStringParser = struct {
 
     /// Run the parser state machine
     fn run(self: *Self) !void {
-        while (self.token_index < self.token_list.items.len) {
+        while (self.token_index < self.token_list.len) {
             // Reset token increment at top of loop
             self.token_increment = 1;
 
-            const current_token = self.token_list.items[self.token_index];
+            const current_token = self.token_list[self.token_index];
 
             // Handle end token
             if (current_token.type == .end) {
@@ -379,12 +384,12 @@ pub const ConstructorStringParser = struct {
     // ========================================================================
 
     fn getSafeToken(self: *Self, index: usize) Token {
-        if (index < self.token_list.items.len) {
-            return self.token_list.items[index];
+        if (index < self.token_list.len) {
+            return self.token_list[index];
         }
         // Return end token
-        if (self.token_list.items.len > 0) {
-            return self.token_list.items[self.token_list.items.len - 1];
+        if (self.token_list.len > 0) {
+            return self.token_list[self.token_list.len - 1];
         }
         return Token{
             .type = .end,
@@ -480,11 +485,11 @@ pub const ConstructorStringParser = struct {
     // ========================================================================
 
     fn makeComponentString(self: *Self) []const u8 {
-        if (self.token_index >= self.token_list.items.len) {
+        if (self.token_index >= self.token_list.len) {
             return "";
         }
 
-        const current_token = self.token_list.items[self.token_index];
+        const current_token = self.token_list[self.token_index];
         const component_start_token = self.getSafeToken(self.component_start);
 
         const start_index = component_start_token.index;

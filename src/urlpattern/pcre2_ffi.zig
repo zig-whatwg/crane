@@ -114,7 +114,7 @@ pub const Regex = struct {
     /// Stored pattern copy
     _pattern_copy: []u8,
     /// Named group names in order
-    group_names: std.ArrayList([]const u8),
+    group_names: std.ArrayListUnmanaged([]const u8),
     /// Number of capture groups
     capture_count: usize,
 
@@ -131,7 +131,7 @@ pub const Regex = struct {
             .allocator = allocator,
             .pattern = undefined,
             ._pattern_copy = undefined,
-            .group_names = std.ArrayList([]const u8).init(allocator),
+            .group_names = .{},
             .capture_count = 0,
         };
 
@@ -188,7 +188,7 @@ pub const Regex = struct {
                     // Store the group name
                     const name_copy = try self.allocator.alloc(u8, name_len);
                     @memcpy(name_copy, pattern[name_start..][0..name_len]);
-                    try self.group_names.append(name_copy);
+                    try self.group_names.append(self.allocator, name_copy);
                     group_index += 1;
                     continue;
                 }
@@ -367,7 +367,7 @@ pub const Regex = struct {
         for (self.group_names.items) |name| {
             self.allocator.free(name);
         }
-        self.group_names.deinit();
+        self.group_names.deinit(self.allocator);
 
         // Free pattern copy
         self.allocator.free(self._pattern_copy);
