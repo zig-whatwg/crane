@@ -19,6 +19,11 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const infra = @import("infra");
 
+// Import V8 pointer tagging and FFI for Uint8Array access
+const v8 = @import("v8");
+const pointer_tag = v8.pointer_tag;
+const ffi = v8.ffi;
+
 const TextEncoder = interfaces.TextEncoder;
 
 pub const State = TextEncoder.State;
@@ -323,8 +328,8 @@ fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !*
     return @ptrCast(desc);
 }
 
-/// Extract the byte buffer from a Uint8Array opaque pointer
-/// The V8 bindings should have passed a pointer to a buffer descriptor
+/// Extract the byte buffer from a Uint8Array opaque pointer (tagged V8 Value)
+/// The V8 bindings pass a tagged pointer to the Uint8Array V8 Value
 fn extractUint8ArrayBuffer(source: *const anyopaque) []u8 {
     // Check for null-like pointer
     const source_addr = @intFromPtr(source);
@@ -332,17 +337,42 @@ fn extractUint8ArrayBuffer(source: *const anyopaque) []u8 {
         return &[_]u8{};
     }
 
-    // Interpret as a Uint8Array descriptor
-    // This assumes V8 bindings pass a compatible struct
-    const Uint8ArrayWriteDescriptor = extern struct {
-        data: [*]u8,
-        len: usize,
-    };
+    // Untag the pointer to get the actual V8 Value
+    const untagged = pointer_tag.untagPointer(source);
 
-    const desc: *const Uint8ArrayWriteDescriptor = @ptrCast(@alignCast(source));
-    if (desc.len == 0) {
+    // Check if this is a runtime instance (shouldn't be for Uint8Array, but handle gracefully)
+    if (untagged.tag == .runtime_instance) {
         return &[_]u8{};
     }
 
-    return desc.data[0..desc.len];
+    // Cast to V8 Value pointer
+    const v8_value: *ffi.Value = @ptrCast(untagged.ptr);
+
+    // Verify it's actually a TypedArray
+    if (!ffi.v8_Value_IsTypedArray(v8_value)) {
+        return &[_]u8{};
+    }
+
+    // Get the byte length of the TypedArray
+    const byte_length = ffi.v8_TypedArray_ByteLength(v8_value);
+    if (byte_length == 0) {
+        return &[_]u8{};
+    }
+
+    // Get the underlying ArrayBuffer
+    const array_buffer = ffi.v8_TypedArray_Buffer(v8_value) orelse {
+        return &[_]u8{};
+    };
+
+    // Get the raw data pointer from the ArrayBuffer
+    const data_ptr = ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
+        return &[_]u8{};
+    };
+
+    // Get the byte offset within the ArrayBuffer
+    const byte_offset = ffi.v8_TypedArray_ByteOffset(v8_value);
+
+    // Return a slice pointing to the correct offset in the buffer
+    const data: [*]u8 = @ptrCast(data_ptr);
+    return data[byte_offset .. byte_offset + byte_length];
 }

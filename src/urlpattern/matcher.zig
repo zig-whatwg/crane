@@ -152,6 +152,7 @@ pub const URLPatternInput = union(enum) {
         pathname: ?[]const u8 = null,
         search: ?[]const u8 = null,
         hash: ?[]const u8 = null,
+        baseURL: ?[]const u8 = null,
     },
 };
 
@@ -473,7 +474,35 @@ fn parseInput(
             };
         },
         .init => |init| {
-            // Use provided component values directly
+            // If baseURL is provided, parse it and use its components as defaults
+            // Spec: For exec(), the input's baseURL (if any) provides default values
+            const effective_base = init.baseURL orelse base_url_str;
+            if (effective_base) |base| {
+                const base_parsed = parseURLComponents(base);
+
+                // Use provided values or fall back to base URL components
+                const protocol = init.protocol orelse base_parsed.protocol;
+                const hostname = init.hostname orelse base_parsed.hostname;
+                const port = init.port orelse base_parsed.port;
+                const pathname_default: []const u8 = if (isSpecialScheme(protocol)) "/" else "";
+                // For pathname, use init value, then base value (if not empty), then default
+                const pathname = init.pathname orelse (if (base_parsed.pathname.len > 0) base_parsed.pathname else pathname_default);
+
+                return URLParts{
+                    .protocol = protocol,
+                    .username = init.username orelse base_parsed.username,
+                    .password = init.password orelse base_parsed.password,
+                    .hostname = hostname,
+                    .port = port,
+                    .pathname = pathname,
+                    .search = init.search orelse base_parsed.search,
+                    .hash = init.hash orelse base_parsed.hash,
+                    ._allocator = null,
+                    ._owned_slices = .{},
+                };
+            }
+
+            // No base URL - use provided component values directly
             // For special schemes, pathname defaults to "/" if not provided
             const protocol = init.protocol orelse "";
             const pathname_default: []const u8 = if (isSpecialScheme(protocol)) "/" else "";
@@ -856,4 +885,67 @@ test "URLPatternComponentResult - groups access" {
 
     // Non-existent should be null
     try std.testing.expect(result.get("nonexistent") == null);
+}
+
+test "testMatchInput - pathname only pattern matches pathname only input" {
+    const allocator = std.testing.allocator;
+
+    // Create pattern with just pathname (like {pathname: "/foo/bar"})
+    var pattern = try URLPattern.create(allocator, .{
+        .init = .{
+            .pathname = "/foo/bar",
+        },
+    }, .{});
+    defer pattern.deinit(allocator);
+
+    // Verify pattern components (should all be wildcards except pathname)
+    std.debug.print("\nPattern components:\n", .{});
+    std.debug.print("  protocol: '{s}' (has_regex={})\n", .{ pattern.protocol.pattern_string, pattern.protocol.regex != null });
+    std.debug.print("  hostname: '{s}' (has_regex={})\n", .{ pattern.hostname.pattern_string, pattern.hostname.regex != null });
+    std.debug.print("  port: '{s}' (has_regex={})\n", .{ pattern.port.pattern_string, pattern.port.regex != null });
+    std.debug.print("  pathname: '{s}' (has_regex={})\n", .{ pattern.pathname.pattern_string, pattern.pathname.regex != null });
+
+    // Test with init input having just pathname
+    const matches = testMatchInput(allocator, &pattern, .{
+        .init = .{
+            .pathname = "/foo/bar",
+        },
+    }, null);
+
+    std.debug.print("Match result: {}\n", .{matches});
+    try std.testing.expect(matches);
+}
+
+test "exec - pathname only pattern matches pathname only input and returns result" {
+    const allocator = std.testing.allocator;
+
+    // Create pattern with just pathname (like {pathname: "/foo/bar"})
+    var pattern = try URLPattern.create(allocator, .{
+        .init = .{
+            .pathname = "/foo/bar",
+        },
+    }, .{});
+    defer pattern.deinit(allocator);
+
+    // Call exec with init input having just pathname
+    if (try execInput(allocator, &pattern, .{
+        .init = .{
+            .pathname = "/foo/bar",
+        },
+    }, null)) |r| {
+        var result = r;
+        defer result.deinit();
+
+        std.debug.print("\nExec result:\n", .{});
+        std.debug.print("  inputs.len: {}\n", .{result.inputs.len});
+        std.debug.print("  protocol.input: '{s}'\n", .{result.protocol.input});
+        std.debug.print("  hostname.input: '{s}'\n", .{result.hostname.input});
+        std.debug.print("  pathname.input: '{s}'\n", .{result.pathname.input});
+
+        // Verify the result
+        try std.testing.expectEqualStrings("/foo/bar", result.pathname.input);
+    } else {
+        std.debug.print("\nExec returned null - no match!\n", .{});
+        return error.TestUnexpectedResult;
+    }
 }

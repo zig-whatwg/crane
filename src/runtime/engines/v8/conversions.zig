@@ -1405,11 +1405,53 @@ pub fn toV8Value(
         const ElemType = type_info.pointer.child;
         // Special case: []const u8 and []u8 are strings, not arrays
         if (ElemType == u8) {
+            // Handle empty strings specially - empty slice may have undefined ptr
+            if (value.len == 0) {
+                const str = v8.v8_String_Empty(isolate) orelse {
+                    return ConversionError.StringError;
+                };
+                return @ptrCast(str);
+            }
             const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse {
                 return ConversionError.StringError;
             };
             return @ptrCast(str);
         }
+
+        // Special case: Slice of structs with "key" and "value" fields => WebIDL record type
+        // Convert to JavaScript object where key becomes property name
+        const elem_type_info = @typeInfo(ElemType);
+        if (elem_type_info == .@"struct") {
+            const has_key = @hasField(ElemType, "key");
+            const has_value = @hasField(ElemType, "value");
+            const field_count = std.meta.fields(ElemType).len;
+            if (has_key and has_value and field_count == 2) {
+                // This is a record-like type - convert to object
+                const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+                for (value) |entry| {
+                    // Get key as string
+                    const key_v8 = try toV8Value(@TypeOf(entry.key), isolate, context, entry.key);
+                    // Get value - handle anyopaque as string pointer
+                    const val_v8 = blk: {
+                        const ValueType = @TypeOf(entry.value);
+                        if (ValueType == *const anyopaque or ValueType == *anyopaque) {
+                            // The value is a pointer to a string slice
+                            const str_ptr: *const []const u8 = @ptrCast(@alignCast(entry.value));
+                            const str = str_ptr.*;
+                            if (str.len == 0) {
+                                break :blk @as(*v8.Value, @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError));
+                            }
+                            break :blk @as(*v8.Value, @ptrCast(v8.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse return ConversionError.StringError));
+                        } else {
+                            break :blk try toV8Value(ValueType, isolate, context, entry.value);
+                        }
+                    };
+                    _ = v8.v8_Object_Set(obj, context, key_v8, val_v8);
+                }
+                return @ptrCast(obj);
+            }
+        }
+
         return @ptrCast(try toV8Sequence(ElemType, isolate, context, value));
     }
 
@@ -1434,41 +1476,66 @@ pub fn toV8Value(
     if (type_info == .@"enum") {
         // Get the enum field name and convert to string
         // WebIDL enums are represented as strings in JavaScript
-        const fields = std.meta.fields(T);
-        const enum_int: usize = @intFromEnum(value);
-        if (enum_int < fields.len) {
-            // Get the field name and strip leading/trailing underscores (used for reserved words)
-            var name = fields[enum_int].name;
-            // Strip leading underscore if present (e.g., "_open_" -> "open_")
-            if (name.len > 0 and name[0] == '_') {
-                name = name[1..];
+        // Use inline for to compare at comptime and get the name
+        inline for (std.meta.fields(T)) |field| {
+            if (@intFromEnum(value) == field.value) {
+                // Get the field name and strip leading/trailing underscores (used for reserved words)
+                const name = field.name;
+                var start: usize = 0;
+                var end: usize = name.len;
+                // Strip leading underscore if present (e.g., "_open_" -> "open_")
+                if (name.len > 0 and name[0] == '_') {
+                    start = 1;
+                }
+                // Strip trailing underscore if present (e.g., "open_" -> "open")
+                if (end > start and name[end - 1] == '_') {
+                    end = end - 1;
+                }
+                const str = v8.v8_String_NewFromUtf8(isolate, name.ptr + start, @intCast(end - start)) orelse {
+                    return toV8Undefined(isolate);
+                };
+                return @ptrCast(str);
             }
-            // Strip trailing underscore if present (e.g., "open_" -> "open")
-            if (name.len > 0 and name[name.len - 1] == '_') {
-                name = name[0 .. name.len - 1];
-            }
-            const str = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
-                return toV8Undefined(isolate);
-            };
-            return @ptrCast(str);
         }
-        // Fallback to integer for out-of-range values
+        // Fallback to integer for out-of-range values (shouldn't happen for valid enums)
+        const enum_int: usize = @intFromEnum(value);
         const num = v8.v8_Number_New(isolate, @floatFromInt(enum_int));
         return @ptrCast(num);
     }
 
     // Handle structs (convert to V8 object with fields)
+    // WebIDL dictionaries: optional fields that are null should NOT be set on the object
+    // (accessing them returns undefined, not null)
     if (type_info == .@"struct") {
         const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
         inline for (std.meta.fields(T)) |field| {
-            if (v8.v8_String_NewFromUtf8(
-                isolate,
-                field.name.ptr,
-                @intCast(field.name.len),
-            )) |field_name_str| {
-                const field_value = @field(value, field.name);
-                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-                _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
+            const field_value = @field(value, field.name);
+            const field_type_info = @typeInfo(field.type);
+
+            // For optional fields, only set if non-null (null => property not set => undefined in JS)
+            const should_set = comptime if (field_type_info == .optional) blk: {
+                break :blk true; // Need runtime check
+            } else blk: {
+                break :blk true; // Non-optional, always set
+            };
+
+            if (should_set) {
+                // Runtime check for optional fields
+                const is_null_optional = if (field_type_info == .optional)
+                    field_value == null
+                else
+                    false;
+
+                if (!is_null_optional) {
+                    if (v8.v8_String_NewFromUtf8(
+                        isolate,
+                        field.name.ptr,
+                        @intCast(field.name.len),
+                    )) |field_name_str| {
+                        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+                        _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
+                    }
+                }
             }
         }
         return @ptrCast(obj);
@@ -1890,6 +1957,10 @@ pub fn throwWebIDLError(
         throwTypeError(isolate, "TypeError");
     } else if (std.mem.eql(u8, error_name, "RangeError")) {
         throwRangeError(isolate, "RangeError");
+    } else if (std.mem.eql(u8, error_name, "NotImplemented")) {
+        // Map NotImplemented to NotSupportedError DOMException
+        // This is the standard way to indicate unimplemented features in web APIs
+        throwDOMException(isolate, "NotSupportedError", "This feature is not yet implemented");
     } else {
         throwError(isolate, error_name);
     }

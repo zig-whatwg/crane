@@ -6,10 +6,16 @@
 //! WebIDL allows interfaces to have multiple constructor signatures (overloading).
 //! When JavaScript calls a constructor, we need to determine which overload variant
 //! matches the provided arguments and build the appropriate union.
+//!
+//! Key concept: WebIDL distinguishes between required and optional parameters.
+//! Optional parameters are represented as `webidl.Opt(T)` in the generated code.
+//! The overload resolver must count only REQUIRED parameters when checking if
+//! a variant can match the provided JavaScript arguments.
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const webidl = @import("webidl");
 
 /// Resolve constructor overload by matching JavaScript arguments to union variant
 ///
@@ -46,12 +52,16 @@ pub fn resolveConstructorOverload(
 
     // Try each variant in order (WebIDL spec says to try in declaration order)
     inline for (union_info.fields) |field| {
-        // Calculate expected argument count for this variant
-        const variant_arg_count = countVariantArgs(field.type);
+        // Calculate required and total argument counts for this variant
+        const counts = countVariantArgs(field.type);
+        const required_count = counts.required;
+        const total_count = counts.total;
 
         // Check if this variant matches the JavaScript argument count
-        // WebIDL allows fewer arguments (trailing optional parameters)
-        if (js_arg_count >= variant_arg_count) {
+        // WebIDL allows:
+        // - At least required_count arguments (required parameters)
+        // - At most total_count arguments (all parameters including optional)
+        if (js_arg_count >= required_count and js_arg_count <= total_count) {
             // Try to build this variant
             if (buildVariant(
                 UnionType,
@@ -75,23 +85,71 @@ pub fn resolveConstructorOverload(
     return error.NoMatchingOverload;
 }
 
-/// Count the number of required arguments for a variant type
-fn countVariantArgs(comptime VariantType: type) usize {
+/// Argument count result for a variant
+const ArgCounts = struct {
+    required: usize,
+    total: usize,
+};
+
+/// Check if a type is webidl.Opt(T) - used to identify optional parameters
+fn isOptionalType(comptime T: type) bool {
+    const type_info = @typeInfo(T);
+
+    // webidl.Opt(T) is a generic struct, check for its characteristic fields
+    if (type_info == .@"struct") {
+        const fields = type_info.@"struct".fields;
+        // webidl.Opt has exactly 2 fields: was_passed and value
+        if (fields.len == 2) {
+            var has_was_passed = false;
+            var has_value = false;
+            inline for (fields) |field| {
+                if (std.mem.eql(u8, field.name, "was_passed") and field.type == bool) {
+                    has_was_passed = true;
+                }
+                if (std.mem.eql(u8, field.name, "value")) {
+                    has_value = true;
+                }
+            }
+            return has_was_passed and has_value;
+        }
+    }
+    return false;
+}
+
+/// Count the number of required and total arguments for a variant type
+///
+/// Required parameters are those NOT wrapped in webidl.Opt(T).
+/// Total is the count of all parameters.
+fn countVariantArgs(comptime VariantType: type) ArgCounts {
     // No-parameter variant (void)
     if (VariantType == void) {
-        return 0;
+        return .{ .required = 0, .total = 0 };
     }
 
     const type_info = @typeInfo(VariantType);
 
     // Single-parameter variant (e.g., .CSSNumericValue: CSSNumericValue)
     if (type_info != .@"struct") {
-        return 1;
+        // Single non-optional parameter
+        const is_optional = isOptionalType(VariantType);
+        return .{
+            .required = if (is_optional) 0 else 1,
+            .total = 1,
+        };
     }
 
     // Multi-parameter variant (e.g., .Variant: struct { a: T1, b: T2 })
-    // Count struct fields
-    return type_info.@"struct".fields.len;
+    // Count required (non-Opt) and total fields
+    var required: usize = 0;
+    const total = type_info.@"struct".fields.len;
+
+    inline for (type_info.@"struct".fields) |field| {
+        if (!isOptionalType(field.type)) {
+            required += 1;
+        }
+    }
+
+    return .{ .required = required, .total = total };
 }
 
 /// Build a union variant from JavaScript arguments

@@ -527,8 +527,9 @@ test "exec - empty pathname match" {
 test "exec - URL with all components" {
     const allocator = testing.allocator;
 
+    // Use escaped colon to treat credentials as literal username:password
     var pattern = try URLPattern.create(allocator, .{
-        .string = "https://user:pass@example.com:8080/path?query#hash",
+        .string = "https://user\\:pass@example.com:8080/path?query#hash",
     }, .{});
     defer pattern.deinit(allocator);
 

@@ -161,11 +161,34 @@ pub const URLPattern = struct {
             // URLPatternInit doesn't allocate, so nothing to free
         };
 
-        // Step 2: Process each component
-        // Apply default patterns for missing components
+        // Step 2: Parse base URL if provided to get default values
+        // Spec: https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+        var base_components: ?BaseURLComponents = null;
+        if (init.base_url) |base_url| {
+            base_components = parseBaseURL(base_url);
+        }
 
-        // Protocol defaults to "*"
-        const protocol_pattern = init.protocol orelse "*";
+        // Step 3: Process each component according to spec inheritance rules
+        // A component is more specific if it appears later in the list:
+        // protocol, hostname, port, pathname, search, hash
+        // If init specifies a more specific component, less specific ones are NOT inherited.
+
+        // Check which components are specified in init
+        const has_protocol = init.protocol != null;
+        const has_hostname = init.hostname != null;
+        const has_port = init.port != null;
+        const has_pathname = init.pathname != null;
+        const has_search = init.search != null;
+        const has_hash = init.hash != null;
+
+        // Protocol: inherit from baseURL if init["protocol"] doesn't exist
+        const protocol_pattern = blk: {
+            if (init.protocol) |p| break :blk p;
+            if (base_components) |bc| {
+                if (bc.protocol.len > 0) break :blk bc.protocol;
+            }
+            break :blk "*";
+        };
         var protocol = try compileComponent(
             allocator,
             protocol_pattern,
@@ -175,7 +198,9 @@ pub const URLPattern = struct {
         );
         errdefer protocol.deinit();
 
-        // Username defaults to "*"
+        // Username: for "pattern" type, we don't inherit username/password from baseURL
+        // (per spec step 11.4: "If type is not 'pattern' and...")
+        // Our constructor is always "pattern" type, so username defaults to "*"
         const username_pattern = init.username orelse "*";
         var username = try compileComponent(
             allocator,
@@ -186,7 +211,7 @@ pub const URLPattern = struct {
         );
         errdefer username.deinit();
 
-        // Password defaults to "*"
+        // Password: same as username - for "pattern" type, don't inherit
         const password_pattern = init.password orelse "*";
         var password = try compileComponent(
             allocator,
@@ -197,8 +222,16 @@ pub const URLPattern = struct {
         );
         errdefer password.deinit();
 
-        // Hostname defaults to "*"
-        const hostname_pattern = init.hostname orelse "*";
+        // Hostname: inherit if init contains neither "protocol" nor "hostname"
+        const hostname_pattern = blk: {
+            if (init.hostname) |h| break :blk h;
+            if (!has_protocol and !has_hostname) {
+                if (base_components) |bc| {
+                    if (bc.hostname.len > 0) break :blk bc.hostname;
+                }
+            }
+            break :blk "*";
+        };
         var hostname = try compileComponent(
             allocator,
             hostname_pattern,
@@ -208,8 +241,18 @@ pub const URLPattern = struct {
         );
         errdefer hostname.deinit();
 
-        // Port defaults to "*"
-        const port_pattern = init.port orelse "*";
+        // Port: inherit if init contains none of "protocol", "hostname", "port"
+        // If baseURL port is null/empty, use "" (not "*")
+        const port_pattern = blk: {
+            if (init.port) |p| break :blk p;
+            if (!has_protocol and !has_hostname and !has_port) {
+                if (base_components) |bc| {
+                    // If base has port, use it; if no port, use ""
+                    break :blk if (bc.port.len > 0) bc.port else "";
+                }
+            }
+            break :blk "*";
+        };
         var port = try compileComponent(
             allocator,
             port_pattern,
@@ -219,9 +262,17 @@ pub const URLPattern = struct {
         );
         errdefer port.deinit();
 
-        // Pathname defaults to "*" (or "/" for special schemes)
-        const pathname_default = if (isSpecialScheme(protocol_pattern)) "/" else "*";
-        const pathname_pattern = init.pathname orelse pathname_default;
+        // Pathname: inherit if init contains none of "protocol", "hostname", "port", "pathname"
+        const pathname_pattern = blk: {
+            if (init.pathname) |p| break :blk p;
+            if (!has_protocol and !has_hostname and !has_port and !has_pathname) {
+                if (base_components) |bc| {
+                    if (bc.pathname.len > 0) break :blk bc.pathname;
+                }
+            }
+            // Default: "/" for special schemes, "*" otherwise
+            break :blk if (isSpecialScheme(protocol_pattern)) "/" else "*";
+        };
         var pathname = try compileComponent(
             allocator,
             pathname_pattern,
@@ -231,8 +282,17 @@ pub const URLPattern = struct {
         );
         errdefer pathname.deinit();
 
-        // Search defaults to "*"
-        const search_pattern = init.search orelse "*";
+        // Search: inherit if init contains none of "protocol", "hostname", "port", "pathname", "search"
+        const search_pattern = blk: {
+            if (init.search) |s| break :blk s;
+            if (!has_protocol and !has_hostname and !has_port and !has_pathname and !has_search) {
+                if (base_components) |bc| {
+                    // If base has search, use it; if null/empty, use ""
+                    break :blk if (bc.search.len > 0) bc.search else "";
+                }
+            }
+            break :blk "*";
+        };
         var search = try compileComponent(
             allocator,
             search_pattern,
@@ -242,8 +302,17 @@ pub const URLPattern = struct {
         );
         errdefer search.deinit();
 
-        // Hash defaults to "*"
-        const hash_pattern = init.hash orelse "*";
+        // Hash: inherit if init contains none of "protocol", "hostname", "port", "pathname", "search", "hash"
+        const hash_pattern = blk: {
+            if (init.hash) |h| break :blk h;
+            if (!has_protocol and !has_hostname and !has_port and !has_pathname and !has_search and !has_hash) {
+                if (base_components) |bc| {
+                    // If base has hash, use it; if null/empty, use ""
+                    break :blk if (bc.hash.len > 0) bc.hash else "";
+                }
+            }
+            break :blk "*";
+        };
         var hash = try compileComponent(
             allocator,
             hash_pattern,
@@ -317,6 +386,108 @@ fn isSpecialScheme(scheme: []const u8) bool {
         return true;
     }
     return false;
+}
+
+/// Parsed base URL components for providing defaults
+const BaseURLComponents = struct {
+    protocol: []const u8,
+    username: []const u8,
+    password: []const u8,
+    hostname: []const u8,
+    port: []const u8,
+    pathname: []const u8,
+    search: []const u8,
+    hash: []const u8,
+};
+
+/// Parse a base URL string into its components
+/// Simple URL decomposition for actual URLs (not patterns)
+fn parseBaseURL(url: []const u8) BaseURLComponents {
+    var result = BaseURLComponents{
+        .protocol = "",
+        .username = "",
+        .password = "",
+        .hostname = "",
+        .port = "",
+        .pathname = "",
+        .search = "",
+        .hash = "",
+    };
+
+    var remaining = url;
+
+    // Extract hash/fragment first (everything after #)
+    if (std.mem.indexOf(u8, remaining, "#")) |hash_pos| {
+        result.hash = remaining[hash_pos + 1 ..];
+        remaining = remaining[0..hash_pos];
+    }
+
+    // Extract search/query (everything after ?)
+    if (std.mem.indexOf(u8, remaining, "?")) |query_pos| {
+        result.search = remaining[query_pos + 1 ..];
+        remaining = remaining[0..query_pos];
+    }
+
+    // Extract protocol (everything before ://)
+    if (std.mem.indexOf(u8, remaining, "://")) |proto_end| {
+        result.protocol = remaining[0..proto_end];
+        remaining = remaining[proto_end + 3 ..];
+    } else if (std.mem.indexOf(u8, remaining, ":")) |colon_pos| {
+        // Check for single colon (file:, data:, etc.)
+        if (colon_pos > 0 and (colon_pos + 1 >= remaining.len or remaining[colon_pos + 1] != '/')) {
+            // Opaque scheme like "data:text/plain,hello"
+            result.protocol = remaining[0..colon_pos];
+            result.pathname = remaining[colon_pos + 1 ..];
+            return result;
+        }
+    }
+
+    // Extract pathname (from first / to end)
+    if (std.mem.indexOf(u8, remaining, "/")) |path_start| {
+        result.pathname = remaining[path_start..];
+        remaining = remaining[0..path_start];
+    }
+
+    // Now remaining should be: [user[:pass]@]host[:port]
+    // Extract credentials if present (look for @)
+    if (std.mem.indexOf(u8, remaining, "@")) |at_pos| {
+        const credentials = remaining[0..at_pos];
+        remaining = remaining[at_pos + 1 ..];
+
+        // Split credentials by : for username:password
+        if (std.mem.indexOf(u8, credentials, ":")) |cred_colon_pos| {
+            result.username = credentials[0..cred_colon_pos];
+            result.password = credentials[cred_colon_pos + 1 ..];
+        } else {
+            result.username = credentials;
+        }
+    }
+
+    // Extract port (look for : in remaining host:port)
+    // Need to handle IPv6 addresses like [::1]:8080
+    if (remaining.len > 0 and remaining[0] == '[') {
+        // IPv6 address
+        if (std.mem.indexOf(u8, remaining, "]")) |bracket_end| {
+            if (bracket_end + 1 < remaining.len and remaining[bracket_end + 1] == ':') {
+                result.hostname = remaining[0 .. bracket_end + 1];
+                result.port = remaining[bracket_end + 2 ..];
+            } else {
+                result.hostname = remaining;
+            }
+        } else {
+            result.hostname = remaining;
+        }
+    } else {
+        // Regular hostname, find last colon for port
+        if (std.mem.lastIndexOf(u8, remaining, ":")) |port_colon_pos| {
+            result.hostname = remaining[0..port_colon_pos];
+            result.port = remaining[port_colon_pos + 1 ..];
+        } else {
+            result.hostname = remaining;
+        }
+    }
+
+    return result;
 }
 
 /// Get parser options for a component type

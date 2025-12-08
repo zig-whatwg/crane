@@ -1338,6 +1338,7 @@ pub fn build(b: *std.Build) void {
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
     impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
+    impls_mod.addImport("urlpattern", urlpattern_mod); // For URLPattern implementation
     impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
 
     // Trusted Types module (W3C Trusted Types)

@@ -195,7 +195,7 @@ pub fn canonicalizeIPv6Hostname(allocator: Allocator, value: []const u8) Canonic
         } else if (c == '[' or c == ']' or c == ':') {
             result[i] = c;
         } else {
-            allocator.free(result);
+            // errdefer will free result, just return the error
             return CanonicalizationError.InvalidIPv6;
         }
     }

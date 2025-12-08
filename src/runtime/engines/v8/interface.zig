@@ -1459,6 +1459,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     // This is a Promise(T) type - extract the V8 Promise handle
                     return @ptrCast(result.handle);
                 }
+                // Handle dictionary structs (like URLPatternResult) using generic conversion
+                return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    return v8.v8_Undefined(isolate);
+                };
             }
 
             // Handle *const anyopaque - SAFETY: Cannot blindly cast to V8 Value

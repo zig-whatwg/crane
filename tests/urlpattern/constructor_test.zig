@@ -80,11 +80,28 @@ test "URLPattern.create - URL with query and fragment" {
     try testing.expectEqualStrings("fragment", pattern.hash.pattern_string);
 }
 
-test "URLPattern.create - URL with username and password" {
+test "URLPattern.create - URL with username and named param (unescaped colon)" {
     const allocator = testing.allocator;
 
+    // Without escaping the colon, :pass is treated as a named parameter
+    // So username becomes "user:pass" pattern and password is default wildcard
     var pattern = try URLPattern.create(allocator, .{
         .string = "https://user:pass@example.com/",
+    }, .{});
+    defer pattern.deinit(allocator);
+
+    try testing.expectEqualStrings("https", pattern.protocol.pattern_string);
+    try testing.expectEqualStrings("user:pass", pattern.username.pattern_string);
+    try testing.expectEqualStrings("*", pattern.password.pattern_string); // Default wildcard
+    try testing.expectEqualStrings("example.com", pattern.hostname.pattern_string);
+}
+
+test "URLPattern.create - URL with username and password (escaped colon)" {
+    const allocator = testing.allocator;
+
+    // With escaped colon, the colon is a literal separator between username and password
+    var pattern = try URLPattern.create(allocator, .{
+        .string = "https://user\\:pass@example.com/",
     }, .{});
     defer pattern.deinit(allocator);
 
@@ -544,17 +561,20 @@ test "URLPattern.create - empty pathname" {
     try testing.expectEqualStrings("/", pattern.pathname.pattern_string);
 }
 
-test "URLPattern.create - IPv6 hostname" {
+test "URLPattern.create - IPv6 hostname (escaped colons)" {
     const allocator = testing.allocator;
 
+    // IPv6 addresses need escaped colons in URLPattern strings
+    // because unescaped colons start named parameters
     var pattern = try URLPattern.create(allocator, .{
-        .string = "https://[::1]:8080/",
+        .string = "https://[\\:\\:1]:8080/",
     }, .{});
     defer pattern.deinit(allocator);
 
     try testing.expectEqualStrings("https", pattern.protocol.pattern_string);
-    // IPv6 hostname should be preserved
-    try testing.expect(pattern.hostname.pattern_string.len > 0);
+    // IPv6 hostname pattern preserves escapes
+    try testing.expectEqualStrings("[\\:\\:1]", pattern.hostname.pattern_string);
+    try testing.expectEqualStrings("8080", pattern.port.pattern_string);
 }
 
 test "URLPattern.create - search prefix without value" {

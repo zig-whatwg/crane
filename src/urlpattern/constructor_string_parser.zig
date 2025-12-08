@@ -591,10 +591,27 @@ test "parse - URL with named parameter" {
     try std.testing.expectEqualStrings("/:path", result.pathname.?);
 }
 
-test "parse - URL with username and password" {
+test "parse - URL with username and named param (unescaped colon)" {
     const allocator = std.testing.allocator;
 
+    // When colon is NOT escaped, :pass is treated as a named parameter
+    // The username pattern becomes "user:pass" (with :pass as named param)
+    // Password is not set (defaults to wildcard)
     const result = try parse(allocator, "https://user:pass@example.com/path");
+
+    try std.testing.expectEqualStrings("https", result.protocol.?);
+    try std.testing.expectEqualStrings("user:pass", result.username.?);
+    try std.testing.expect(result.password == null);
+    try std.testing.expectEqualStrings("example.com", result.hostname.?);
+    try std.testing.expectEqualStrings("/path", result.pathname.?);
+}
+
+test "parse - URL with username and password (escaped colon)" {
+    const allocator = std.testing.allocator;
+
+    // When colon IS escaped, it's treated as a literal separator
+    // Username is "user", password is "pass"
+    const result = try parse(allocator, "https://user\\:pass@example.com/path");
 
     try std.testing.expectEqualStrings("https", result.protocol.?);
     try std.testing.expectEqualStrings("user", result.username.?);

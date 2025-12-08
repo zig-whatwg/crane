@@ -458,3 +458,20 @@ test "tokenize - complex pattern" {
     try std.testing.expectEqual(TokenType.char, tokens.tokens[0].type);
     try std.testing.expectEqual(TokenType.end, tokens.tokens[tokens.tokens.len - 1].type);
 }
+
+test "tokenize - escaped IPv6 hostname in strict mode" {
+    const allocator = std.testing.allocator;
+    // IPv6 addresses need escaped colons in strict mode (for component patterns)
+    // Full URLs are tokenized with lenient mode by constructor string parser
+    var tokens = try tokenize(allocator, "[\\:\\:1]", .strict);
+    defer tokens.deinit();
+
+    // Should succeed: [, escaped_char (:), escaped_char (:), char (1), ], end
+    try std.testing.expectEqual(@as(usize, 6), tokens.tokens.len);
+    try std.testing.expectEqual(TokenType.char, tokens.tokens[0].type); // [
+    try std.testing.expectEqual(TokenType.escaped_char, tokens.tokens[1].type); // \:
+    try std.testing.expectEqual(TokenType.escaped_char, tokens.tokens[2].type); // \:
+    try std.testing.expectEqual(TokenType.char, tokens.tokens[3].type); // 1
+    try std.testing.expectEqual(TokenType.char, tokens.tokens[4].type); // ]
+    try std.testing.expectEqual(TokenType.end, tokens.tokens[5].type);
+}

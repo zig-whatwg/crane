@@ -137,11 +137,25 @@ pub const Regex = struct {
 
         // Copy the pattern
         self._pattern_copy = try allocator.alloc(u8, pattern.len);
+        errdefer allocator.free(self._pattern_copy);
         @memcpy(self._pattern_copy, pattern);
         self.pattern = self._pattern_copy;
 
         // Parse named groups from the pattern using (?P<name>...) or (?<name>...) syntax
-        try self.parseNamedGroups(pattern);
+        self.parseNamedGroups(pattern) catch |err| {
+            // Clean up group names on error
+            for (self.group_names.items) |name| {
+                allocator.free(name);
+            }
+            self.group_names.deinit(allocator);
+            return err;
+        };
+        errdefer {
+            for (self.group_names.items) |name| {
+                allocator.free(name);
+            }
+            self.group_names.deinit(allocator);
+        }
 
         // Validate pattern has balanced parentheses
         try self.validatePattern(pattern);
@@ -276,7 +290,65 @@ pub const Regex = struct {
             return try self.createMatch(subject, captures);
         }
 
+        // Check if pattern has no named groups and no special chars (after unescape)
+        // If so, do a direct comparison of the unescaped pattern
+        if (std.mem.indexOf(u8, effective_pattern, "(?P<") == null and
+            std.mem.indexOf(u8, effective_pattern, "(?<") == null)
+        {
+            // Try to unescape and compare literally
+            if (try self.unescapeAndCompare(effective_pattern, subject)) {
+                return try self.createMatch(subject, &[_]?[]const u8{});
+            }
+        }
+
         return null;
+    }
+
+    /// Calculate the unescaped length of a pattern
+    fn unescapedLength(pattern: []const u8) usize {
+        var len: usize = 0;
+        var i: usize = 0;
+        while (i < pattern.len) : (i += 1) {
+            if (pattern[i] == '\\' and i + 1 < pattern.len) {
+                i += 1; // Skip the escaped char
+            }
+            len += 1;
+        }
+        return len;
+    }
+
+    /// Check if an escaped pattern matches a subject string
+    fn matchesUnescaped(pattern: []const u8, subject: []const u8) bool {
+        var p_idx: usize = 0;
+        var s_idx: usize = 0;
+
+        while (p_idx < pattern.len and s_idx < subject.len) {
+            var p_char = pattern[p_idx];
+
+            // Handle escape sequences
+            if (p_char == '\\' and p_idx + 1 < pattern.len) {
+                p_idx += 1;
+                p_char = pattern[p_idx];
+            }
+
+            if (p_char != subject[s_idx]) {
+                return false;
+            }
+
+            p_idx += 1;
+            s_idx += 1;
+        }
+
+        // Check we consumed the whole pattern (might have trailing chars)
+        while (p_idx < pattern.len) {
+            if (pattern[p_idx] != '\\') return false;
+            p_idx += 1;
+            if (p_idx >= pattern.len) return false;
+            // We have more pattern but no more subject
+            return false;
+        }
+
+        return s_idx == subject.len;
     }
 
     /// Simple pattern matching for common cases
@@ -308,11 +380,203 @@ pub const Regex = struct {
             return null;
         }
 
-        // For complex patterns, we'd use PCRE2 in production
-        // For now, return a match if pattern seems to match
-        // This is a simplified implementation for testing
+        // Count how many named groups we have
+        var num_groups: usize = 0;
+        var temp_pos: usize = 0;
+        while (std.mem.indexOfPos(u8, pattern, temp_pos, "(?P<")) |pos| {
+            num_groups += 1;
+            temp_pos = pos + 4;
+        }
 
-        return &[_]?[]const u8{};
+        if (num_groups == 0) {
+            // No named groups - try to match as literal after unescape
+            if (matchesUnescaped(pattern, subject)) {
+                return &[_]?[]const u8{};
+            }
+            return null;
+        }
+
+        // For patterns with multiple named groups like (?:\/(?P<org>[^\\/]+?))(?:\/(?P<repo>[^\\/]+?))
+        // We need to match each segment
+        return matchMultipleGroups(pattern, subject, num_groups);
+    }
+
+    /// Static buffer for captures - thread-local to avoid issues with concurrent access
+    /// The captures slice points to subject slices which remain valid as long as subject is valid
+    threadlocal var static_captures: [16]?[]const u8 = [_]?[]const u8{null} ** 16;
+
+    /// Match a pattern with multiple named groups
+    fn matchMultipleGroups(pattern: []const u8, subject: []const u8, num_groups: usize) ?[]const ?[]const u8 {
+        // We'll build up captures as we match through the pattern
+        // Use thread-local static buffer for up to 16 captures (should be enough for URLPattern)
+        const MAX_CAPTURES = 16;
+
+        if (num_groups > MAX_CAPTURES) {
+            return null; // Too many groups to handle
+        }
+
+        // Clear the static captures
+        for (&static_captures) |*c| {
+            c.* = null;
+        }
+
+        var pattern_pos: usize = 0;
+        var subject_pos: usize = 0;
+        var capture_idx: usize = 0;
+
+        while (pattern_pos < pattern.len) {
+            // Skip non-capturing group wrapper (?:
+            if (pattern_pos + 3 <= pattern.len and std.mem.eql(u8, pattern[pattern_pos..][0..3], "(?:")) {
+                pattern_pos += 3;
+                continue;
+            }
+
+            // Skip closing paren of non-capturing group
+            if (pattern[pattern_pos] == ')') {
+                pattern_pos += 1;
+                continue;
+            }
+
+            // Look for named group (?P<name>...)
+            if (pattern_pos + 4 <= pattern.len and std.mem.eql(u8, pattern[pattern_pos..][0..4], "(?P<")) {
+                // Find group name end
+                const name_start = pattern_pos + 4;
+                const name_end = std.mem.indexOfScalarPos(u8, pattern, name_start, '>') orelse return null;
+                const after_name = name_end + 1;
+
+                // Find closing paren for this group
+                var depth: usize = 1;
+                var group_end = after_name;
+                while (group_end < pattern.len and depth > 0) : (group_end += 1) {
+                    if (pattern[group_end] == '(' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth += 1;
+                    if (pattern[group_end] == ')' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth -= 1;
+                }
+
+                // Get the group pattern content
+                const group_pattern = pattern[after_name .. group_end - 1];
+
+                // Determine delimiter based on group pattern
+                var delimiter: ?u8 = null;
+                if (std.mem.eql(u8, group_pattern, "[^\\/]+?") or std.mem.eql(u8, group_pattern, "[^\\/]+") or
+                    std.mem.eql(u8, group_pattern, "[^/]+?") or std.mem.eql(u8, group_pattern, "[^/]+"))
+                {
+                    delimiter = '/';
+                } else if (std.mem.eql(u8, group_pattern, "[^\\.]+?") or std.mem.eql(u8, group_pattern, "[^\\.]+") or
+                    std.mem.eql(u8, group_pattern, "[^.]+?") or std.mem.eql(u8, group_pattern, "[^.]+"))
+                {
+                    delimiter = '.';
+                }
+
+                // Find the end of this capture in the subject
+                var value_end = subject_pos;
+                if (delimiter) |delim| {
+                    // Find next delimiter or end of string
+                    while (value_end < subject.len and subject[value_end] != delim) {
+                        value_end += 1;
+                    }
+                } else if (std.mem.eql(u8, group_pattern, ".*")) {
+                    // Greedy match - but need to be careful with suffixes
+                    // For now, match to end or next fixed text
+                    value_end = subject.len;
+                } else {
+                    // Unknown pattern - match to end
+                    value_end = subject.len;
+                }
+
+                // Ensure we have a value (unless it's .* which can match empty)
+                if (value_end < subject_pos) {
+                    return null; // No match
+                }
+                if (value_end == subject_pos and !std.mem.eql(u8, group_pattern, ".*")) {
+                    return null; // Empty value only allowed for .*
+                }
+
+                // Store the capture
+                if (capture_idx < MAX_CAPTURES) {
+                    static_captures[capture_idx] = subject[subject_pos..value_end];
+                    capture_idx += 1;
+                }
+
+                subject_pos = value_end;
+                pattern_pos = group_end;
+                continue;
+            }
+
+            // Handle escaped characters in pattern
+            if (pattern[pattern_pos] == '\\' and pattern_pos + 1 < pattern.len) {
+                const expected_char = pattern[pattern_pos + 1];
+                if (subject_pos >= subject.len or subject[subject_pos] != expected_char) {
+                    return null;
+                }
+                pattern_pos += 2;
+                subject_pos += 1;
+                continue;
+            }
+
+            // Handle literal character
+            if (subject_pos >= subject.len or pattern[pattern_pos] != subject[subject_pos]) {
+                return null;
+            }
+            pattern_pos += 1;
+            subject_pos += 1;
+        }
+
+        // Check we consumed all of subject
+        if (subject_pos != subject.len) {
+            return null;
+        }
+
+        // Check we captured expected number of groups
+        if (capture_idx != num_groups) {
+            return null;
+        }
+
+        // Return captures (pointer to static data - only valid until next call)
+        // In practice, caller copies the data immediately
+        return static_captures[0..capture_idx];
+    }
+
+    /// Unescape a regex pattern and compare with subject
+    /// Handles common escape sequences like \/ \. etc.
+    fn unescapeAndCompare(self: *Regex, pattern: []const u8, subject: []const u8) Error!bool {
+        _ = self;
+
+        // Quick length check - unescaped pattern can't be longer than escaped
+        if (subject.len > pattern.len) {
+            // Could still match if pattern has many escapes
+        }
+
+        var p_idx: usize = 0;
+        var s_idx: usize = 0;
+
+        while (p_idx < pattern.len and s_idx < subject.len) {
+            var p_char = pattern[p_idx];
+
+            // Handle escape sequences
+            if (p_char == '\\' and p_idx + 1 < pattern.len) {
+                p_idx += 1;
+                p_char = pattern[p_idx];
+            }
+
+            if (p_char != subject[s_idx]) {
+                return false;
+            }
+
+            p_idx += 1;
+            s_idx += 1;
+        }
+
+        // Both must be exhausted for a match
+        // Pattern might have trailing escapes to check
+        while (p_idx < pattern.len) {
+            if (pattern[p_idx] == '\\' and p_idx + 1 < pattern.len) {
+                p_idx += 2; // Skip escape + char that we need to match
+                return false; // But we have no more subject chars
+            }
+            return false;
+        }
+
+        return s_idx == subject.len;
     }
 
     /// Create a Match result from captured groups
@@ -434,6 +698,50 @@ test "Regex - match wildcard" {
         var match_result = m.*;
         defer match_result.deinit();
         try std.testing.expectEqualStrings("anything", match_result.full);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "Regex - match escaped pattern" {
+    const allocator = std.testing.allocator;
+
+    // Pattern with escaped dot
+    var regex = try Regex.compile(allocator, "^example\\.com$", .{});
+    defer regex.deinit();
+
+    // Should match
+    if (try regex.match("example.com")) |*m| {
+        var match_result = m.*;
+        defer match_result.deinit();
+        try std.testing.expectEqualStrings("example.com", match_result.full);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+
+    // Should not match
+    const no_match = try regex.match("exampleXcom");
+    try std.testing.expect(no_match == null);
+}
+
+test "Regex - match pattern with named group" {
+    const allocator = std.testing.allocator;
+
+    // Pattern like /:id -> ^\/(?P<id>[^/]+?)$
+    var regex = try Regex.compile(allocator, "^\\/(?P<id>[^/]+?)$", .{});
+    defer regex.deinit();
+
+    // Should match /123
+    if (try regex.match("/123")) |*m| {
+        var match_result = m.*;
+        defer match_result.deinit();
+        try std.testing.expectEqualStrings("/123", match_result.full);
+        // Check named group
+        if (match_result.getNamedGroup("id")) |id_val| {
+            try std.testing.expectEqualStrings("123", id_val);
+        } else {
+            return error.TestUnexpectedResult;
+        }
     } else {
         return error.TestUnexpectedResult;
     }

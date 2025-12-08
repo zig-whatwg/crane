@@ -115,8 +115,9 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "-ref.htm",
     // Print tests
     "/print/",
-    // Tentative/experimental tests
+    // Tentative/experimental tests (proposed features not yet in specs)
     "/tentative/",
+    ".tentative.",
 };
 
 /// Check if a path matches any exclusion pattern
