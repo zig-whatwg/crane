@@ -728,9 +728,11 @@ pub const BrowserContext = struct {
         // This prevents dangling pointers to V8 functions that will be GC'd
         clearPendingTimers();
 
-        // Reset the internal state registry to clear references from previous tests
-        // This prevents dangling instance references that can cause segfaults
-        runtime.resetInternalStateRegistry();
+        // NOTE: We intentionally do NOT call runtime.resetInternalStateRegistry() here.
+        // The internal state registry contains state for global singletons (document,
+        // navigator, location, etc.) that must persist across tests. Clearing it would
+        // cause DOMExceptions when testharness.js tries to access these globals.
+        // Individual test-created instances will be cleaned up by V8 garbage collection.
 
         // Comprehensive JavaScript state reset
         const reset_script =
@@ -758,9 +760,14 @@ pub const BrowserContext = struct {
             \\    test_environment.all_loaded = false;
             \\  }
             \\  
-            \\  // Clear document.body
-            \\  if (typeof document !== 'undefined' && document && document.body) {
-            \\    document.body.innerHTML = '';
+            \\  // Clear document.body - wrapped in try-catch because the Document
+            \\  // object may be in a bad state after running tests
+            \\  try {
+            \\    if (typeof document !== 'undefined' && document && document.body) {
+            \\      document.body.innerHTML = '';
+            \\    }
+            \\  } catch (e) {
+            \\    // Ignore DOMException - document may be in invalid state
             \\  }
             \\  
             \\  return true;
