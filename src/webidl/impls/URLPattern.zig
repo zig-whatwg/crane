@@ -317,10 +317,17 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     var result = core_result.?;
     defer result.deinit();
 
+    // Use arena allocator for result data that will be copied to V8
+    // The arena is reset during GC, so these allocations are cleaned up eventually
+    // Fall back to context allocator if arena not initialized
+    const arena = runtime.ArenaAllocator.tryGet() catch null;
+
     // Build inputs array from the original input
     // Spec: inputs is a sequence of URLPatternInput containing the original input(s)
-    var inputs_array = try allocator.alloc(typedefs.URLPatternInput, 1);
-    errdefer allocator.free(inputs_array);
+    var inputs_array = if (arena) |a|
+        try a.alloc(typedefs.URLPatternInput, 1)
+    else
+        try allocator.alloc(typedefs.URLPatternInput, 1);
 
     // Convert the input to URLPatternInput format
     if (!input.was_passed) {
@@ -339,16 +346,18 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
 
     // Convert internal URLPatternResult to WebIDL URLPatternResult dictionary
     // IMPORTANT: We must clone the strings because result.deinit() will free them
+    // Use arena for cloned data - will be cleaned up during GC
+    const result_allocator = if (arena) |a| a else null;
     const webidl_result = dictionaries.URLPatternResult{
         .inputs = inputs_array,
-        .protocol = try convertComponentResult(allocator, result.protocol),
-        .username = try convertComponentResult(allocator, result.username),
-        .password = try convertComponentResult(allocator, result.password),
-        .hostname = try convertComponentResult(allocator, result.hostname),
-        .port = try convertComponentResult(allocator, result.port),
-        .pathname = try convertComponentResult(allocator, result.pathname),
-        .search = try convertComponentResult(allocator, result.search),
-        .hash = try convertComponentResult(allocator, result.hash),
+        .protocol = try convertComponentResultArena(result_allocator, allocator, result.protocol),
+        .username = try convertComponentResultArena(result_allocator, allocator, result.username),
+        .password = try convertComponentResultArena(result_allocator, allocator, result.password),
+        .hostname = try convertComponentResultArena(result_allocator, allocator, result.hostname),
+        .port = try convertComponentResultArena(result_allocator, allocator, result.port),
+        .pathname = try convertComponentResultArena(result_allocator, allocator, result.pathname),
+        .search = try convertComponentResultArena(result_allocator, allocator, result.search),
+        .hash = try convertComponentResultArena(result_allocator, allocator, result.hash),
     };
 
     return webidl_result;
@@ -362,25 +371,44 @@ const GroupsEntry = @typeInfo(GroupsSliceType).pointer.child;
 
 /// Convert internal URLPatternComponentResult to WebIDL dictionary
 /// Clones strings to ensure they remain valid after the core result is freed
-fn convertComponentResult(allocator: std.mem.Allocator, component: urlpattern.URLPatternComponentResult) !dictionaries.URLPatternComponentResult {
+/// Uses arena allocator if available (cleaned up during GC), otherwise fallback allocator
+fn convertComponentResultArena(
+    arena: ?*runtime.ArenaAllocator,
+    fallback: std.mem.Allocator,
+    component: urlpattern.URLPatternComponentResult,
+) !dictionaries.URLPatternComponentResult {
     // Clone the input string so it survives after result.deinit()
-    const input_copy = try allocator.dupe(u8, component.input);
+    const input_copy = if (arena) |a|
+        try a.dupe(u8, component.input)
+    else
+        try fallback.dupe(u8, component.input);
 
     // Convert groups StringHashMap to WebIDL record format
     // Note: groups should ALWAYS be an object (empty {} if no named groups), never null
     const group_count = component.groups.count();
-    const groups_array = try allocator.alloc(GroupsEntry, group_count);
-    errdefer allocator.free(groups_array);
+    const groups_array = if (arena) |a|
+        try a.alloc(GroupsEntry, group_count)
+    else
+        try fallback.alloc(GroupsEntry, group_count);
 
     var idx: usize = 0;
     var iter = component.groups.iterator();
     while (iter.next()) |entry| {
         // Clone the key
-        const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
+        const key_copy = if (arena) |a|
+            try a.dupe(u8, entry.key_ptr.*)
+        else
+            try fallback.dupe(u8, entry.key_ptr.*);
         // Clone the value and wrap it as a string pointer
-        const value_copy = try allocator.dupe(u8, entry.value_ptr.*);
+        const value_copy = if (arena) |a|
+            try a.dupe(u8, entry.value_ptr.*)
+        else
+            try fallback.dupe(u8, entry.value_ptr.*);
         // Store as slice pointer cast to anyopaque
-        const value_slice_ptr = try allocator.create([]const u8);
+        const value_slice_ptr = if (arena) |a|
+            try a.create([]const u8)
+        else
+            try fallback.create([]const u8);
         value_slice_ptr.* = value_copy;
 
         groups_array[idx] = .{
