@@ -43,6 +43,69 @@ pub const EncodeFn = *const fn (
     is_last: bool,
 ) streaming.EncodeResult;
 
+/// Function pointer type for max UTF-8 length calculation
+/// Used by encodings that need custom buffer size calculations
+pub const MaxUtf8LengthFn = *const fn (input_byte_length: usize) usize;
+
+/// Encoding-specific max UTF-8 length calculators
+pub const MaxUtf8Length = struct {
+    /// Single-byte encodings: each byte maps to 1 code point, max 3 UTF-8 bytes each
+    /// Used by: IBM866, ISO-8859-*, Windows-*, KOI8-*, Macintosh, x-mac-cyrillic
+    pub fn singleByte(input_len: usize) usize {
+        return input_len * 3;
+    }
+
+    /// UTF-8: 1:1 ratio (already UTF-8)
+    pub fn utf8(input_len: usize) usize {
+        return input_len;
+    }
+
+    /// EUC-KR, Shift_JIS, EUC-JP: 2 bytes -> 1 character -> max 3 UTF-8 bytes
+    /// Worst case is all ASCII (1:1), but for safety use 3x
+    pub fn eastAsianDouble(input_len: usize) usize {
+        return input_len * 3;
+    }
+
+    /// ISO-2022-JP: stateful encoding with escape sequences
+    /// Escape sequences produce no output, data bytes -> max 3 UTF-8 bytes each
+    pub fn iso2022jp(input_len: usize) usize {
+        return input_len * 3;
+    }
+
+    /// Big5: some sequences can produce 2 characters (HKSCS extensions)
+    /// Worst case: 2 input bytes -> 2 chars -> 6 UTF-8 bytes
+    pub fn big5(input_len: usize) usize {
+        return input_len * 3; // Conservative: most chars are single
+    }
+
+    /// GB18030: 4-byte sequences can produce supplementary chars (4 UTF-8 bytes)
+    /// Worst case: 4 input bytes -> 1 supplementary char -> 4 UTF-8 bytes = 1:1
+    /// But single-byte ASCII is 1:1, and 2-byte is max 3 UTF-8
+    pub fn gb18030(input_len: usize) usize {
+        return input_len * 3; // Covers all cases safely
+    }
+
+    /// x-user-defined: each byte 0x80-0xFF maps to U+F780-F7FF (3-byte UTF-8)
+    pub fn xUserDefined(input_len: usize) usize {
+        return input_len * 3;
+    }
+
+    /// UTF-16BE/LE: 2 bytes -> 1 code unit -> max 3 UTF-8 bytes
+    /// Or 4 bytes (surrogate pair) -> 1 supplementary char -> 4 UTF-8 bytes
+    pub fn utf16(input_len: usize) usize {
+        // Worst case: all BMP non-ASCII chars = input_len/2 * 3 = input_len * 1.5
+        // But surrogate pairs: 4 bytes -> 4 UTF-8 bytes = 1:1
+        // Use 2x for safety (handles odd-length inputs too)
+        return input_len * 2;
+    }
+
+    /// Replacement encoding: produces only U+FFFD (3 bytes) once
+    pub fn replacement(input_len: usize) usize {
+        _ = input_len;
+        return 3; // At most one replacement character
+    }
+};
+
 pub const Encoding = struct {
     name: []const u8,
     whatwg_name: []const u8,
@@ -51,6 +114,9 @@ pub const Encoding = struct {
     /// Optional direct UTF-8 decode function (optimization path)
     /// If null, decodeToUtf8 falls back to decode() + UTF-16→UTF-8 conversion
     decode_to_utf8_fn: ?DecodeToUtf8Fn = null,
+    /// Function to calculate max UTF-8 output bytes for given input bytes
+    /// If null, uses default of input_len * 3
+    max_utf8_length_fn: ?MaxUtf8LengthFn = null,
     /// Index for single-byte encodings (null for multi-byte encodings like UTF-8)
     single_byte_index: ?index_gen.Index = null,
 
@@ -81,11 +147,21 @@ pub const Encoding = struct {
         return byte_length;
     }
 
-    /// Calculate maximum UTF-8 bytes needed for given input bytes.
+    /// Calculate maximum UTF-8 bytes needed for decoding given number of input bytes.
     /// Used for buffer allocation when decoding directly to UTF-8.
     ///
-    /// Override this in specific encodings if a tighter bound is known.
-    /// Default: input_len * 3 (worst case for BMP characters)
+    /// This uses the encoding-specific calculator if available, otherwise
+    /// defaults to input_len * 3 (worst case for BMP characters).
+    pub fn maxUtf8LengthForInput(self: *const Encoding, input_byte_length: usize) usize {
+        if (self.max_utf8_length_fn) |calc_fn| {
+            return calc_fn(input_byte_length);
+        }
+        // Default: worst case for BMP characters (3 bytes per input byte)
+        return input_byte_length * 3;
+    }
+
+    /// Calculate maximum UTF-8 bytes needed for given UTF-16 code units.
+    /// Used when converting from UTF-16 intermediate buffer.
     pub fn maxUtf8Length(self: *const Encoding, code_unit_length: usize) usize {
         _ = self;
         return code_unit_length * 3;
@@ -576,6 +652,7 @@ pub const GB18030: Encoding = .{
     .whatwg_name = "gb18030",
     .decode_fn = chinese.decode,
     .encode_fn = chinese.encode,
+    .decode_to_utf8_fn = chinese.decodeToUtf8,
 };
 
 pub const GBK: Encoding = .{
@@ -598,6 +675,7 @@ pub const SHIFT_JIS: Encoding = .{
     .whatwg_name = "shift_jis",
     .decode_fn = japanese.shift_jis_streaming.decode,
     .encode_fn = japanese.shift_jis_streaming.encode,
+    .decode_to_utf8_fn = japanese.shift_jis_streaming.decodeToUtf8,
 };
 
 pub const EUC_JP: Encoding = .{
@@ -1042,11 +1120,63 @@ test "Encoding.supportsDirectUtf8Decode" {
     // Encodings with native decodeToUtf8 implementation
     try std.testing.expect(EUC_KR.supportsDirectUtf8Decode());
     try std.testing.expect(BIG5.supportsDirectUtf8Decode());
+    try std.testing.expect(GB18030.supportsDirectUtf8Decode());
 
     // Encodings without native decodeToUtf8 (use fallback)
     try std.testing.expect(!WINDOWS_1252.supportsDirectUtf8Decode());
     try std.testing.expect(!UTF_8.supportsDirectUtf8Decode());
     try std.testing.expect(!ISO_8859_2.supportsDirectUtf8Decode());
+}
+
+test "decodeToUtf8 direct - GB18030 ASCII passthrough" {
+    // ASCII bytes should pass through directly (same as UTF-8)
+    var decoder = GB18030.newDecoder();
+    const input = "Hello, World!";
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(input.len, result.bytes_consumed);
+    try std.testing.expectEqual(input.len, result.bytes_written);
+    try std.testing.expectEqualStrings(input, output[0..result.bytes_written]);
+}
+
+test "decodeToUtf8 direct - GB18030 2-byte sequence" {
+    // GB18030 2-byte: 0xA1 0xA1 maps to U+3000 (ideographic space)
+    // U+3000 in UTF-8 is 0xE3 0x80 0x80
+    var decoder = GB18030.newDecoder();
+    const input = [_]u8{ 0xA1, 0xA1 };
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(&input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(@as(usize, 2), result.bytes_consumed);
+    // Should produce 3-byte UTF-8 for a CJK character
+    try std.testing.expectEqual(@as(usize, 3), result.bytes_written);
+}
+
+test "decodeToUtf8 direct - GB18030 streaming incomplete sequence" {
+    // Test that incomplete GB18030 sequence is handled correctly when not is_last
+    var decoder = GB18030.newDecoder();
+    const input = [_]u8{0xA1}; // First byte only
+    var output: [64]u8 = undefined;
+
+    // First chunk with is_last=false - incomplete sequence should wait
+    const result1 = decoder.decodeToUtf8(&input, &output, false);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result1.status);
+    try std.testing.expectEqual(@as(usize, 1), result1.bytes_consumed);
+    try std.testing.expectEqual(@as(usize, 0), result1.bytes_written);
+
+    // Continue with second byte
+    const input2 = [_]u8{0xA1};
+    const result2 = decoder.decodeToUtf8(&input2, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result2.status);
+    try std.testing.expectEqual(@as(usize, 1), result2.bytes_consumed);
+    try std.testing.expectEqual(@as(usize, 3), result2.bytes_written); // CJK char = 3 UTF-8 bytes
 }
 
 test "decodeToUtf8 direct - Big5 ASCII passthrough" {

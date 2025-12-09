@@ -298,4 +298,160 @@ pub fn encode(
     };
 }
 
+/// Direct UTF-8 decode for GB18030 - optimization path
+///
+/// WHATWG Encoding Standard § 10.2.1
+/// https://encoding.spec.whatwg.org/#gb18030
+///
+/// This function outputs UTF-8 directly, eliminating the UTF-16 intermediate buffer.
+/// Handles both 2-byte index-based and 4-byte range-based decoding.
+pub fn decodeToUtf8(
+    decoder: *Decoder,
+    input: []const u8,
+    output: []u8,
+    is_last: bool,
+) streaming.DecodeToUtf8Result {
+    std.debug.assert(decoder.state == .gb18030 or decoder.state == .neutral);
+
+    // Initialize state if needed
+    if (decoder.state == .neutral) {
+        decoder.state = .{ .gb18030 = .{
+            .gb18030_first = 0x00,
+            .gb18030_second = 0x00,
+            .gb18030_third = 0x00,
+            .is_gbk = false,
+        } };
+    }
+
+    var state = &decoder.state.gb18030;
+    var byte_decoder = gb18030_impl.Decoder{
+        .gb18030_first = state.gb18030_first,
+        .gb18030_second = state.gb18030_second,
+        .gb18030_third = state.gb18030_third,
+        .is_gbk = state.is_gbk,
+    };
+
+    var in_pos: usize = 0;
+    var out_pos: usize = 0;
+
+    while (in_pos < input.len) {
+        // Prefetch next cache line for large buffers
+        if (in_pos + 64 < input.len) {
+            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
+        }
+
+        const byte = input[in_pos];
+
+        // Decode one byte
+        const result = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // Decoding error - emit replacement character U+FFFD as UTF-8 (0xEF 0xBF 0xBD)
+            if (out_pos + 3 > output.len) {
+                state.gb18030_first = byte_decoder.gb18030_first;
+                state.gb18030_second = byte_decoder.gb18030_second;
+                state.gb18030_third = byte_decoder.gb18030_third;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            in_pos += 1;
+
+            // Reset decoder state
+            byte_decoder.gb18030_first = 0x00;
+            byte_decoder.gb18030_second = 0x00;
+            byte_decoder.gb18030_third = 0x00;
+            continue;
+        };
+
+        in_pos += 1;
+
+        if (result) |code_point| {
+            // Got a code point - emit it as UTF-8 directly
+            const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
+            if (utf8_len == 0) {
+                // Output buffer full - back up
+                in_pos -= 1;
+                state.gb18030_first = byte_decoder.gb18030_first;
+                state.gb18030_second = byte_decoder.gb18030_second;
+                state.gb18030_third = byte_decoder.gb18030_third;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+            out_pos += utf8_len;
+        }
+        // If result is null, continue accumulating bytes
+    }
+
+    // Save state
+    state.gb18030_first = byte_decoder.gb18030_first;
+    state.gb18030_second = byte_decoder.gb18030_second;
+    state.gb18030_third = byte_decoder.gb18030_third;
+
+    // Check if we have pending bytes at end of stream
+    if (is_last and (state.gb18030_first != 0x00 or
+        state.gb18030_second != 0x00 or
+        state.gb18030_third != 0x00))
+    {
+        @branchHint(.unlikely);
+        // Incomplete sequence at end - emit replacement character
+        if (out_pos + 3 <= output.len) {
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            state.gb18030_first = 0x00;
+            state.gb18030_second = 0x00;
+            state.gb18030_third = 0x00;
+        } else {
+            return .{
+                .status = .output_full,
+                .bytes_consumed = in_pos,
+                .bytes_written = out_pos,
+            };
+        }
+    }
+
+    return .{
+        .status = .input_empty,
+        .bytes_consumed = in_pos,
+        .bytes_written = out_pos,
+    };
+}
+
+/// Write a code point as UTF-8. Returns number of bytes written (0 if buffer too small).
+fn writeUtf8CodePoint(code_point: u21, output: []u8) usize {
+    if (code_point < 0x80) {
+        if (output.len < 1) return 0;
+        output[0] = @intCast(code_point);
+        return 1;
+    } else if (code_point < 0x800) {
+        if (output.len < 2) return 0;
+        output[0] = @intCast(0xC0 | (code_point >> 6));
+        output[1] = @intCast(0x80 | (code_point & 0x3F));
+        return 2;
+    } else if (code_point < 0x10000) {
+        if (output.len < 3) return 0;
+        output[0] = @intCast(0xE0 | (code_point >> 12));
+        output[1] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[2] = @intCast(0x80 | (code_point & 0x3F));
+        return 3;
+    } else {
+        if (output.len < 4) return 0;
+        output[0] = @intCast(0xF0 | (code_point >> 18));
+        output[1] = @intCast(0x80 | ((code_point >> 12) & 0x3F));
+        output[2] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[3] = @intCast(0x80 | (code_point & 0x3F));
+        return 4;
+    }
+}
+
 // Tests

@@ -157,6 +157,180 @@ pub fn decode(
     };
 }
 
+/// Direct UTF-8 decode for Big5 - optimization path
+///
+/// WHATWG Encoding Standard § 11.1
+/// https://encoding.spec.whatwg.org/#big5
+///
+/// This function outputs UTF-8 directly, eliminating the UTF-16 intermediate buffer.
+/// Handles special HKSCS multi-code-point mappings (pointers 1133, 1135, 1164, 1166).
+pub fn decodeToUtf8(
+    decoder: *Decoder,
+    input: []const u8,
+    output: []u8,
+    is_last: bool,
+) streaming.DecodeToUtf8Result {
+    std.debug.assert(decoder.state == .big5 or decoder.state == .neutral);
+
+    if (decoder.state == .neutral) {
+        decoder.state = .{ .big5 = .{ .big5_lead = 0x00, .pending_code_point = null } };
+    }
+
+    var state = &decoder.state.big5;
+    var byte_decoder = big5_impl.Decoder{
+        .big5_lead = state.big5_lead,
+        .pending_code_point = state.pending_code_point,
+    };
+
+    var in_pos: usize = 0;
+    var out_pos: usize = 0;
+
+    while (in_pos < input.len or byte_decoder.pending_code_point != null) {
+        // Prefetch next cache line for large buffers
+        if (in_pos < input.len and in_pos + 64 < input.len) {
+            @prefetch(&input[in_pos + 64], .{ .rw = .read, .locality = 3 });
+        }
+
+        // If we have a pending code point, emit it without consuming input
+        if (byte_decoder.pending_code_point != null) {
+            const result = byte_decoder.decode(null) catch {
+                @branchHint(.unlikely);
+                // Emit replacement character U+FFFD as UTF-8 (0xEF 0xBF 0xBD)
+                if (out_pos + 3 > output.len) {
+                    state.big5_lead = byte_decoder.big5_lead;
+                    state.pending_code_point = byte_decoder.pending_code_point;
+                    return .{
+                        .status = .output_full,
+                        .bytes_consumed = in_pos,
+                        .bytes_written = out_pos,
+                    };
+                }
+                output[out_pos] = 0xEF;
+                output[out_pos + 1] = 0xBF;
+                output[out_pos + 2] = 0xBD;
+                out_pos += 3;
+                continue;
+            };
+
+            if (result) |code_point| {
+                const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
+                if (utf8_len == 0) {
+                    // Output buffer full
+                    state.big5_lead = byte_decoder.big5_lead;
+                    state.pending_code_point = byte_decoder.pending_code_point;
+                    return .{
+                        .status = .output_full,
+                        .bytes_consumed = in_pos,
+                        .bytes_written = out_pos,
+                    };
+                }
+                out_pos += utf8_len;
+            }
+            continue;
+        }
+
+        // Break if no more input
+        if (in_pos >= input.len) break;
+
+        const byte = input[in_pos];
+
+        const result = byte_decoder.decode(byte) catch {
+            @branchHint(.unlikely);
+            // Emit replacement character U+FFFD as UTF-8
+            if (out_pos + 3 > output.len) {
+                state.big5_lead = byte_decoder.big5_lead;
+                state.pending_code_point = byte_decoder.pending_code_point;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            in_pos += 1;
+
+            byte_decoder.big5_lead = 0x00;
+            byte_decoder.pending_code_point = null;
+            continue;
+        };
+
+        in_pos += 1;
+
+        if (result) |code_point| {
+            const utf8_len = writeUtf8CodePoint(code_point, output[out_pos..]);
+            if (utf8_len == 0) {
+                // Output buffer full - back up
+                in_pos -= 1;
+                state.big5_lead = byte_decoder.big5_lead;
+                state.pending_code_point = byte_decoder.pending_code_point;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+            out_pos += utf8_len;
+        }
+    }
+
+    state.big5_lead = byte_decoder.big5_lead;
+    state.pending_code_point = byte_decoder.pending_code_point;
+
+    if (is_last and state.big5_lead != 0x00) {
+        @branchHint(.unlikely);
+        // Emit replacement character for incomplete sequence
+        if (out_pos + 3 <= output.len) {
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            state.big5_lead = 0x00;
+        } else {
+            return .{
+                .status = .output_full,
+                .bytes_consumed = in_pos,
+                .bytes_written = out_pos,
+            };
+        }
+    }
+
+    return .{
+        .status = .input_empty,
+        .bytes_consumed = in_pos,
+        .bytes_written = out_pos,
+    };
+}
+
+/// Write a code point as UTF-8. Returns number of bytes written (0 if buffer too small).
+fn writeUtf8CodePoint(code_point: u21, output: []u8) usize {
+    if (code_point < 0x80) {
+        if (output.len < 1) return 0;
+        output[0] = @intCast(code_point);
+        return 1;
+    } else if (code_point < 0x800) {
+        if (output.len < 2) return 0;
+        output[0] = @intCast(0xC0 | (code_point >> 6));
+        output[1] = @intCast(0x80 | (code_point & 0x3F));
+        return 2;
+    } else if (code_point < 0x10000) {
+        if (output.len < 3) return 0;
+        output[0] = @intCast(0xE0 | (code_point >> 12));
+        output[1] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[2] = @intCast(0x80 | (code_point & 0x3F));
+        return 3;
+    } else {
+        if (output.len < 4) return 0;
+        output[0] = @intCast(0xF0 | (code_point >> 18));
+        output[1] = @intCast(0x80 | ((code_point >> 12) & 0x3F));
+        output[2] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[3] = @intCast(0x80 | (code_point & 0x3F));
+        return 4;
+    }
+}
+
 pub fn encode(
     encoder: *Encoder,
     input: []const u16,

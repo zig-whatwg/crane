@@ -16,5 +16,7 @@ pub const gb18030 = gb18030_impl;
 pub const big5 = big5_impl;
 pub const decode = gb18030_streaming.decode;
 pub const encode = gb18030_streaming.encode;
+pub const decodeToUtf8 = gb18030_streaming.decodeToUtf8;
 pub const big5_streaming_decode = big5_streaming.decode;
 pub const big5_streaming_encode = big5_streaming.encode;
+pub const big5_streaming_decodeToUtf8 = big5_streaming.decodeToUtf8;
