@@ -189,11 +189,14 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").Intern
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal_ptr| {
-        const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+    // Get internal state from registry (where it was stored in init)
+    if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        // Remove from registry to prevent double-free
+        if (shadow_root_registry) |*reg| {
+            _ = reg.remove(@intFromPtr(instance));
+        }
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
