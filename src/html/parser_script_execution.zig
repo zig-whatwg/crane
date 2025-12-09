@@ -154,12 +154,15 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
         // Try to load the external script
         if (ctx.loadExternalScript(src_url)) |external_content| {
+            // Free the loaded content when we're done (cacheSourceText duplicates it)
+            defer ctx.allocator.free(external_content);
+
             // Successfully loaded - execute the external script content
             if (external_content.len == 0) {
                 return; // Empty script
             }
 
-            // Cache the external script content
+            // Cache the external script content (this duplicates external_content)
             HTMLScriptElementImpl.cacheSourceText(script_element, external_content) catch {
                 return;
             };

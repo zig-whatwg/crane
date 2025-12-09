@@ -278,8 +278,15 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         },
         NodeType.ELEMENT_NODE => {
             // Element nodes could be any HTML element subclass.
-            // The base Element.deinit handles all element types.
-            interfaces.Element.deinit(instance);
+            // Check local_name to dispatch to the correct HTML element deinit
+            // so that element-specific internal state gets cleaned up.
+            const local_name = if (internal.local_name) |ln| ln.asSlice() else "";
+            if (std.mem.eql(u8, local_name, "script")) {
+                interfaces.HTMLScriptElement.deinit(instance);
+            } else {
+                // For other elements, use base Element.deinit
+                interfaces.Element.deinit(instance);
+            }
         },
         NodeType.DOCUMENT_NODE => {
             // Document nodes - this shouldn't typically happen in child iteration
