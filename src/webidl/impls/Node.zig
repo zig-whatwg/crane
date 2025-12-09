@@ -179,7 +179,11 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
     ensureNodeRegistry();
-    return node_internal_registry.get(@intFromPtr(instance));
+    const key = @intFromPtr(instance);
+    const result = node_internal_registry.get(key);
+    // Debug only for script-related lookups - comment out for normal use
+    // std.debug.print("GET_INTERNAL_FROM_REGISTRY: key={x}, found={}\n", .{ key, result != null });
+    return result;
 }
 
 /// Get Node's internal state from the registry
@@ -1038,7 +1042,21 @@ fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runti
 
     // Set new parent
     node_internal.parent = parent;
-    node_internal.owner_document = parent_internal.owner_document;
+
+    // Set owner_document based on parent's type
+    // Per DOM spec: The node document of a node is the document whose node document
+    // is the node itself, if the node is a document; otherwise the node document
+    // of the node's root.
+    //
+    // When inserting into a Document, the children's owner_document should be the
+    // Document itself. When inserting into a non-Document node, inherit from parent.
+    if (parent_internal.node_type == NodeType.DOCUMENT_NODE) {
+        // Parent IS a document, so children's owner_document = parent
+        node_internal.owner_document = parent;
+    } else {
+        // Parent is not a document, inherit owner_document from parent
+        node_internal.owner_document = parent_internal.owner_document;
+    }
 
     // Update isConnected based on parent's connected status
     node_internal.is_connected = parent_internal.is_connected;

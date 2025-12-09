@@ -280,32 +280,37 @@ pub fn prepareScriptElement(
             }
         }
 
-        // Step 33.8: Fetch the script
-        // This is a synchronous fetch for now - in a full implementation this would be async
-        const fetch_result = fetchExternalScript(allocator, script_url) catch |err| {
-            std.debug.print("External script fetch error: {}\n", .{err});
-            return false;
-        };
-
-        if (fetch_result.body) |body| {
-            defer allocator.free(body);
-
-            // Create a classic script from the fetched content
-            const script = ClassicScript.init(body, script_url);
-            HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
-
-            // Cache source text for execution
-            HTMLScriptElementImpl.cacheSourceText(script_element, body) catch {
-                return ScriptExecutionError.OutOfMemory;
+        // Step 33.8: Fetch the script (or use already-cached content)
+        // Check if content was already loaded (e.g., by parser script callback)
+        const cached = HTMLScriptElementImpl.getCachedSourceText(script_element);
+        const body: []const u8 = if (cached) |c| c else blk: {
+            // No cached content - fetch it
+            const fetch_result = fetchExternalScript(allocator, script_url) catch |err| {
+                std.debug.print("External script fetch error: {}\n", .{err});
+                return false;
             };
 
-            // Mark as ready to be parser-executed
-            HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
-        } else {
-            // Network error - set result to null
-            HTMLScriptElementImpl.setResult(script_element, .null);
-            return false;
-        }
+            if (fetch_result.body) |b| {
+                // Cache source text for execution
+                HTMLScriptElementImpl.cacheSourceText(script_element, b) catch {
+                    allocator.free(b);
+                    return ScriptExecutionError.OutOfMemory;
+                };
+                break :blk b;
+            } else {
+                // Network error - set result to null
+                HTMLScriptElementImpl.setResult(script_element, .null);
+                return false;
+            }
+        };
+        defer if (cached == null) allocator.free(body);
+
+        // Create a classic script from the content
+        const script = ClassicScript.init(body, script_url);
+        HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
+
+        // Mark as ready to be parser-executed
+        HTMLScriptElementImpl.setReadyToBeParserExecuted(script_element, true);
 
         // Handle scheduling (will set pending-parsing-blocking, etc.)
         return handleScriptScheduling(allocator, script_element, parser_document, script_type);
@@ -758,25 +763,20 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
     const ctx = script_element.ctx;
     const engine = ctx.getEngine() orelse {
         // No engine available (testing mode) - silently skip execution
-        // This allows tests to run without V8 linked
-        std.debug.print("No JS engine available for script execution (testing mode)\n", .{});
         return;
     };
 
     // Get engine context (V8 Context, JSC VM, etc.)
     const engine_ctx = ctx.getEngineContext() orelse {
-        std.debug.print("No engine context available for script execution\n", .{});
         return;
     };
 
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
-        std.debug.print("Engine does not support script compilation\n", .{});
         return;
     };
 
-    const script = compileScript(engine_ctx, source, source_url) catch |err| {
-        std.debug.print("Script compilation error: {}\n", .{err});
+    const script = compileScript(engine_ctx, source, source_url) catch {
         return;
     } orelse {
         // Compilation failed - fire error event at script element
@@ -811,12 +811,10 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
 
     // Run the script using the engine interface
     const runScript = engine.runScript orelse {
-        std.debug.print("Engine does not support script execution\n", .{});
         return;
     };
 
-    _ = runScript(engine_ctx, script) catch |err| {
-        std.debug.print("Script execution error: {}\n", .{err});
+    _ = runScript(engine_ctx, script) catch {
         return;
     } orelse {
         // Script threw an uncaught exception
@@ -832,14 +830,6 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         const is_external = HTMLScriptElementImpl.isFromExternalFile(script_element);
         const has_crossorigin = hasAttribute(script_element, "crossorigin");
         const is_muted = is_external and !has_crossorigin;
-
-        if (is_muted) {
-            // Cross-origin script without CORS - sanitize error per spec
-            std.debug.print("Script error.\n", .{});
-        } else {
-            // Same-origin or CORS-enabled script - show full error
-            std.debug.print("Uncaught error in script: {s}\n", .{source_url orelse "(inline)"});
-        }
 
         // Fire error event at the script element itself (for load-time errors)
         // Runtime errors would go to window.onerror, but that requires Window integration
@@ -1923,7 +1913,8 @@ fn isConnected(element: *runtime.Instance) bool {
 
 /// Get the node's owner document
 fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
-    if (NodeImpl.getInternalState(node)) |internal| {
+    const internal_state = NodeImpl.getInternalState(node);
+    if (internal_state) |internal| {
         return internal.owner_document;
     }
     return null;
