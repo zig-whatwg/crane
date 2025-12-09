@@ -65,6 +65,12 @@ pub const parseHTMLFromString = fragment_parser.parseHTMLFromString;
 pub const FragmentParseResult = fragment_parser.FragmentParseResult;
 pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 
+// Tag name string interning (performance optimization)
+pub const tag_name_intern = @import("tag_name_intern.zig");
+pub const internTagName = tag_name_intern.intern;
+pub const isKnownHtmlTag = tag_name_intern.isKnownHtmlTag;
+pub const eqlInternedTag = tag_name_intern.eqlInterned;
+
 // Document write support (document.write/writeln/open/close)
 pub const document_write = @import("document_write.zig");
 pub const DocumentWriteState = document_write.DocumentWriteState;
@@ -86,5 +92,6 @@ test {
     _ = @import("entities.zig");
     _ = @import("fragment_parser.zig");
     _ = @import("document_write.zig");
+    _ = @import("tag_name_intern.zig");
     // NOTE: dom_tree_adapter.zig tests are run from html (full.zig) module
 }

@@ -143,6 +143,8 @@ pub const TreeNode = struct {
     node_type: NodeType,
     /// Local name (for elements)
     local_name: ?[]const u8,
+    /// Whether local_name is interned (static memory, don't free)
+    local_name_interned: bool,
     /// Namespace (for elements)
     namespace: Namespace,
     /// Parent node
@@ -190,6 +192,7 @@ pub const TreeNode = struct {
         node.* = TreeNode{
             .node_type = .document,
             .local_name = null,
+            .local_name_interned = false,
             .namespace = .html,
             .parent = null,
             .first_child = null,
@@ -208,12 +211,21 @@ pub const TreeNode = struct {
     }
 
     /// Create a new element node.
+    /// Uses tag name interning for common HTML elements to avoid allocation.
     pub fn initElement(allocator: Allocator, local_name: []const u8, namespace: Namespace) !*TreeNode {
         const node = try allocator.create(TreeNode);
-        const name_copy = try allocator.dupe(u8, local_name);
+
+        // Try to use interned tag name for HTML elements
+        const tag_name_intern = @import("tag_name_intern.zig");
+        const interned = if (namespace == .html) tag_name_intern.intern(local_name) else null;
+
+        const name_ptr = interned orelse try allocator.dupe(u8, local_name);
+        const is_interned = interned != null;
+
         node.* = TreeNode{
             .node_type = .element,
-            .local_name = name_copy,
+            .local_name = name_ptr,
+            .local_name_interned = is_interned,
             .namespace = namespace,
             .parent = null,
             .first_child = null,
@@ -237,6 +249,7 @@ pub const TreeNode = struct {
         node.* = TreeNode{
             .node_type = .text,
             .local_name = null,
+            .local_name_interned = false,
             .namespace = .html,
             .parent = null,
             .first_child = null,
@@ -260,6 +273,7 @@ pub const TreeNode = struct {
         node.* = TreeNode{
             .node_type = .comment,
             .local_name = null,
+            .local_name_interned = false,
             .namespace = .html,
             .parent = null,
             .first_child = null,
@@ -283,6 +297,7 @@ pub const TreeNode = struct {
         node.* = TreeNode{
             .node_type = .doctype,
             .local_name = null,
+            .local_name_interned = false,
             .namespace = .html,
             .parent = null,
             .first_child = null,
@@ -311,9 +326,11 @@ pub const TreeNode = struct {
             child = next;
         }
 
-        // Free local name
+        // Free local name (only if not interned - interned names are static)
         if (self.local_name) |name| {
-            self.allocator.free(name);
+            if (!self.local_name_interned) {
+                self.allocator.free(name);
+            }
         }
         // Free attributes
         const attrs = self.attributes.toSlice();

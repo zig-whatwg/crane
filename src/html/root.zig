@@ -110,6 +110,12 @@ pub const parseHTMLFromString = parser.parseHTMLFromString;
 pub const FragmentParseResult = parser.FragmentParseResult;
 pub const FragmentParseOptions = parser.FragmentParseOptions;
 
+// Tag name string interning (performance optimization)
+pub const tag_name_intern = parser.tag_name_intern;
+pub const internTagName = parser.internTagName;
+pub const isKnownHtmlTag = parser.isKnownHtmlTag;
+pub const eqlInternedTag = parser.eqlInternedTag;
+
 // Document write support (§8.4 - document.write/writeln/open/close)
 pub const DocumentWriteState = parser.DocumentWriteState;
 pub const DocumentWriteError = parser.DocumentWriteError;
