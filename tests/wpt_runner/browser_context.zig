@@ -1080,6 +1080,191 @@ fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
     return content;
 }
 
+// =============================================================================
+// Iframe Document Loading Support (Phase 4 of whatwg-wv486)
+// =============================================================================
+
+/// Parse charset from WPT .headers file content
+/// Handles formats like:
+/// - "Content-Type: text/html; charset=utf-8"
+/// - "Content-Type: text/html;charset=utf-8"
+/// - "Content-Type: text/html; charset=\"utf-8\""
+pub fn parseCharsetFromHeaders(content: []const u8) ?[]const u8 {
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, &.{ ' ', '\t', '\r' });
+
+        // Check if this is a Content-Type header (case-insensitive)
+        if (trimmed.len > 13) {
+            // Check for "Content-Type:" prefix
+            var is_content_type = true;
+            const prefix = "content-type:";
+            for (prefix, 0..) |expected, i| {
+                if (i >= trimmed.len or std.ascii.toLower(trimmed[i]) != expected) {
+                    is_content_type = false;
+                    break;
+                }
+            }
+
+            if (is_content_type) {
+                const value = trimmed[13..]; // After "Content-Type:"
+
+                // Find "charset=" (case-insensitive) in the value
+                var i: usize = 0;
+                while (i + 8 <= value.len) : (i += 1) {
+                    // Check for "charset="
+                    var found = true;
+                    const charset_prefix = "charset=";
+                    for (charset_prefix, 0..) |expected, j| {
+                        if (i + j >= value.len or std.ascii.toLower(value[i + j]) != expected) {
+                            found = false;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        const charset_start = i + 8;
+                        var charset_end = charset_start;
+
+                        // Handle quoted charset values
+                        if (charset_start < value.len and (value[charset_start] == '"' or value[charset_start] == '\'')) {
+                            const quote_char = value[charset_start];
+                            charset_end = charset_start + 1;
+                            while (charset_end < value.len and value[charset_end] != quote_char) {
+                                charset_end += 1;
+                            }
+                            return value[charset_start + 1 .. charset_end];
+                        }
+
+                        // Unquoted: find end of charset value (semicolon, space, or end)
+                        while (charset_end < value.len and
+                            value[charset_end] != ';' and
+                            value[charset_end] != ' ' and
+                            value[charset_end] != '\r' and
+                            value[charset_end] != '\n')
+                        {
+                            charset_end += 1;
+                        }
+                        return value[charset_start..charset_end];
+                    }
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/// Read charset from a .headers file if it exists
+/// Returns the charset label or null if no headers file or no charset specified
+pub fn readHeadersFileCharset(allocator: std.mem.Allocator, file_path: []const u8) ?[]const u8 {
+    // Construct .headers file path
+    const headers_path = std.fmt.allocPrint(allocator, "{s}.headers", .{file_path}) catch return null;
+    defer allocator.free(headers_path);
+
+    // Try to read the headers file
+    const headers_file = std.fs.cwd().openFile(headers_path, .{}) catch return null;
+    defer headers_file.close();
+
+    const headers_content = headers_file.readToEndAlloc(allocator, 4096) catch return null;
+    defer allocator.free(headers_content);
+
+    // Parse charset from headers
+    return parseCharsetFromHeaders(headers_content);
+}
+
+/// Load an iframe document from the WPT file system
+/// This handles:
+/// 1. Resolving the src URL relative to the test directory
+/// 2. Reading .headers files for charset information
+/// 3. Parsing HTML with the correct encoding
+/// 4. Storing the document in the iframe's browsing context
+///
+/// @param self The browser context
+/// @param iframe_element The HTMLIFrameElement instance
+/// @param src The src attribute value (relative URL)
+/// @param test_dir The directory containing the test file
+/// @return void on success, error on failure
+pub fn loadIframeDocument(
+    self: *BrowserContext,
+    iframe_element: *runtime.Instance,
+    src: []const u8,
+    test_dir: []const u8,
+) !void {
+    if (src.len == 0) return;
+
+    // 1. Resolve src URL relative to test directory
+    const iframe_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, test_dir, src });
+    defer self.allocator.free(iframe_path);
+
+    // 2. Check for .headers file for charset
+    const charset = readHeadersFileCharset(self.allocator, iframe_path);
+    _ = charset; // TODO: Use charset when parsing
+
+    // 3. Read iframe content
+    const iframe_file = std.fs.cwd().openFile(iframe_path, .{}) catch |err| {
+        std.debug.print("Failed to open iframe file {s}: {}\n", .{ iframe_path, err });
+        return error.FileNotFound;
+    };
+    defer iframe_file.close();
+
+    const iframe_content = iframe_file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| {
+        std.debug.print("Failed to read iframe file: {}\n", .{err});
+        return error.ReadError;
+    };
+    defer self.allocator.free(iframe_content);
+
+    // 4. Get runtime context
+    const runtime_ctx = context_manager.getOrCreate(self.context.?, self.allocator) catch |err| {
+        std.debug.print("Failed to get runtime context: {}\n", .{err});
+        return error.RuntimeError;
+    };
+
+    // 5. Parse HTML (with scripting disabled for data files)
+    const HTMLParser = impls.HTMLParser;
+    const iframe_document = HTMLParser.parseHTMLWithScripting(
+        self.allocator,
+        runtime_ctx,
+        iframe_content,
+        .{
+            .scripting_enabled = false, // Data files typically don't need scripts
+            .base_url = iframe_path,
+            .script_loader = null,
+        },
+    ) catch |err| {
+        std.debug.print("Failed to parse iframe HTML: {}\n", .{err});
+        return error.ParseError;
+    };
+
+    // 6. Get iframe's internal state and set the document in its browsing context
+    const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
+    const iframe_internal = HTMLIFrameElementImpl.getInternal(iframe_element) orelse {
+        std.debug.print("Failed to get iframe internal state\n", .{});
+        interfaces.Document.deinit(iframe_document);
+        return error.InvalidState;
+    };
+
+    if (iframe_internal.integration.browsing_context) |browsing_ctx| {
+        // Create a window for the iframe document (simplified - just use document as window for now)
+        // TODO: Properly create Window instance
+        browsing_ctx.setActiveDocument(@ptrCast(iframe_document), @ptrCast(iframe_document));
+    } else {
+        std.debug.print("Iframe has no browsing context\n", .{});
+        interfaces.Document.deinit(iframe_document);
+        return error.NoBrowsingContext;
+    }
+
+    // 7. Fire 'load' event on iframe element
+    const event = interfaces.Event.init(self.allocator, runtime_ctx) catch return error.OutOfMemory;
+    errdefer interfaces.Event.deinit(event);
+
+    const event_type = runtime.DOMString.initInterned("load");
+    const bubbles = webidl.Opt(bool).passed(false); // load event doesn't bubble
+    const cancelable = webidl.Opt(bool).passed(false);
+    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.EventError;
+
+    _ = interfaces.EventTarget.call_dispatchEvent(iframe_element, event) catch return error.DispatchError;
+}
+
 // Thread-local storage for result collector (accessible from V8 callbacks)
 // V8 callbacks are C functions that can't easily capture context,
 // so we use thread-local storage to pass the result collector.
