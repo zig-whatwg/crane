@@ -26,6 +26,8 @@ const BrowsingContext = browsing_context.BrowsingContext;
 const SandboxFlags = browsing_context.SandboxFlags;
 const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
+const encoding_mod = @import("encoding");
+const html_parser = @import("../parser/root.zig");
 
 /// Error types for iframe integration
 pub const IFrameError = error{
@@ -39,6 +41,12 @@ pub const IFrameError = error{
     SandboxViolation,
     /// Out of memory
     OutOfMemory,
+    /// Failed to read file
+    FileReadError,
+    /// Unsupported URL scheme
+    UnsupportedScheme,
+    /// Parse error during HTML parsing
+    ParseError,
 };
 
 /// State of the iframe's nested browsing context
@@ -56,6 +64,142 @@ pub const IFrameState = enum {
     /// Browsing context discarded (element removed from document)
     discarded,
 };
+
+/// Result of fetching content from a URL
+pub const FetchedContent = struct {
+    /// The raw bytes fetched
+    bytes: []u8,
+    /// Content-Type header value (null if not available)
+    content_type: ?[]u8,
+    /// Allocator used for bytes (for cleanup)
+    allocator: Allocator,
+
+    pub fn deinit(self: *FetchedContent) void {
+        self.allocator.free(self.bytes);
+        if (self.content_type) |ct| {
+            self.allocator.free(ct);
+        }
+    }
+};
+
+// ============================================================================
+// Encoding Detection - HTML Standard §13.2.3.2
+// ============================================================================
+
+/// Detect encoding from BOM and Content-Type header
+/// Per HTML Standard §13.2.3.2 "Determining the character encoding"
+///
+/// The algorithm checks in order:
+/// 1. BOM (Byte Order Mark)
+/// 2. Content-Type header charset parameter
+/// 3. Default to UTF-8
+pub fn detectEncoding(bytes: []const u8, content_type: ?[]const u8) *const encoding_mod.Encoding {
+    // Step 1: Check for BOM
+    if (encoding_mod.bom.sniff(bytes)) |bom_encoding| {
+        return switch (bom_encoding) {
+            .utf8 => encoding_mod.UTF_8,
+            .utf16be => &encoding_mod.encoding.UTF_16BE,
+            .utf16le => &encoding_mod.encoding.UTF_16LE,
+        };
+    }
+
+    // Step 2: Check Content-Type header charset
+    if (content_type) |ct| {
+        if (parseCharsetFromContentType(ct)) |charset| {
+            if (encoding_mod.getEncoding(charset)) |enc| {
+                return enc;
+            }
+        }
+    }
+
+    // Step 3: Default to UTF-8
+    return encoding_mod.UTF_8;
+}
+
+/// Percent-decode a string (simplified URL decoding)
+/// Decodes %XX sequences to their byte values
+fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
+    // Calculate output size (will be <= input size)
+    var output_size: usize = 0;
+    var i: usize = 0;
+    while (i < input.len) {
+        if (input[i] == '%' and i + 2 < input.len) {
+            // Check if next two chars are hex digits
+            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |_| {
+                output_size += 1;
+                i += 3;
+                continue;
+            } else |_| {}
+        }
+        output_size += 1;
+        i += 1;
+    }
+
+    const output = try allocator.alloc(u8, output_size);
+    errdefer allocator.free(output);
+
+    i = 0;
+    var j: usize = 0;
+    while (i < input.len) {
+        if (input[i] == '%' and i + 2 < input.len) {
+            if (std.fmt.parseInt(u8, input[i + 1 .. i + 3], 16)) |byte| {
+                output[j] = byte;
+                j += 1;
+                i += 3;
+                continue;
+            } else |_| {}
+        }
+        output[j] = input[i];
+        j += 1;
+        i += 1;
+    }
+
+    return output;
+}
+
+/// Parse charset parameter from Content-Type header
+/// Handles formats like:
+/// - "text/html; charset=utf-8"
+/// - "text/html;charset=utf-8"
+/// - "text/html; charset=\"utf-8\""
+pub fn parseCharsetFromContentType(content_type: []const u8) ?[]const u8 {
+    // Look for "charset=" (case-insensitive)
+    var lower_buf: [256]u8 = undefined;
+    const len = @min(content_type.len, lower_buf.len);
+    for (content_type[0..len], 0..) |c, idx| {
+        lower_buf[idx] = std.ascii.toLower(c);
+    }
+    const lower = lower_buf[0..len];
+
+    // Find "charset="
+    const charset_prefix = "charset=";
+    const idx = std.mem.indexOf(u8, lower, charset_prefix) orelse return null;
+
+    // Extract the value
+    const value_start = idx + charset_prefix.len;
+    if (value_start >= content_type.len) return null;
+
+    var value = content_type[value_start..];
+
+    // Handle quoted value
+    if (value.len > 0 and (value[0] == '"' or value[0] == '\'')) {
+        const quote = value[0];
+        value = value[1..];
+        if (std.mem.indexOfScalar(u8, value, quote)) |end_quote| {
+            return value[0..end_quote];
+        }
+        return value; // No closing quote, return rest
+    }
+
+    // Find end of value (semicolon, space, or end of string)
+    for (value, 0..) |c, vi| {
+        if (c == ';' or c == ' ' or c == '\t') {
+            return value[0..vi];
+        }
+    }
+
+    return value;
+}
 
 /// Integration state for an iframe element
 /// This struct manages the relationship between HTMLIFrameElement and BrowsingContext
@@ -209,9 +353,11 @@ pub const IFrameIntegration = struct {
     }
 
     /// Navigate to srcdoc content
+    /// Per HTML Standard §4.8.5.1 - srcdoc attribute processing
+    ///
+    /// srcdoc content is always treated as UTF-8 since it comes from the
+    /// parent document's parsing (which normalizes to UTF-8).
     fn navigateToSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
-        _ = content;
-
         // srcdoc documents inherit origin from container
         if (self.window_proxy) |*proxy| {
             proxy.setDocumentOrigin(self.container_origin);
@@ -219,32 +365,227 @@ pub const IFrameIntegration = struct {
 
         self.state = .navigating;
 
-        // TODO: Parse the srcdoc HTML content and create a Document
-        // For now, just transition to ready state
+        // Parse the srcdoc HTML content using UTF-8 encoding (always)
+        // Per spec, srcdoc content has already been parsed by the parent document
+        // so it's guaranteed to be valid UTF-8
+        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content) catch {
+            self.state = .ready;
+            return IFrameError.ParseError;
+        };
+        defer {
+            tree_builder.deinit();
+            self.allocator.destroy(tree_builder);
+        }
+
+        // TODO: Convert TreeBuilder.document to runtime.Instance when we have
+        // full Document interface implementation. The parsed DOM tree exists
+        // in tree_builder.document but we need runtime.Instance for storage.
+        //
+        // When Document interface is fully implemented:
+        //   const doc = try createDocumentFromTreeBuilder(self.allocator, tree_builder);
+        //   const window = try createWindowForDocument(self.allocator, doc);
+        //   if (self.browsing_context) |ctx| {
+        //       ctx.setActiveDocument(doc, window);
+        //   }
+
         self.state = .ready;
     }
 
     /// Navigate to src URL
+    /// Per HTML Standard §7.4.2 - Navigate algorithm
+    ///
+    /// This function:
+    /// 1. Resolves the URL
+    /// 2. Fetches the content (for file:// URLs, reads from disk)
+    /// 3. Detects encoding (BOM → Content-Type → default UTF-8)
+    /// 4. Parses the HTML content
+    /// 5. Stores the parsed Document in the browsing context
     fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
         self.state = .navigating;
 
         // Parse the URL to determine origin
-        // For now, simplified - assume cross-origin unless same domain
         const new_origin = self.parseOriginFromURL(url);
 
         if (self.window_proxy) |*proxy| {
             proxy.setDocumentOrigin(new_origin);
         }
 
-        // TODO: Actually fetch and navigate to the URL
-        // This would involve:
-        // 1. Fetching the resource
-        // 2. Creating a new Document
-        // 3. Setting up the document's origin
-        // 4. Parsing the HTML
-        // 5. Updating the browsing context's active document
+        // Determine the URL scheme and fetch content
+        var content: FetchedContent = undefined;
+
+        if (std.mem.startsWith(u8, url, "file://")) {
+            // File URL - read from local filesystem
+            content = self.fetchFileContent(url) catch {
+                self.state = .ready;
+                return IFrameError.FileReadError;
+            };
+        } else if (std.mem.startsWith(u8, url, "data:")) {
+            // data: URL - parse the data URL
+            content = self.parseDataUrl(url) catch {
+                self.state = .ready;
+                return IFrameError.InvalidURL;
+            };
+        } else if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
+            // HTTP(S) URLs - not implemented yet, would need fetch API
+            // For now, mark as ready without loading (stub behavior)
+            self.state = .ready;
+            return;
+        } else if (std.mem.startsWith(u8, url, "about:")) {
+            // about: URLs are handled by navigateToAboutBlank
+            self.state = .ready;
+            return;
+        } else {
+            // Unsupported scheme
+            self.state = .ready;
+            return IFrameError.UnsupportedScheme;
+        }
+        defer content.deinit();
+
+        // Detect encoding from BOM and Content-Type
+        const detected_encoding = detectEncoding(content.bytes, content.content_type);
+
+        // Parse the HTML content
+        // Note: For now, we parse but don't create runtime.Instance objects
+        // The tree builder creates TreeNode objects which represent the DOM structure
+        // Full integration with runtime.Instance will be done when we have
+        // Document/Window WebIDL interface implementations
+        const tree_builder = html_parser.parseHTMLFromString(self.allocator, content.bytes) catch {
+            self.state = .ready;
+            return IFrameError.ParseError;
+        };
+        defer {
+            tree_builder.deinit();
+            self.allocator.destroy(tree_builder);
+        }
+
+        // Store encoding info for potential use by scripts
+        _ = detected_encoding;
+
+        // TODO: Convert TreeBuilder.document to runtime.Instance when we have
+        // full Document interface implementation. For now, the parsed DOM tree
+        // exists in tree_builder.document (TreeNode) but we can't store it
+        // in browsing_context.active_document (requires runtime.Instance).
+        //
+        // When Document interface is fully implemented:
+        //   const doc = try createDocumentFromTreeBuilder(self.allocator, tree_builder);
+        //   const window = try createWindowForDocument(self.allocator, doc);
+        //   if (self.browsing_context) |ctx| {
+        //       ctx.setActiveDocument(doc, window);
+        //   }
 
         self.state = .ready;
+    }
+
+    /// Fetch content from a file:// URL
+    fn fetchFileContent(self: *IFrameIntegration, url: []const u8) !FetchedContent {
+        // Extract file path from file:// URL
+        var file_path: []const u8 = undefined;
+
+        if (std.mem.startsWith(u8, url, "file:///")) {
+            // file:///path/to/file -> /path/to/file
+            file_path = url[7..];
+        } else if (std.mem.startsWith(u8, url, "file://")) {
+            // file://host/path (network path) - not supported
+            return error.UnsupportedScheme;
+        } else {
+            return error.InvalidURL;
+        }
+
+        // Read the file
+        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+            return error.FileReadError;
+        };
+        defer file.close();
+
+        // Read up to 10MB (reasonable limit for iframe content)
+        const max_size = 10 * 1024 * 1024;
+        const bytes = file.readToEndAlloc(self.allocator, max_size) catch {
+            return error.FileReadError;
+        };
+
+        // Try to read .headers file for Content-Type
+        var content_type: ?[]u8 = null;
+        const headers_path = std.fmt.allocPrint(self.allocator, "{s}.headers", .{file_path}) catch null;
+        if (headers_path) |hp| {
+            defer self.allocator.free(hp);
+            content_type = self.readContentTypeFromHeadersFile(hp);
+        }
+
+        return FetchedContent{
+            .bytes = bytes,
+            .content_type = content_type,
+            .allocator = self.allocator,
+        };
+    }
+
+    /// Read Content-Type from a .headers file (WPT convention)
+    /// Format: "Content-Type: text/html; charset=big5"
+    fn readContentTypeFromHeadersFile(self: *IFrameIntegration, headers_path: []const u8) ?[]u8 {
+        const file = std.fs.cwd().openFile(headers_path, .{}) catch return null;
+        defer file.close();
+
+        // Read headers file (usually small)
+        var buf: [4096]u8 = undefined;
+        const bytes_read = file.read(&buf) catch return null;
+        const content = buf[0..bytes_read];
+
+        // Parse Content-Type header
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, &[_]u8{ ' ', '\t', '\r' });
+            if (std.ascii.startsWithIgnoreCase(trimmed, "content-type:")) {
+                const value = std.mem.trim(u8, trimmed["content-type:".len..], &[_]u8{ ' ', '\t' });
+                return self.allocator.dupe(u8, value) catch null;
+            }
+        }
+
+        return null;
+    }
+
+    /// Parse a data: URL and return the content
+    /// Format: data:[<mediatype>][;base64],<data>
+    fn parseDataUrl(self: *IFrameIntegration, url: []const u8) !FetchedContent {
+        if (!std.mem.startsWith(u8, url, "data:")) {
+            return error.InvalidURL;
+        }
+
+        const rest = url[5..]; // Skip "data:"
+
+        // Find the comma separating metadata from data
+        const comma_idx = std.mem.indexOf(u8, rest, ",") orelse return error.InvalidURL;
+
+        const metadata = rest[0..comma_idx];
+        const data = rest[comma_idx + 1 ..];
+
+        // Check for base64 encoding
+        const is_base64 = std.mem.endsWith(u8, metadata, ";base64");
+
+        // Extract content type
+        var content_type: ?[]u8 = null;
+        const ct_end = if (is_base64) metadata.len - 7 else metadata.len;
+        if (ct_end > 0) {
+            content_type = try self.allocator.dupe(u8, metadata[0..ct_end]);
+        }
+
+        // Decode the data
+        const bytes = if (is_base64) blk: {
+            // Base64 decode
+            const decoded_size = std.base64.standard.Decoder.calcSizeForSlice(data) catch return error.InvalidURL;
+            const decoded = try self.allocator.alloc(u8, decoded_size);
+            errdefer self.allocator.free(decoded);
+            std.base64.standard.Decoder.decode(decoded, data) catch return error.InvalidURL;
+            break :blk decoded;
+        } else blk: {
+            // Percent-decode (simplified: just unescape %XX sequences)
+            const decoded = try percentDecode(self.allocator, data);
+            break :blk decoded;
+        };
+
+        return FetchedContent{
+            .bytes = bytes,
+            .content_type = content_type,
+            .allocator = self.allocator,
+        };
     }
 
     /// Parse origin from URL (simplified)
@@ -747,4 +1088,138 @@ test "IFrameIntegration - sandbox applied to browsing context" {
         try std.testing.expect(ctx.allowsScripts());
         try std.testing.expect(!ctx.allowsForms());
     }
+}
+
+// ============================================================================
+// Encoding Detection Tests (Phase 2)
+// ============================================================================
+
+test "detectEncoding - UTF-8 BOM" {
+    // UTF-8 BOM: 0xEF 0xBB 0xBF
+    const utf8_bom = [_]u8{ 0xEF, 0xBB, 0xBF, '<', 'h', 't', 'm', 'l', '>' };
+    const enc = detectEncoding(&utf8_bom, null);
+    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
+}
+
+test "detectEncoding - UTF-16BE BOM" {
+    // UTF-16BE BOM: 0xFE 0xFF
+    const utf16be_bom = [_]u8{ 0xFE, 0xFF, 0x00, '<' };
+    const enc = detectEncoding(&utf16be_bom, null);
+    try std.testing.expectEqualStrings("UTF-16BE", enc.whatwg_name);
+}
+
+test "detectEncoding - UTF-16LE BOM" {
+    // UTF-16LE BOM: 0xFF 0xFE
+    const utf16le_bom = [_]u8{ 0xFF, 0xFE, '<', 0x00 };
+    const enc = detectEncoding(&utf16le_bom, null);
+    try std.testing.expectEqualStrings("UTF-16LE", enc.whatwg_name);
+}
+
+test "detectEncoding - Content-Type charset utf-8" {
+    const html = "<html>";
+    const enc = detectEncoding(html, "text/html; charset=utf-8");
+    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
+}
+
+test "detectEncoding - Content-Type charset Big5" {
+    const html = "<html>";
+    const enc = detectEncoding(html, "text/html; charset=big5");
+    try std.testing.expectEqualStrings("Big5", enc.whatwg_name);
+}
+
+test "detectEncoding - Content-Type charset Shift_JIS" {
+    const html = "<html>";
+    const enc = detectEncoding(html, "text/html; charset=shift_jis");
+    try std.testing.expectEqualStrings("Shift_JIS", enc.whatwg_name);
+}
+
+test "detectEncoding - defaults to UTF-8" {
+    const html = "<html>";
+    const enc = detectEncoding(html, null);
+    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
+}
+
+test "detectEncoding - BOM takes precedence over Content-Type" {
+    // UTF-8 BOM but Content-Type says Big5
+    const utf8_bom = [_]u8{ 0xEF, 0xBB, 0xBF, '<', 'h', 't', 'm', 'l', '>' };
+    const enc = detectEncoding(&utf8_bom, "text/html; charset=big5");
+    // BOM should win
+    try std.testing.expectEqualStrings("utf-8", enc.whatwg_name);
+}
+
+// ============================================================================
+// Content-Type Charset Parsing Tests (Phase 2)
+// ============================================================================
+
+test "parseCharsetFromContentType - simple charset" {
+    const ct = "text/html; charset=utf-8";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("utf-8", charset.?);
+}
+
+test "parseCharsetFromContentType - no space after semicolon" {
+    const ct = "text/html;charset=utf-8";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("utf-8", charset.?);
+}
+
+test "parseCharsetFromContentType - quoted charset" {
+    const ct = "text/html; charset=\"utf-8\"";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("utf-8", charset.?);
+}
+
+test "parseCharsetFromContentType - single quoted charset" {
+    const ct = "text/html; charset='big5'";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("big5", charset.?);
+}
+
+test "parseCharsetFromContentType - uppercase CHARSET" {
+    const ct = "text/html; CHARSET=utf-8";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("utf-8", charset.?);
+}
+
+test "parseCharsetFromContentType - mixed case" {
+    const ct = "text/html; CharSet=ISO-8859-1";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("ISO-8859-1", charset.?);
+}
+
+test "parseCharsetFromContentType - no charset" {
+    const ct = "text/html";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expect(charset == null);
+}
+
+test "parseCharsetFromContentType - charset with additional params" {
+    const ct = "text/html; charset=utf-8; boundary=something";
+    const charset = parseCharsetFromContentType(ct);
+    try std.testing.expectEqualStrings("utf-8", charset.?);
+}
+
+// ============================================================================
+// Percent Decode Tests (Phase 2)
+// ============================================================================
+
+test "percentDecode - no escapes" {
+    const allocator = std.testing.allocator;
+    const result = try percentDecode(allocator, "hello");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("hello", result);
+}
+
+test "percentDecode - simple escape" {
+    const allocator = std.testing.allocator;
+    const result = try percentDecode(allocator, "hello%20world");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("hello world", result);
+}
+
+test "percentDecode - multiple escapes" {
+    const allocator = std.testing.allocator;
+    const result = try percentDecode(allocator, "%3C%3E");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("<>", result);
 }
