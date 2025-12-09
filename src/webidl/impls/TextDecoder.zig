@@ -373,10 +373,18 @@ fn processAndSerializeDirectUtf8(
     ignore_bom: bool,
     is_last: bool,
 ) ImplError!runtime.USVString {
+    // Handle empty input
+    if (bytes.len == 0) {
+        return output_allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
+    }
+
     // Allocate UTF-8 output buffer based on encoding's max expansion
     const max_utf8_len = internal.enc.maxUtf8LengthForInput(bytes.len);
     const utf8_buf = output_allocator.alloc(u8, max_utf8_len) catch return ImplError.OutOfMemory;
-    errdefer output_allocator.free(utf8_buf);
+    // NOTE: No errdefer here! serializeUtf8Output takes ownership of utf8_buf
+    // and is responsible for freeing it in ALL paths (success and error).
+    // Using errdefer here would cause double-free when serializeUtf8Output
+    // frees the buffer on error and then errdefer fires.
 
     var input_pos: usize = 0;
     var output_pos: usize = 0;
@@ -387,7 +395,10 @@ fn processAndSerializeDirectUtf8(
 
         const result = internal.decoder.?.decodeToUtf8(remaining_input, remaining_output, is_last and input_pos + remaining_input.len == bytes.len);
 
-        output_pos += result.bytes_written;
+        // Bounds check: ensure bytes_written doesn't exceed remaining output buffer
+        // This prevents buffer overflow if decoder returns incorrect value
+        const safe_bytes_written = @min(result.bytes_written, remaining_output.len);
+        output_pos += safe_bytes_written;
         input_pos += result.bytes_consumed;
 
         if (result.status == .malformed) {
@@ -424,8 +435,9 @@ fn processAndSerializeDirectUtf8(
     }
 
     // Handle BOM stripping for UTF-8 and UTF-16 encodings
+    // serializeUtf8Output takes ownership of utf8_buf - DO NOT free it here
     const utf8_output = utf8_buf[0..output_pos];
-    return try serializeUtf8Output(internal, output_allocator, utf8_buf, utf8_output, ignore_bom);
+    return serializeUtf8Output(internal, output_allocator, utf8_buf, utf8_output, ignore_bom);
 }
 
 /// Fallback path using UTF-16 intermediate buffer
@@ -551,6 +563,9 @@ fn serializeIoQueue(
 ///
 /// Similar to serializeIoQueue but for direct UTF-8 output.
 /// Handles BOM stripping for UTF-8 and UTF-16 encodings.
+///
+/// OWNERSHIP: This function takes ownership of full_buffer and is responsible for freeing it.
+/// The caller's errdefer should NOT free full_buffer after calling this function.
 fn serializeUtf8Output(
     internal: *InternalState,
     output_allocator: std.mem.Allocator,
@@ -561,7 +576,9 @@ fn serializeUtf8Output(
     // Fast path: empty output
     if (utf8_output.len == 0) {
         output_allocator.free(full_buffer);
-        return output_allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
+        // Return empty slice - don't allocate, just return a zero-length slice
+        // This avoids potential OOM on a zero-length allocation
+        return &[_]u8{};
     }
 
     // Check if we need BOM handling (only for UTF-8 and UTF-16BE/LE)
@@ -586,16 +603,23 @@ fn serializeUtf8Output(
     if (start_idx == 0) {
         // No BOM to strip - shrink buffer to exact size and return
         if (utf8_output.len < full_buffer.len) {
-            // Reallocate to exact size
-            const result = output_allocator.dupe(u8, utf8_output) catch return ImplError.OutOfMemory;
+            // Reallocate to exact size - free original first to avoid double-free on OOM
+            const result = output_allocator.dupe(u8, utf8_output) catch {
+                output_allocator.free(full_buffer);
+                return ImplError.OutOfMemory;
+            };
             output_allocator.free(full_buffer);
             return result;
         }
+        // Buffer is exactly the right size - return it directly (transfer ownership)
         return @constCast(utf8_output);
     } else {
         // BOM stripped - allocate new buffer with remaining content
         const output_slice = utf8_output[start_idx..];
-        const result = output_allocator.dupe(u8, output_slice) catch return ImplError.OutOfMemory;
+        const result = output_allocator.dupe(u8, output_slice) catch {
+            output_allocator.free(full_buffer);
+            return ImplError.OutOfMemory;
+        };
         output_allocator.free(full_buffer);
         return result;
     }
