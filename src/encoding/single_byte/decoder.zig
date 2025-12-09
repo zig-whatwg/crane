@@ -26,18 +26,29 @@ pub fn decode(
     is_last: bool,
 ) streaming.DecodeResult {
     _ = is_last; // Single-byte decoding doesn't need is_last
-    std.debug.assert(decoder.state == .single_byte or decoder.state == .neutral);
 
     // Get the index for this encoding
-    const index = &decoder.state.single_byte.index;
+    // Single-byte decoders MUST have single_byte state with a valid index
+    const index = switch (decoder.state) {
+        .single_byte => |*sb| &sb.index,
+        else => {
+            // Invalid state - this shouldn't happen for single-byte encodings
+            // Return empty result to prevent undefined behavior
+            return .{
+                .status = .input_empty,
+                .bytes_consumed = 0,
+                .code_units_written = 0,
+            };
+        },
+    };
 
     var in_pos: usize = 0;
     var out_pos: usize = 0;
 
-    // Fast path detection: Check if bytes 0xA0-0xFF are identity mappings
-    // This is true for Windows-1252, ISO-8859-1, and several other encodings
-    // We detect this by checking if index[32] == 0x00A0 (the pattern starts there)
-    const has_identity_mapping = index.map[32] == 0x00A0;
+    // NOTE: A fast path optimization was removed here. The optimization assumed
+    // that if index[32] == 0x00A0, all bytes >= 0xA0 could be passed through directly.
+    // This is incorrect for encodings like ISO-8859-3 which have unmapped bytes
+    // (0xFFFF values) in the 0xA0-0xFF range. Table lookup is required for correctness.
 
     while (in_pos < input.len) {
         // Prefetch next cache line for large buffers (64-byte cache lines)
@@ -64,14 +75,11 @@ pub fn decode(
             continue;
         }
 
-        // Fast path: For encodings with identity mapping 0xA0-0xFF → U+00A0-U+00FF
-        // This includes Windows-1252, ISO-8859-1, and others (~50% of single-byte encodings)
-        if (has_identity_mapping and byte >= 0xA0) {
-            output[out_pos] = byte; // Direct mapping, no table lookup!
-            out_pos += 1;
-            in_pos += 1;
-            continue;
-        }
+        // NOTE: Removed the "identity mapping fast path" optimization.
+        // While some encodings (ISO-8859-1, Windows-1252) have contiguous identity mappings
+        // for 0xA0-0xFF, other encodings (ISO-8859-3, ISO-8859-6, etc.) have holes
+        // in this range that must return errors. The table lookup is necessary
+        // for correctness.
 
         // Step 3: Look up in index (byte - 0x80)
         const pointer = byte - 0x80;
@@ -84,10 +92,15 @@ pub fn decode(
             in_pos += 1;
         } else {
             @branchHint(.unlikely); // Invalid code points are rare in valid encodings
-            // Step 4: Not in index - emit replacement character
-            output[out_pos] = 0xFFFD; // U+FFFD REPLACEMENT CHARACTER
-            out_pos += 1;
-            in_pos += 1;
+            // Step 4: Not in index - return error
+            // The higher-level algorithm decides whether to throw (fatal mode)
+            // or emit replacement character (replacement mode)
+            return .{
+                .status = .malformed,
+                .bytes_consumed = in_pos,
+                .code_units_written = out_pos,
+                .error_length = 1, // Single byte error
+            };
         }
     }
 
