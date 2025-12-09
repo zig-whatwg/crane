@@ -1039,8 +1039,67 @@ test "decodeToUtf8 fallback - output buffer too small" {
 }
 
 test "Encoding.supportsDirectUtf8Decode" {
-    // Currently no encodings have native decodeToUtf8, so all should return false
+    // Encodings with native decodeToUtf8 implementation
+    try std.testing.expect(EUC_KR.supportsDirectUtf8Decode());
+    try std.testing.expect(BIG5.supportsDirectUtf8Decode());
+
+    // Encodings without native decodeToUtf8 (use fallback)
     try std.testing.expect(!WINDOWS_1252.supportsDirectUtf8Decode());
     try std.testing.expect(!UTF_8.supportsDirectUtf8Decode());
     try std.testing.expect(!ISO_8859_2.supportsDirectUtf8Decode());
+}
+
+test "decodeToUtf8 direct - Big5 ASCII passthrough" {
+    // ASCII bytes should pass through directly (same as UTF-8)
+    var decoder = BIG5.newDecoder();
+    const input = "Hello, World!";
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(input.len, result.bytes_consumed);
+    try std.testing.expectEqual(input.len, result.bytes_written);
+    try std.testing.expectEqualStrings(input, output[0..result.bytes_written]);
+}
+
+test "decodeToUtf8 direct - Big5 Chinese character" {
+    // Big5 encoding for "中" (U+4E2D) is 0xA4 0xA4
+    // But actually "中" is 0xA4 0xA4 in Big5 - need to verify
+    // Let's use a known Big5 sequence: 0xA4 0x40 maps to U+4E00 (一)
+    // Actually, let's test with 0xA4 0x40 -> U+4E00 (first CJK unified ideograph)
+    // U+4E00 in UTF-8 is 0xE4 0xB8 0x80
+    var decoder = BIG5.newDecoder();
+    // Big5: 0xA4 0x40 -> U+4E00 based on Big5 index
+    const input = [_]u8{ 0xA4, 0x40 };
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(&input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(@as(usize, 2), result.bytes_consumed);
+    // Should produce 3-byte UTF-8 for a CJK character
+    try std.testing.expectEqual(@as(usize, 3), result.bytes_written);
+}
+
+test "decodeToUtf8 direct - Big5 streaming incomplete sequence" {
+    // Test that incomplete Big5 sequence is handled correctly when not is_last
+    var decoder = BIG5.newDecoder();
+    const input = [_]u8{0xA4}; // Lead byte only, no trail byte
+    var output: [64]u8 = undefined;
+
+    // First chunk with is_last=false - incomplete sequence should wait
+    const result1 = decoder.decodeToUtf8(&input, &output, false);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result1.status);
+    try std.testing.expectEqual(@as(usize, 1), result1.bytes_consumed);
+    try std.testing.expectEqual(@as(usize, 0), result1.bytes_written);
+
+    // Continue with trail byte
+    const input2 = [_]u8{0x40};
+    const result2 = decoder.decodeToUtf8(&input2, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result2.status);
+    try std.testing.expectEqual(@as(usize, 1), result2.bytes_consumed);
+    try std.testing.expectEqual(@as(usize, 3), result2.bytes_written); // CJK char = 3 UTF-8 bytes
 }
