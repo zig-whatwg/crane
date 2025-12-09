@@ -1068,9 +1068,20 @@ fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
         // Absolute path from WPT root (e.g., "/resources/testharness.js")
         path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url[1..] }) catch return null;
     } else {
-        // Relative path - would need test directory context
-        // For now, try relative to WPT root
-        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url }) catch return null;
+        // Relative path - resolve relative to current test directory
+        const test_path = getCurrentTestPath() orelse {
+            // Fallback to WPT root if no test path set
+            path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url }) catch return null;
+            return blk: {
+                defer self.allocator.free(path);
+                const file = std.fs.cwd().openFile(path, .{}) catch return null;
+                defer file.close();
+                break :blk file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch return null;
+            };
+        };
+        // Get directory of current test file
+        const test_dir = std.fs.path.dirname(test_path) orelse "";
+        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, test_dir, url }) catch return null;
     }
     defer self.allocator.free(path);
 

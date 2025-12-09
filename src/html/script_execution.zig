@@ -475,12 +475,20 @@ fn handleScriptScheduling(
                 // External classic script (has src)
                 if (is_parser_inserted and !has_async and !has_defer) {
                     // Parser-blocking external script
+                    // The script content should already be cached by parser_script_execution.zig
+                    // Check if it's ready to execute (content was loaded by script loader callback)
+                    if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script_element)) {
+                        // Script is ready - execute it synchronously during parsing
+                        _ = executeScriptElement(allocator, script_element) catch {
+                            // Script errors are handled internally
+                        };
+                        return true;
+                    }
                     // Step 35.1: Set document's pending parsing-blocking script to el
+                    // Script is not ready yet - will execute when fetch completes
                     if (node_document) |doc| {
                         doc_state.setPendingParsingBlockingScript(doc, script_element);
                     }
-                    // Mark as ready to be parser-executed when fetch completes
-                    // (actual fetching not yet implemented)
                     return true;
                 } else if (has_defer and is_parser_inserted and !has_async) {
                     // Deferred external script

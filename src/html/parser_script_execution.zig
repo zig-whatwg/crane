@@ -134,16 +134,13 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
     // Step 1: Get DOM HTMLScriptElement from tree node via adapter
     const script_element = ctx.getDomElement(script_tree_node) orelse {
         // Script element hasn't been converted to DOM yet - this can happen
-        // if the DOM adapter hasn't processed this node. In this case, we
-        // need to create the DOM element now.
-        //
-        // For proper integration, the DOM adapter should have already created
-        // the element. If not, we can try to create one from the tree.
+        // if the DOM adapter hasn't processed this node.
         return;
     };
 
-    // Step 2: Get script content from tree node's text content
-    const script_content = script_tree_node.text_content.toSlice();
+    // Step 2: Get script content from tree node's child text nodes
+    // The tree builder creates text nodes as children, not in the element's own text_content
+    const script_content = getScriptTextContent(script_tree_node);
 
     // Step 3: Check for src attribute (external script)
     const src_attr = getScriptSrcAttribute(script_tree_node);
@@ -172,9 +169,7 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
             defer clearInsertionPointAfterScript(ctx);
 
             // Execute via the standard preparation path
-            _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch |err| {
-                std.debug.print("External script preparation error: {}\n", .{err});
-            };
+            _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
             return;
         } else {
             // Script loader not available or failed to load
@@ -204,9 +199,7 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
     // Execute the script via the standard preparation path
     // This handles CSP checks, script type determination, etc.
-    _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch |err| {
-        std.debug.print("Script preparation error: {}\n", .{err});
-    };
+    _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
 }
 
 /// Get the src attribute from a script tree node.
@@ -218,6 +211,24 @@ fn getScriptSrcAttribute(tree_node: *TreeNode) ?[]const u8 {
         }
     }
     return null;
+}
+
+/// Get text content from a script element's child text nodes.
+/// The tree builder creates text nodes as children, not in the element's own text_content.
+fn getScriptTextContent(tree_node: *TreeNode) []const u8 {
+    // First check if there's a single child text node (common case)
+    if (tree_node.first_child) |first| {
+        if (first.node_type == .text) {
+            // If there's only one child and it's a text node, return its content directly
+            if (first.next_sibling == null) {
+                return first.text_content.toSlice();
+            }
+        }
+    }
+
+    // If no children or not a text node, check the element's own text_content
+    // (fallback for edge cases)
+    return tree_node.text_content.toSlice();
 }
 
 /// Set the insertion point for document.write() during script execution.
