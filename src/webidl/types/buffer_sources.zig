@@ -921,6 +921,9 @@ pub const AllowSharedBufferSource = union(enum) {
     array_buffer: *ArrayBuffer,
     shared_array_buffer: *SharedArrayBuffer,
     array_buffer_view: ArrayBufferView,
+    /// Non-owning byte slice - used for temporary views into external buffers (e.g., V8 TypedArray)
+    /// The caller is responsible for ensuring the underlying data remains valid during use.
+    byte_slice: []const u8,
 
     /// Returns a byte slice view of the buffer data
     pub fn asBytes(self: AllowSharedBufferSource) ![]const u8 {
@@ -931,6 +934,7 @@ pub const AllowSharedBufferSource = union(enum) {
             },
             .shared_array_buffer => |buf| buf.data,
             .array_buffer_view => |view| try view.asBytes(),
+            .byte_slice => |slice| slice,
         };
     }
 };

@@ -509,12 +509,16 @@ const buffer_sources = @import("webidl").buffer_sources;
 /// WHATWG Encoding Standard § 5.1.4 - TextDecoder.decode() input parameter
 /// typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource
 ///
-/// This function extracts byte data from V8 TypedArray/DataView and constructs
-/// an AllowSharedBufferSource with an ArrayBuffer containing the copied data.
+/// This function creates a non-owning byte slice view into the V8 buffer data.
+/// The V8 buffer remains valid during the synchronous decode operation, so no copy is needed.
+/// IMPORTANT: The returned byte_slice is only valid during the current V8 call - do not
+/// store it beyond the scope of the function call that triggered this conversion.
 fn convertAllowSharedBufferSource(
     allocator: std.mem.Allocator,
     value: *v8.Value,
 ) ConversionError!typedefs.AllowSharedBufferSource {
+    _ = allocator; // Not needed - we create a non-owning view
+
     // Check for TypedArray (Uint8Array, Int8Array, etc.) or DataView
     const is_typed_array = v8.v8_Value_IsTypedArray(value);
     const is_data_view = v8.v8_Value_IsDataView(value);
@@ -526,61 +530,34 @@ fn convertAllowSharedBufferSource(
 
         // Get the underlying ArrayBuffer from V8
         const v8_ab = v8.v8_TypedArray_Buffer(value) orelse {
-            return createEmptyBufferSourceResult(allocator);
+            // Empty buffer - return empty byte slice
+            return .{ .byte_slice = &[_]u8{} };
         };
-        defer v8.v8_ArrayBuffer_Dispose(v8_ab);
+        // NOTE: We do NOT dispose the V8 ArrayBuffer here because we're creating
+        // a non-owning view into it. The buffer will be disposed by V8 GC after
+        // the JS call completes.
 
         // Get raw data pointer from V8 ArrayBuffer
         const v8_data = v8.v8_ArrayBuffer_Data(v8_ab);
         if (v8_data == null or byte_length == 0) {
-            return createEmptyBufferSourceResult(allocator);
+            return .{ .byte_slice = &[_]u8{} };
         }
 
-        // Create a new Zig ArrayBuffer with copied data
-        const zig_buffer = allocator.create(buffer_sources.ArrayBuffer) catch {
-            return ConversionError.OutOfMemory;
-        };
-        errdefer allocator.destroy(zig_buffer);
-
-        // Allocate data for the Zig ArrayBuffer
-        const data = allocator.alloc(u8, byte_length) catch {
-            return ConversionError.OutOfMemory;
-        };
-
-        // Copy data from V8 buffer (at the correct offset)
+        // Create a non-owning byte slice view directly into the V8 buffer
+        // This is safe because:
+        // 1. The V8 buffer remains valid during the synchronous decode call
+        // 2. We're not storing this pointer beyond the current call scope
         const src_ptr = @as([*]const u8, @ptrCast(v8_data.?)) + byte_offset;
-        @memcpy(data, src_ptr[0..byte_length]);
-
-        // Initialize the Zig ArrayBuffer with copied data
-        zig_buffer.* = buffer_sources.ArrayBuffer{
-            .data = data,
-            .detached = false,
-        };
-
-        // Return as array_buffer variant
-        return .{ .array_buffer = zig_buffer };
+        return .{ .byte_slice = src_ptr[0..byte_length] };
     }
 
-    // For null/undefined, return empty buffer
+    // For null/undefined, return empty byte slice
     if (v8.v8_Value_IsNullOrUndefined(value)) {
-        return createEmptyBufferSourceResult(allocator);
+        return .{ .byte_slice = &[_]u8{} };
     }
 
     // Unsupported type
     return ConversionError.TypeError;
-}
-
-/// Create an empty AllowSharedBufferSource for error/empty cases
-fn createEmptyBufferSourceResult(allocator: std.mem.Allocator) ConversionError!typedefs.AllowSharedBufferSource {
-    const buffer = allocator.create(buffer_sources.ArrayBuffer) catch {
-        return ConversionError.OutOfMemory;
-    };
-    // Empty buffer with no allocated data
-    buffer.* = buffer_sources.ArrayBuffer{
-        .data = &.{},
-        .detached = false,
-    };
-    return .{ .array_buffer = buffer };
 }
 
 /// Convert V8 value to BodyInit union
