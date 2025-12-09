@@ -126,11 +126,16 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
+    // Get internal state from registry (where it was stored in init)
+    if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
+        // Remove from registry to prevent double-free
+        if (doc_frag_registry) |*reg| {
+            _ = reg.remove(@intFromPtr(instance));
+        }
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    // Node cleanup happens via inheritance chain
+    NodeImpl.deinit(instance);
 }
 
 /// Constructor implementation

@@ -171,7 +171,8 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// This is used by Server-Sent Events.
 pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
-    return state.own.lastEventId;
+    // Return as interned to avoid double-free (state owns the string)
+    return runtime.DOMString.initInterned(state.own.lastEventId.asSlice());
 }
 
 /// Getter for source

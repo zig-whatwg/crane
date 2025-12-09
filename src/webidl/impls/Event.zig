@@ -161,7 +161,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Spec: https://dom.spec.whatwg.org/#dom-event-type
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
-    return state.own.type;
+    // Return as interned to avoid double-free (state owns the string)
+    // The V8 callback cleanup will not free interned strings
+    return runtime.DOMString.initInterned(state.own.type.asSlice());
 }
 
 /// Getter for target

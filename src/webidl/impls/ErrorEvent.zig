@@ -173,7 +173,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 /// Spec: "The message attribute must return the value it was initialized to."
 pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    return internal.message;
+    // Return as interned to avoid double-free (internal state owns the string)
+    return runtime.DOMString.initInterned(internal.message.asSlice());
 }
 
 /// Getter for filename
