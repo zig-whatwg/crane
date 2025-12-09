@@ -720,6 +720,268 @@ pub fn append(node: anytype, parent: anytype) DOMException!@TypeOf(node) {
     return preInsert(node, parent, null);
 }
 
+/// Batch Child Insertion API - Performance Optimization
+///
+/// Appends multiple children to a parent in a single operation.
+/// This is more efficient than calling append() repeatedly because:
+/// - Single mutation observer notification instead of N notifications
+/// - Single children-changed callback instead of N callbacks
+/// - Batch update of sibling pointers
+/// - Uses appendSlice for O(1) amortized insertion vs O(n) repeated appends
+///
+/// Use this when parsing HTML fragments or building DOM trees where
+/// multiple children are known upfront.
+///
+/// Example:
+///   var children: [3]*Node = .{ text1, text2, text3 };
+///   try appendChildren(parent, &children);
+///
+pub fn appendChildren(
+    parent: anytype,
+    children: []const *Node,
+) DOMException!void {
+    // Early exit if no children to insert
+    if (children.len == 0) return;
+
+    // Step 1: Validate parent is a valid container
+    if (!isDocument(parent) and !isDocumentFragment(parent) and !isElement(parent)) {
+        return error.HierarchyRequestError;
+    }
+
+    // Step 2: Validate all children and adopt them
+    for (children) |child| {
+        // Check child is not an ancestor of parent
+        if (isHostIncludingInclusiveAncestor(child, parent)) {
+            return error.HierarchyRequestError;
+        }
+
+        // Check child is valid type
+        if (!isDocumentFragment(child) and !isDocumentType(child) and
+            !isElement(child) and !isCharacterData(child))
+        {
+            return error.HierarchyRequestError;
+        }
+
+        // Text nodes cannot be children of documents
+        if (isText(child) and isDocument(parent)) {
+            return error.HierarchyRequestError;
+        }
+
+        // Remove child from its current parent if any
+        if (child.parent_node != null) {
+            try remove(child, true); // suppress observers for batch efficiency
+        }
+
+        // Adopt child into parent's document
+        if (parent.owner_document) |doc| {
+            try adopt(child, doc);
+        }
+    }
+
+    // Step 3: Get previous sibling for mutation record (last child before insertion)
+    var previousSibling: ?*Node = null;
+    if (parent.child_nodes.size() > 0) {
+        previousSibling = parent.child_nodes.items()[parent.child_nodes.size() - 1];
+    }
+
+    // Step 4: Batch insert all children using appendSlice for O(1) amortized insertion
+    try parent.child_nodes.appendSlice(children);
+
+    // Step 5: Update parent pointers for all inserted children in one pass
+    for (children) |child| {
+        child.parent_node = @ptrCast(parent);
+    }
+
+    // Step 6: Update live ranges if document is available
+    if (parent.owner_document) |doc| {
+        const start_idx = parent.child_nodes.size() - children.len;
+        updateRangesForInsertionWithCount(doc, parent, start_idx, children.len);
+    }
+
+    // Step 7: Run insertion steps for all inserted nodes and their descendants
+    for (children) |child| {
+        // Get all shadow-including inclusive descendants in tree order
+        var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
+            parent.allocator,
+            child,
+        ) catch {
+            // If we can't allocate, fall back to non-shadow traversal
+            runInsertionSteps(child);
+            for (child.child_nodes.items()) |descendant| {
+                runInsertionStepsRecursive(descendant);
+            }
+            continue;
+        };
+        defer descendants.deinit();
+
+        // Run insertion steps for each shadow-including inclusive descendant
+        for (descendants.toSlice()) |inclusive_descendant| {
+            runInsertionSteps(inclusive_descendant);
+        }
+    }
+
+    // Step 8: Queue a single tree mutation record for all insertions
+    const allocator = parent.allocator;
+    const added_list = try createNodeList(allocator, children);
+    defer {
+        added_list.deinit();
+        allocator.destroy(added_list);
+    }
+    const empty_list = try createNodeList(allocator, &[_]*Node{});
+    defer {
+        empty_list.deinit();
+        allocator.destroy(empty_list);
+    }
+    try mutation_observer.queueTreeMutationRecord(
+        allocator,
+        @ptrCast(parent),
+        added_list,
+        empty_list,
+        previousSibling,
+        null, // nextSibling is null since we're appending at end
+    );
+
+    // Step 9: Run children changed steps once for all insertions
+    runChildrenChangedSteps(parent);
+
+    // Step 10: Run post-connection steps for all inserted nodes
+    for (children) |child| {
+        runPostConnectionSteps(child);
+        // Recursively run for all descendants
+        for (child.child_nodes.items()) |descendant| {
+            runPostConnectionStepsRecursive(descendant);
+        }
+    }
+}
+
+/// Batch Insert Children Before - Performance Optimization
+///
+/// Inserts multiple children before a reference child in a single operation.
+/// Similar to appendChildren but inserts at a specific position.
+///
+/// This is useful for fragment insertion where nodes need to be inserted
+/// before an existing child rather than at the end.
+pub fn insertChildrenBefore(
+    parent: anytype,
+    children: []const *Node,
+    reference_child: ?*Node,
+) DOMException!void {
+    // If reference is null, this is equivalent to appendChildren
+    if (reference_child == null) {
+        return appendChildren(parent, children);
+    }
+
+    const ref_child = reference_child.?;
+
+    // Early exit if no children to insert
+    if (children.len == 0) return;
+
+    // Validate reference child's parent
+    if (ref_child.parent_node != @as(*Node, @ptrCast(parent))) {
+        return error.NotFoundError;
+    }
+
+    // Validate parent is a valid container
+    if (!isDocument(parent) and !isDocumentFragment(parent) and !isElement(parent)) {
+        return error.HierarchyRequestError;
+    }
+
+    // Get insertion index
+    const insert_idx = getChildIndex(ref_child) orelse return error.NotFoundError;
+
+    // Validate and adopt all children
+    for (children) |child| {
+        if (isHostIncludingInclusiveAncestor(child, parent)) {
+            return error.HierarchyRequestError;
+        }
+        if (!isDocumentFragment(child) and !isDocumentType(child) and
+            !isElement(child) and !isCharacterData(child))
+        {
+            return error.HierarchyRequestError;
+        }
+        if (isText(child) and isDocument(parent)) {
+            return error.HierarchyRequestError;
+        }
+        if (child.parent_node != null) {
+            try remove(child, true);
+        }
+        if (parent.owner_document) |doc| {
+            try adopt(child, doc);
+        }
+    }
+
+    // Get previous sibling for mutation record
+    var previousSibling: ?*Node = null;
+    if (insert_idx > 0) {
+        previousSibling = parent.child_nodes.items()[insert_idx - 1];
+    }
+
+    // Insert children one by one at the correct position
+    // Note: We insert in reverse order so the final order is correct
+    var i: usize = children.len;
+    while (i > 0) {
+        i -= 1;
+        try parent.child_nodes.insert(insert_idx, children[i]);
+        children[i].parent_node = @ptrCast(parent);
+    }
+
+    // Update live ranges
+    if (parent.owner_document) |doc| {
+        updateRangesForInsertionWithCount(doc, parent, insert_idx, children.len);
+    }
+
+    // Run insertion steps for all inserted nodes
+    for (children) |child| {
+        var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
+            parent.allocator,
+            child,
+        ) catch {
+            runInsertionSteps(child);
+            for (child.child_nodes.items()) |descendant| {
+                runInsertionStepsRecursive(descendant);
+            }
+            continue;
+        };
+        defer descendants.deinit();
+
+        for (descendants.toSlice()) |inclusive_descendant| {
+            runInsertionSteps(inclusive_descendant);
+        }
+    }
+
+    // Queue single mutation record
+    const allocator = parent.allocator;
+    const added_list = try createNodeList(allocator, children);
+    defer {
+        added_list.deinit();
+        allocator.destroy(added_list);
+    }
+    const empty_list = try createNodeList(allocator, &[_]*Node{});
+    defer {
+        empty_list.deinit();
+        allocator.destroy(empty_list);
+    }
+    try mutation_observer.queueTreeMutationRecord(
+        allocator,
+        @ptrCast(parent),
+        added_list,
+        empty_list,
+        previousSibling,
+        ref_child,
+    );
+
+    // Run children changed steps once
+    runChildrenChangedSteps(parent);
+
+    // Run post-connection steps
+    for (children) |child| {
+        runPostConnectionSteps(child);
+        for (child.child_nodes.items()) |descendant| {
+            runPostConnectionStepsRecursive(descendant);
+        }
+    }
+}
+
 /// DOM §4.2.5 - Replace
 /// Spec: https://dom.spec.whatwg.org/#concept-node-replace
 ///
