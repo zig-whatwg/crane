@@ -783,24 +783,26 @@ pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.
 /// Note: Simplified implementation - returns basic HTML structure.
 /// Full implementation requires complete HTML serialization algorithm.
 pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+
+    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+    // The V8 property getter callback will free returned strings using instance.ctx.allocator
+    const allocator = instance.ctx.allocator;
 
     // Build basic HTML from child elements using infra.List
-    var result = infra.List(u8).init(internal.allocator);
+    var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
     // Iterate through children and serialize
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
-        serializeNode(c, &result, internal.allocator) catch return error.OutOfMemory;
+        serializeNode(c, &result, allocator) catch return error.OutOfMemory;
         child = NodeImpl.getNextSibling(c);
     }
 
-    // Return as DOMString (wrapped in anyopaque for now)
-    const str = internal.allocator.create(runtime.DOMString) catch return error.OutOfMemory;
+    // Return as DOMString - toOwnedSlice uses the List's allocator (ctx.allocator)
     const owned = result.toOwnedSlice() catch return error.OutOfMemory;
-    str.* = runtime.DOMString.initOwned(owned);
-    return str.*;
+    return runtime.DOMString.initOwned(owned);
 }
 
 /// Getter for outerHTML
@@ -810,19 +812,21 @@ pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Note: Simplified implementation - returns basic HTML structure.
 /// Full implementation requires complete HTML serialization algorithm.
 pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    var result = infra.List(u8).init(internal.allocator);
+    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+    // The V8 property getter callback will free returned strings using instance.ctx.allocator
+    const allocator = instance.ctx.allocator;
+
+    var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
     // Serialize this element including itself
-    serializeNode(instance, &result, internal.allocator) catch return error.OutOfMemory;
+    serializeNode(instance, &result, allocator) catch return error.OutOfMemory;
 
-    // Return as DOMString
-    const str = internal.allocator.create(runtime.DOMString) catch return error.OutOfMemory;
+    // Return as DOMString - toOwnedSlice uses the List's allocator (ctx.allocator)
     const owned = result.toOwnedSlice() catch return error.OutOfMemory;
-    str.* = runtime.DOMString.initOwned(owned);
-    return str.*;
+    return runtime.DOMString.initOwned(owned);
 }
 
 /// Internal helper to serialize a node to HTML
@@ -3099,15 +3103,19 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
     _ = options;
     // get_innerHTML returns *const anyopaque which is a DOMString union
     // We need to call the serialization directly here
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+
+    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+    // The V8 property getter callback will free returned strings using instance.ctx.allocator
+    const allocator = instance.ctx.allocator;
 
     // Serialize all child nodes
-    var buffer = infra.List(u8).init(internal.allocator);
+    var buffer = infra.List(u8).init(allocator);
     defer buffer.deinit();
 
     var child = NodeImpl.getFirstChild(instance);
     while (child) |c| {
-        serializeNode(c, &buffer, internal.allocator) catch return error.OutOfMemory;
+        serializeNode(c, &buffer, allocator) catch return error.OutOfMemory;
         child = NodeImpl.getNextSibling(c);
     }
 
@@ -3116,7 +3124,7 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
     if (slice.len == 0) {
         return runtime.DOMString.initEmpty();
     }
-    return runtime.DOMString.initDupe(internal.allocator, slice) catch return error.OutOfMemory;
+    return runtime.DOMString.initDupe(allocator, slice) catch return error.OutOfMemory;
 }
 
 /// Operation: getAttributeNode

@@ -163,9 +163,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data
 /// A contiguous Text node is a Text node whose previous sibling is also a Text node,
 /// and the chain continues until we find a non-Text node or the start of the parent.
 pub fn get_wholeText(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    var result = infra.List(u8).init(internal.allocator);
+    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+    // The V8 property getter callback will free returned strings using instance.ctx.allocator
+    var result = infra.List(u8).init(instance.ctx.allocator);
     errdefer result.deinit();
 
     // Step 1: Walk backwards to find the first contiguous Text node

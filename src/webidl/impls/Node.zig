@@ -544,19 +544,25 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
             break :blk runtime.DOMString.initEmpty();
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
+            // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+            // The V8 callback will free returned strings using instance.ctx.allocator
+            // Note: This returns ?runtime.DOMString so may not be auto-cleaned, but we use
+            // ctx.allocator for consistency and to prevent issues if cleanup behavior changes
+            const allocator = instance.ctx.allocator;
+
             // Returns concatenation of descendant text content
             var result = std.ArrayListUnmanaged(u8){};
-            errdefer result.deinit(internal.allocator);
+            errdefer result.deinit(allocator);
 
             // Recursively collect text from all descendants
-            try collectTextContent(instance, internal.allocator, &result);
+            try collectTextContent(instance, allocator, &result);
 
             if (result.items.len == 0) {
                 return runtime.DOMString.initEmpty();
             }
 
             // Create DOMString from collected text - take ownership of the array
-            return runtime.DOMString.initOwned(result.toOwnedSlice(internal.allocator) catch return runtime.DOMString.initEmpty());
+            return runtime.DOMString.initOwned(result.toOwnedSlice(allocator) catch return runtime.DOMString.initEmpty());
         },
         else => runtime.DOMString.initEmpty(),
     };

@@ -322,13 +322,17 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
         return error.IndexSizeError;
     }
 
+    // IMPORTANT: Use instance.ctx.allocator for returned DOMStrings
+    // The V8 callback will free returned strings using instance.ctx.allocator
+    const allocator = instance.ctx.allocator;
+
     // Step 3: Handle overflow - return from offset to end
     if (offset + count > length) {
-        return runtime.DOMString.initDupe(internal.allocator, data[offset..]);
+        return runtime.DOMString.initDupe(allocator, data[offset..]);
     }
 
     // Step 4: Return substring
-    return runtime.DOMString.initDupe(internal.allocator, data[offset .. offset + count]);
+    return runtime.DOMString.initDupe(allocator, data[offset .. offset + count]);
 }
 
 /// Operation: appendData(data)
