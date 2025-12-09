@@ -1538,6 +1538,14 @@ pub fn V8Interface(comptime Interface: type) type {
         fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
 
+            // CRITICAL: Check if this is a constructor call (called with 'new')
+            // If called as a function (without 'new'), 'this' may be the global object
+            // which has 0 internal fields, causing "Internal field out of bounds" crash.
+            if (!info.isConstructCall()) {
+                conv.throwTypeError(isolate, interface_name ++ " constructor: 'new' is required");
+                return;
+            }
+
             // Get V8 context
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No current V8 context");

@@ -13,6 +13,7 @@
 #include <libplatform/libplatform.h>
 #include <cstring>
 #include <vector>
+#include <execinfo.h>  // For backtrace on macOS/Linux
 
 using namespace v8;
 
@@ -1177,6 +1178,33 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
+    
+    // Defensive check: verify object has enough internal fields
+    int field_count = local_obj->InternalFieldCount();
+    if (index >= field_count) {
+        fprintf(stderr, "FATAL: SetAlignedPointerInInternalField index %d out of bounds (object has %d internal fields)\n", 
+                index, field_count);
+        fprintf(stderr, "  This usually means:\n");
+        fprintf(stderr, "  1. Object was not created from a template with SetInternalFieldCount(2)\n");
+        fprintf(stderr, "  2. Object is the global object (has 0 internal fields by default)\n");
+        fprintf(stderr, "  3. Object is from a different isolate/context\n");
+        
+        // Print backtrace to identify caller
+        fprintf(stderr, "\nBacktrace:\n");
+        void* callstack[128];
+        int frames = backtrace(callstack, 128);
+        char** symbols = backtrace_symbols(callstack, frames);
+        if (symbols) {
+            for (int i = 0; i < frames; i++) {
+                fprintf(stderr, "  %s\n", symbols[i]);
+            }
+            free(symbols);
+        }
+        fprintf(stderr, "\n");
+        // Don't crash here - let V8's internal check provide the crash location
+        // but we've logged useful debug info
+    }
+    
     local_obj->SetAlignedPointerInInternalField(index, value);
 }
 
@@ -2008,6 +2036,11 @@ Global<Object>* v8_FunctionCallbackInfo_This(const FunctionCallbackInfo<Value>* 
     HandleScope handle_scope(isolate);
     Local<Object> self = info->This();
     return trackHandle(new Global<Object>(isolate, self));
+}
+
+// FunctionCallbackInfo - check if called with 'new'
+bool v8_FunctionCallbackInfo_IsConstructCall(const FunctionCallbackInfo<Value>* info) {
+    return info->IsConstructCall();
 }
 
 // FunctionCallbackInfo - get callback data

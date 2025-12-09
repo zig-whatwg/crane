@@ -90,6 +90,9 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
+    /// Check if this is a constructor call (called with 'new')
+    pub extern fn v8_FunctionCallbackInfo_IsConstructCall(self: *const FunctionCallbackInfo) bool;
+
     /// Get the holder object (the object on which the function is defined)
     pub extern fn v8_FunctionCallbackInfo_Holder(self: *const FunctionCallbackInfo) *Object;
 
@@ -113,6 +116,10 @@ pub const FunctionCallbackInfo = opaque {
 
     pub inline fn getThis(self: *const FunctionCallbackInfo) *Object {
         return v8_FunctionCallbackInfo_This(self);
+    }
+
+    pub inline fn isConstructCall(self: *const FunctionCallbackInfo) bool {
+        return v8_FunctionCallbackInfo_IsConstructCall(self);
     }
 
     pub inline fn getHolder(self: *const FunctionCallbackInfo) *Object {
