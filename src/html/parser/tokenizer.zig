@@ -55,6 +55,10 @@ pub const Tokenizer = struct {
     /// Queue of tokens to emit.
     token_queue: infra.List(Token),
 
+    /// Head index into token_queue for O(1) dequeue.
+    /// Tokens before this index have already been returned.
+    token_queue_head: usize,
+
     /// Whether to reconsume the current character.
     reconsume: bool,
 
@@ -79,6 +83,7 @@ pub const Tokenizer = struct {
             .last_start_tag_name = null,
             .character_reference_code = 0,
             .token_queue = infra.List(Token).init(allocator),
+            .token_queue_head = 0,
             .reconsume = false,
             .current_char = .eof,
             .error_callback = null,
@@ -95,9 +100,9 @@ pub const Tokenizer = struct {
         if (self.last_start_tag_name) |*name| {
             name.deinit();
         }
-        // Free any remaining tokens in queue
+        // Free any remaining tokens in queue (only those past head index)
         const slice = self.token_queue.toSliceMut();
-        for (slice) |*token| {
+        for (slice[self.token_queue_head..]) |*token| {
             token.deinit();
         }
         self.token_queue.deinit();
@@ -117,21 +122,19 @@ pub const Tokenizer = struct {
 
     /// Get the next token from the tokenizer.
     pub fn nextToken(self: *Tokenizer) !?Token {
-        // If we have queued tokens, return one
-        if (self.token_queue.len > 0) {
-            // TODO: Remove first element - for now just clear and rebuild
+        // If we have queued tokens, return one using O(1) head index
+        const queue_len = self.token_queue.len;
+        if (self.token_queue_head < queue_len) {
             const slice = self.token_queue.toSlice();
-            if (slice.len > 0) {
-                const token = slice[0];
-                // Shift remaining elements (inefficient but simple)
-                var new_queue = infra.List(Token).init(self.allocator);
-                for (slice[1..]) |t| {
-                    try new_queue.append(t);
-                }
-                self.token_queue.deinit();
-                self.token_queue = new_queue;
-                return token;
+            const token = slice[self.token_queue_head];
+            self.token_queue_head += 1;
+
+            // Compact the queue when head reaches halfway to avoid unbounded growth
+            // This amortizes the cost: O(1) per dequeue on average
+            if (self.token_queue_head >= 8 and self.token_queue_head >= queue_len / 2) {
+                try self.compactTokenQueue();
             }
+            return token;
         }
 
         // Process states until we emit a token
@@ -155,6 +158,32 @@ pub const Tokenizer = struct {
                 return null;
             }
         }
+    }
+
+    /// Compact the token queue by removing already-consumed tokens.
+    /// Called when head index gets large to prevent unbounded memory growth.
+    fn compactTokenQueue(self: *Tokenizer) !void {
+        const remaining = self.token_queue.len - self.token_queue_head;
+        if (remaining == 0) {
+            // Queue is empty, just clear it
+            self.token_queue.clear();
+            self.token_queue_head = 0;
+            return;
+        }
+
+        // Create a new queue with just the remaining tokens
+        var new_queue = infra.List(Token).init(self.allocator);
+        errdefer new_queue.deinit();
+
+        const slice = self.token_queue.toSlice();
+        for (slice[self.token_queue_head..]) |t| {
+            try new_queue.append(t);
+        }
+
+        // Note: We don't deinit the old tokens since they're being moved, not copied
+        self.token_queue.deinit();
+        self.token_queue = new_queue;
+        self.token_queue_head = 0;
     }
 
     /// Process the current state and return emitted token if any.
