@@ -2061,6 +2061,11 @@ fn responseTextCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
 
 /// WPT result reporting callback - called by testharnessreport.js for each test result
 /// Signature: __wpt_report_result(name, status, message, stack, duration)
+///
+/// OPTIMIZATION: This callback is called once per test assertion (14,000+ times for
+/// encoding character tests). We use the collector's allocator directly instead of
+/// creating a fresh GeneralPurposeAllocator per callback, which was extremely wasteful.
+/// We also extract strings directly into the collector's allocator to avoid double-copy.
 fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
@@ -2087,12 +2092,11 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
         return;
     }
 
-    // Use a simple allocator for this callback
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer _ = gpa.deinit();
+    // Use the collector's allocator directly - avoid creating fresh GPA per callback
+    // This is a major optimization for tests with 14,000+ assertions
+    const allocator = collector.allocator;
 
-    // Arg 0: name (string)
+    // Arg 0: name (string) - extract directly into collector's allocator
     const name_value = info.get(0);
     const name_str = extractString(allocator, isolate, context, name_value) catch {
         if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
@@ -2100,7 +2104,7 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
         }
         return;
     };
-    defer allocator.free(name_str);
+    // Note: name_str is now owned by collector.allocator, no need for separate dupe
 
     // Arg 1: status (number: 0=PASS, 1=FAIL, 2=TIMEOUT, 3=NOTRUN, 4=PRECONDITION_FAILED)
     const status_value = info.get(1);
@@ -2110,29 +2114,23 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
         1; // Default to FAIL
     const status = test_harness.TestStatus.fromInt(status_num);
 
-    // Arg 2: message (string or null)
-    var message_str: ?[]const u8 = null;
-    var message_owned: ?[]u8 = null;
+    // Arg 2: message (string or null) - extract directly into collector's allocator
+    var message_str: ?[]u8 = null;
     if (arg_count > 2) {
         const msg_value = info.get(2);
         if (!v8.ffi.v8_Value_IsNull(msg_value) and !v8.ffi.v8_Value_IsUndefined(msg_value)) {
-            message_owned = extractString(allocator, isolate, context, msg_value) catch null;
-            message_str = message_owned;
+            message_str = extractString(allocator, isolate, context, msg_value) catch null;
         }
     }
-    defer if (message_owned) |m| allocator.free(m);
 
-    // Arg 3: stack (string or null)
-    var stack_str: ?[]const u8 = null;
-    var stack_owned: ?[]u8 = null;
+    // Arg 3: stack (string or null) - extract directly into collector's allocator
+    var stack_str: ?[]u8 = null;
     if (arg_count > 3) {
         const stack_value = info.get(3);
         if (!v8.ffi.v8_Value_IsNull(stack_value) and !v8.ffi.v8_Value_IsUndefined(stack_value)) {
-            stack_owned = extractString(allocator, isolate, context, stack_value) catch null;
-            stack_str = stack_owned;
+            stack_str = extractString(allocator, isolate, context, stack_value) catch null;
         }
     }
-    defer if (stack_owned) |s| allocator.free(s);
 
     // Arg 4: duration (number)
     var duration_ms: u64 = 0;
@@ -2144,23 +2142,21 @@ fn wptReportResultCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c
         }
     }
 
-    // Create SubtestResult and add to collector using collector's allocator
+    // Create SubtestResult - strings are already in collector's allocator, no dupe needed
     const subtest = test_harness.SubtestResult{
-        .name = collector.allocator.dupe(u8, name_str) catch {
-            std.debug.print("WPT: Failed to allocate name\n", .{});
-            if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-                info.setReturnValue(undef_value);
-            }
-            return;
-        },
+        .name = name_str,
         .status = status,
-        .message = if (message_str) |m| collector.allocator.dupe(u8, m) catch null else null,
-        .stack = if (stack_str) |s| collector.allocator.dupe(u8, s) catch null else null,
+        .message = message_str,
+        .stack = stack_str,
         .duration_ms = duration_ms,
     };
 
     collector.addResult(subtest) catch |err| {
         std.debug.print("WPT: Failed to add result: {}\n", .{err});
+        // Clean up on failure since we can't add to collector
+        allocator.free(name_str);
+        if (message_str) |m| allocator.free(m);
+        if (stack_str) |s| allocator.free(s);
     };
 
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
