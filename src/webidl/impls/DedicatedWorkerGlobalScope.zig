@@ -101,10 +101,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: HTML Standard § 10.2.3.2
 /// "The name attribute must return the DedicatedWorkerGlobalScope object's name."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.name);
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.name);
     }
     return runtime.DOMString.initEmpty();
 }

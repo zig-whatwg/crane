@@ -100,13 +100,14 @@ pub fn get_numberValue(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for stringValue
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_stringValue(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     if (internal.result_type != ResultType.STRING_TYPE) {
         return error.TypeError;
     }
-    return runtime.DOMString.initInterned(internal.string_value);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.string_value);
 }
 
 /// Getter for booleanValue

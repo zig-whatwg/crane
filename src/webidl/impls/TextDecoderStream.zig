@@ -203,11 +203,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
 ///
 /// Spec: § 5.1.1 "The encoding getter steps are to return this's encoding's name,
 /// ASCII lowercased."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // Return the WHATWG canonical name (already lowercase)
-    return runtime.DOMString.initInterned(internal.enc.whatwg_name);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.enc.whatwg_name);
 }
 
 /// Getter for fatal

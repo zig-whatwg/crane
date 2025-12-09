@@ -106,10 +106,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for name
 ///
 /// Returns the name of the database.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    return runtime.DOMString.initInterned(internal.database.name);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.database.name);
 }
 
 /// Getter for version

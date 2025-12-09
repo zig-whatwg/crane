@@ -90,9 +90,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for target
 /// DOM §4.13 - Returns this's target.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.target);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.target);
 }
 
 /// Getter for sheet (from LinkStyle mixin - CSSOM)

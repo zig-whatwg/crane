@@ -167,9 +167,10 @@ pub fn create(
 
 /// DOM §7.2 - MutationRecord.type
 /// Returns "attributes", "characterData", or "childList"
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance);
-    return runtime.DOMString.initInterned(internal.mutation_type);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.mutation_type);
 }
 
 /// DOM §7.2 - MutationRecord.target
@@ -212,10 +213,11 @@ pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// DOM §7.2 - MutationRecord.attributeName
 /// Returns the name of the changed attribute (null if not attribute mutation)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_attributeName(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.attribute_name) |name| {
-        return runtime.DOMString.initInterned(name);
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, name);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -223,10 +225,11 @@ pub fn get_attributeName(instance: *runtime.Instance) anyerror!?runtime.DOMStrin
 /// DOM §7.2 - MutationRecord.attributeNamespace
 /// Returns the namespace of the changed attribute (null if not attribute mutation)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.attribute_namespace) |ns| {
-        return runtime.DOMString.initInterned(ns);
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, ns);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -234,10 +237,11 @@ pub fn get_attributeNamespace(instance: *runtime.Instance) anyerror!?runtime.DOM
 /// DOM §7.2 - MutationRecord.oldValue
 /// Returns the old value (for attributes/characterData, null otherwise)
 /// Note: Generated interface expects non-nullable but WebIDL says nullable
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance);
     if (internal.old_value) |value| {
-        return runtime.DOMString.initInterned(value);
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, value);
     }
     return runtime.DOMString.initEmpty();
 }

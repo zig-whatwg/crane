@@ -566,6 +566,7 @@ pub fn get_redirect(instance: *runtime.Instance) anyerror!enums.RequestRedirect 
 }
 
 /// Get integrity
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
@@ -574,7 +575,7 @@ pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
     if (internal.request.integrity_metadata.len == 0) {
         return runtime.DOMString.initEmpty();
     }
-    return runtime.DOMString.initInterned(internal.request.integrity_metadata);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.request.integrity_metadata);
 }
 
 /// Get keepalive

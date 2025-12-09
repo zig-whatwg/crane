@@ -130,6 +130,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 ///
 /// This method is also the getter for indexed properties, allowing
 /// list[index] access in JavaScript.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -141,7 +142,7 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMS
     }
 
     // Return the string at the index
-    return runtime.DOMString.initInterned(internal.strings.items[index]);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.strings.items[index]);
 }
 
 /// HTML §2.6.3 - DOMStringList.contains(string)

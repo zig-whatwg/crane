@@ -185,43 +185,47 @@ pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instanc
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the string 'Mozilla'."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_appCodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getAppCodeName());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getAppCodeName());
     }
-    return runtime.DOMString.initInterned("Mozilla");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, "Mozilla");
 }
 
 /// Getter for appName
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the string 'Netscape'."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getAppName());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getAppName());
     }
-    return runtime.DOMString.initInterned("Netscape");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, "Netscape");
 }
 
 /// Getter for appVersion
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getAppVersion());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getAppVersion());
     }
-    return runtime.DOMString.initInterned("5.0");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, "5.0");
 }
 
 /// Getter for platform
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return a string representing the platform on which the browser is executing."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getPlatform());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getPlatform());
     }
     return error.NotImplemented;
 }
@@ -230,19 +234,21 @@ pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the string 'Gecko'."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_product(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getProduct());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getProduct());
     }
-    return runtime.DOMString.initInterned("Gecko");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, "Gecko");
 }
 
 /// Getter for productSub
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getProductSub());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getProductSub());
     }
     return runtime.DOMString.initEmpty();
 }
@@ -251,28 +257,31 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
 /// "Must return the default User-Agent value."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getUserAgent());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getUserAgent());
     }
     return error.NotImplemented;
 }
 
 /// Getter for vendor
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_vendor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getVendor());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getVendor());
     }
     return runtime.DOMString.initEmpty();
 }
 
 /// Getter for vendorSub
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_vendorSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getVendorSub());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getVendorSub());
     }
     return runtime.DOMString.initEmpty();
 }
@@ -288,12 +297,13 @@ pub fn get_oscpu(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
 /// "Must return a valid BCP 47 language tag representing the user's preferred language."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        return runtime.DOMString.initInterned(internal.internal_navigator.getLanguage());
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.internal_navigator.getLanguage());
     }
-    return runtime.DOMString.initInterned("en-US");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, "en-US");
 }
 
 /// Getter for languages

@@ -349,9 +349,10 @@ pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for name - The window's target name
 /// Per spec: Returns the browsing context name.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.browsing_context.target_name);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.browsing_context.target_name);
 }
 
 /// Getter for location
@@ -428,9 +429,10 @@ pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for status - The status bar text
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.status);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.status);
 }
 
 // ============================================================================

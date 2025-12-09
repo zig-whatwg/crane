@@ -110,18 +110,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
 
 /// Getter for name
 /// Returns the error name (e.g., "NotSupportedError", "InvalidStateError")
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return runtime.DOMString.initInterned("Error");
-    return runtime.DOMString.initInterned(internal.name);
+    const internal = state.own._internal orelse return try runtime.DOMString.initDupe(instance.ctx.allocator, "Error");
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.name);
 }
 
 /// Getter for message
 /// Returns the error message
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return runtime.DOMString.empty;
-    return runtime.DOMString.initInterned(internal.message);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.message);
 }
 
 /// Getter for code

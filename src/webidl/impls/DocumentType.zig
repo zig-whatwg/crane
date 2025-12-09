@@ -127,23 +127,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for name
 /// DOM §4.7 - Returns this's name.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.name);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.name);
 }
 
 /// Getter for publicId
 /// DOM §4.7 - Returns this's public ID.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_publicId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.public_id);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.public_id);
 }
 
 /// Getter for systemId
 /// DOM §4.7 - Returns this's system ID.
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_systemId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.system_id);
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.system_id);
 }
 
 // =============================================================================

@@ -171,10 +171,10 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
 /// Getter for message
 /// Spec: "The message attribute must return the value it was initialized to."
+/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-    // Return as interned to avoid double-free (internal state owns the string)
-    return runtime.DOMString.initInterned(internal.message.asSlice());
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.message.asSlice());
 }
 
 /// Getter for filename
