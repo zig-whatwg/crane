@@ -611,7 +611,7 @@ fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !Positio
         node_type == NodeImpl.NodeType.CDATA_SECTION_NODE)
     {
         if (CharacterDataImpl.getInternalState(node)) |char_internal| {
-            const data_len: u32 = @intCast(char_internal.data.len);
+            const data_len = char_internal.getLength();
 
             if (forward) {
                 if (offset < data_len) {
@@ -675,8 +675,8 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
         return .{ .node = node, .offset = offset };
     };
 
-    const data = char_internal.data;
-    const data_len: u32 = @intCast(data.len);
+    const data = char_internal.getData();
+    const data_len = char_internal.getLength();
 
     if (forward) {
         // Find end of current word, then start of next word
@@ -732,7 +732,7 @@ fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResul
         if (try findLastTextNode(current)) |last_text| {
             const CharacterDataImpl = @import("CharacterData.zig");
             if (CharacterDataImpl.getInternalState(last_text)) |char_internal| {
-                return .{ .node = last_text, .offset = @intCast(char_internal.data.len) };
+                return .{ .node = last_text, .offset = char_internal.getLength() };
             }
         }
         // No text nodes, position at end of root's children
@@ -806,14 +806,14 @@ fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
             if (try findLastTextNode(sibling)) |text| {
                 const CharacterDataImpl = @import("CharacterData.zig");
                 if (CharacterDataImpl.getInternalState(text)) |char_internal| {
-                    return .{ .node = text, .offset = @intCast(char_internal.data.len) };
+                    return .{ .node = text, .offset = char_internal.getLength() };
                 }
             }
             // Check if sibling itself is a text node
             if (isTextNode(sibling)) {
                 const CharacterDataImpl = @import("CharacterData.zig");
                 if (CharacterDataImpl.getInternalState(sibling)) |char_internal| {
-                    return .{ .node = sibling, .offset = @intCast(char_internal.data.len) };
+                    return .{ .node = sibling, .offset = char_internal.getLength() };
                 }
             }
             current = sibling;

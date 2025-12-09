@@ -39,24 +39,155 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Maximum bytes that can be stored inline (without heap allocation)
+/// 31 bytes chosen to fit in 32-byte cache line with 1 byte for length
+/// Most text nodes in typical HTML are short (whitespace, small words)
+pub const INLINE_TEXT_CAPACITY: usize = 31;
+
 /// Internal state for CharacterData implementation
 /// Stores the mutable string data associated with this node
+/// Uses inline storage for small text (≤31 bytes) to avoid heap allocations
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// The mutable string data associated with this node
-    /// This is the primary storage for Text, Comment, CDATA, PI content
-    data: []u8,
+    /// Inline storage for small text - avoids heap allocation for ≤31 bytes
+    /// First byte is length when using inline storage
+    inline_text: [INLINE_TEXT_CAPACITY + 1]u8,
+
+    /// Heap storage for larger text - only used when text > 31 bytes
+    heap_text: ?[]u8,
 
     pub fn init(allocator: std.mem.Allocator) !InternalState {
         return .{
             .allocator = allocator,
-            .data = try allocator.dupe(u8, ""),
+            .inline_text = [_]u8{0} ** (INLINE_TEXT_CAPACITY + 1), // length = 0
+            .heap_text = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        self.allocator.free(self.data);
+        if (self.heap_text) |heap| {
+            self.allocator.free(heap);
+        }
+    }
+
+    /// Check if currently using inline storage
+    pub fn isInline(self: *const InternalState) bool {
+        return self.heap_text == null;
+    }
+
+    /// Get current data as a slice (works for both inline and heap)
+    pub fn getData(self: *const InternalState) []const u8 {
+        if (self.heap_text) |heap| {
+            return heap;
+        }
+        // Inline storage: first byte is length
+        const len = self.inline_text[0];
+        return self.inline_text[1 .. 1 + len];
+    }
+
+    /// Get mutable data slice (for internal use only)
+    fn getDataMut(self: *InternalState) []u8 {
+        if (self.heap_text) |heap| {
+            return heap;
+        }
+        const len = self.inline_text[0];
+        return self.inline_text[1 .. 1 + len];
+    }
+
+    /// Get the length of the data
+    pub fn getLength(self: *const InternalState) u32 {
+        if (self.heap_text) |heap| {
+            return @intCast(heap.len);
+        }
+        return self.inline_text[0];
+    }
+
+    /// Set data - uses inline storage for small text, heap for larger
+    pub fn setData(self: *InternalState, data: []const u8) !void {
+        // Free existing heap data if any
+        if (self.heap_text) |heap| {
+            self.allocator.free(heap);
+            self.heap_text = null;
+        }
+
+        if (data.len <= INLINE_TEXT_CAPACITY) {
+            // Use inline storage
+            self.inline_text[0] = @intCast(data.len);
+            @memcpy(self.inline_text[1 .. 1 + data.len], data);
+        } else {
+            // Use heap storage
+            self.heap_text = try self.allocator.dupe(u8, data);
+        }
+    }
+
+    /// Replace a range of data with new data
+    /// This is the core operation for replaceData, insertData, deleteData, appendData
+    pub fn replaceData(self: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
+        const current_len = self.getLength();
+        var count = count_param;
+
+        // Clamp count to available length
+        if (offset + count > current_len) {
+            count = current_len - offset;
+        }
+
+        const new_len = current_len - count + @as(u32, @intCast(data.len));
+
+        if (new_len <= INLINE_TEXT_CAPACITY) {
+            // Result fits in inline storage
+            var new_inline: [INLINE_TEXT_CAPACITY + 1]u8 = undefined;
+            new_inline[0] = @intCast(new_len);
+
+            const current_data = self.getData();
+
+            // Copy before offset
+            @memcpy(new_inline[1 .. 1 + offset], current_data[0..offset]);
+
+            // Copy new data
+            @memcpy(new_inline[1 + offset .. 1 + offset + data.len], data);
+
+            // Copy after deleted region
+            const after_start = offset + count;
+            if (after_start < current_len) {
+                @memcpy(new_inline[1 + offset + data.len .. 1 + new_len], current_data[after_start..]);
+            }
+
+            // Free heap if we were using it
+            if (self.heap_text) |heap| {
+                self.allocator.free(heap);
+                self.heap_text = null;
+            }
+
+            self.inline_text = new_inline;
+        } else {
+            // Result needs heap storage
+            const new_data = try self.allocator.alloc(u8, new_len);
+            errdefer self.allocator.free(new_data);
+
+            const current_data = self.getData();
+
+            // Copy before offset
+            @memcpy(new_data[0..offset], current_data[0..offset]);
+
+            // Copy new data
+            @memcpy(new_data[offset .. offset + data.len], data);
+
+            // Copy after deleted region
+            const after_start = offset + count;
+            if (after_start < current_len) {
+                @memcpy(new_data[offset + data.len ..], current_data[after_start..]);
+            }
+
+            // Free old heap data if any
+            if (self.heap_text) |heap| {
+                self.allocator.free(heap);
+            }
+
+            self.heap_text = new_data;
+            // Clear inline length to indicate heap mode
+            self.inline_text[0] = 0;
+        }
     }
 };
 
@@ -135,14 +266,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §4.11 - Returns this's data.
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.data);
+    return runtime.DOMString.initInterned(internal.getData());
 }
 
 /// Getter for length
 /// DOM §4.11 - Returns this's length (number of code units).
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return @intCast(internal.data.len);
+    return internal.getLength();
 }
 
 /// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
@@ -166,7 +297,7 @@ pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.In
 pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const new_value = value.asSlice();
-    try replaceDataInternal(instance, internal, 0, @intCast(internal.data.len), new_value);
+    try replaceDataInternal(instance, internal, 0, internal.getLength(), new_value);
 }
 
 // =============================================================================
@@ -183,7 +314,8 @@ pub fn set_data(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 /// 4. Return code units from offset to offset+count.
 pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const length: u32 = @intCast(internal.data.len);
+    const length = internal.getLength();
+    const data = internal.getData();
 
     // Step 2: Check bounds
     if (offset > length) {
@@ -192,11 +324,11 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
 
     // Step 3: Handle overflow - return from offset to end
     if (offset + count > length) {
-        return runtime.DOMString.initDupe(internal.allocator, internal.data[offset..]);
+        return runtime.DOMString.initDupe(internal.allocator, data[offset..]);
     }
 
     // Step 4: Return substring
-    return runtime.DOMString.initDupe(internal.allocator, internal.data[offset .. offset + count]);
+    return runtime.DOMString.initDupe(internal.allocator, data[offset .. offset + count]);
 }
 
 /// Operation: appendData(data)
@@ -205,7 +337,7 @@ pub fn call_substringData(instance: *runtime.Instance, offset: u32, count: u32) 
 /// Steps: Replace data with node this, offset this's length, count 0, and data.
 pub fn call_appendData(instance: *runtime.Instance, data: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try replaceDataInternal(instance, internal, @intCast(internal.data.len), 0, data.asSlice());
+    try replaceDataInternal(instance, internal, internal.getLength(), 0, data.asSlice());
 }
 
 /// Operation: insertData(offset, data)
@@ -293,17 +425,11 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.Paren
 /// 8-11. For each live range whose start/end node is node, update start/end offset.
 /// 12. If node's parent is non-null, then run the children changed steps for node's parent.
 fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
-    const length: u32 = @intCast(internal.data.len);
-    var count = count_param;
+    const length = internal.getLength();
 
     // Step 2: Check bounds
     if (offset > length) {
         return error.IndexSizeError;
-    }
-
-    // Step 3: Clamp count
-    if (offset + count > length) {
-        count = length - offset;
     }
 
     // Step 4: Queue mutation record
@@ -311,26 +437,9 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     // This requires converting runtime.Instance to the Node type expected by the algorithm
     // For now, skip mutation observer notification until type bridge is established
 
-    // Steps 5-7: Build new data string
-    const new_len = length - count + @as(u32, @intCast(data.len));
-    const new_data = try internal.allocator.alloc(u8, new_len);
-    errdefer internal.allocator.free(new_data);
-
-    // Copy before offset
-    @memcpy(new_data[0..offset], internal.data[0..offset]);
-
-    // Copy new data
-    @memcpy(new_data[offset .. offset + data.len], data);
-
-    // Copy after deleted region
-    const after_start = offset + count;
-    if (after_start < length) {
-        @memcpy(new_data[offset + data.len ..], internal.data[after_start..]);
-    }
-
-    // Replace old data
-    internal.allocator.free(internal.data);
-    internal.data = new_data;
+    // Steps 3, 5-7: Replace data using InternalState's optimized method
+    // This handles inline vs heap storage automatically
+    try internal.replaceData(offset, count_param, data);
 
     // Steps 8-11: Update live ranges
     // TODO: Call dom.range_tracking.updateRangesAfterReplace
@@ -349,25 +458,20 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
 /// Set the data directly (used by Text, Comment constructors)
 pub fn setData(instance: *runtime.Instance, data: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free old data
-    internal.allocator.free(internal.data);
-
-    // Allocate and copy new data
-    internal.data = try internal.allocator.dupe(u8, data);
+    try internal.setData(data);
 }
 
 /// Get the data directly as a slice
 /// Returns null if instance has no internal state
 pub fn getData(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
-    return internal.data;
+    return internal.getData();
 }
 
 /// Get the length of the data (number of code units)
 pub fn getDataLength(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
-    return @intCast(internal.data.len);
+    return internal.getLength();
 }
 
 /// Delete a range of data (used by Range.deleteContents)
