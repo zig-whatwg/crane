@@ -30,6 +30,12 @@ const infra = @import("infra");
 // Import Origin type from window module
 const Origin = @import("window_proxy.zig").Origin;
 
+/// Opaque type for runtime.Instance pointer storage.
+/// We use *anyopaque instead of importing runtime to avoid module conflicts.
+/// The actual type is runtime.Instance but we store it opaquely here.
+/// Consumers that need to use the instance should cast it appropriately.
+pub const InstancePtr = *anyopaque;
+
 // Import security policy types for COOP/COEP
 const security_policies = @import("../navigation/security_policies.zig");
 const CoopValue = security_policies.CoopValue;
@@ -327,6 +333,19 @@ pub const BrowsingContext = struct {
     /// Defaults to opaque origin until set by navigation/document creation
     origin: Origin = Origin.createOpaque(),
 
+    /// The active document in this browsing context (HTML §7.3.1)
+    /// Per spec: "A browsing context has an active document — the Document
+    /// that is currently displayed in the browsing context."
+    /// This is a pointer to a Document instance (runtime.Instance).
+    /// Stored as ?InstancePtr to avoid module import conflicts.
+    active_document: ?InstancePtr = null,
+
+    /// The associated Window object (HTML §7.3)
+    /// Per spec: Each browsing context has a WindowProxy and associated Window.
+    /// This is a pointer to a Window instance (runtime.Instance).
+    /// Stored as ?InstancePtr to avoid module import conflicts.
+    active_window: ?InstancePtr = null,
+
     /// Create a new browsing context
     pub fn init(allocator: Allocator) !*BrowsingContext {
         const ctx = try allocator.create(BrowsingContext);
@@ -392,6 +411,12 @@ pub const BrowsingContext = struct {
             self.allocator.free(url);
         }
 
+        // Clear document and window references
+        // Note: The actual Document and Window instances are managed by the GC/runtime,
+        // we just clear our references to them to avoid dangling pointers.
+        self.active_document = null;
+        self.active_window = null;
+
         self.allocator.destroy(self);
     }
 
@@ -446,6 +471,32 @@ pub const BrowsingContext = struct {
     /// Get the origin for this browsing context
     pub fn getOrigin(self: *const BrowsingContext) Origin {
         return self.origin;
+    }
+
+    /// Set the active document for this browsing context
+    /// Per HTML §7.3.1: "A browsing context has an active document"
+    ///
+    /// This method atomically updates both the active document and associated window.
+    /// It should be called during document creation and navigation.
+    ///
+    /// Parameters:
+    /// - doc: The Document instance to set as active (runtime.Instance pointer)
+    /// - window: The associated Window instance (runtime.Instance pointer)
+    pub fn setActiveDocument(self: *BrowsingContext, doc: InstancePtr, window: InstancePtr) void {
+        self.active_document = doc;
+        self.active_window = window;
+    }
+
+    /// Get the active document for this browsing context
+    /// Returns null if no document has been loaded yet
+    pub fn getActiveDocument(self: *const BrowsingContext) ?InstancePtr {
+        return self.active_document;
+    }
+
+    /// Get the active window for this browsing context
+    /// Returns null if no window has been created yet
+    pub fn getActiveWindow(self: *const BrowsingContext) ?InstancePtr {
+        return self.active_window;
     }
 
     /// Check if two browsing contexts are in the same browsing context group

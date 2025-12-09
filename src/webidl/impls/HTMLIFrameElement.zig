@@ -166,21 +166,35 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 
 /// Getter for contentDocument
 /// Returns the nested document if same-origin, null otherwise.
+/// Per HTML Standard §4.8.5: "The contentDocument getter steps are to return
+/// this's content navigable's active document if this is same origin-domain;
+/// otherwise null."
 pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
-    // Check if document is accessible (same-origin)
-    // For this we need the accessor's origin, which we get from the current context
-    // For now, we use a placeholder approach
-    const accessor_origin = Origin.createOpaque(); // TODO: Get from current browsing context
+    // 1. If no content navigable (browsing context), return null
+    const browsing_ctx = internal.integration.browsing_context orelse return null;
 
+    // 2. Get the active document from the browsing context
+    // BrowsingContext stores it as *anyopaque to avoid module conflicts,
+    // so we cast it back to *runtime.Instance here.
+    const document_ptr = browsing_ctx.getActiveDocument() orelse return null;
+    const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+
+    // 3. Get accessor origin - for WPT tests and same-origin scenarios,
+    //    we use the container document's origin as the accessor origin.
+    //    In a full implementation, this would come from the incumbent settings object.
+    //    Since we're in the same execution context (WPT tests are same-origin),
+    //    we use the container origin which is already stored in the integration.
+    const accessor_origin = internal.integration.container_origin;
+
+    // 4. Check same origin-domain access
     if (!internal.integration.isContentDocumentAccessible(accessor_origin)) {
         return null;
     }
 
-    // TODO: Return the actual Document instance from the nested browsing context
-    // This requires integration with the Document creation system
-    return null;
+    // 5. Return the document
+    return document;
 }
 
 // ============================================================================
