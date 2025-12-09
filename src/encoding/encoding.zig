@@ -725,6 +725,7 @@ pub const ISO_2022_JP: Encoding = .{
     .whatwg_name = "iso-2022-jp",
     .decode_fn = japanese.iso_2022_jp_streaming.decode,
     .encode_fn = japanese.iso_2022_jp_streaming.encode,
+    .decode_to_utf8_fn = japanese.iso_2022_jp_streaming.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.iso2022jp,
 };
 

@@ -8,6 +8,38 @@ const iso_2022_jp_impl = @import("iso_2022_jp.zig");
 const Decoder = @import("../encoding.zig").Decoder;
 const Encoder = @import("../encoding.zig").Encoder;
 
+/// Helper to write a Unicode code point as UTF-8 bytes.
+/// Returns the number of bytes written (1-4), or null if output buffer is too small.
+fn writeUtf8CodePoint(output: []u8, out_pos: usize, code_point: u21) ?usize {
+    if (code_point < 0x80) {
+        // 1-byte sequence (ASCII)
+        if (out_pos >= output.len) return null;
+        output[out_pos] = @intCast(code_point);
+        return 1;
+    } else if (code_point < 0x800) {
+        // 2-byte sequence
+        if (out_pos + 1 >= output.len) return null;
+        output[out_pos] = @intCast(0xC0 | (code_point >> 6));
+        output[out_pos + 1] = @intCast(0x80 | (code_point & 0x3F));
+        return 2;
+    } else if (code_point < 0x10000) {
+        // 3-byte sequence
+        if (out_pos + 2 >= output.len) return null;
+        output[out_pos] = @intCast(0xE0 | (code_point >> 12));
+        output[out_pos + 1] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[out_pos + 2] = @intCast(0x80 | (code_point & 0x3F));
+        return 3;
+    } else {
+        // 4-byte sequence (supplementary characters)
+        if (out_pos + 3 >= output.len) return null;
+        output[out_pos] = @intCast(0xF0 | (code_point >> 18));
+        output[out_pos + 1] = @intCast(0x80 | ((code_point >> 12) & 0x3F));
+        output[out_pos + 2] = @intCast(0x80 | ((code_point >> 6) & 0x3F));
+        output[out_pos + 3] = @intCast(0x80 | (code_point & 0x3F));
+        return 4;
+    }
+}
+
 pub const Iso2022JpDecoderState = struct {
     state: iso_2022_jp_impl.DecoderState = .ascii,
     output_state: iso_2022_jp_impl.DecoderState = .ascii,
@@ -264,6 +296,116 @@ pub fn encode(
     return .{
         .status = .input_empty,
         .code_units_consumed = in_pos,
+        .bytes_written = out_pos,
+    };
+}
+
+/// Direct UTF-8 decode for ISO-2022-JP (optimization path).
+///
+/// Decodes ISO-2022-JP input bytes directly to UTF-8 output without
+/// going through a UTF-16 intermediate buffer. This encoding uses escape
+/// sequences to switch between character sets, making it stateful.
+pub fn decodeToUtf8(
+    decoder: *Decoder,
+    input: []const u8,
+    output: []u8,
+    is_last: bool,
+) streaming.DecodeToUtf8Result {
+    std.debug.assert(decoder.state == .iso_2022_jp or decoder.state == .neutral);
+
+    if (decoder.state == .neutral) {
+        decoder.state = .{ .iso_2022_jp = .{
+            .state = .ascii,
+            .output_state = .ascii,
+            .iso2022jp_lead = 0x00,
+            .iso2022jp_output_flag = false,
+        } };
+    }
+
+    var state_wrapper = &decoder.state.iso_2022_jp;
+    var byte_decoder = iso_2022_jp_impl.Decoder{
+        .state = state_wrapper.state,
+        .output_state = state_wrapper.output_state,
+        .iso2022jp_lead = state_wrapper.iso2022jp_lead,
+        .iso2022jp_output_flag = state_wrapper.iso2022jp_output_flag,
+    };
+
+    var in_pos: usize = 0;
+    var out_pos: usize = 0;
+
+    while (in_pos < input.len) {
+        const byte = input[in_pos];
+
+        const result = byte_decoder.decode(byte) catch {
+            // Write replacement character (U+FFFD = 0xEF 0xBF 0xBD in UTF-8)
+            if (out_pos + 2 >= output.len) {
+                state_wrapper.state = byte_decoder.state;
+                state_wrapper.output_state = byte_decoder.output_state;
+                state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
+                state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            in_pos += 1;
+            continue;
+        };
+
+        in_pos += 1;
+
+        if (result) |code_point| {
+            if (writeUtf8CodePoint(output, out_pos, code_point)) |bytes_written| {
+                out_pos += bytes_written;
+            } else {
+                // Output buffer full - back up
+                in_pos -= 1;
+                state_wrapper.state = byte_decoder.state;
+                state_wrapper.output_state = byte_decoder.output_state;
+                state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
+                state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
+                return .{
+                    .status = .output_full,
+                    .bytes_consumed = in_pos,
+                    .bytes_written = out_pos,
+                };
+            }
+        }
+    }
+
+    state_wrapper.state = byte_decoder.state;
+    state_wrapper.output_state = byte_decoder.output_state;
+    state_wrapper.iso2022jp_lead = byte_decoder.iso2022jp_lead;
+    state_wrapper.iso2022jp_output_flag = byte_decoder.iso2022jp_output_flag;
+
+    // Handle incomplete sequences at end of stream
+    if (is_last and byte_decoder.state != .ascii and byte_decoder.state != .roman and byte_decoder.state != .katakana) {
+        // Write replacement character for incomplete sequence
+        if (out_pos + 2 < output.len) {
+            output[out_pos] = 0xEF;
+            output[out_pos + 1] = 0xBF;
+            output[out_pos + 2] = 0xBD;
+            out_pos += 3;
+            state_wrapper.state = .ascii;
+            state_wrapper.output_state = .ascii;
+            state_wrapper.iso2022jp_lead = 0x00;
+        } else {
+            return .{
+                .status = .output_full,
+                .bytes_consumed = in_pos,
+                .bytes_written = out_pos,
+            };
+        }
+    }
+
+    return .{
+        .status = .input_empty,
+        .bytes_consumed = in_pos,
         .bytes_written = out_pos,
     };
 }
