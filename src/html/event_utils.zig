@@ -112,6 +112,8 @@ pub fn fireEvent(
         runtime.DOMString.initInterned(event_type),
         .{ .was_passed = true, .value = event_init },
     );
+    // Ensure event is cleaned up after dispatch
+    defer interfaces.Event.deinit(event);
 
     // Set isTrusted to true (fired by UA, not script)
     impls.Event.setIsTrusted(event, true);
@@ -151,6 +153,8 @@ pub fn fireErrorEvent(
         error_info.@"error",
         true, // cancelable = true per spec
     );
+    // Ensure event is cleaned up after dispatch
+    defer interfaces.ErrorEvent.deinit(event);
 
     // Set isTrusted to true (fired by UA, not script)
     impls.ErrorEvent.setIsTrusted(event, true);

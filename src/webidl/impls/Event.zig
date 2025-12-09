@@ -99,6 +99,11 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state
     const state = instance.getState(State);
+
+    // Free the cloned event type string (created in call_constructor)
+    // DOMString.deinit is safe to call on empty/interned strings
+    state.own.type.deinit(instance.ctx.allocator);
+
     if (state.own._internal) |internal| {
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
