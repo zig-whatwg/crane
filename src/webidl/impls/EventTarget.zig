@@ -77,6 +77,13 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        self.deinitEx(true);
+    }
+
+    /// Deinitialize with option to skip V8 resource cleanup
+    /// When skip_v8_cleanup is true, V8 global handles are NOT disposed.
+    /// This is needed during final runtime cleanup when V8 isolate is already disposed.
+    pub fn deinitEx(self: *InternalState, cleanup_v8_resources: bool) void {
         if (self.event_listener_list) |list| {
             // Free any owned DOMStrings and clean up callbacks in event listeners
             const slice = list.toSliceMut();
@@ -86,11 +93,14 @@ pub const InternalState = struct {
 
                 // Clean up callback wrapper (disposes Global handles)
                 // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
-                if (listener.callback) |callback_instance| {
-                    // Get the CallbackWrapper and deinit it to dispose Global handles
-                    const v8_engine = @import("v8");
-                    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                    callback_wrapper.deinit();
+                // Skip V8 cleanup during final runtime shutdown when isolate is disposed
+                if (cleanup_v8_resources) {
+                    if (listener.callback) |callback_instance| {
+                        // Get the CallbackWrapper and deinit it to dispose Global handles
+                        const v8_engine = @import("v8");
+                        const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+                        callback_wrapper.deinit();
+                    }
                 }
             }
             list.deinit();
@@ -185,29 +195,53 @@ pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !
 
 /// Global registry for internal state
 /// This is a workaround until the codegen adds _internal field to State
-var internal_state_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var registry_initialized: bool = false;
+/// Note: We use a raw pointer to allow cleanup to set it to null
+var internal_state_registry: ?std.AutoHashMap(usize, *InternalState) = null;
+var cleanup_hook_registered: bool = false;
 
-fn ensureRegistry() void {
-    if (!registry_initialized) {
+fn ensureRegistry() *std.AutoHashMap(usize, *InternalState) {
+    if (internal_state_registry == null) {
         internal_state_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        registry_initialized = true;
+        // Register cleanup hook on first use
+        if (!cleanup_hook_registered) {
+            runtime.registerCleanupHook(cleanupRegistry);
+            cleanup_hook_registered = true;
+        }
     }
+    return &internal_state_registry.?;
+}
+
+/// Clean up all remaining internal states and the registry itself
+/// This should be called during runtime shutdown to prevent memory leaks
+/// Note: This is called AFTER V8 isolate is disposed, so we must skip V8 resource cleanup
+pub fn cleanupRegistry() void {
+    if (internal_state_registry) |*registry| {
+        // Clean up any remaining internal states
+        // Skip V8 cleanup (false) because the isolate is already disposed
+        var iter = registry.valueIterator();
+        while (iter.next()) |internal_ptr| {
+            internal_ptr.*.deinitEx(false);
+        }
+        registry.deinit();
+        internal_state_registry = null;
+    }
+    // Reset flag so hook can be re-registered if runtime is re-initialized
+    cleanup_hook_registered = false;
 }
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureRegistry();
-    return internal_state_registry.get(@intFromPtr(instance));
+    const registry = ensureRegistry();
+    return registry.get(@intFromPtr(instance));
 }
 
 fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureRegistry();
-    try internal_state_registry.put(@intFromPtr(instance), internal);
+    const registry = ensureRegistry();
+    try registry.put(@intFromPtr(instance), internal);
 }
 
 fn removeFromRegistry(instance: *runtime.Instance) void {
-    ensureRegistry();
-    _ = internal_state_registry.remove(@intFromPtr(instance));
+    const registry = ensureRegistry();
+    _ = registry.remove(@intFromPtr(instance));
 }
 
 /// DOM §2.7 - default passive value

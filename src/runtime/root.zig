@@ -270,8 +270,24 @@ pub fn initializeRuntime(allocator: std.mem.Allocator) void {
 ///
 /// Thread safety: Not thread-safe, call once during shutdown
 pub fn deinitializeRuntime() void {
+    // Call any registered cleanup hooks (e.g., EventTarget registry cleanup)
+    if (runtime_cleanup_hook) |hook| {
+        hook();
+    }
     ArenaAllocator.deinit();
     SlabAllocator.deinit();
+}
+
+/// Cleanup hook function type
+pub const CleanupHookFn = *const fn () void;
+
+/// Global cleanup hook (set by impls that need cleanup during deinit)
+var runtime_cleanup_hook: ?CleanupHookFn = null;
+
+/// Register a cleanup hook to be called during deinitializeRuntime
+/// This allows impl modules to register cleanup without circular dependencies
+pub fn registerCleanupHook(hook: CleanupHookFn) void {
+    runtime_cleanup_hook = hook;
 }
 
 // Standard library dependency
