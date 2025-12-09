@@ -184,15 +184,15 @@ pub const LibuvTimerManager = struct {
         libuv.close(libuv.timerToHandle(&ctx.handle), closeCallback);
     }
 
-    /// Run the event loop once.
-    /// This processes any ready timer callbacks and blocks until at least one event
-    /// occurs, or returns immediately if there are no active handles.
+    /// Run the event loop once (non-blocking).
+    /// This processes any ready timer callbacks without blocking.
     /// Returns true if there are still active handles.
     pub fn poll(self: *Self) bool {
         if (!self.initialized) return false;
-        // Use UV_RUN_ONCE to ensure timers with 0ms delay actually fire.
-        // UV_RUN_NOWAIT doesn't always process timers that were just added.
-        const result = libuv.run(self.loop, .UV_RUN_ONCE);
+        // Use UV_RUN_NOWAIT for non-blocking behavior.
+        // This returns immediately even if there are pending timers.
+        // The WPT runner's event loop has its own timeout mechanism.
+        const result = libuv.run(self.loop, .UV_RUN_NOWAIT);
         return result > 0;
     }
 
