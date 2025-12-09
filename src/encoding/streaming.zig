@@ -104,3 +104,33 @@ pub const EncodeQueueResult = struct {
         error_,
     };
 };
+
+/// Result of a direct UTF-8 decode operation (optimization path)
+///
+/// This is used by decoders that can output UTF-8 directly without
+/// going through a UTF-16 intermediate buffer. This eliminates one
+/// memory allocation and conversion step.
+pub const DecodeToUtf8Result = struct {
+    /// Status of the decode operation
+    status: Status,
+
+    /// Number of input bytes consumed
+    bytes_consumed: usize,
+
+    /// Number of UTF-8 bytes written to output
+    bytes_written: usize,
+
+    /// For malformed status: number of bad bytes (1-4)
+    error_length: u8 = 0,
+
+    pub const Status = enum {
+        /// All input consumed successfully
+        input_empty,
+
+        /// Output buffer is full, need more space
+        output_full,
+
+        /// Encountered malformed/unmappable sequence
+        malformed,
+    };
+};

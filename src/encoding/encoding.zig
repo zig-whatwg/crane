@@ -13,13 +13,27 @@ const japanese = @import("japanese.zig");
 const korean = @import("korean.zig");
 const miscellaneous = @import("miscellaneous.zig");
 
-/// Function pointer type for decoding
+/// Function pointer type for decoding (to UTF-16)
 pub const DecodeFn = *const fn (
     decoder: *Decoder,
     input: []const u8,
     output: []u16,
     is_last: bool,
 ) streaming.DecodeResult;
+
+/// Function pointer type for direct UTF-8 decoding (optimization path)
+///
+/// This allows decoders to output UTF-8 directly without going through
+/// a UTF-16 intermediate buffer. This eliminates one memory allocation
+/// and conversion step for legacy encodings.
+///
+/// If null, the decoder will fall back to decode() + UTF-16 to UTF-8 conversion.
+pub const DecodeToUtf8Fn = *const fn (
+    decoder: *Decoder,
+    input: []const u8,
+    output: []u8,
+    is_last: bool,
+) streaming.DecodeToUtf8Result;
 
 /// Function pointer type for encoding
 pub const EncodeFn = *const fn (
@@ -34,6 +48,9 @@ pub const Encoding = struct {
     whatwg_name: []const u8,
     decode_fn: DecodeFn,
     encode_fn: ?EncodeFn,
+    /// Optional direct UTF-8 decode function (optimization path)
+    /// If null, decodeToUtf8 falls back to decode() + UTF-16→UTF-8 conversion
+    decode_to_utf8_fn: ?DecodeToUtf8Fn = null,
     /// Index for single-byte encodings (null for multi-byte encodings like UTF-8)
     single_byte_index: ?index_gen.Index = null,
 
@@ -64,9 +81,19 @@ pub const Encoding = struct {
         return byte_length;
     }
 
+    /// Calculate maximum UTF-8 bytes needed for given input bytes.
+    /// Used for buffer allocation when decoding directly to UTF-8.
+    ///
+    /// Override this in specific encodings if a tighter bound is known.
+    /// Default: input_len * 3 (worst case for BMP characters)
     pub fn maxUtf8Length(self: *const Encoding, code_unit_length: usize) usize {
         _ = self;
         return code_unit_length * 3;
+    }
+
+    /// Check if this encoding supports direct UTF-8 decode optimization.
+    pub fn supportsDirectUtf8Decode(self: *const Encoding) bool {
+        return self.decode_to_utf8_fn != null;
     }
 };
 
@@ -82,7 +109,133 @@ pub const Decoder = struct {
     ) streaming.DecodeResult {
         return self.encoding.decode_fn(self, input, output, is_last);
     }
+
+    /// Decode input bytes directly to UTF-8 output.
+    ///
+    /// If the encoding has a native decodeToUtf8 implementation, it will be used.
+    /// Otherwise, this falls back to decode() + UTF-16 to UTF-8 conversion.
+    ///
+    /// The direct path eliminates one memory allocation and conversion step,
+    /// providing significant performance improvement for legacy encodings.
+    pub fn decodeToUtf8(
+        self: *Decoder,
+        input: []const u8,
+        output: []u8,
+        is_last: bool,
+    ) streaming.DecodeToUtf8Result {
+        // Use optimized direct path if available
+        if (self.encoding.decode_to_utf8_fn) |decode_to_utf8_fn| {
+            return decode_to_utf8_fn(self, input, output, is_last);
+        }
+
+        // Fallback: decode to UTF-16 then convert to UTF-8
+        return decodeToUtf8Fallback(self, input, output, is_last);
+    }
+
+    /// Fallback implementation: decode to UTF-16, then convert to UTF-8.
+    /// Used when no native decodeToUtf8 implementation is available.
+    fn decodeToUtf8Fallback(
+        self: *Decoder,
+        input: []const u8,
+        output: []u8,
+        is_last: bool,
+    ) streaming.DecodeToUtf8Result {
+        // Use stack buffer for intermediate UTF-16 output
+        // 256 code units handles most practical cases without heap allocation
+        var utf16_buf: [256]u16 = undefined;
+
+        var total_bytes_consumed: usize = 0;
+        var total_bytes_written: usize = 0;
+        var remaining_input = input;
+        var remaining_output = output;
+
+        while (remaining_input.len > 0 and remaining_output.len > 0) {
+            // Decode chunk to UTF-16
+            const decode_result = self.encoding.decode_fn(
+                self,
+                remaining_input,
+                &utf16_buf,
+                is_last and remaining_input.len <= utf16_buf.len,
+            );
+
+            // Convert UTF-16 to UTF-8
+            const utf16_slice = utf16_buf[0..decode_result.code_units_written];
+            var utf8_written: usize = 0;
+
+            for (utf16_slice) |code_unit| {
+                const needed = utf8BytesNeeded(code_unit);
+                if (utf8_written + needed > remaining_output.len) {
+                    // Output buffer full - return what we have
+                    return .{
+                        .status = .output_full,
+                        .bytes_consumed = total_bytes_consumed,
+                        .bytes_written = total_bytes_written + utf8_written,
+                    };
+                }
+
+                utf8_written += writeUtf8CodeUnit(code_unit, remaining_output[utf8_written..]);
+            }
+
+            total_bytes_consumed += decode_result.bytes_consumed;
+            total_bytes_written += utf8_written;
+            remaining_input = remaining_input[decode_result.bytes_consumed..];
+            remaining_output = remaining_output[utf8_written..];
+
+            // Handle decode status
+            switch (decode_result.status) {
+                .malformed => {
+                    return .{
+                        .status = .malformed,
+                        .bytes_consumed = total_bytes_consumed,
+                        .bytes_written = total_bytes_written,
+                        .error_length = decode_result.error_length,
+                    };
+                },
+                .output_full => {
+                    // UTF-16 buffer was filled, continue with next chunk
+                    continue;
+                },
+                .input_empty => {
+                    // All input consumed
+                    break;
+                },
+            }
+        }
+
+        return .{
+            .status = .input_empty,
+            .bytes_consumed = total_bytes_consumed,
+            .bytes_written = total_bytes_written,
+        };
+    }
 };
+
+/// Calculate number of UTF-8 bytes needed for a UTF-16 code unit.
+fn utf8BytesNeeded(code_unit: u16) usize {
+    if (code_unit < 0x80) return 1;
+    if (code_unit < 0x800) return 2;
+    return 3;
+}
+
+/// Write a BMP code point (from UTF-16 code unit) as UTF-8.
+/// Returns number of bytes written.
+fn writeUtf8CodeUnit(code_unit: u16, output: []u8) usize {
+    const cp: u21 = code_unit;
+
+    if (cp < 0x80) {
+        output[0] = @intCast(cp);
+        return 1;
+    } else if (cp < 0x800) {
+        output[0] = @intCast(0xC0 | (cp >> 6));
+        output[1] = @intCast(0x80 | (cp & 0x3F));
+        return 2;
+    } else {
+        output[0] = @intCast(0xE0 | (cp >> 12));
+        output[1] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+        output[2] = @intCast(0x80 | (cp & 0x3F));
+        return 3;
+    }
+}
 
 pub const Encoder = struct {
     encoding: *const Encoding,
@@ -437,6 +590,7 @@ pub const EUC_KR: Encoding = .{
     .whatwg_name = "euc-kr",
     .decode_fn = korean.euc_kr_streaming.decode,
     .encode_fn = korean.euc_kr_streaming.encode,
+    .decode_to_utf8_fn = korean.euc_kr_streaming.decodeToUtf8,
 };
 
 pub const SHIFT_JIS: Encoding = .{
@@ -472,6 +626,7 @@ pub const BIG5: Encoding = .{
     .whatwg_name = "Big5",
     .decode_fn = chinese.big5_streaming_decode,
     .encode_fn = chinese.big5_streaming_encode,
+    .decode_to_utf8_fn = chinese.big5_streaming_decodeToUtf8,
 };
 
 pub const REPLACEMENT: Encoding = .{
@@ -840,3 +995,52 @@ pub fn getOutputEncoding(encoding: *const Encoding) *const Encoding {
 }
 
 // Tests
+
+test "decodeToUtf8 fallback - ASCII" {
+    // Test that ASCII decodes correctly through the fallback path
+    var decoder = WINDOWS_1252.newDecoder();
+    const input = "Hello, World!";
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(input.len, result.bytes_consumed);
+    try std.testing.expectEqual(input.len, result.bytes_written);
+    try std.testing.expectEqualStrings(input, output[0..result.bytes_written]);
+}
+
+test "decodeToUtf8 fallback - non-ASCII single-byte" {
+    // Test Windows-1252 with € (0x80 -> U+20AC)
+    var decoder = WINDOWS_1252.newDecoder();
+    const input = [_]u8{ 0x80, 0x41 }; // € followed by 'A'
+    var output: [64]u8 = undefined;
+
+    const result = decoder.decodeToUtf8(&input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result.status);
+    try std.testing.expectEqual(@as(usize, 2), result.bytes_consumed);
+    // € is U+20AC which encodes to 3 bytes in UTF-8: E2 82 AC
+    // 'A' is 1 byte
+    try std.testing.expectEqual(@as(usize, 4), result.bytes_written);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xE2, 0x82, 0xAC, 0x41 }, output[0..result.bytes_written]);
+}
+
+test "decodeToUtf8 fallback - output buffer too small" {
+    var decoder = WINDOWS_1252.newDecoder();
+    const input = "Hello";
+    var output: [3]u8 = undefined; // Too small for full output
+
+    const result = decoder.decodeToUtf8(input, &output, true);
+
+    try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.output_full, result.status);
+    // Should have written as much as fits
+    try std.testing.expect(result.bytes_written <= output.len);
+}
+
+test "Encoding.supportsDirectUtf8Decode" {
+    // Currently no encodings have native decodeToUtf8, so all should return false
+    try std.testing.expect(!WINDOWS_1252.supportsDirectUtf8Decode());
+    try std.testing.expect(!UTF_8.supportsDirectUtf8Decode());
+    try std.testing.expect(!ISO_8859_2.supportsDirectUtf8Decode());
+}

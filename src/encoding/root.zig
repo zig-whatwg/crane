@@ -35,6 +35,7 @@ pub const DecodeResult = streaming.DecodeResult;
 pub const EncodeResult = streaming.EncodeResult;
 pub const DecodeQueueResult = streaming.DecodeQueueResult;
 pub const EncodeQueueResult = streaming.EncodeQueueResult;
+pub const DecodeToUtf8Result = streaming.DecodeToUtf8Result;
 pub const ErrorMode = error_mode.ErrorMode;
 pub const BomEncoding = bom.BomEncoding;
 
