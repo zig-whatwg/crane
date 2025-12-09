@@ -341,6 +341,33 @@ pub fn setDefaultAllocator(allocator: std.mem.Allocator) !void {
     state.default_allocator = allocator;
 }
 
+/// Clear all wrapper caches without destroying the contexts
+///
+/// This is used for test isolation - clears cached V8 wrappers between tests
+/// while keeping the contexts alive. This prevents stale V8 objects from
+/// causing issues when running multiple tests sequentially.
+///
+/// The two-phase cleanup in WrapperCache.clear() ensures:
+/// 1. All weak callbacks are disabled first (no use-after-free)
+/// 2. Then instances are cleaned up via GC integration (type-specific deinit)
+/// 3. V8 handles are disposed
+/// 4. CacheEntries are freed
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn clearWrapperCaches() void {
+    const state = &(manager_state orelse return);
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
+    var it = state.contexts.valueIterator();
+    while (it.next()) |entry| {
+        var ctx_data = entry.runtime_ctx;
+        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+            const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache_ptr.clear();
+        }
+    }
+}
+
 // ============================================================================
 // Dynamic Import Handler
 // ============================================================================

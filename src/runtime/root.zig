@@ -274,6 +274,12 @@ pub fn deinitializeRuntime() void {
     if (runtime_cleanup_hook) |hook| {
         hook();
     }
+
+    // Reset internal state registry
+    // This removes all instance→InternalState mappings to prevent stale references
+    // when running multiple tests sequentially (each test gets a fresh environment)
+    internal_state.resetRegistry();
+
     ArenaAllocator.deinit();
     SlabAllocator.deinit();
 }

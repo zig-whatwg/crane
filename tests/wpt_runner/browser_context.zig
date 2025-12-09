@@ -1382,6 +1382,60 @@ pub fn clearPendingTimers() void {
     }
 }
 
+/// Reset all V8/runtime state between tests for proper isolation
+///
+/// This function is CRITICAL for running multiple WPT tests sequentially.
+/// Without proper cleanup, state from previous tests persists and causes:
+/// - Use-after-free when V8 GC fires weak callbacks on freed entries
+/// - Internal state registry contains stale entries from old tests
+/// - Timer contexts reference callbacks from reloaded testharness.js
+/// - Wrapper cache maps instances to old V8 objects
+///
+/// ## Cleanup Order (IMPORTANT)
+/// 1. Force V8 GC first - triggers weak callbacks while references are valid
+/// 2. Clear pending timers - cancel callbacks that may reference stale state
+/// 3. Clear wrapper caches - removes V8→Zig mappings (two-phase cleanup)
+/// 4. Reset internal state registry - removes Zig instance→state mappings
+/// 5. Force V8 GC again - collect any newly-orphaned objects
+///
+/// ## Usage
+/// Call this between test executions in the WPT runner:
+/// ```zig
+/// for (test_files) |test_file| {
+///     try ctx.resetBetweenTests();  // Clean slate
+///     const result = try ctx.executeTest(test_file, ...);
+/// }
+/// ```
+///
+/// ## Thread Safety
+/// All cleared state is thread-local (V8 isolates are single-threaded).
+pub fn resetBetweenTests(isolate: ?*v8.ffi.Isolate) void {
+    // Step 1: Force V8 GC first while references are still valid
+    // This triggers weak callbacks which safely clean up entries
+    if (isolate) |iso| {
+        v8.ffi.v8_Isolate_RequestGarbageCollection(iso);
+    }
+
+    // Step 2: Clear pending timers
+    // These may hold references to V8 functions from the previous test's testharness.js
+    clearPendingTimers();
+
+    // Step 3: Clear wrapper caches across all contexts
+    // Uses two-phase cleanup: first disables weak callbacks, then cleans entries
+    // This prevents use-after-free from weak callbacks firing during cleanup
+    context_manager.clearWrapperCaches();
+
+    // Step 4: Reset internal state registry
+    // Removes all instance→InternalState mappings from previous test
+    runtime.resetInternalStateRegistry();
+
+    // Step 5: Force V8 GC again to collect newly-orphaned objects
+    // The wrapper cache clear may have orphaned V8 objects
+    if (isolate) |iso| {
+        v8.ffi.v8_Isolate_RequestGarbageCollection(iso);
+    }
+}
+
 /// Register a timer context for cleanup tracking (both one-shot and intervals)
 fn registerTimerContext(timer_id: TimerId, ctx: *V8TimerContext) void {
     if (timer_contexts) |*map| {

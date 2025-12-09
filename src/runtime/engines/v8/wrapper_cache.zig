@@ -244,10 +244,28 @@ pub const WrapperCache = struct {
     ///
     /// Disposes all cached wrappers and clears the HashMap.
     /// Useful for testing or explicit cache invalidation.
+    /// Uses two-phase cleanup like deinit() to prevent use-after-free
+    /// from weak callbacks firing during cleanup.
     pub fn clear(self: *Self) void {
+        // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
+        // during cleanup. This must happen before any cleanup to avoid races
+        // where a weak callback tries to free an already-freed entry.
+        {
+            var iter = self.cache.valueIterator();
+            while (iter.next()) |entry_ptr| {
+                const entry = entry_ptr.*;
+                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+            }
+        }
+
+        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
+
+            // Call GC integration to invoke type-specific deinit
+            // This is essential for cleanup since weak callbacks were disabled
+            runtime.gc.onObjectFreed(entry.instance);
 
             // Dispose the Global<Object>* handle
             v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
