@@ -34,6 +34,31 @@ const test_harness = @import("test_harness.zig");
 const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
 
+/// Thread-local verbose flag for log filtering
+var verbose_mode: bool = false;
+
+/// Custom log function that suppresses error logs in non-verbose mode.
+/// This prevents V8 engine errors from cluttering the test output.
+pub const std_options: std.Options = .{
+    .logFn = wptLogFn,
+};
+
+fn wptLogFn(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    // In non-verbose mode, suppress error-level logs from v8_engine
+    // These are expected during test execution (test failures cause JS errors)
+    if (!verbose_mode and level == .err and scope == .v8_engine) {
+        return;
+    }
+
+    // Use default implementation for everything else
+    std.log.defaultLog(level, scope, format, args);
+}
+
 /// Command-line options
 pub const Options = struct {
     /// Directory filters (empty = all in-scope categories)
@@ -763,6 +788,9 @@ pub fn main() !void {
 
     var options = try parseArgs(allocator, args[1..]);
     defer options.deinit();
+
+    // Set verbose mode for log filtering
+    verbose_mode = options.verbose;
 
     // Check WPT submodule exists
     const harness_path = try std.fs.path.join(allocator, &.{ options.wpt_root, "resources", "testharness.js" });

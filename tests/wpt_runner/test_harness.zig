@@ -324,27 +324,14 @@ pub const testharnessreport_js =
     \\(function() {
     \\  'use strict';
     \\
-    \\  // Debug: log availability of functions
-    \\  if (typeof __wpt_debug_log === 'function') {
-    \\    __wpt_debug_log('[testharnessreport] Loading...');
-    \\    __wpt_debug_log('[testharnessreport] add_result_callback: ' + (typeof add_result_callback));
-    \\    __wpt_debug_log('[testharnessreport] __wpt_report_result: ' + (typeof __wpt_report_result));
-    \\  }
-    \\
     \\  // Check if testharness.js has been loaded
     \\  if (typeof add_result_callback !== 'function') {
-    \\    if (typeof __wpt_debug_log === 'function') {
-    \\      __wpt_debug_log('[testharnessreport] ERROR: add_result_callback not available');
-    \\    }
     \\    return;
     \\  }
     \\
     \\  // Verify native functions are available
     \\  if (typeof __wpt_report_result !== 'function' ||
     \\      typeof __wpt_report_completion !== 'function') {
-    \\    if (typeof __wpt_debug_log === 'function') {
-    \\      __wpt_debug_log('[testharnessreport] ERROR: native callbacks not available');
-    \\    }
     \\    return;
     \\  }
     \\
@@ -355,9 +342,6 @@ pub const testharnessreport_js =
     \\
     \\  // Register callback for individual test results
     \\  add_result_callback(function(test) {
-    \\    if (typeof __wpt_debug_log === 'function') {
-    \\      __wpt_debug_log('[testharnessreport] Result: ' + test.name + ' status=' + test.status);
-    \\    }
     \\    __wpt_report_result(
     \\      test.name || '',
     \\      test.status,
@@ -369,18 +353,11 @@ pub const testharnessreport_js =
     \\
     \\  // Register callback for test completion
     \\  add_completion_callback(function(tests, harness_status) {
-    \\    if (typeof __wpt_debug_log === 'function') {
-    \\      __wpt_debug_log('[testharnessreport] Completion: ' + tests.length + ' tests, status=' + harness_status.status);
-    \\    }
     \\    __wpt_report_completion(
     \\      harness_status.status,
     \\      harness_status.message || null
     \\    );
     \\  });
-    \\
-    \\  if (typeof __wpt_debug_log === 'function') {
-    \\    __wpt_debug_log('[testharnessreport] Callbacks registered successfully');
-    \\  }
     \\})();
 ;
 

@@ -59,13 +59,6 @@
      * including async tests.
      */
     add_completion_callback(function(tests, harness_status) {
-        // Debug: Log when completion is called
-        if (typeof __wpt_debug_log === 'function') {
-            __wpt_debug_log('[testharnessreport] completion callback: status=' + harness_status.status + 
-                           ' message=' + (harness_status.message || 'null') +
-                           ' tests=' + tests.length);
-        }
-        
         // Call native Zig function if available
         if (typeof __wpt_report_completion === 'function') {
             __wpt_report_completion(
