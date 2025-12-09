@@ -608,6 +608,7 @@ pub const WINDOWS_1252: Encoding = .{
     .whatwg_name = "windows-1252",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1252.INDEX,
 };
 
@@ -616,6 +617,7 @@ pub const WINDOWS_1253: Encoding = .{
     .whatwg_name = "windows-1253",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1253.INDEX,
 };
 
@@ -624,6 +626,7 @@ pub const WINDOWS_1254: Encoding = .{
     .whatwg_name = "windows-1254",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1254.INDEX,
 };
 
@@ -632,6 +635,7 @@ pub const WINDOWS_1255: Encoding = .{
     .whatwg_name = "windows-1255",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1255.INDEX,
 };
 
@@ -640,6 +644,7 @@ pub const WINDOWS_1256: Encoding = .{
     .whatwg_name = "windows-1256",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1256.INDEX,
 };
 
@@ -648,6 +653,7 @@ pub const WINDOWS_1257: Encoding = .{
     .whatwg_name = "windows-1257",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1257.INDEX,
 };
 
@@ -656,6 +662,7 @@ pub const WINDOWS_1258: Encoding = .{
     .whatwg_name = "windows-1258",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1258.INDEX,
 };
 
@@ -664,6 +671,7 @@ pub const X_MAC_CYRILLIC: Encoding = .{
     .whatwg_name = "x-mac-cyrillic",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.x_mac_cyrillic.INDEX,
 };
 
@@ -674,6 +682,7 @@ pub const GB18030: Encoding = .{
     .decode_fn = chinese.decode,
     .encode_fn = chinese.encode,
     .decode_to_utf8_fn = chinese.decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.gb18030,
 };
 
 pub const GBK: Encoding = .{
@@ -681,6 +690,7 @@ pub const GBK: Encoding = .{
     .whatwg_name = "gbk",
     .decode_fn = chinese.decode,
     .encode_fn = chinese.encode,
+    .max_utf8_length_fn = MaxUtf8Length.gb18030, // GBK is subset of GB18030
 };
 
 pub const EUC_KR: Encoding = .{
@@ -689,6 +699,7 @@ pub const EUC_KR: Encoding = .{
     .decode_fn = korean.euc_kr_streaming.decode,
     .encode_fn = korean.euc_kr_streaming.encode,
     .decode_to_utf8_fn = korean.euc_kr_streaming.decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.eastAsianDouble,
 };
 
 pub const SHIFT_JIS: Encoding = .{
@@ -697,6 +708,7 @@ pub const SHIFT_JIS: Encoding = .{
     .decode_fn = japanese.shift_jis_streaming.decode,
     .encode_fn = japanese.shift_jis_streaming.encode,
     .decode_to_utf8_fn = japanese.shift_jis_streaming.decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.eastAsianDouble,
 };
 
 pub const EUC_JP: Encoding = .{
@@ -704,6 +716,8 @@ pub const EUC_JP: Encoding = .{
     .whatwg_name = "euc-jp",
     .decode_fn = japanese.euc_jp_streaming.decode,
     .encode_fn = japanese.euc_jp_streaming.encode,
+    .decode_to_utf8_fn = japanese.euc_jp_streaming.decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.eastAsianDouble,
 };
 
 pub const ISO_2022_JP: Encoding = .{
@@ -711,6 +725,7 @@ pub const ISO_2022_JP: Encoding = .{
     .whatwg_name = "iso-2022-jp",
     .decode_fn = japanese.iso_2022_jp_streaming.decode,
     .encode_fn = japanese.iso_2022_jp_streaming.encode,
+    .max_utf8_length_fn = MaxUtf8Length.iso2022jp,
 };
 
 pub const X_USER_DEFINED: Encoding = .{
@@ -718,6 +733,7 @@ pub const X_USER_DEFINED: Encoding = .{
     .whatwg_name = "x-user-defined",
     .decode_fn = miscellaneous.x_user_defined_streaming.decode,
     .encode_fn = miscellaneous.x_user_defined_streaming.encode,
+    .max_utf8_length_fn = MaxUtf8Length.xUserDefined,
 };
 
 pub const BIG5: Encoding = .{
@@ -726,6 +742,7 @@ pub const BIG5: Encoding = .{
     .decode_fn = chinese.big5_streaming_decode,
     .encode_fn = chinese.big5_streaming_encode,
     .decode_to_utf8_fn = chinese.big5_streaming_decodeToUtf8,
+    .max_utf8_length_fn = MaxUtf8Length.big5,
 };
 
 pub const REPLACEMENT: Encoding = .{
@@ -733,11 +750,13 @@ pub const REPLACEMENT: Encoding = .{
     .whatwg_name = "replacement",
     .decode_fn = miscellaneous.replacement_streaming.decode,
     .encode_fn = null, // replacement has NO encoder per WHATWG spec
+    .max_utf8_length_fn = MaxUtf8Length.replacement,
 };
 
 pub const UTF_16BE: Encoding = .{
     .name = "UTF-16BE",
     .whatwg_name = "UTF-16BE",
+    .max_utf8_length_fn = MaxUtf8Length.utf16,
     .decode_fn = utf16.utf16be_streaming.decode,
     .encode_fn = null, // UTF-16BE has NO encoder per WHATWG spec
 };
@@ -747,6 +766,7 @@ pub const UTF_16LE: Encoding = .{
     .whatwg_name = "UTF-16LE",
     .decode_fn = utf16.utf16le_streaming.decode,
     .encode_fn = null, // UTF-16LE has NO encoder per WHATWG spec
+    .max_utf8_length_fn = MaxUtf8Length.utf16,
 };
 
 // ALL_ENCODINGS array
@@ -1253,4 +1273,59 @@ test "decodeToUtf8 direct - Big5 streaming incomplete sequence" {
     try std.testing.expectEqual(streaming.DecodeToUtf8Result.Status.input_empty, result2.status);
     try std.testing.expectEqual(@as(usize, 1), result2.bytes_consumed);
     try std.testing.expectEqual(@as(usize, 3), result2.bytes_written); // CJK char = 3 UTF-8 bytes
+}
+
+// Tests for maxUtf8LengthForInput
+
+test "maxUtf8LengthForInput - UTF-8 is 1:1" {
+    // UTF-8 input produces same size output (already UTF-8)
+    try std.testing.expectEqual(@as(usize, 100), UTF_8.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 0), UTF_8.maxUtf8LengthForInput(0));
+    try std.testing.expectEqual(@as(usize, 1), UTF_8.maxUtf8LengthForInput(1));
+}
+
+test "maxUtf8LengthForInput - single-byte encodings use 3x" {
+    // Each byte in single-byte encoding can produce up to 3 UTF-8 bytes
+    try std.testing.expectEqual(@as(usize, 300), WINDOWS_1252.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 300), ISO_8859_2.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 300), KOI8_R.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 0), IBM866.maxUtf8LengthForInput(0));
+}
+
+test "maxUtf8LengthForInput - East Asian double-byte encodings use 3x" {
+    // EUC-KR, Shift_JIS, EUC-JP: worst case is 3x
+    try std.testing.expectEqual(@as(usize, 300), EUC_KR.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 300), SHIFT_JIS.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 300), EUC_JP.maxUtf8LengthForInput(100));
+}
+
+test "maxUtf8LengthForInput - UTF-16 uses 2x" {
+    // UTF-16 has 2x expansion (worst case: all BMP chars)
+    try std.testing.expectEqual(@as(usize, 200), UTF_16BE.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 200), UTF_16LE.maxUtf8LengthForInput(100));
+}
+
+test "maxUtf8LengthForInput - replacement produces at most 3 bytes" {
+    // Replacement encoding only emits U+FFFD once (3 bytes)
+    try std.testing.expectEqual(@as(usize, 3), REPLACEMENT.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 3), REPLACEMENT.maxUtf8LengthForInput(1));
+    try std.testing.expectEqual(@as(usize, 3), REPLACEMENT.maxUtf8LengthForInput(0));
+}
+
+test "maxUtf8LengthForInput - GB18030 uses 3x" {
+    // GB18030 uses 3x (covers 4-byte sequences safely)
+    try std.testing.expectEqual(@as(usize, 300), GB18030.maxUtf8LengthForInput(100));
+    try std.testing.expectEqual(@as(usize, 300), GBK.maxUtf8LengthForInput(100));
+}
+
+test "maxUtf8LengthForInput - Big5 uses 3x" {
+    try std.testing.expectEqual(@as(usize, 300), BIG5.maxUtf8LengthForInput(100));
+}
+
+test "maxUtf8LengthForInput - x-user-defined uses 3x" {
+    try std.testing.expectEqual(@as(usize, 300), X_USER_DEFINED.maxUtf8LengthForInput(100));
+}
+
+test "maxUtf8LengthForInput - ISO-2022-JP uses 3x" {
+    try std.testing.expectEqual(@as(usize, 300), ISO_2022_JP.maxUtf8LengthForInput(100));
 }
