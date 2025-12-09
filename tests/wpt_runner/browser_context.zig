@@ -107,14 +107,19 @@ pub const BrowserContext = struct {
         self.allocator.free(self.wpt_root);
         self.allocator.free(self.test_url);
 
-        // NOTE: We do NOT explicitly deinit DOM singleton instances here.
-        // The context_manager.deinit() -> wrapper_cache.deinit() will call
-        // gc.onObjectFreed() for every cached instance, which invokes the
-        // type-specific deinit. This ensures proper cleanup without double-free.
+        // Explicitly clean up the document instance and its DOM tree.
+        // This is necessary because:
+        // 1. The document may have been replaced by loadHTMLDocument()
+        // 2. The new document might not be in wrapper_cache (if wrapping failed/skipped)
+        // 3. Even if in cache, we need to clean up BEFORE context_manager.deinit()
+        //    to ensure proper ordering (DOM cleanup before V8 context disposal)
         //
-        // The Node.deinit implementation now recursively cleans up all child
-        // nodes, so when Document is deinit'd by wrapper_cache, all DOM nodes
-        // created during parsing will be properly freed.
+        // Document.deinit() chains to Node.deinit() which recursively cleans up
+        // all child nodes (Elements, Text nodes, etc.), freeing their CharacterData.
+        if (self.document_instance) |doc| {
+            interfaces.Document.deinit(doc);
+            self.document_instance = null;
+        }
 
         // Clear timer interface from thread-local storage
         clearTimerInterface();
