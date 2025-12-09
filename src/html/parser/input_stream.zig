@@ -14,6 +14,74 @@ const ParseError = @import("parse_errors.zig").ParseError;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 
+// === Character Class Lookup Table ===
+// 128-byte precomputed table mapping ASCII codepoints to character class bitmask.
+// Single array index + bitwise AND replaces method calls for faster classification.
+
+/// Character class flags for lookup table.
+pub const CharClass = struct {
+    pub const ALPHA_UPPER: u8 = 0x01; // A-Z
+    pub const ALPHA_LOWER: u8 = 0x02; // a-z
+    pub const DIGIT: u8 = 0x04; // 0-9
+    pub const HEX_UPPER: u8 = 0x08; // A-F (hex upper)
+    pub const HEX_LOWER: u8 = 0x10; // a-f (hex lower)
+    pub const WHITESPACE: u8 = 0x20; // tab, LF, FF, CR, space
+    pub const HTML_WS: u8 = 0x40; // tab, LF, FF, space (no CR after preprocessing)
+
+    // Computed masks
+    pub const ALPHA: u8 = ALPHA_UPPER | ALPHA_LOWER;
+    pub const ALPHANUMERIC: u8 = ALPHA | DIGIT;
+    pub const HEX_DIGIT: u8 = DIGIT | HEX_UPPER | HEX_LOWER;
+};
+
+/// Precomputed character class lookup table for ASCII (0-127).
+/// Each byte contains flags indicating which classes the character belongs to.
+pub const char_class_table: [128]u8 = blk: {
+    var table: [128]u8 = [_]u8{0} ** 128;
+
+    // Whitespace: tab (0x09), LF (0x0A), FF (0x0C), CR (0x0D), space (0x20)
+    table[0x09] = CharClass.WHITESPACE | CharClass.HTML_WS; // tab
+    table[0x0A] = CharClass.WHITESPACE | CharClass.HTML_WS; // LF
+    table[0x0C] = CharClass.WHITESPACE | CharClass.HTML_WS; // FF
+    table[0x0D] = CharClass.WHITESPACE; // CR (not HTML_WS)
+    table[0x20] = CharClass.WHITESPACE | CharClass.HTML_WS; // space
+
+    // Digits 0-9
+    for ('0'..'9' + 1) |c| {
+        table[c] = CharClass.DIGIT;
+    }
+
+    // Uppercase A-Z
+    for ('A'..'Z' + 1) |c| {
+        table[c] = CharClass.ALPHA_UPPER;
+    }
+
+    // Uppercase hex A-F
+    for ('A'..'F' + 1) |c| {
+        table[c] |= CharClass.HEX_UPPER;
+    }
+
+    // Lowercase a-z
+    for ('a'..'z' + 1) |c| {
+        table[c] = CharClass.ALPHA_LOWER;
+    }
+
+    // Lowercase hex a-f
+    for ('a'..'f' + 1) |c| {
+        table[c] |= CharClass.HEX_LOWER;
+    }
+
+    break :blk table;
+};
+
+/// Fast character class lookup. Returns 0 for non-ASCII or EOF.
+pub fn getCharClass(cp: u21) u8 {
+    if (cp < 128) {
+        return char_class_table[cp];
+    }
+    return 0;
+}
+
 /// Represents a Unicode code point or EOF.
 pub const InputCharacter = union(enum) {
     /// A Unicode code point.
@@ -44,78 +112,91 @@ pub const InputCharacter = union(enum) {
     }
 
     /// Check if this is ASCII alpha (A-Z or a-z).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiAlpha(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| (cp >= 'A' and cp <= 'Z') or (cp >= 'a' and cp <= 'z'),
+            .codepoint => |cp| (getCharClass(cp) & CharClass.ALPHA) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII upper alpha (A-Z).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiUpperAlpha(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp >= 'A' and cp <= 'Z',
+            .codepoint => |cp| (getCharClass(cp) & CharClass.ALPHA_UPPER) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII lower alpha (a-z).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiLowerAlpha(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp >= 'a' and cp <= 'z',
+            .codepoint => |cp| (getCharClass(cp) & CharClass.ALPHA_LOWER) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII digit (0-9).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiDigit(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp >= '0' and cp <= '9',
+            .codepoint => |cp| (getCharClass(cp) & CharClass.DIGIT) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII alphanumeric.
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiAlphanumeric(self: InputCharacter) bool {
-        return self.isAsciiAlpha() or self.isAsciiDigit();
+        return switch (self) {
+            .codepoint => |cp| (getCharClass(cp) & CharClass.ALPHANUMERIC) != 0,
+            .eof => false,
+        };
     }
 
     /// Check if this is ASCII hex digit.
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiHexDigit(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| (cp >= '0' and cp <= '9') or (cp >= 'A' and cp <= 'F') or (cp >= 'a' and cp <= 'f'),
+            .codepoint => |cp| (getCharClass(cp) & CharClass.HEX_DIGIT) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII upper hex digit (A-F).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiUpperHexDigit(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp >= 'A' and cp <= 'F',
+            .codepoint => |cp| (getCharClass(cp) & CharClass.HEX_UPPER) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII lower hex digit (a-f).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiLowerHexDigit(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp >= 'a' and cp <= 'f',
+            .codepoint => |cp| (getCharClass(cp) & CharClass.HEX_LOWER) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is ASCII whitespace (tab, LF, FF, CR, space).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isAsciiWhitespace(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp == 0x09 or cp == 0x0A or cp == 0x0C or cp == 0x0D or cp == 0x20,
+            .codepoint => |cp| (getCharClass(cp) & CharClass.WHITESPACE) != 0,
             .eof => false,
         };
     }
 
     /// Check if this is HTML whitespace (tab, LF, FF, space - no CR after preprocessing).
+    /// Optimized: uses lookup table for O(1) classification.
     pub fn isHtmlWhitespace(self: InputCharacter) bool {
         return switch (self) {
-            .codepoint => |cp| cp == 0x09 or cp == 0x0A or cp == 0x0C or cp == 0x20,
+            .codepoint => |cp| (getCharClass(cp) & CharClass.HTML_WS) != 0,
             .eof => false,
         };
     }
