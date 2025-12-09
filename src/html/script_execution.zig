@@ -1952,7 +1952,8 @@ fn collectTextContent(node: *runtime.Instance, result: *infra.List(u8)) !void {
     {
         // Get text content from Text/CDATASection node via CharacterData interface
         // Text and CDATASection inherit from CharacterData which stores the data
-        const data = CharacterData.get_data(node) catch return;
+        var data = CharacterData.get_data(node) catch return;
+        defer data.deinit(result.allocator);
         try result.appendSlice(data.asSlice());
     } else {
         // Recurse into children

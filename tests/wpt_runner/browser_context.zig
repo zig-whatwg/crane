@@ -336,7 +336,16 @@ pub const BrowserContext = struct {
         //
         // Instead, we:
         // 1. Register needed globals (document, navigator, etc.) directly on global
-        // 2. Set window/self via JavaScript after context setup
+        // 2. Set window/self to point to the global object itself
+
+        // Register 'window' and 'self' as references to the global object
+        {
+            const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(window_key), @ptrCast(global_obj));
+
+            const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
+        }
 
         // Register Document singleton
         {
@@ -904,6 +913,7 @@ pub const BrowserContext = struct {
 
         while (true) {
             const now = std.time.milliTimestamp();
+            const elapsed: u64 = @intCast(now - start_time);
 
             // 1. Run one iteration of the V8 event loop
             // This processes ready timers (via libuv), runs tasks, and runs microtasks
@@ -915,7 +925,6 @@ pub const BrowserContext = struct {
             }
 
             // 3. Check timeout
-            const elapsed: u64 = @intCast(now - start_time);
             if (elapsed > timeout_ms) {
                 // Mark the test as timed out
                 try self.result_collector.finishTest(.timeout, "Test timed out", elapsed);
