@@ -33,11 +33,12 @@ const infra = @import("infra");
 /// - Heap: 8 bytes ptr + 8 bytes len + 8 bytes capacity + 8 bytes allocator
 pub const SmallString = struct {
     const INLINE_CAPACITY: usize = 31;
-    const INLINE_MARKER: u8 = 0x80; // High bit set = heap mode
 
     /// Storage union - inline or heap allocated
     storage: Storage,
     allocator: Allocator,
+    /// Explicit flag to track storage mode (avoids unsafe union field access)
+    is_heap: bool,
 
     const Storage = union {
         inline_data: InlineData,
@@ -46,8 +47,7 @@ pub const SmallString = struct {
 
     const InlineData = struct {
         data: [INLINE_CAPACITY]u8,
-        /// Length with high bit as mode flag: 0-127 = inline length, 128+ = heap mode
-        len_and_mode: u8,
+        len: u8,
     };
 
     const HeapData = struct {
@@ -63,16 +63,17 @@ pub const SmallString = struct {
             .storage = Storage{
                 .inline_data = InlineData{
                     .data = undefined,
-                    .len_and_mode = 0, // Inline mode, length 0
+                    .len = 0,
                 },
             },
             .allocator = allocator,
+            .is_heap = false,
         };
     }
 
     /// Free heap memory if allocated.
     pub fn deinit(self: *SmallString) void {
-        if (self.isHeapMode()) {
+        if (self.is_heap) {
             const heap = self.storage.heap_data;
             if (heap.capacity > 0) {
                 self.allocator.free(heap.ptr[0..heap.capacity]);
@@ -82,32 +83,32 @@ pub const SmallString = struct {
 
     /// Check if currently in heap mode.
     inline fn isHeapMode(self: *const SmallString) bool {
-        return (self.storage.inline_data.len_and_mode & INLINE_MARKER) != 0;
+        return self.is_heap;
     }
 
     /// Get the current length.
     pub fn len(self: *const SmallString) usize {
-        if (self.isHeapMode()) {
+        if (self.is_heap) {
             return self.storage.heap_data.len;
         } else {
-            return self.storage.inline_data.len_and_mode;
+            return self.storage.inline_data.len;
         }
     }
 
     /// Get the string as a slice.
     pub fn toSlice(self: *const SmallString) []const u8 {
-        if (self.isHeapMode()) {
+        if (self.is_heap) {
             const heap = self.storage.heap_data;
             return heap.ptr[0..heap.len];
         } else {
-            const inline_len = self.storage.inline_data.len_and_mode;
+            const inline_len = self.storage.inline_data.len;
             return self.storage.inline_data.data[0..inline_len];
         }
     }
 
     /// Append a single byte.
     pub fn append(self: *SmallString, byte: u8) !void {
-        if (self.isHeapMode()) {
+        if (self.is_heap) {
             // Already in heap mode
             var heap = &self.storage.heap_data;
             if (heap.len >= heap.capacity) {
@@ -118,11 +119,11 @@ pub const SmallString = struct {
             heap.len += 1;
         } else {
             // Inline mode
-            const current_len = self.storage.inline_data.len_and_mode;
+            const current_len = self.storage.inline_data.len;
             if (current_len < INLINE_CAPACITY) {
                 // Fits in inline storage
                 self.storage.inline_data.data[current_len] = byte;
-                self.storage.inline_data.len_and_mode = current_len + 1;
+                self.storage.inline_data.len = current_len + 1;
             } else {
                 // Need to transition to heap
                 try self.transitionToHeap();
@@ -137,7 +138,7 @@ pub const SmallString = struct {
     pub fn appendSlice(self: *SmallString, slice: []const u8) !void {
         if (slice.len == 0) return;
 
-        if (self.isHeapMode()) {
+        if (self.is_heap) {
             // Already in heap mode
             var heap = &self.storage.heap_data;
             const new_len = heap.len + slice.len;
@@ -150,12 +151,12 @@ pub const SmallString = struct {
             heap.len = new_len;
         } else {
             // Inline mode
-            const current_len = self.storage.inline_data.len_and_mode;
+            const current_len = self.storage.inline_data.len;
             const new_len = current_len + slice.len;
             if (new_len <= INLINE_CAPACITY) {
                 // Fits in inline storage
                 @memcpy(self.storage.inline_data.data[current_len..][0..slice.len], slice);
-                self.storage.inline_data.len_and_mode = @intCast(new_len);
+                self.storage.inline_data.len = @intCast(new_len);
             } else {
                 // Need to transition to heap
                 try self.transitionToHeapWithExtra(slice.len);
@@ -173,7 +174,7 @@ pub const SmallString = struct {
 
     /// Transition from inline to heap storage with extra capacity.
     fn transitionToHeapWithExtra(self: *SmallString, extra: usize) !void {
-        const current_len = self.storage.inline_data.len_and_mode;
+        const current_len = self.storage.inline_data.len;
         const new_capacity = @max(64, current_len + extra); // Start with reasonable capacity
 
         const new_ptr = try self.allocator.alloc(u8, new_capacity);
@@ -192,6 +193,7 @@ pub const SmallString = struct {
                 ._pad = 0,
             },
         };
+        self.is_heap = true;
     }
 
     /// Grow heap allocation.
@@ -714,6 +716,12 @@ pub const Token = union(enum) {
     /// Character token.
     character: u21,
 
+    /// Text run token - batch of consecutive text characters.
+    /// Performance optimization: instead of emitting individual character tokens,
+    /// the tokenizer batches runs of text into a single token with a slice.
+    /// The slice points directly into the input buffer (zero-copy).
+    text_run: TextRun,
+
     /// End-of-file token.
     eof,
 
@@ -723,9 +731,17 @@ pub const Token = union(enum) {
             .doctype => |*d| d.deinit(),
             .start_tag, .end_tag => |*t| t.deinit(),
             .comment => |*c| c.deinit(),
-            .character, .eof => {},
+            .character, .eof, .text_run => {},
         }
     }
+};
+
+/// A batch of text characters, stored as a slice into the input.
+/// This is a zero-copy optimization - the slice points directly to the input buffer.
+pub const TextRun = struct {
+    /// Slice of UTF-8 bytes from the input buffer.
+    /// Valid for the lifetime of the tokenizer's input.
+    data: []const u8,
 };
 
 // =============================================================================

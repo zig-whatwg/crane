@@ -299,6 +299,8 @@ pub const Tokenizer = struct {
     // =========================================================================
 
     /// §13.2.5.1 Data state
+    /// Optimized for batch text processing: scans ahead to collect runs of
+    /// consecutive text characters and emits them as a single text_run token.
     fn dataState(self: *Tokenizer) !?Token {
         const char = self.current_char;
 
@@ -317,8 +319,69 @@ pub const Tokenizer = struct {
             // The main loop will handle this and return null to caller
             return null;
         } else {
+            // Optimization: try to batch consecutive text characters
+            // Look ahead in raw input to find extent of normal text
+            const batch_result = self.batchDataStateCharacters();
+            if (batch_result.len > 0) {
+                return Token{ .text_run = .{ .data = batch_result.data } };
+            }
+            // Fallback to single character
             return Token{ .character = char.getCodepoint().? };
         }
+    }
+
+    /// Batch data state characters: scan ahead to find runs of consecutive text
+    /// that don't require special handling (no <, &, NULL, or CRLF).
+    /// Returns a slice into the input buffer (zero-copy).
+    fn batchDataStateCharacters(self: *Tokenizer) struct { data: []const u8, len: usize } {
+        // Get the current character's position in the raw input
+        // We need to figure out where in the raw input the current char started
+        const data = self.input.data;
+
+        // The current_char has already been consumed, so we need to work backwards
+        // to find its start position. We know the input.position is AFTER current_char.
+        // For ASCII chars (most common), it's 1 byte back.
+        const current_cp = self.current_char.getCodepoint() orelse return .{ .data = &.{}, .len = 0 };
+
+        // Determine how many bytes the current character took
+        const current_char_bytes: usize = if (current_cp < 0x80) 1 else if (current_cp < 0x800) 2 else if (current_cp < 0x10000) 3 else 4;
+
+        // Calculate start position (where current_char began in raw input)
+        const start_pos = if (self.input.position >= current_char_bytes)
+            self.input.position - current_char_bytes
+        else
+            return .{ .data = &.{}, .len = 0 };
+
+        // Quick check: if current char isn't simple ASCII text, don't batch
+        if (current_cp >= 0x80 or current_cp == 0x0D or current_cp == 0x0A) {
+            return .{ .data = &.{}, .len = 0 };
+        }
+
+        // Scan ahead from current input position for more text characters
+        var end_pos = self.input.position;
+        while (end_pos < data.len) {
+            const byte = data[end_pos];
+            // Stop on: <, &, NULL, CR, LF, or high bytes (non-ASCII)
+            if (byte == '<' or byte == '&' or byte == 0x00 or
+                byte == 0x0D or byte == 0x0A or byte >= 0x80)
+            {
+                break;
+            }
+            end_pos += 1;
+        }
+
+        const batch_len = end_pos - start_pos;
+        if (batch_len < 2) {
+            // Not worth batching single characters
+            return .{ .data = &.{}, .len = 0 };
+        }
+
+        // Advance input position past the batch
+        const chars_consumed = end_pos - self.input.position;
+        self.input.position = end_pos;
+        self.input.column += @intCast(chars_consumed);
+
+        return .{ .data = data[start_pos..end_pos], .len = batch_len };
     }
 
     /// §13.2.5.2 RCDATA state

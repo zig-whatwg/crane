@@ -673,7 +673,7 @@ pub const TreeBuilder = struct {
                         return false;
                     }
                 },
-                .character => return false,
+                .character, .text_run => return false,
                 else => {},
             }
         }
@@ -681,7 +681,7 @@ pub const TreeBuilder = struct {
         // Check for HTML integration point
         if (self.isHtmlIntegrationPoint(current)) {
             switch (token) {
-                .start_tag, .character => return false,
+                .start_tag, .character, .text_run => return false,
                 else => {},
             }
         }
@@ -772,6 +772,12 @@ pub const TreeBuilder = struct {
                     try self.insertCharacter(char);
                     self.frameset_ok = false;
                 }
+            },
+            .text_run => |text_run| {
+                // Batch text insertion in foreign content
+                // Text runs are guaranteed non-whitespace, so set frameset-ok to "not ok"
+                try self.insertTextRun(text_run.data);
+                self.frameset_ok = false;
             },
             .comment => |comment| {
                 // Insert a comment
@@ -1306,6 +1312,11 @@ pub const TreeBuilder = struct {
                 try self.handleBeforeHtmlAnythingElse();
                 try self.processToken(token);
             },
+            .text_run => {
+                // Text runs contain non-whitespace text, treat as "anything else"
+                try self.handleBeforeHtmlAnythingElse();
+                try self.processToken(token);
+            },
         }
     }
 
@@ -1371,6 +1382,11 @@ pub const TreeBuilder = struct {
                 }
             },
             .eof => {
+                try self.handleBeforeHeadAnythingElse();
+                try self.processToken(token);
+            },
+            .text_run => {
+                // Text runs contain non-whitespace text, treat as "anything else"
                 try self.handleBeforeHeadAnythingElse();
                 try self.processToken(token);
             },
@@ -1487,6 +1503,11 @@ pub const TreeBuilder = struct {
                 }
             },
             .eof => {
+                try self.handleInHeadAnythingElse();
+                try self.processToken(token);
+            },
+            .text_run => {
+                // Text runs contain non-whitespace text, treat as "anything else"
                 try self.handleInHeadAnythingElse();
                 try self.processToken(token);
             },
@@ -1610,6 +1631,13 @@ pub const TreeBuilder = struct {
                 self.insertion_mode = .in_head;
                 try self.processToken(token);
             },
+            .text_run => {
+                // Text runs contain non-whitespace text
+                self.reportError(.invalid_first_character_of_tag_name);
+                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                self.insertion_mode = .in_head;
+                try self.processToken(token);
+            },
         }
     }
 
@@ -1691,6 +1719,11 @@ pub const TreeBuilder = struct {
                 try self.handleAfterHeadAnythingElse();
                 try self.processToken(token);
             },
+            .text_run => {
+                // Text runs contain non-whitespace text, treat as "anything else"
+                try self.handleAfterHeadAnythingElse();
+                try self.processToken(token);
+            },
         }
     }
 
@@ -1723,6 +1756,15 @@ pub const TreeBuilder = struct {
                         self.frameset_ok = false;
                     }
                 }
+            },
+            .text_run => |text_run| {
+                // Batch text insertion - much faster than per-character
+                // Note: text_run data is guaranteed to be simple ASCII text without
+                // NULL, CR, LF, or character references (pre-validated by tokenizer)
+                try self.reconstructActiveFormattingElements();
+                try self.insertTextRun(text_run.data);
+                // Text runs contain non-whitespace text, so clear frameset_ok
+                self.frameset_ok = false;
             },
             .comment => |comment| {
                 try self.insertComment(comment);
@@ -1892,6 +1934,10 @@ pub const TreeBuilder = struct {
             .character => |char| {
                 try self.insertCharacter(char);
             },
+            .text_run => |text_run| {
+                // Batch text insertion for script/style content
+                try self.insertTextRun(text_run.data);
+            },
             .eof => {
                 self.reportError(.eof_in_tag);
                 _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
@@ -1957,6 +2003,13 @@ pub const TreeBuilder = struct {
                     }
                 }
                 // Otherwise process as "anything else"
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.foster_parenting = true;
+                try self.handleInBodyMode(token);
+                self.foster_parenting = false;
+            },
+            .text_run => {
+                // Text run in table - foster parent (text runs contain non-whitespace)
                 self.reportError(.invalid_first_character_of_tag_name);
                 self.foster_parenting = true;
                 try self.handleInBodyMode(token);
@@ -2104,6 +2157,13 @@ pub const TreeBuilder = struct {
                     return;
                 }
                 try self.pending_table_char_tokens.append(char);
+            },
+            .text_run => |text_run| {
+                // Add all characters from text run to pending tokens
+                // Text runs are ASCII, so each byte is a codepoint
+                for (text_run.data) |byte| {
+                    try self.pending_table_char_tokens.append(@intCast(byte));
+                }
             },
             else => {
                 // Anything else - process pending characters
@@ -2307,6 +2367,18 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 try self.handleInBodyMode(token);
+            },
+            .text_run => {
+                // Text runs are non-whitespace, treat as "anything else"
+                if (self.currentNode()) |current| {
+                    if (!current.hasTagName("colgroup")) {
+                        self.reportError(.invalid_first_character_of_tag_name);
+                        return;
+                    }
+                }
+                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                self.insertion_mode = .in_table;
+                try self.processToken(token);
             },
         }
     }
@@ -2674,6 +2746,10 @@ pub const TreeBuilder = struct {
             .eof => {
                 try self.handleInBodyMode(token);
             },
+            .text_run => |text_run| {
+                // Insert text run in select element
+                try self.insertTextRun(text_run.data);
+            },
         }
     }
 
@@ -2731,7 +2807,7 @@ pub const TreeBuilder = struct {
     /// HTML Standard §13.2.6.4.16
     fn handleInTemplateMode(self: *TreeBuilder, token: Token) Allocator.Error!void {
         switch (token) {
-            .character, .comment, .doctype => {
+            .character, .comment, .doctype, .text_run => {
                 try self.handleInBodyMode(token);
             },
             .start_tag => |tag| {
@@ -2853,6 +2929,12 @@ pub const TreeBuilder = struct {
             .eof => {
                 // Stop parsing
             },
+            .text_run => {
+                // Text runs contain non-whitespace text
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.insertion_mode = .in_body;
+                try self.processToken(token);
+            },
         }
     }
 
@@ -2920,6 +3002,10 @@ pub const TreeBuilder = struct {
                 }
                 // Stop parsing
             },
+            .text_run => {
+                // Text runs contain non-whitespace text, ignore with error
+                self.reportError(.invalid_first_character_of_tag_name);
+            },
         }
     }
 
@@ -2964,6 +3050,10 @@ pub const TreeBuilder = struct {
             .eof => {
                 // Stop parsing
             },
+            .text_run => {
+                // Text runs contain non-whitespace text, ignore with error
+                self.reportError(.invalid_first_character_of_tag_name);
+            },
         }
     }
 
@@ -2995,6 +3085,12 @@ pub const TreeBuilder = struct {
                 }
             },
             .end_tag => {
+                self.reportError(.invalid_first_character_of_tag_name);
+                self.insertion_mode = .in_body;
+                try self.processToken(token);
+            },
+            .text_run => {
+                // Text runs contain non-whitespace text
                 self.reportError(.invalid_first_character_of_tag_name);
                 self.insertion_mode = .in_body;
                 try self.processToken(token);
@@ -3039,6 +3135,10 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 // Stop parsing
+            },
+            .text_run => {
+                // Text runs contain non-whitespace text, ignore with error
+                self.reportError(.invalid_first_character_of_tag_name);
             },
         }
     }
@@ -3105,6 +3205,40 @@ pub const TreeBuilder = struct {
         // Create new text node
         const text = try TreeNode.initText(self.allocator);
         try text.appendChar(char);
+        parent.appendChild(text);
+
+        // Notify DOM adapter of new text node creation and parent-child relationship
+        if (self.dom_adapter_on_node_created) |callback| {
+            callback(text, self.dom_adapter_context);
+        }
+        if (self.dom_adapter_on_child_appended) |callback| {
+            callback(parent, text, self.dom_adapter_context);
+        }
+    }
+
+    /// Insert a text run (batch of characters).
+    /// Performance optimization: appends entire slice at once, avoiding per-character overhead.
+    fn insertTextRun(self: *TreeBuilder, data: []const u8) !void {
+        if (data.len == 0) return;
+
+        const parent = self.currentNode() orelse self.document;
+
+        // Check if last child is a text node
+        if (parent.last_child) |last| {
+            if (last.node_type == .text) {
+                // Append entire slice at once (much faster than per-character)
+                try last.text_content.appendSlice(data);
+                // Notify DOM adapter of text content change
+                if (self.dom_adapter_on_text_content_changed) |callback| {
+                    callback(last, self.dom_adapter_context);
+                }
+                return;
+            }
+        }
+
+        // Create new text node with entire content at once
+        const text = try TreeNode.initText(self.allocator);
+        try text.text_content.appendSlice(data);
         parent.appendChild(text);
 
         // Notify DOM adapter of new text node creation and parent-child relationship
