@@ -2178,6 +2178,13 @@ pub fn instanceToV8Object(
 pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value {
     const template_registry = @import("template_registry.zig");
 
+    // Safety check: if instance pointer looks invalid, return undefined
+    // This can happen with use-after-free or invalid pointers from DOM methods
+    if (@intFromPtr(instance) < 0x1000) {
+        // Pointer is in low memory region (likely null or invalid)
+        return v8.v8_Undefined(isolate) orelse unreachable;
+    }
+
     // Get interface name from instance vtable
     const interface_name = template_registry.getInstanceInterfaceName(instance);
 

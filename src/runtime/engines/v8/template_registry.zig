@@ -299,6 +299,12 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
     // Import generated interfaces to get their vtables
     const interfaces = @import("interfaces");
 
+    // Safety check: validate instance pointer before dereferencing vtable
+    if (@intFromPtr(instance) < 0x1000) {
+        // Invalid pointer - return generic name
+        return "Object";
+    }
+
     // Get the instance's vtable address
     const inst_vtable = instance.vtable;
 
