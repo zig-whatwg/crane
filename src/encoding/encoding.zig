@@ -428,6 +428,7 @@ pub const IBM866: Encoding = .{
     .whatwg_name = "ibm866",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.ibm866.INDEX,
 };
@@ -437,6 +438,7 @@ pub const ISO_8859_2: Encoding = .{
     .whatwg_name = "iso-8859-2",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_2.INDEX,
 };
@@ -446,6 +448,7 @@ pub const ISO_8859_3: Encoding = .{
     .whatwg_name = "iso-8859-3",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_3.INDEX,
 };
@@ -455,6 +458,7 @@ pub const ISO_8859_4: Encoding = .{
     .whatwg_name = "iso-8859-4",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_4.INDEX,
 };
@@ -464,6 +468,7 @@ pub const ISO_8859_5: Encoding = .{
     .whatwg_name = "iso-8859-5",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_5.INDEX,
 };
@@ -473,6 +478,7 @@ pub const ISO_8859_6: Encoding = .{
     .whatwg_name = "iso-8859-6",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_6.INDEX,
 };
@@ -482,6 +488,7 @@ pub const ISO_8859_7: Encoding = .{
     .whatwg_name = "iso-8859-7",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_7.INDEX,
 };
@@ -491,6 +498,7 @@ pub const ISO_8859_8: Encoding = .{
     .whatwg_name = "iso-8859-8",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_8.INDEX,
 };
@@ -500,6 +508,7 @@ pub const ISO_8859_8_I: Encoding = .{
     .whatwg_name = "iso-8859-8-i",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_8_i.INDEX,
 };
@@ -508,6 +517,7 @@ pub const ISO_8859_10: Encoding = .{
     .name = "iso-8859-10",
     .whatwg_name = "iso-8859-10",
     .decode_fn = single_byte.decode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .encode_fn = single_byte.encode,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_10.INDEX,
@@ -518,6 +528,7 @@ pub const ISO_8859_13: Encoding = .{
     .whatwg_name = "iso-8859-13",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_13.INDEX,
 };
@@ -527,6 +538,7 @@ pub const ISO_8859_14: Encoding = .{
     .whatwg_name = "iso-8859-14",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_14.INDEX,
 };
@@ -536,6 +548,7 @@ pub const ISO_8859_15: Encoding = .{
     .whatwg_name = "iso-8859-15",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_15.INDEX,
 };
@@ -545,6 +558,7 @@ pub const ISO_8859_16: Encoding = .{
     .whatwg_name = "iso-8859-16",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.iso_8859_16.INDEX,
 };
@@ -554,6 +568,7 @@ pub const KOI8_R: Encoding = .{
     .whatwg_name = "koi8-r",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.koi8_r.INDEX,
 };
@@ -563,6 +578,7 @@ pub const KOI8_U: Encoding = .{
     .whatwg_name = "koi8-u",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.koi8_u.INDEX,
 };
@@ -572,6 +588,7 @@ pub const MACINTOSH: Encoding = .{
     .whatwg_name = "macintosh",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.macintosh.INDEX,
 };
@@ -581,6 +598,7 @@ pub const WINDOWS_874: Encoding = .{
     .whatwg_name = "windows-874",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_874.INDEX,
 };
@@ -590,6 +608,7 @@ pub const WINDOWS_1250: Encoding = .{
     .whatwg_name = "windows-1250",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1250.INDEX,
 };
@@ -598,6 +617,7 @@ pub const WINDOWS_1251: Encoding = .{
     .name = "windows-1251",
     .whatwg_name = "windows-1251",
     .decode_fn = single_byte.decode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .encode_fn = single_byte.encode,
     .single_byte_index = single_byte.windows_1251.INDEX,
@@ -608,6 +628,7 @@ pub const WINDOWS_1252: Encoding = .{
     .whatwg_name = "windows-1252",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1252.INDEX,
 };
@@ -617,6 +638,7 @@ pub const WINDOWS_1253: Encoding = .{
     .whatwg_name = "windows-1253",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1253.INDEX,
 };
@@ -626,6 +648,7 @@ pub const WINDOWS_1254: Encoding = .{
     .whatwg_name = "windows-1254",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1254.INDEX,
 };
@@ -635,6 +658,7 @@ pub const WINDOWS_1255: Encoding = .{
     .whatwg_name = "windows-1255",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1255.INDEX,
 };
@@ -644,6 +668,7 @@ pub const WINDOWS_1256: Encoding = .{
     .whatwg_name = "windows-1256",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1256.INDEX,
 };
@@ -653,6 +678,7 @@ pub const WINDOWS_1257: Encoding = .{
     .whatwg_name = "windows-1257",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1257.INDEX,
 };
@@ -662,6 +688,7 @@ pub const WINDOWS_1258: Encoding = .{
     .whatwg_name = "windows-1258",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.windows_1258.INDEX,
 };
@@ -671,6 +698,7 @@ pub const X_MAC_CYRILLIC: Encoding = .{
     .whatwg_name = "x-mac-cyrillic",
     .decode_fn = single_byte.decode,
     .encode_fn = single_byte.encode,
+    .decode_to_utf8_fn = single_byte.decodeToUtf8,
     .max_utf8_length_fn = MaxUtf8Length.singleByte,
     .single_byte_index = single_byte.x_mac_cyrillic.INDEX,
 };
@@ -1164,10 +1192,14 @@ test "Encoding.supportsDirectUtf8Decode" {
     try std.testing.expect(BIG5.supportsDirectUtf8Decode());
     try std.testing.expect(GB18030.supportsDirectUtf8Decode());
 
-    // Encodings without native decodeToUtf8 (use fallback)
-    try std.testing.expect(!WINDOWS_1252.supportsDirectUtf8Decode());
+    // Single-byte encodings now support direct UTF-8 decode
+    try std.testing.expect(WINDOWS_1252.supportsDirectUtf8Decode());
+    try std.testing.expect(ISO_8859_2.supportsDirectUtf8Decode());
+    try std.testing.expect(IBM866.supportsDirectUtf8Decode());
+    try std.testing.expect(KOI8_R.supportsDirectUtf8Decode());
+
+    // UTF-8 doesn't need native decodeToUtf8 (it's already UTF-8)
     try std.testing.expect(!UTF_8.supportsDirectUtf8Decode());
-    try std.testing.expect(!ISO_8859_2.supportsDirectUtf8Decode());
 }
 
 test "decodeToUtf8 direct - GB18030 ASCII passthrough" {

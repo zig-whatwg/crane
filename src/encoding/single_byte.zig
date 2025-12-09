@@ -44,4 +44,5 @@ pub const x_mac_cyrillic = @import("single_byte/x_mac_cyrillic.zig");
 pub const Index = index_generator.Index;
 pub const parseIndex = index_generator.parseIndex;
 pub const decode = decoder.decode;
+pub const decodeToUtf8 = decoder.decodeToUtf8;
 pub const encode = encoder.encode;
