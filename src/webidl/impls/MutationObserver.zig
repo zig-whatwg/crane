@@ -125,7 +125,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
-        internal.allocator.destroy(internal);
+        // Note: Internal state memory is managed by arena allocator - do NOT destroy
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
