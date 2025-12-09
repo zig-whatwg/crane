@@ -464,6 +464,11 @@ pub const TagToken = struct {
     /// allocation for elements with ≤4 attributes (covers most HTML elements).
     attributes: infra.List(Attribute),
 
+    /// Hash set for O(1) duplicate attribute detection.
+    /// Only allocated when there are many attributes (>4).
+    /// For small attribute counts, linear scan is faster due to lower overhead.
+    attribute_names: ?std.StringHashMapUnmanaged(void),
+
     /// Current attribute being built.
     current_attribute: ?Attribute,
 
@@ -481,6 +486,7 @@ pub const TagToken = struct {
             .is_end_tag = is_end_tag,
             .self_closing = false,
             .attributes = infra.List(Attribute).init(allocator),
+            .attribute_names = null,
             .current_attribute = null,
             .self_closing_acknowledged = false,
             .allocator = allocator,
@@ -495,6 +501,9 @@ pub const TagToken = struct {
             attr.deinit();
         }
         self.attributes.deinit();
+        if (self.attribute_names) |*names| {
+            names.deinit(self.allocator);
+        }
         if (self.current_attribute) |*attr| {
             attr.deinit();
         }
@@ -537,19 +546,52 @@ pub const TagToken = struct {
             // "If there is already an attribute on the token with the exact same
             // name, then this is a duplicate-attribute parse error"
             const name = attr.name.toSlice();
+            if (name.len == 0) {
+                // Discard empty attribute
+                var mutable_attr = attr;
+                mutable_attr.deinit();
+                self.current_attribute = null;
+                return;
+            }
+
+            // Use hash set for O(1) duplicate detection when many attributes
+            // For small counts (≤4), linear scan is faster due to lower overhead
+            const attr_count = self.attributes.len;
             var is_duplicate = false;
-            const slice = self.attributes.toSlice();
-            for (slice) |existing| {
-                if (std.mem.eql(u8, existing.name.toSlice(), name)) {
+
+            if (attr_count > 4) {
+                // Use hash set for larger attribute counts
+                if (self.attribute_names == null) {
+                    // Initialize hash set and populate with existing attributes
+                    self.attribute_names = std.StringHashMapUnmanaged(void){};
+                    const slice = self.attributes.toSlice();
+                    for (slice) |existing| {
+                        try self.attribute_names.?.put(self.allocator, existing.name.toSlice(), {});
+                    }
+                }
+
+                // Check hash set for duplicate
+                if (self.attribute_names.?.contains(name)) {
                     is_duplicate = true;
-                    break;
+                } else {
+                    // Add to hash set
+                    try self.attribute_names.?.put(self.allocator, name, {});
+                }
+            } else {
+                // Linear scan for small attribute counts
+                const slice = self.attributes.toSlice();
+                for (slice) |existing| {
+                    if (std.mem.eql(u8, existing.name.toSlice(), name)) {
+                        is_duplicate = true;
+                        break;
+                    }
                 }
             }
 
-            if (!is_duplicate and name.len > 0) {
+            if (!is_duplicate) {
                 try self.attributes.append(attr);
             } else {
-                // Discard duplicate or empty attribute
+                // Discard duplicate attribute
                 var mutable_attr = attr;
                 mutable_attr.deinit();
             }
