@@ -350,6 +350,93 @@ fn processAndSerialize(
         internal.decoder = internal.enc.newDecoder();
     }
 
+    // OPTIMIZATION: Use direct UTF-8 decode path when available
+    // This eliminates the intermediate UTF-16 buffer and conversion step
+    if (internal.enc.supportsDirectUtf8Decode()) {
+        return try processAndSerializeDirectUtf8(internal, output_allocator, bytes, fatal, ignore_bom, is_last);
+    }
+
+    // FALLBACK: Use UTF-16 intermediate path for encodings without direct UTF-8 support
+    return try processAndSerializeViaUtf16(internal, output_allocator, bytes, fatal, ignore_bom, is_last);
+}
+
+/// Direct UTF-8 decode path - decodes directly to UTF-8 without UTF-16 intermediate
+///
+/// This provides significant performance improvement for legacy encodings by:
+/// 1. Eliminating UTF-16 buffer allocation
+/// 2. Eliminating UTF-16 to UTF-8 conversion pass
+fn processAndSerializeDirectUtf8(
+    internal: *InternalState,
+    output_allocator: std.mem.Allocator,
+    bytes: []const u8,
+    fatal: bool,
+    ignore_bom: bool,
+    is_last: bool,
+) ImplError!runtime.USVString {
+    // Allocate UTF-8 output buffer based on encoding's max expansion
+    const max_utf8_len = internal.enc.maxUtf8LengthForInput(bytes.len);
+    const utf8_buf = output_allocator.alloc(u8, max_utf8_len) catch return ImplError.OutOfMemory;
+    errdefer output_allocator.free(utf8_buf);
+
+    var input_pos: usize = 0;
+    var output_pos: usize = 0;
+
+    while (input_pos < bytes.len) {
+        const remaining_input = bytes[input_pos..];
+        const remaining_output = utf8_buf[output_pos..];
+
+        const result = internal.decoder.?.decodeToUtf8(remaining_input, remaining_output, is_last and input_pos + remaining_input.len == bytes.len);
+
+        output_pos += result.bytes_written;
+        input_pos += result.bytes_consumed;
+
+        if (result.status == .malformed) {
+            if (fatal) {
+                output_allocator.free(utf8_buf);
+                return ImplError.DecodingError;
+            }
+            // Replacement mode: emit U+FFFD (0xEF 0xBF 0xBD in UTF-8)
+            if (output_pos + 3 <= utf8_buf.len) {
+                utf8_buf[output_pos] = 0xEF;
+                utf8_buf[output_pos + 1] = 0xBF;
+                utf8_buf[output_pos + 2] = 0xBD;
+                output_pos += 3;
+            }
+            // Skip the malformed byte(s)
+            const skip = if (result.error_length > 0) result.error_length else 1;
+            input_pos += skip;
+            // Reset decoder state after error
+            internal.decoder = internal.enc.newDecoder();
+        } else if (result.status == .input_empty) {
+            break;
+        } else if (result.status == .output_full) {
+            break;
+        }
+    }
+
+    // Handle incomplete sequences in streaming mode
+    if (!is_last and input_pos < bytes.len) {
+        const remaining = bytes.len - input_pos;
+        if (remaining <= 4) {
+            @memcpy(internal.pending_bytes[0..remaining], bytes[input_pos..]);
+            internal.pending_len = @intCast(remaining);
+        }
+    }
+
+    // Handle BOM stripping for UTF-8 and UTF-16 encodings
+    const utf8_output = utf8_buf[0..output_pos];
+    return try serializeUtf8Output(internal, output_allocator, utf8_buf, utf8_output, ignore_bom);
+}
+
+/// Fallback path using UTF-16 intermediate buffer
+fn processAndSerializeViaUtf16(
+    internal: *InternalState,
+    output_allocator: std.mem.Allocator,
+    bytes: []const u8,
+    fatal: bool,
+    ignore_bom: bool,
+    is_last: bool,
+) ImplError!runtime.USVString {
     // Allocate UTF-16 output buffer
     const max_utf16_len = internal.enc.maxUtf16Length(bytes.len);
     const utf16_buf = try getOrAllocUtf16Buffer(internal, max_utf16_len);
@@ -458,6 +545,60 @@ fn serializeIoQueue(
 
     // Convert UTF-16 to UTF-8
     return utf16ToUtf8(output_allocator, output_slice) catch return ImplError.OutOfMemory;
+}
+
+/// Serialize UTF-8 output with BOM handling
+///
+/// Similar to serializeIoQueue but for direct UTF-8 output.
+/// Handles BOM stripping for UTF-8 and UTF-16 encodings.
+fn serializeUtf8Output(
+    internal: *InternalState,
+    output_allocator: std.mem.Allocator,
+    full_buffer: []u8,
+    utf8_output: []const u8,
+    ignore_bom: bool,
+) ImplError![]u8 {
+    // Fast path: empty output
+    if (utf8_output.len == 0) {
+        output_allocator.free(full_buffer);
+        return output_allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
+    }
+
+    // Check if we need BOM handling (only for UTF-8 and UTF-16BE/LE)
+    const needs_bom_check = !ignore_bom and !internal.bom_seen and
+        (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16be") or
+            std.mem.eql(u8, internal.enc.whatwg_name, "utf-16le"));
+
+    var start_idx: usize = 0;
+
+    if (needs_bom_check and utf8_output.len >= 3) {
+        // Set BOM seen to true
+        internal.bom_seen = true;
+
+        // Check for UTF-8 BOM (EF BB BF = U+FEFF)
+        if (utf8_output[0] == 0xEF and utf8_output[1] == 0xBB and utf8_output[2] == 0xBF) {
+            start_idx = 3;
+        }
+    }
+
+    // Return the appropriate slice
+    if (start_idx == 0) {
+        // No BOM to strip - shrink buffer to exact size and return
+        if (utf8_output.len < full_buffer.len) {
+            // Reallocate to exact size
+            const result = output_allocator.dupe(u8, utf8_output) catch return ImplError.OutOfMemory;
+            output_allocator.free(full_buffer);
+            return result;
+        }
+        return @constCast(utf8_output);
+    } else {
+        // BOM stripped - allocate new buffer with remaining content
+        const output_slice = utf8_output[start_idx..];
+        const result = output_allocator.dupe(u8, output_slice) catch return ImplError.OutOfMemory;
+        output_allocator.free(full_buffer);
+        return result;
+    }
 }
 
 /// Convert UTF-16 code units to UTF-8 bytes
