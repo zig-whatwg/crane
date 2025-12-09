@@ -847,3 +847,85 @@ test "InputStreamManager - isAtEnd" {
     _ = manager.getNextChar();
     try std.testing.expect(manager.isAtEnd());
 }
+
+// ============================================================================
+// Tokenizer Integration Tests
+// ============================================================================
+
+test "Tokenizer with InputStreamManager - basic parsing" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "<p>Hello</p>");
+    defer manager.deinit();
+
+    var tokenizer = Tokenizer.initWithStreamManager(allocator, &manager);
+    defer tokenizer.deinit();
+
+    // Should parse start tag
+    const token1 = try tokenizer.nextToken();
+    try std.testing.expect(token1 != null);
+    try std.testing.expect(token1.? == .start_tag);
+    try std.testing.expectEqualStrings("p", token1.?.start_tag.getTagName());
+
+    // Should parse text
+    const token2 = try tokenizer.nextToken();
+    try std.testing.expect(token2 != null);
+    // Could be character or text_run depending on batch optimization
+    switch (token2.?) {
+        .character => |c| try std.testing.expectEqual(@as(u21, 'H'), c),
+        .text_run => |tr| try std.testing.expectEqualStrings("Hello", tr.data),
+        else => return error.UnexpectedToken,
+    }
+}
+
+test "Tokenizer with InputStreamManager - document.write simulation" {
+    const allocator = std.testing.allocator;
+
+    // Start with partial HTML
+    var manager = InputStreamManager.init(allocator, "<div></div>");
+    defer manager.deinit();
+
+    var tokenizer = Tokenizer.initWithStreamManager(allocator, &manager);
+    defer tokenizer.deinit();
+
+    // Read <div>
+    const token1 = try tokenizer.nextToken();
+    try std.testing.expect(token1 != null);
+    try std.testing.expect(token1.? == .start_tag);
+    try std.testing.expectEqualStrings("div", token1.?.start_tag.getTagName());
+
+    // Simulate document.write() inserting content at current position
+    // In a real scenario, this would happen during script execution
+    // Note: The current logical position is after <div> (position 5)
+    const current_pos = manager.logical_position;
+    manager.setInsertionPoint(current_pos);
+    try manager.insert("<span>inserted</span>");
+
+    // The tokenizer should now see the inserted content
+    const token2 = try tokenizer.nextToken();
+    try std.testing.expect(token2 != null);
+    try std.testing.expect(token2.? == .start_tag);
+    try std.testing.expectEqualStrings("span", token2.?.start_tag.getTagName());
+}
+
+test "TreeBuilder with InputStreamManager - hasInsertionPoint" {
+    const allocator = std.testing.allocator;
+
+    var manager = InputStreamManager.init(allocator, "<html></html>");
+    defer manager.deinit();
+
+    var tokenizer = Tokenizer.initWithStreamManager(allocator, &manager);
+    defer tokenizer.deinit();
+
+    var builder = try TreeBuilder.initWithStreamManager(allocator, &tokenizer, &manager);
+    defer builder.deinit();
+
+    // Should have insertion point initially
+    try std.testing.expect(builder.hasInsertionPoint());
+    try std.testing.expect(builder.supportsDocumentWrite());
+
+    // Clear insertion point
+    builder.clearInsertionPoint();
+    try std.testing.expect(!builder.hasInsertionPoint());
+    try std.testing.expect(!builder.supportsDocumentWrite());
+}

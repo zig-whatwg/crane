@@ -51,6 +51,7 @@ const html_core = @import("html_core");
 const Tokenizer = html_core.parser.Tokenizer;
 const TreeBuilder = html_core.parser.TreeBuilder;
 const QuirksMode = html_core.parser.QuirksMode;
+const InputStreamManager = html_core.parser.document_write.InputStreamManager;
 
 // Import DomTreeAdapter from this module
 const dom_tree_adapter = @import("dom_tree_adapter.zig");
@@ -117,27 +118,47 @@ pub fn parseHTMLWithScripting(
     // Enable/disable script execution based on options
     adapter.execute_scripts = options.scripting_enabled;
 
-    // Step 3: Create tokenizer with input
-    var tokenizer = Tokenizer.init(allocator, html);
+    // Step 3: Create InputStreamManager for document.write() support
+    // HTML Standard §13.2.3: The input stream manager handles dynamic content insertion
+    // via document.write() during script execution.
+    var input_stream_manager = InputStreamManager.init(allocator, html);
+    defer input_stream_manager.deinit();
+
+    // Step 4: Create tokenizer with InputStreamManager (not static input)
+    // This enables document.write() to insert content during parsing
+    var tokenizer = Tokenizer.initWithStreamManager(allocator, &input_stream_manager);
     defer tokenizer.deinit();
 
-    // Step 4: Create tree builder
+    // Step 5: Create tree builder
     var tree_builder = TreeBuilder.init(allocator, &tokenizer) catch return error.OutOfMemory;
     defer tree_builder.deinit();
 
     // Configure tree builder
     tree_builder.scripting_enabled = options.scripting_enabled;
 
-    // Step 5: Connect adapter to tree builder
+    // Step 6: Connect InputStreamManager to Document for document.write() support
+    // HTML Standard §8.4.2: document.write() inserts content at the insertion point
+    // in the input stream during parsing.
+    DocumentImpl.setInputStreamManager(document, &input_stream_manager);
+    // Set insertion point at beginning (will be updated as parsing progresses)
+    DocumentImpl.setInsertionPoint(document, 0);
+
+    // Step 7: Connect adapter to tree builder
     // This registers callbacks so DOM nodes are created incrementally during parsing
     adapter.connectToTreeBuilder(&tree_builder);
 
-    // Step 6: Parse the document
+    // Step 8: Parse the document
     // As parsing progresses, the adapter callbacks create DOM nodes in real-time
     // This means scripts can access earlier-parsed DOM nodes via document.querySelector() etc.
+    // document.write() calls during script execution will insert into the input stream.
     tree_builder.parse() catch return error.TreeBuilderError;
 
-    // Step 7: Set quirks mode based on parser result
+    // Step 9: Clear insertion point - parsing is complete
+    // HTML Standard §8.4.2: After parsing, document.write() implicitly calls document.open()
+    DocumentImpl.clearInsertionPoint(document);
+    DocumentImpl.setInputStreamManager(document, null);
+
+    // Step 10: Set quirks mode based on parser result
     if (DocumentImpl.getInternal(document)) |doc_internal| {
         switch (tree_builder.quirks_mode) {
             .quirks => {
@@ -161,7 +182,7 @@ pub fn parseHTMLWithScripting(
         }
     }
 
-    // Step 8: Execute any pending scripts
+    // Step 11: Execute any pending scripts
     // During parsing, script elements were marked as parser-inserted but may not have
     // been executed yet if they were deferred or had dependencies
     if (options.scripting_enabled) {
