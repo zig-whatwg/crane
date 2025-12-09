@@ -202,6 +202,39 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
     ignore_destructive_writes_counter: u32,
 
+    /// Throw-on-dynamic-markup-insertion counter
+    /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
+    /// When > 0, document.open/write/close throw InvalidStateError
+    throw_on_dynamic_markup_insertion_counter: u32,
+
+    /// The unload counter
+    /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#unload-counter
+    /// When > 0 (during beforeunload/unload), destructive writes are ignored
+    unload_counter: u32,
+
+    /// Parser insertion point
+    /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#insertion-point
+    /// When non-null, indicates parsing is active and points to position in input stream.
+    /// When null, parsing has finished or not started.
+    insertion_point: ?usize,
+
+    /// Whether this document's parser is script-created
+    /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#script-created-parser
+    /// Set to true when document.open() creates a new parser
+    is_script_created_parser: bool,
+
+    /// Whether the active parser was aborted (e.g., by navigation)
+    active_parser_was_aborted: bool,
+
+    /// Buffered content from document.write() in after-parsing mode
+    /// When insertion_point is null and document.write() is called, content
+    /// is accumulated here until document.close() is called
+    write_buffer: std.ArrayList(u8),
+
+    /// The InputStreamManager for document.write() during parsing
+    /// This is set when parsing starts and cleared when parsing finishes
+    input_stream_manager: ?*html_core.parser.document_write.InputStreamManager,
+
     /// Whether scripting is enabled for this document
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#concept-n-noscript
     scripting_enabled: bool,
@@ -306,6 +339,13 @@ pub const InternalState = struct {
             .scripts_to_execute_when_parsing_finished = .{},
             .current_script = null,
             .ignore_destructive_writes_counter = 0,
+            .throw_on_dynamic_markup_insertion_counter = 0,
+            .unload_counter = 0,
+            .insertion_point = null,
+            .is_script_created_parser = false,
+            .active_parser_was_aborted = false,
+            .write_buffer = .{},
+            .input_stream_manager = null,
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
             .module_map = std.StringHashMap(*anyopaque).init(allocator),
@@ -366,6 +406,12 @@ pub const InternalState = struct {
 
         // Event handlers
         self.event_handlers.deinit();
+
+        // Write buffer (for document.write() in after-parsing mode)
+        self.write_buffer.deinit(self.allocator);
+
+        // Note: input_stream_manager is NOT owned by Document - it's owned by HTMLParser
+        // and is just a reference here for document.write() integration
 
         // Script execution lists (don't own the script elements, just the list storage)
         self.scripts_to_execute_asap.deinit(self.allocator);
@@ -2755,11 +2801,63 @@ pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin
 }
 
 /// Operation: open
+/// HTML §8.4.1 - Opens the document for writing
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-open
+///
+/// Algorithm (simplified):
+/// 1. If document is an XML document, throw InvalidStateError
+/// 2. If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+/// 3. Clear the document and create a script-created parser
+/// 4. Return the document
 pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMString), unused2: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
-    _ = instance;
     _ = unused1;
     _ = unused2;
-    return error.NotImplemented;
+
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If this is an XML document, throw InvalidStateError
+    if (internal.doc_type == .xml) {
+        return error.InvalidStateError;
+    }
+
+    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
+        return error.InvalidStateError;
+    }
+
+    // Step 5-6: Check unload counter
+    if (internal.unload_counter > 0) {
+        return instance; // Return document unchanged
+    }
+
+    // Step 7: Check if active parser was aborted
+    if (internal.active_parser_was_aborted) {
+        return instance; // Return document unchanged
+    }
+
+    // Steps 9-14: Remove all nodes from document
+    var child = NodeImpl.getFirstChild(instance);
+    while (child) |c| {
+        const next = NodeImpl.getNextSibling(c);
+        _ = interfaces.Node.call_removeChild(instance, c) catch {};
+        child = next;
+    }
+
+    // Reset document element and doctype references
+    internal.document_element = null;
+    internal.doctype = null;
+
+    // Step 16: Create new HTML parser (script-created)
+    internal.is_script_created_parser = true;
+
+    // Step 17: Set insertion point to 0 (beginning of stream)
+    internal.insertion_point = 0;
+
+    // Clear any previously buffered content
+    internal.write_buffer.clearRetainingCapacity();
+
+    // Return the document
+    return instance;
 }
 
 /// Operation: hasUnpartitionedCookieAccess
@@ -2943,9 +3041,12 @@ pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instan
 /// 3. If document is not active, return
 /// 4. If document's origin is opaque, return
 /// 5. If ignore-destructive-writes counter > 0 and insert-only-flag is not set, return
-/// 6. (Steps 6-13 handle document open/parser state - simplified here)
+/// 6. If insertion point is undefined (no active parser), implicitly call document.open()
+/// 7. Insert the input into the input stream just before the insertion point
 ///
-/// This implementation handles the ignore-destructive-writes counter check.
+/// This implementation handles two modes:
+/// - During parsing: inserts into InputStreamManager at insertion point
+/// - After parsing: accumulates in write_buffer (parsed on document.close())
 pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -2954,16 +3055,32 @@ pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) 
         return error.InvalidStateError;
     }
 
-    // Step 5: If ignore-destructive-writes counter > 0, return
-    // This prevents document.write() from being called during external script execution
-    // or module script execution, which would be destructive to the document.
-    // Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
-    if (internal.ignore_destructive_writes_counter > 0) {
-        // The call is silently ignored per spec - not an error
+    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+    // This happens during custom element reactions and other restricted contexts
+    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
+        return error.InvalidStateError;
+    }
+
+    // Step 3/4: If active parser was aborted (e.g., by navigation), ignore
+    if (internal.active_parser_was_aborted) {
         return;
     }
 
-    // Concatenate all text arguments
+    // Step 5: If insertion point is undefined (no active parser)
+    if (internal.insertion_point == null) {
+        // Check if destructive writes should be ignored
+        if (internal.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
+            return;
+        }
+        // Implicitly call document.open() - this creates a script-created parser
+        // For now, just set up write mode
+        internal.is_script_created_parser = true;
+        internal.insertion_point = 0;
+        internal.write_buffer.clearRetainingCapacity();
+    }
+
+    // Concatenate all text arguments per spec
+    // Spec: "Let input be the concatenation of all the arguments"
     var total_len: usize = 0;
     for (text) |t| {
         total_len += t.asSlice().len;
@@ -2982,36 +3099,51 @@ pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) 
         offset += slice.len;
     }
 
-    // Get document body to append to
-    const body = try get_body(instance);
-    if (body == null) {
-        // No body element - can't write
-        // Full implementation would create one or handle differently
-        return;
-    }
+    // Step 7: Insert input into the input stream
+    // Check if we have an active parser with InputStreamManager
+    if (internal.input_stream_manager) |ism| {
+        // During parsing: insert into InputStreamManager at insertion point
+        // This allows the parser to process the inserted content inline
+        ism.insert(buffer) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+            };
+        };
+    } else {
+        // After parsing / script-created parser mode:
+        // Accumulate in write_buffer, to be parsed when document.close() is called
+        // or when we need to flush content
+        internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
+            return error.OutOfMemory;
+        };
 
-    // Parse and append the HTML to body
-    const HTMLParser = @import("HTMLParser.zig");
+        // For immediate effect (backwards compatibility), also append to body
+        // This handles the common case where document.write is called after parsing
+        const body = get_body(instance) catch null;
+        if (body) |body_elem| {
+            const HTMLParser = @import("HTMLParser.zig");
 
-    const fragment = HTMLParser.parseFragment(
-        internal.allocator,
-        instance.ctx,
-        buffer,
-        body,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return,
-    };
-    defer interfaces.DocumentFragment.deinit(fragment);
+            const fragment = HTMLParser.parseFragment(
+                internal.allocator,
+                instance.ctx,
+                buffer,
+                body_elem,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return,
+            };
+            defer interfaces.DocumentFragment.deinit(fragment);
 
-    // Move children from fragment to body
-    var child = NodeImpl.getFirstChild(fragment);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        // Use interface instead of impl (per Golden Rule #13)
-        _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-        _ = interfaces.Node.call_appendChild(body.?, c) catch break;
-        child = next;
+            // Move children from fragment to body
+            var child = NodeImpl.getFirstChild(fragment);
+            while (child) |c| {
+                const next = NodeImpl.getNextSibling(c);
+                // Use interface instead of impl (per Golden Rule #13)
+                _ = interfaces.Node.call_removeChild(fragment, c) catch break;
+                _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
+                child = next;
+            }
+        }
     }
 }
 
@@ -3925,7 +4057,7 @@ fn collectElementsByName(
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-writeln
 ///
 /// Same as write() but appends a newline character.
-/// Follows the same algorithm as write() with ignore-destructive-writes handling.
+/// Algorithm: Concatenate text arguments with "\n" at end, then call write() logic.
 pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -3934,9 +4066,26 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
         return error.InvalidStateError;
     }
 
-    // Step 5: If ignore-destructive-writes counter > 0, return
-    if (internal.ignore_destructive_writes_counter > 0) {
+    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
+        return error.InvalidStateError;
+    }
+
+    // Step 3/4: If active parser was aborted, ignore
+    if (internal.active_parser_was_aborted) {
         return;
+    }
+
+    // Step 5: If insertion point is undefined (no active parser)
+    if (internal.insertion_point == null) {
+        // Check if destructive writes should be ignored
+        if (internal.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
+            return;
+        }
+        // Implicitly call document.open()
+        internal.is_script_created_parser = true;
+        internal.insertion_point = 0;
+        internal.write_buffer.clearRetainingCapacity();
     }
 
     // Calculate total length including newline
@@ -3958,34 +4107,45 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
     }
     buffer[offset] = '\n';
 
-    // Get document body to append to
-    const body = try get_body(instance);
-    if (body == null) {
-        return;
-    }
+    // Insert into input stream or write buffer
+    if (internal.input_stream_manager) |ism| {
+        // During parsing: insert into InputStreamManager
+        ism.insert(buffer) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+            };
+        };
+    } else {
+        // After parsing: accumulate in write_buffer
+        internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
+            return error.OutOfMemory;
+        };
 
-    // Parse and append the HTML to body
-    const HTMLParser = @import("HTMLParser.zig");
+        // Also append to body for immediate effect
+        const body = get_body(instance) catch null;
+        if (body) |body_elem| {
+            const HTMLParser = @import("HTMLParser.zig");
 
-    const fragment = HTMLParser.parseFragment(
-        internal.allocator,
-        instance.ctx,
-        buffer,
-        body,
-    ) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return,
-    };
-    defer interfaces.DocumentFragment.deinit(fragment);
+            const fragment = HTMLParser.parseFragment(
+                internal.allocator,
+                instance.ctx,
+                buffer,
+                body_elem,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return,
+            };
+            defer interfaces.DocumentFragment.deinit(fragment);
 
-    // Move children from fragment to body
-    var child = NodeImpl.getFirstChild(fragment);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        // Use interface instead of impl (per Golden Rule #13)
-        _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-        _ = interfaces.Node.call_appendChild(body.?, c) catch break;
-        child = next;
+            // Move children from fragment to body
+            var child = NodeImpl.getFirstChild(fragment);
+            while (child) |c| {
+                const next = NodeImpl.getNextSibling(c);
+                _ = interfaces.Node.call_removeChild(fragment, c) catch break;
+                _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
+                child = next;
+            }
+        }
     }
 }
 
@@ -4132,10 +4292,66 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 }
 
 /// Operation: close
-/// Closes the output stream. No-op in server-side/headless context.
+/// HTML §8.4.4 - Closes the document output stream
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-close
+///
+/// Algorithm:
+/// 1. If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+/// 2. If no script-created parser, return
+/// 3. Set insertion point to undefined
+/// 4. Parse any buffered content
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    // No-op - document.write/writeln not fully supported
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
+    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
+        return error.InvalidStateError;
+    }
+
+    // Step 2: If no script-created parser, return
+    if (!internal.is_script_created_parser) {
+        return;
+    }
+
+    // Step 3: Set insertion point to undefined (parser finished)
+    internal.insertion_point = null;
+
+    // Step 4: Parse any buffered content and append to document
+    const buffer = internal.write_buffer.items;
+    if (buffer.len > 0) {
+        // Parse the accumulated content
+        const HTMLParser = @import("HTMLParser.zig");
+
+        // Try to parse and append to the document
+        // Use document as both context and parent
+        const fragment = HTMLParser.parseFragment(
+            internal.allocator,
+            instance.ctx,
+            buffer,
+            instance, // Use document as context element
+        ) catch {
+            // Reset state even on error
+            internal.is_script_created_parser = false;
+            internal.write_buffer.clearRetainingCapacity();
+            return;
+        };
+        defer interfaces.DocumentFragment.deinit(fragment);
+
+        // Move children from fragment to document
+        var child = NodeImpl.getFirstChild(fragment);
+        while (child) |c| {
+            const next = NodeImpl.getNextSibling(c);
+            _ = interfaces.Node.call_removeChild(fragment, c) catch break;
+            _ = interfaces.Node.call_appendChild(instance, c) catch break;
+            child = next;
+        }
+
+        // Clear the write buffer
+        internal.write_buffer.clearRetainingCapacity();
+    }
+
+    // Reset script-created parser flag
+    internal.is_script_created_parser = false;
 }
 
 /// Operation: requestStorageAccess
@@ -4432,6 +4648,112 @@ pub fn decrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void
 pub fn shouldIgnoreDestructiveWrites(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     return internal.ignore_destructive_writes_counter > 0;
+}
+
+// =============================================================================
+// Document Write / Parsing State Management (HTML Standard §8.4)
+// =============================================================================
+
+/// Get the current insertion point
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#insertion-point
+///
+/// Returns null if parsing has finished or not started.
+pub fn getInsertionPoint(instance: *runtime.Instance) ?usize {
+    const internal = getInternal(instance) orelse return null;
+    return internal.insertion_point;
+}
+
+/// Set the insertion point (called when parser starts/updates position)
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#insertion-point
+pub fn setInsertionPoint(instance: *runtime.Instance, position: ?usize) void {
+    if (getInternal(instance)) |internal| {
+        internal.insertion_point = position;
+    }
+}
+
+/// Clear the insertion point (called when parsing finishes)
+pub fn clearInsertionPoint(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.insertion_point = null;
+    }
+}
+
+/// Check if parsing is currently active (insertion point is defined)
+pub fn isParsingActive(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.insertion_point != null;
+}
+
+/// Set the InputStreamManager for document.write() during parsing
+/// Called by HTMLParser when starting to parse with scripting enabled.
+pub fn setInputStreamManager(instance: *runtime.Instance, manager: ?*html_core.parser.document_write.InputStreamManager) void {
+    if (getInternal(instance)) |internal| {
+        internal.input_stream_manager = manager;
+    }
+}
+
+/// Get the InputStreamManager (for document.write() during parsing)
+pub fn getInputStreamManager(instance: *runtime.Instance) ?*html_core.parser.document_write.InputStreamManager {
+    const internal = getInternal(instance) orelse return null;
+    return internal.input_stream_manager;
+}
+
+/// Increment throw-on-dynamic-markup-insertion counter
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
+/// Called during custom element reactions and other contexts where dynamic markup is not allowed.
+pub fn incrementThrowOnDynamicMarkupInsertionCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.throw_on_dynamic_markup_insertion_counter += 1;
+    }
+}
+
+/// Decrement throw-on-dynamic-markup-insertion counter
+pub fn decrementThrowOnDynamicMarkupInsertionCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
+            internal.throw_on_dynamic_markup_insertion_counter -= 1;
+        }
+    }
+}
+
+/// Increment unload counter
+/// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#unload-counter
+/// Called during beforeunload/unload event handling
+pub fn incrementUnloadCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.unload_counter += 1;
+    }
+}
+
+/// Decrement unload counter
+pub fn decrementUnloadCounter(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        if (internal.unload_counter > 0) {
+            internal.unload_counter -= 1;
+        }
+    }
+}
+
+/// Abort the active parser (e.g., due to navigation)
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#abort-a-parser
+pub fn abortParser(instance: *runtime.Instance) void {
+    if (getInternal(instance)) |internal| {
+        internal.active_parser_was_aborted = true;
+        internal.insertion_point = null;
+        internal.input_stream_manager = null;
+    }
+}
+
+/// Check if the active parser was aborted
+pub fn wasParserAborted(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.active_parser_was_aborted;
+}
+
+/// Get the write buffer content (for document.write() in after-parsing mode)
+pub fn getWriteBuffer(instance: *runtime.Instance) []const u8 {
+    const internal = getInternal(instance) orelse return "";
+    return internal.write_buffer.items;
 }
 
 /// Check if scripting is enabled
