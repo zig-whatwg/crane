@@ -173,37 +173,33 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 // =============================================================================
 
 /// Get a content attribute value from this element
-/// Uses Element's getAttribute
+/// Uses Element's getAttribute via findAttribute
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
 
-    // Search attributes for matching name
-    for (elem_internal.attributes.items) |attr| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            return runtime.DOMString.initInterned(attr.value);
-        }
+    // Search attributes for matching name using findAttribute
+    if (elem_internal.findAttribute(null, name)) |attr| {
+        return runtime.DOMString.initInterned(attr.value);
     }
     return null;
 }
 
 /// Set a content attribute value on this element
-/// Uses Element's setAttribute
+/// Uses Element's setAttribute via findAttributeMut and addAttribute
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
 
-    // Search for existing attribute
-    for (elem_internal.attributes.items, 0..) |*attr, i| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            // Update existing
-            elem_internal.allocator.free(attr.value);
-            attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
-            return;
-        }
-        _ = i;
+    // Search for existing attribute using findAttributeMut
+    if (elem_internal.findAttributeMut(null, name)) |attr| {
+        // Update existing
+        elem_internal.allocator.free(attr.value);
+        attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
+        return;
     }
 
-    // Add new attribute
-    try elem_internal.attributes.append(elem_internal.allocator, .{
+    // Add new attribute using addAttribute
+    const ElementModule = @import("Element.zig");
+    try elem_internal.addAttribute(ElementModule.AttributeEntry{
         .namespace_uri = null,
         .prefix = null,
         .local_name = try elem_internal.allocator.dupe(u8, name),
@@ -214,31 +210,13 @@ fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: run
 /// Check if a content attribute exists
 fn hasContentAttribute(instance: *runtime.Instance, name: []const u8) bool {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
-
-    for (elem_internal.attributes.items) |attr| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            return true;
-        }
-    }
-    return false;
+    return elem_internal.findAttribute(null, name) != null;
 }
 
 /// Remove a content attribute
 fn removeContentAttribute(instance: *runtime.Instance, name: []const u8) void {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return;
-
-    var i: usize = 0;
-    while (i < elem_internal.attributes.items.len) {
-        if (std.mem.eql(u8, elem_internal.attributes.items[i].local_name, name)) {
-            const entry = elem_internal.attributes.orderedRemove(i);
-            elem_internal.allocator.free(entry.local_name);
-            elem_internal.allocator.free(entry.value);
-            if (entry.namespace_uri) |ns| elem_internal.allocator.free(ns);
-            if (entry.prefix) |p| elem_internal.allocator.free(p);
-            return;
-        }
-        i += 1;
-    }
+    _ = elem_internal.removeAttribute(null, name);
 }
 
 // =============================================================================

@@ -1787,11 +1787,7 @@ fn getForAttribute(element: *runtime.Instance) []const u8 {
 /// Generic attribute check
 fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
     if (ElementImpl.getInternal(element)) |internal| {
-        for (internal.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.local_name, name)) {
-                return true;
-            }
-        }
+        return internal.findAttribute(null, name) != null;
     }
     return false;
 }
@@ -1799,10 +1795,8 @@ fn hasAttribute(element: *runtime.Instance, name: []const u8) bool {
 /// Generic attribute getter
 fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
     if (ElementImpl.getInternal(element)) |internal| {
-        for (internal.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.local_name, name)) {
-                return attr.value;
-            }
+        if (internal.findAttribute(null, name)) |attr| {
+            return attr.value;
         }
     }
     return null;

@@ -3131,24 +3131,22 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
 
     // TODO: Lowercase name for HTML elements in HTML documents
 
-    // Search for attribute by qualified name (no namespace)
-    for (internal.attributes.items) |entry| {
-        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
-            // Create Attr node for this attribute
-            const attr = AttrImpl.createAttr(
-                internal.allocator,
-                instance.ctx,
-                entry.namespace_uri,
-                entry.prefix,
-                entry.local_name,
-                entry.value,
-            ) catch return error.OutOfMemory;
+    // Search for attribute by qualified name (no namespace) using findAttribute
+    if (internal.findAttribute(null, name)) |entry| {
+        // Create Attr node for this attribute
+        const attr = AttrImpl.createAttr(
+            internal.allocator,
+            instance.ctx,
+            entry.namespace_uri,
+            entry.prefix,
+            entry.local_name,
+            entry.value,
+        ) catch return error.OutOfMemory;
 
-            // Set owner element
-            AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
+        // Set owner element
+        AttrImpl.setOwnerElement(attr, instance) catch return error.InvalidStateError;
 
-            return attr;
-        }
+        return attr;
     }
 
     // Return null (not found)
@@ -3197,7 +3195,7 @@ pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const a
 /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributes
 pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.attributes.items.len > 0;
+    return internal.getAttributeCount() > 0;
 }
 
 /// Operation: hasPointerCapture
@@ -3233,44 +3231,31 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
 
     // TODO: Step 2: Lowercase name for HTML elements in HTML documents
 
-    // Step 3: Check if attribute exists
-    var attr_index: ?usize = null;
-    for (internal.attributes.items, 0..) |entry, i| {
-        if (entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, name)) {
-            attr_index = i;
-            break;
-        }
-    }
+    // Step 3: Check if attribute exists using findAttribute
+    const attr_exists = internal.findAttribute(null, name) != null;
 
     // Handle force parameter
     const force_value: ?bool = if (force.was_passed) force.value else null;
 
-    if (attr_index != null) {
+    if (attr_exists) {
         // Attribute exists
         if (force_value == null or force_value == false) {
             // Remove it (when force not passed or force is false)
-            if (force_value == null or force_value == false) {
-                const entry = internal.attributes.items[attr_index.?];
-                if (entry.namespace_uri) |ns| internal.allocator.free(ns);
-                if (entry.prefix) |p| internal.allocator.free(p);
-                internal.allocator.free(entry.local_name);
-                internal.allocator.free(entry.value);
-                _ = internal.attributes.orderedRemove(attr_index.?);
+            _ = internal.removeAttribute(null, name);
 
-                // Clear cached values if applicable
-                if (std.mem.eql(u8, name, "id")) {
-                    internal.id.deinit(internal.allocator);
-                    internal.id = runtime.DOMString.initEmpty();
-                } else if (std.mem.eql(u8, name, "class")) {
-                    internal.class_name.deinit(internal.allocator);
-                    internal.class_name = runtime.DOMString.initEmpty();
-                } else if (std.mem.eql(u8, name, "slot")) {
-                    internal.slot.deinit(internal.allocator);
-                    internal.slot = runtime.DOMString.initEmpty();
-                }
-
-                return false;
+            // Clear cached values if applicable
+            if (std.mem.eql(u8, name, "id")) {
+                internal.id.deinit(internal.allocator);
+                internal.id = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "class")) {
+                internal.class_name.deinit(internal.allocator);
+                internal.class_name = runtime.DOMString.initEmpty();
+            } else if (std.mem.eql(u8, name, "slot")) {
+                internal.slot.deinit(internal.allocator);
+                internal.slot = runtime.DOMString.initEmpty();
             }
+
+            return false;
         }
         // force is true, attribute exists - return true
         return true;
@@ -3436,7 +3421,8 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyop
 
     // For each attribute, add its qualified name to the list
     // Note: getAttributeNames returns qualified names (prefix:localName if prefix exists)
-    for (internal.attributes.items) |entry| {
+    var iter = internal.attributeIterator();
+    while (iter.next()) |entry| {
         // Build qualified name
         if (entry.prefix) |prefix| {
             // Has prefix - need to build "prefix:localName"

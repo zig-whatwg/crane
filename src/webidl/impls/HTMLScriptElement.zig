@@ -416,11 +416,9 @@ const ElementImpl = @import("Element.zig");
 fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.DOMString {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return null;
 
-    // Search attributes for matching name
-    for (elem_internal.attributes.items) |attr| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            return runtime.DOMString.initInterned(attr.value);
-        }
+    // Search attributes for matching name using findAttribute
+    if (elem_internal.findAttribute(null, name)) |attr| {
+        return runtime.DOMString.initInterned(attr.value);
     }
     return null;
 }
@@ -429,18 +427,16 @@ fn getContentAttribute(instance: *runtime.Instance, name: []const u8) ?runtime.D
 fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: runtime.DOMString) !void {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return error.InvalidStateError;
 
-    // Search for existing attribute
-    for (elem_internal.attributes.items) |*attr| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            // Update existing
-            elem_internal.allocator.free(attr.value);
-            attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
-            return;
-        }
+    // Search for existing attribute using findAttributeMut
+    if (elem_internal.findAttributeMut(null, name)) |attr| {
+        // Update existing
+        elem_internal.allocator.free(attr.value);
+        attr.value = try elem_internal.allocator.dupe(u8, value.asSlice());
+        return;
     }
 
-    // Add new attribute
-    try elem_internal.attributes.append(elem_internal.allocator, .{
+    // Add new attribute using addAttribute
+    try elem_internal.addAttribute(ElementImpl.AttributeEntry{
         .namespace_uri = null,
         .prefix = null,
         .local_name = try elem_internal.allocator.dupe(u8, name),
@@ -451,13 +447,7 @@ fn setContentAttribute(instance: *runtime.Instance, name: []const u8, value: run
 /// Check if a boolean content attribute exists (presence = true)
 fn hasBooleanAttribute(instance: *runtime.Instance, name: []const u8) bool {
     const elem_internal = ElementImpl.getInternalState(instance) orelse return false;
-
-    for (elem_internal.attributes.items) |attr| {
-        if (std.mem.eql(u8, attr.local_name, name)) {
-            return true;
-        }
-    }
-    return false;
+    return elem_internal.findAttribute(null, name) != null;
 }
 
 /// Set or remove a boolean attribute (presence = true, absence = false)
@@ -468,19 +458,8 @@ fn setBooleanAttribute(instance: *runtime.Instance, name: []const u8, value: boo
         // Set the attribute with empty value (presence means true)
         try setContentAttribute(instance, name, runtime.DOMString.initEmpty());
     } else {
-        // Remove the attribute
-        var i: usize = 0;
-        while (i < elem_internal.attributes.items.len) {
-            if (std.mem.eql(u8, elem_internal.attributes.items[i].local_name, name)) {
-                const entry = elem_internal.attributes.orderedRemove(i);
-                elem_internal.allocator.free(entry.local_name);
-                elem_internal.allocator.free(entry.value);
-                if (entry.namespace_uri) |ns| elem_internal.allocator.free(ns);
-                if (entry.prefix) |p| elem_internal.allocator.free(p);
-                return;
-            }
-            i += 1;
-        }
+        // Remove the attribute using removeAttribute
+        _ = elem_internal.removeAttribute(null, name);
     }
 }
 

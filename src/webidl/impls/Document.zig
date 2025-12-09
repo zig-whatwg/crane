@@ -3476,15 +3476,16 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
                 elem_internal.class_name = try src_internal.class_name.clone(internal.allocator);
                 elem_internal.slot = try src_internal.slot.clone(internal.allocator);
 
-                // Copy all attributes
-                for (src_internal.attributes.items) |attr| {
-                    const new_attr = ElementImpl.InternalState.AttributeEntry{
+                // Copy all attributes using iterator
+                var attr_iter = src_internal.attributeIterator();
+                while (attr_iter.next()) |attr| {
+                    const new_attr = ElementImpl.AttributeEntry{
                         .namespace_uri = if (attr.namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
                         .prefix = if (attr.prefix) |p| try internal.allocator.dupe(u8, p) else null,
                         .local_name = try internal.allocator.dupe(u8, attr.local_name),
                         .value = try internal.allocator.dupe(u8, attr.value),
                     };
-                    try elem_internal.attributes.append(internal.allocator, new_attr);
+                    try elem_internal.addAttribute(new_attr);
                 }
             }
 
@@ -3903,13 +3904,10 @@ fn collectElementsByName(
         if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
             // Check if element has matching "name" attribute
             if (ElementImpl.getInternal(c)) |elem_internal| {
-                // Look for "name" attribute in element's attributes
-                for (elem_internal.attributes.items) |attr| {
-                    if (std.mem.eql(u8, attr.local_name, "name")) {
-                        if (std.mem.eql(u8, attr.value, target_name)) {
-                            HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-                        }
-                        break;
+                // Look for "name" attribute in element's attributes using findAttribute
+                if (elem_internal.findAttribute(null, "name")) |attr| {
+                    if (std.mem.eql(u8, attr.value, target_name)) {
+                        HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
                     }
                 }
             }

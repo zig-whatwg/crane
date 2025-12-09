@@ -621,16 +621,9 @@ fn matchesAttributeSelector(
 ) bool {
     const internal = ElementImpl.getInternal(element) orelse return false;
 
-    // Find attribute by name
-    var attr_value: ?[]const u8 = null;
-    for (internal.attributes.items) |attr| {
-        if (std.ascii.eqlIgnoreCase(attr.local_name, attr_sel.name)) {
-            attr_value = attr.value;
-            break;
-        }
-    }
-
-    const value = attr_value orelse return false;
+    // Find attribute by name using inline storage API
+    const attr = internal.findAttribute(null, attr_sel.name) orelse return false;
+    const value = attr.value;
 
     return switch (attr_sel.matcher) {
         .Presence => true,
