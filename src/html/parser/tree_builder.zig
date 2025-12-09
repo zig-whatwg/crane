@@ -3733,9 +3733,8 @@ pub const TreeBuilder = struct {
     }
 
     /// Check if element is in table scope.
+    /// Optimized with length-based scope boundary checks.
     fn hasElementInTableScope(self: *TreeBuilder, tag_name: []const u8) bool {
-        const scope_elements = [_][]const u8{ "html", "table", "template" };
-
         var i = self.open_elements.len;
         while (i > 0) {
             i -= 1;
@@ -3743,17 +3742,14 @@ pub const TreeBuilder = struct {
             if (node.hasTagName(tag_name)) return true;
 
             if (node.local_name) |name| {
-                for (scope_elements) |scope_elem| {
-                    if (std.mem.eql(u8, name, scope_elem)) {
-                        return false;
-                    }
-                }
+                if (isTableScopeBoundary(name)) return false;
             }
         }
         return false;
     }
 
     /// Check if element is in select scope.
+    /// Optimized with length-based scope boundary checks.
     fn hasElementInSelectScope(self: *TreeBuilder, tag_name: []const u8) bool {
         var i = self.open_elements.len;
         while (i > 0) {
@@ -3763,9 +3759,7 @@ pub const TreeBuilder = struct {
 
             // In select scope, only optgroup and option are transparent
             if (node.local_name) |name| {
-                if (!std.mem.eql(u8, name, "optgroup") and !std.mem.eql(u8, name, "option")) {
-                    return false;
-                }
+                if (!isSelectScopeTransparent(name)) return false;
             }
         }
         return false;
