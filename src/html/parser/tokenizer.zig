@@ -23,6 +23,8 @@ const InputCharacter = @import("input_stream.zig").InputCharacter;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 const entities = @import("entities.zig");
+const document_write = @import("document_write.zig");
+const InputStreamManager = document_write.InputStreamManager;
 
 /// HTML Tokenizer.
 ///
@@ -31,8 +33,12 @@ pub const Tokenizer = struct {
     /// Memory allocator.
     allocator: Allocator,
 
-    /// Input stream.
+    /// Input stream (for static input mode).
     input: InputStream,
+
+    /// Input stream manager (for dynamic input mode with document.write() support).
+    /// When non-null, this takes precedence over the static input.
+    input_stream_manager: ?*InputStreamManager,
 
     /// Current tokenizer state.
     state: State,
@@ -71,11 +77,12 @@ pub const Tokenizer = struct {
     /// Error context.
     error_context: ?*anyopaque,
 
-    /// Initialize a new tokenizer.
+    /// Initialize a new tokenizer with static input.
     pub fn init(allocator: Allocator, input: []const u8) Tokenizer {
         return Tokenizer{
             .allocator = allocator,
             .input = InputStream.init(input),
+            .input_stream_manager = null,
             .state = .data,
             .return_state = .data,
             .current_token = null,
@@ -89,6 +96,165 @@ pub const Tokenizer = struct {
             .error_callback = null,
             .error_context = null,
         };
+    }
+
+    /// Initialize a new tokenizer with an InputStreamManager for document.write() support.
+    ///
+    /// HTML Standard §13.2.3: The input stream supports dynamic insertion of content
+    /// via document.write() during script execution. This method configures the
+    /// tokenizer to use an InputStreamManager instead of a static input stream.
+    pub fn initWithStreamManager(allocator: Allocator, stream_manager: *InputStreamManager) Tokenizer {
+        return Tokenizer{
+            .allocator = allocator,
+            .input = InputStream.init(""), // Unused when stream_manager is set
+            .input_stream_manager = stream_manager,
+            .state = .data,
+            .return_state = .data,
+            .current_token = null,
+            .temporary_buffer = infra.List(u8).init(allocator),
+            .last_start_tag_name = null,
+            .character_reference_code = 0,
+            .token_queue = infra.List(Token).init(allocator),
+            .token_queue_head = 0,
+            .reconsume = false,
+            .current_char = .eof,
+            .error_callback = null,
+            .error_context = null,
+        };
+    }
+
+    /// Get the input stream manager (if using dynamic input mode).
+    pub fn getInputStreamManager(self: *Tokenizer) ?*InputStreamManager {
+        return self.input_stream_manager;
+    }
+
+    /// Check if using dynamic input mode with InputStreamManager.
+    pub fn hasDynamicInput(self: *const Tokenizer) bool {
+        return self.input_stream_manager != null;
+    }
+
+    // =========================================================================
+    // Input abstraction methods
+    // These abstract over static InputStream vs dynamic InputStreamManager
+    // =========================================================================
+
+    /// Consume the next character from the input source.
+    fn consumeNextChar(self: *Tokenizer) InputCharacter {
+        if (self.input_stream_manager) |stream| {
+            // Dynamic input mode - use InputStreamManager
+            if (stream.getNextChar()) |cp| {
+                return InputCharacter{ .codepoint = cp };
+            }
+            return .eof;
+        } else {
+            // Static input mode - use InputStream
+            return self.input.consume();
+        }
+    }
+
+    /// Peek at the next character without consuming.
+    fn peekNextChar(self: *Tokenizer) InputCharacter {
+        if (self.input_stream_manager) |stream| {
+            // Save state for InputStreamManager
+            const saved_logical = stream.logical_position;
+            const saved_original = stream.original_position;
+            const saved_active = stream.active_insertion_index;
+            const saved_line = stream.line;
+            const saved_col = stream.column;
+            const saved_cr = stream.last_was_cr;
+
+            // Get the next character
+            const result = if (stream.getNextChar()) |cp|
+                InputCharacter{ .codepoint = cp }
+            else
+                InputCharacter.eof;
+
+            // Restore state
+            stream.logical_position = saved_logical;
+            stream.original_position = saved_original;
+            stream.active_insertion_index = saved_active;
+            stream.line = saved_line;
+            stream.column = saved_col;
+            stream.last_was_cr = saved_cr;
+
+            return result;
+        } else {
+            return self.input.peek();
+        }
+    }
+
+    /// Check if at end of input.
+    fn isAtEnd(self: *const Tokenizer) bool {
+        if (self.input_stream_manager) |stream| {
+            return stream.isAtEnd();
+        } else {
+            return self.input.isAtEnd();
+        }
+    }
+
+    /// Get remaining bytes (only for static input - batch optimization).
+    fn getRemaining(self: *const Tokenizer) usize {
+        if (self.input_stream_manager != null) {
+            // Batch optimization not supported for dynamic input
+            return 0;
+        }
+        return self.input.remaining();
+    }
+
+    /// Get input data pointer (only for static input - batch optimization).
+    fn getInputData(self: *const Tokenizer) []const u8 {
+        if (self.input_stream_manager != null) {
+            // Batch optimization not supported for dynamic input
+            return &[_]u8{};
+        }
+        return self.input.data;
+    }
+
+    /// Get current input position (only for static input - batch optimization).
+    fn getInputPosition(self: *const Tokenizer) usize {
+        if (self.input_stream_manager != null) {
+            return 0;
+        }
+        return self.input.position;
+    }
+
+    /// Set input position and column (only for static input - batch optimization).
+    fn setInputPositionAndColumn(self: *Tokenizer, position: usize, column_delta: u32) void {
+        if (self.input_stream_manager == null) {
+            self.input.position = position;
+            self.input.column += column_delta;
+        }
+    }
+
+    /// Check if input matches string case-insensitively (for static input).
+    fn inputMatchesAsciiCaseInsensitive(self: *Tokenizer, expected: []const u8) bool {
+        if (self.input_stream_manager != null) {
+            // Not supported for dynamic input - return false
+            return false;
+        }
+        return self.input.matchesAsciiCaseInsensitive(expected);
+    }
+
+    /// Consume if input matches string case-insensitively (for static input).
+    fn inputConsumeAsciiCaseInsensitive(self: *Tokenizer, expected: []const u8) bool {
+        if (self.input_stream_manager != null) {
+            // Not supported for dynamic input - return false
+            return false;
+        }
+        return self.input.consumeAsciiCaseInsensitive(expected);
+    }
+
+    /// Consume N characters (for static input).
+    fn inputConsumeN(self: *Tokenizer, n: usize) void {
+        if (self.input_stream_manager) |stream| {
+            for (0..n) |_| {
+                _ = stream.getNextChar();
+            }
+        } else {
+            for (0..n) |_| {
+                _ = self.input.consume();
+            }
+        }
     }
 
     /// Free all resources.
@@ -143,7 +309,7 @@ pub const Tokenizer = struct {
             if (self.reconsume) {
                 self.reconsume = false;
             } else {
-                self.current_char = self.input.consume();
+                self.current_char = self.consumeNextChar();
             }
 
             // Process current state
@@ -333,7 +499,15 @@ pub const Tokenizer = struct {
     /// Batch data state characters: scan ahead to find runs of consecutive text
     /// that don't require special handling (no <, &, NULL, or CRLF).
     /// Returns a slice into the input buffer (zero-copy).
+    ///
+    /// Note: Batch optimization is disabled for dynamic input (InputStreamManager)
+    /// because the input may change during parsing via document.write().
     fn batchDataStateCharacters(self: *Tokenizer) struct { data: []const u8, len: usize } {
+        // Batch optimization is not supported for dynamic input
+        if (self.input_stream_manager != null) {
+            return .{ .data = &.{}, .len = 0 };
+        }
+
         // Get the current character's position in the raw input
         // We need to figure out where in the raw input the current char started
         const data = self.input.data;
@@ -1345,8 +1519,8 @@ pub const Tokenizer = struct {
         // Check for "--" (comment start)
         if (self.current_char.is('-')) {
             // Check if next char is also '-'
-            if (self.input.peek().is('-')) {
-                _ = self.input.consume(); // Consume the second '-'
+            if (self.peekNextChar().is('-')) {
+                _ = self.consumeNextChar(); // Consume the second '-'
                 self.current_token = Token{ .comment = CommentToken.init(self.allocator) };
                 self.state = .comment_start;
                 return null;
@@ -1359,10 +1533,8 @@ pub const Tokenizer = struct {
             const lower_cp: u8 = if (cp >= 'A' and cp <= 'Z') @intCast(cp + 0x20) else @intCast(cp);
             if (lower_cp == 'd') {
                 // Check remaining "OCTYPE"
-                if (self.input.matchesAsciiCaseInsensitive("OCTYPE")) {
-                    for (0..6) |_| {
-                        _ = self.input.consume();
-                    }
+                if (self.inputMatchesAsciiCaseInsensitive("OCTYPE")) {
+                    self.inputConsumeN(6);
                     self.state = .doctype;
                     return null;
                 }
@@ -1371,10 +1543,8 @@ pub const Tokenizer = struct {
 
         // Check for "[CDATA[" (current_char is '[')
         if (self.current_char.is('[')) {
-            if (self.input.matchesAsciiCaseInsensitive("CDATA[")) {
-                for (0..6) |_| {
-                    _ = self.input.consume();
-                }
+            if (self.inputMatchesAsciiCaseInsensitive("CDATA[")) {
+                self.inputConsumeN(6);
                 // Note: In a proper implementation, we'd check if we're in foreign content.
                 // For now, always treat as HTML content (bogus comment)
                 self.reportError(.cdata_in_html_content);
@@ -1724,16 +1894,16 @@ pub const Tokenizer = struct {
             return doctype;
         } else {
             // Check for PUBLIC or SYSTEM
-            if (self.input.matchesAsciiCaseInsensitive("PUBLIC")) {
+            if (self.inputMatchesAsciiCaseInsensitive("PUBLIC")) {
                 // Need to "unconsume" current char and consume "PUBLIC"
                 self.reconsume = true;
-                if (self.input.consumeAsciiCaseInsensitive("PUBLIC")) {
+                if (self.inputConsumeAsciiCaseInsensitive("PUBLIC")) {
                     self.state = .after_doctype_public_keyword;
                     return null;
                 }
-            } else if (self.input.matchesAsciiCaseInsensitive("SYSTEM")) {
+            } else if (self.inputMatchesAsciiCaseInsensitive("SYSTEM")) {
                 self.reconsume = true;
-                if (self.input.consumeAsciiCaseInsensitive("SYSTEM")) {
+                if (self.inputConsumeAsciiCaseInsensitive("SYSTEM")) {
                     self.state = .after_doctype_system_keyword;
                     return null;
                 }
@@ -2228,14 +2398,14 @@ pub const Tokenizer = struct {
 
         // Keep consuming alphanumeric characters to build the potential entity name
         while (true) {
-            const next_char = self.input.peek();
+            const next_char = self.peekNextChar();
             if (next_char.isAsciiAlphanumeric() or next_char.is(';')) {
                 if (next_char.getCodepoint()) |cp| {
                     if (entity_len < entity_buffer.len) {
                         entity_buffer[entity_len] = @intCast(cp);
                         entity_len += 1;
                     }
-                    _ = self.input.consume();
+                    _ = self.consumeNextChar();
                     // Stop if we hit a semicolon
                     if (next_char.is(';')) break;
                 } else break;
@@ -2257,7 +2427,7 @@ pub const Tokenizer = struct {
 
             if (!ends_with_semicolon and self.isConsumedAsPartOfAttribute()) {
                 // Check the next character
-                const next = self.input.peek();
+                const next = self.peekNextChar();
                 if (next.is('=') or next.isAsciiAlphanumeric()) {
                     // Flush the temporary buffer and don't treat as character reference
                     try self.flushCodePointsAsCharacterReference();
@@ -2637,6 +2807,11 @@ pub const Tokenizer = struct {
     ///
     /// Returns the number of bytes consumed from input (including current char).
     fn batchAppendAttributeValue(self: *Tokenizer, quote: u8) struct { consumed: usize } {
+        // Batch optimization is not supported for dynamic input
+        if (self.input_stream_manager != null) {
+            return .{ .consumed = 0 };
+        }
+
         // Get the raw input data starting at current position
         // Note: We've already consumed current_char, so we're looking at remaining input
         const remaining = self.input.remaining();

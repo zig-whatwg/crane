@@ -29,6 +29,8 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const State = @import("tokenizer_states.zig").State;
 const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
+const document_write = @import("document_write.zig");
+const InputStreamManager = document_write.InputStreamManager;
 
 /// The 24 insertion modes defined in HTML Standard §13.2.6.4
 ///
@@ -501,7 +503,14 @@ pub const TreeBuilder = struct {
     dom_adapter_on_child_appended: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void,
     dom_adapter_on_text_content_changed: ?*const fn (*TreeNode, ?*anyopaque) void,
 
-    /// Initialize a new tree builder.
+    /// Input stream manager for document.write() support.
+    ///
+    /// HTML Standard §13.2.3: When document.write() is called during parsing,
+    /// the content is inserted into the input stream at the current insertion point.
+    /// This field provides access to the InputStreamManager for such insertions.
+    input_stream_manager: ?*InputStreamManager,
+
+    /// Initialize a new tree builder with static input.
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) !TreeBuilder {
         const document = try TreeNode.initDocument(allocator);
         return TreeBuilder{
@@ -531,6 +540,45 @@ pub const TreeBuilder = struct {
             .dom_adapter_on_node_created = null,
             .dom_adapter_on_child_appended = null,
             .dom_adapter_on_text_content_changed = null,
+            .input_stream_manager = tokenizer.getInputStreamManager(),
+        };
+    }
+
+    /// Initialize a tree builder with an InputStreamManager for document.write() support.
+    ///
+    /// HTML Standard §13.2.3: This enables dynamic content insertion via document.write()
+    /// during script execution. The input stream manager handles insertion points and
+    /// pending insertions.
+    pub fn initWithStreamManager(allocator: Allocator, tokenizer: *Tokenizer, stream_manager: *InputStreamManager) !TreeBuilder {
+        const document = try TreeNode.initDocument(allocator);
+        return TreeBuilder{
+            .allocator = allocator,
+            .tokenizer = tokenizer,
+            .document = document,
+            .insertion_mode = .initial,
+            .original_insertion_mode = .initial,
+            .open_elements = infra.List(*TreeNode).init(allocator),
+            .active_formatting_elements = infra.List(FormattingEntry).init(allocator),
+            .template_insertion_modes = infra.List(InsertionMode).init(allocator),
+            .head_element = null,
+            .form_element = null,
+            .scripting_enabled = false,
+            .frameset_ok = true,
+            .parser_cannot_change_mode = false,
+            .quirks_mode = .no_quirks,
+            .foster_parenting = false,
+            .error_callback = null,
+            .error_context = null,
+            .pending_table_char_tokens = infra.List(u21).init(allocator),
+            .script_nesting_level = 0,
+            .parser_pause_flag = false,
+            .script_execution_callback = null,
+            .script_execution_context = null,
+            .dom_adapter_context = null,
+            .dom_adapter_on_node_created = null,
+            .dom_adapter_on_child_appended = null,
+            .dom_adapter_on_text_content_changed = null,
+            .input_stream_manager = stream_manager,
         };
     }
 
@@ -569,6 +617,61 @@ pub const TreeBuilder = struct {
     /// Check if currently executing scripts (nesting level > 0).
     pub fn isExecutingScript(self: *const TreeBuilder) bool {
         return self.script_nesting_level > 0;
+    }
+
+    // =========================================================================
+    // document.write() Support
+    // =========================================================================
+
+    /// Get the input stream manager for document.write() support.
+    ///
+    /// Returns null if the parser was not initialized with an InputStreamManager.
+    pub fn getInputStreamManager(self: *TreeBuilder) ?*InputStreamManager {
+        return self.input_stream_manager;
+    }
+
+    /// Check if the parser supports document.write().
+    ///
+    /// HTML Standard §8.4: document.write() is only supported when there is an
+    /// active parser with an insertion point.
+    pub fn supportsDocumentWrite(self: *const TreeBuilder) bool {
+        if (self.input_stream_manager) |stream| {
+            return stream.hasInsertionPoint();
+        }
+        return false;
+    }
+
+    /// Insert content via document.write() into the input stream.
+    ///
+    /// HTML Standard §8.4.3: "The document write steps"
+    /// This inserts the given text into the input stream at the current insertion point.
+    ///
+    /// Returns error if document.write() is not supported (no InputStreamManager or
+    /// no insertion point).
+    pub fn insertDocumentWriteContent(self: *TreeBuilder, content: []const u8) !void {
+        const stream = self.input_stream_manager orelse return error.NotSupported;
+        try stream.insert(content);
+    }
+
+    /// Check if there is an active insertion point.
+    ///
+    /// HTML Standard §13.2.3.1: The insertion point is the position in the input stream
+    /// where document.write() content is inserted.
+    pub fn hasInsertionPoint(self: *const TreeBuilder) bool {
+        if (self.input_stream_manager) |stream| {
+            return stream.hasInsertionPoint();
+        }
+        return false;
+    }
+
+    /// Clear the insertion point (called when parsing completes or is aborted).
+    ///
+    /// HTML Standard: After parsing completes, the insertion point is undefined,
+    /// and subsequent document.write() calls will perform destructive writes.
+    pub fn clearInsertionPoint(self: *TreeBuilder) void {
+        if (self.input_stream_manager) |stream| {
+            stream.clearInsertionPoint();
+        }
     }
 
     /// Free all resources.
