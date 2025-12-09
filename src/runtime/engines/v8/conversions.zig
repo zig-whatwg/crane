@@ -1957,6 +1957,14 @@ pub fn throwWebIDLError(
         throwTypeError(isolate, "TypeError");
     } else if (std.mem.eql(u8, error_name, "RangeError")) {
         throwRangeError(isolate, "RangeError");
+    } else if (std.mem.eql(u8, error_name, "InvalidEncoding")) {
+        // Map InvalidEncoding to RangeError per WHATWG Encoding spec
+        // TextDecoder constructor throws RangeError for invalid encoding labels
+        throwRangeError(isolate, "The encoding label provided is invalid.");
+    } else if (std.mem.eql(u8, error_name, "ReplacementEncoding")) {
+        // Map ReplacementEncoding to RangeError per WHATWG Encoding spec
+        // TextDecoder constructor throws RangeError for replacement encodings (e.g., iso-2022-cn)
+        throwRangeError(isolate, "The encoding label provided is a replacement encoding.");
     } else if (std.mem.eql(u8, error_name, "NotImplemented")) {
         // Map NotImplemented to NotSupportedError DOMException
         // This is the standard way to indicate unimplemented features in web APIs
