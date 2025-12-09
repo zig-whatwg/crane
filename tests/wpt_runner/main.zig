@@ -389,6 +389,7 @@ pub const ProgressTracker = struct {
     failed: usize = 0,
     errors: usize = 0,
     timeouts: usize = 0,
+    notrun: usize = 0,
     start_time: i64,
     verbose: bool,
     /// Failures by category for summary
@@ -418,7 +419,7 @@ pub const ProgressTracker = struct {
             .timeout => self.timeouts += 1,
         }
 
-        // Count subtests and optionally print failures in verbose mode
+        // Count ALL subtests including notrun/precondition_failed
         for (result.subtests.items) |sub| {
             switch (sub.status) {
                 .pass => self.passed += 1,
@@ -457,7 +458,7 @@ pub const ProgressTracker = struct {
                     }
                 },
                 .timeout => self.timeouts += 1,
-                else => {},
+                .notrun, .precondition_failed => self.notrun += 1,
             }
         }
     }
@@ -511,7 +512,7 @@ pub const ProgressTracker = struct {
         }
 
         const elapsed = self.getElapsedTime();
-        const total_subtests = self.passed + self.failed + self.timeouts;
+        const total_subtests = self.passed + self.failed + self.timeouts + self.notrun;
 
         print("\n================================\n", .{});
         print("WPT Test Results\n", .{});
@@ -521,7 +522,7 @@ pub const ProgressTracker = struct {
         print("  Errors:    {d}\n", .{self.errors});
         print("  Timeouts:  {d}\n", .{self.timeouts});
         print("\n", .{});
-        print("Subtests:   {d}\n", .{total_subtests});
+        print("Subtests:   {d} / {d}\n", .{ self.passed, total_subtests });
         if (total_subtests > 0) {
             const pass_rate = @as(f64, @floatFromInt(self.passed)) / @as(f64, @floatFromInt(total_subtests)) * 100.0;
             print("  Passed:   {d} ({d:.1}%)\n", .{ self.passed, pass_rate });
@@ -530,6 +531,9 @@ pub const ProgressTracker = struct {
         }
         print("  Failed:   {d}\n", .{self.failed});
         print("  Timeout:  {d}\n", .{self.timeouts});
+        if (self.notrun > 0) {
+            print("  Not Run:  {d}\n", .{self.notrun});
+        }
         print("\n", .{});
         print("Duration:   {s}\n", .{elapsed});
 

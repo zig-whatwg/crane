@@ -258,6 +258,11 @@ pub fn parseHTMLWithScripting(
         options.scripting_enabled,
     );
 
+    // Set script loader if provided
+    if (options.script_loader) |loader| {
+        script_context.setScriptLoader(loader.loadScript, loader.context);
+    }
+
     // Step 6: Wire up callbacks to tree builder
     tree_builder.scripting_enabled = options.scripting_enabled;
 

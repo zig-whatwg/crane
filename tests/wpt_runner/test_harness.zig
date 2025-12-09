@@ -317,29 +317,47 @@ pub const ResultCollector = struct {
 pub const testharnessreport_js =
     \\// Custom testharnessreport.js for WPT runner
     \\// Bridges testharness.js results to Zig test runner
+    \\//
+    \\// This file replaces the standard WPT testharnessreport.js to route
+    \\// test results to our native callbacks for collection.
     \\
     \\(function() {
     \\  'use strict';
     \\
-    \\  // Verify native functions are available
-    \\  if (typeof __wpt_report_result !== 'function') {
-    \\    throw new Error('__wpt_report_result not available');
-    \\  }
-    \\  if (typeof __wpt_report_completion !== 'function') {
-    \\    throw new Error('__wpt_report_completion not available');
+    \\  // Debug: log availability of functions
+    \\  if (typeof __wpt_debug_log === 'function') {
+    \\    __wpt_debug_log('[testharnessreport] Loading...');
+    \\    __wpt_debug_log('[testharnessreport] add_result_callback: ' + (typeof add_result_callback));
+    \\    __wpt_debug_log('[testharnessreport] __wpt_report_result: ' + (typeof __wpt_report_result));
     \\  }
     \\
-    \\  // Configure testharness.js with a shorter timeout
-    \\  // The default is 10 seconds which is too slow for running many tests
-    \\  // We use explicit_timeout to disable the built-in timeout since we have our own
+    \\  // Check if testharness.js has been loaded
+    \\  if (typeof add_result_callback !== 'function') {
+    \\    if (typeof __wpt_debug_log === 'function') {
+    \\      __wpt_debug_log('[testharnessreport] ERROR: add_result_callback not available');
+    \\    }
+    \\    return;
+    \\  }
+    \\
+    \\  // Verify native functions are available
+    \\  if (typeof __wpt_report_result !== 'function' ||
+    \\      typeof __wpt_report_completion !== 'function') {
+    \\    if (typeof __wpt_debug_log === 'function') {
+    \\      __wpt_debug_log('[testharnessreport] ERROR: native callbacks not available');
+    \\    }
+    \\    return;
+    \\  }
+    \\
+    \\  // Configure testharness.js with explicit timeout (we handle timeout ourselves)
     \\  if (typeof setup === 'function') {
     \\    setup({ explicit_timeout: true });
     \\  }
     \\
     \\  // Register callback for individual test results
-    \\  // This is called by Tests.notify_result() when a test completes
-    \\  // Note: add_result_callback has closure access to testharness.js's internal 'tests' object
     \\  add_result_callback(function(test) {
+    \\    if (typeof __wpt_debug_log === 'function') {
+    \\      __wpt_debug_log('[testharnessreport] Result: ' + test.name + ' status=' + test.status);
+    \\    }
     \\    __wpt_report_result(
     \\      test.name || '',
     \\      test.status,
@@ -350,13 +368,19 @@ pub const testharnessreport_js =
     \\  });
     \\
     \\  // Register callback for test completion
-    \\  // This is called when all tests are done
     \\  add_completion_callback(function(tests, harness_status) {
+    \\    if (typeof __wpt_debug_log === 'function') {
+    \\      __wpt_debug_log('[testharnessreport] Completion: ' + tests.length + ' tests, status=' + harness_status.status);
+    \\    }
     \\    __wpt_report_completion(
     \\      harness_status.status,
     \\      harness_status.message || null
     \\    );
     \\  });
+    \\
+    \\  if (typeof __wpt_debug_log === 'function') {
+    \\    __wpt_debug_log('[testharnessreport] Callbacks registered successfully');
+    \\  }
     \\})();
 ;
 

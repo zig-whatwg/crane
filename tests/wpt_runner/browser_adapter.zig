@@ -138,9 +138,11 @@ pub const BrowserAdapter = struct {
         // Initialize V8 isolate and context
         try ctx.initialize();
 
-        // Load testharness.js BEFORE parsing HTML
-        // This ensures test infrastructure is available when scripts run during parsing
-        try ctx.loadTestHarness();
+        // NOTE: We do NOT pre-load testharness.js here.
+        // The HTML test file will load it via <script src="/resources/testharness.js">.
+        // Our script loader intercepts /resources/testharnessreport.js and returns
+        // our custom version that registers the result callbacks.
+        // This ensures callbacks are registered with the correct testharness.js instance.
 
         // Start tracking results for this test file
         try ctx.result_collector.startTest(test_path);
