@@ -502,6 +502,87 @@ fn convertHeadersInit(
     return .{ .byte_string_byte_string_record = &.{} };
 }
 
+const buffer_sources = @import("webidl").buffer_sources;
+
+/// Convert V8 TypedArray/DataView to AllowSharedBufferSource
+///
+/// WHATWG Encoding Standard § 5.1.4 - TextDecoder.decode() input parameter
+/// typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource
+///
+/// This function extracts byte data from V8 TypedArray/DataView and constructs
+/// an AllowSharedBufferSource with an ArrayBuffer containing the copied data.
+fn convertAllowSharedBufferSource(
+    allocator: std.mem.Allocator,
+    value: *v8.Value,
+) ConversionError!typedefs.AllowSharedBufferSource {
+    // Check for TypedArray (Uint8Array, Int8Array, etc.) or DataView
+    const is_typed_array = v8.v8_Value_IsTypedArray(value);
+    const is_data_view = v8.v8_Value_IsDataView(value);
+
+    if (is_typed_array or is_data_view) {
+        // Get byte range from the view
+        const byte_length = v8.v8_TypedArray_ByteLength(value);
+        const byte_offset = v8.v8_TypedArray_ByteOffset(value);
+
+        // Get the underlying ArrayBuffer from V8
+        const v8_ab = v8.v8_TypedArray_Buffer(value) orelse {
+            return createEmptyBufferSourceResult(allocator);
+        };
+        defer v8.v8_ArrayBuffer_Dispose(v8_ab);
+
+        // Get raw data pointer from V8 ArrayBuffer
+        const v8_data = v8.v8_ArrayBuffer_Data(v8_ab);
+        if (v8_data == null or byte_length == 0) {
+            return createEmptyBufferSourceResult(allocator);
+        }
+
+        // Create a new Zig ArrayBuffer with copied data
+        const zig_buffer = allocator.create(buffer_sources.ArrayBuffer) catch {
+            return ConversionError.OutOfMemory;
+        };
+        errdefer allocator.destroy(zig_buffer);
+
+        // Allocate data for the Zig ArrayBuffer
+        const data = allocator.alloc(u8, byte_length) catch {
+            return ConversionError.OutOfMemory;
+        };
+
+        // Copy data from V8 buffer (at the correct offset)
+        const src_ptr = @as([*]const u8, @ptrCast(v8_data.?)) + byte_offset;
+        @memcpy(data, src_ptr[0..byte_length]);
+
+        // Initialize the Zig ArrayBuffer with copied data
+        zig_buffer.* = buffer_sources.ArrayBuffer{
+            .data = data,
+            .detached = false,
+        };
+
+        // Return as array_buffer variant
+        return .{ .array_buffer = zig_buffer };
+    }
+
+    // For null/undefined, return empty buffer
+    if (v8.v8_Value_IsNullOrUndefined(value)) {
+        return createEmptyBufferSourceResult(allocator);
+    }
+
+    // Unsupported type
+    return ConversionError.TypeError;
+}
+
+/// Create an empty AllowSharedBufferSource for error/empty cases
+fn createEmptyBufferSourceResult(allocator: std.mem.Allocator) ConversionError!typedefs.AllowSharedBufferSource {
+    const buffer = allocator.create(buffer_sources.ArrayBuffer) catch {
+        return ConversionError.OutOfMemory;
+    };
+    // Empty buffer with no allocated data
+    buffer.* = buffer_sources.ArrayBuffer{
+        .data = &.{},
+        .detached = false,
+    };
+    return .{ .array_buffer = buffer };
+}
+
 /// Convert V8 value to BodyInit union
 /// BodyInit = (ReadableStream or XMLHttpRequestBodyInit)
 /// XMLHttpRequestBodyInit = (Blob or BufferSource or FormData or URLSearchParams or USVString)
@@ -650,6 +731,11 @@ pub fn fromV8Value(
     // Handle BodyInit specially - parse V8 value to appropriate variant
     if (T == @import("typedefs").BodyInit) {
         return try convertBodyInit(allocator, isolate, context, value);
+    }
+
+    // Handle AllowSharedBufferSource - extract bytes from TypedArray/DataView/ArrayBuffer
+    if (T == typedefs.AllowSharedBufferSource) {
+        return try convertAllowSharedBufferSource(allocator, value);
     }
 
     // Handle unions (for constructor overloading and type unions)
@@ -1965,6 +2051,10 @@ pub fn throwWebIDLError(
         // Map ReplacementEncoding to RangeError per WHATWG Encoding spec
         // TextDecoder constructor throws RangeError for replacement encodings (e.g., iso-2022-cn)
         throwRangeError(isolate, "The encoding label provided is a replacement encoding.");
+    } else if (std.mem.eql(u8, error_name, "DecodingError")) {
+        // Map DecodingError to TypeError per WHATWG Encoding spec
+        // TextDecoder.decode() throws TypeError when fatal=true and invalid byte encountered
+        throwTypeError(isolate, "The encoded data was not valid.");
     } else if (std.mem.eql(u8, error_name, "NotImplemented")) {
         // Map NotImplemented to NotSupportedError DOMException
         // This is the standard way to indicate unimplemented features in web APIs

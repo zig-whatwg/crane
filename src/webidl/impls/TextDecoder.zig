@@ -280,7 +280,9 @@ pub fn call_decode(instance: *runtime.Instance, input: webidl.Opt(typedefs.Allow
 
     // Step 4-5: Process bytes through decoder and serialize
     const is_last = !stream;
-    return try processAndSerialize(internal, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
+    // IMPORTANT: Use instance.ctx.allocator for returned strings, not internal.allocator
+    // The V8 binding layer expects to free returned strings with instance.ctx.allocator
+    return try processAndSerialize(internal, instance.ctx.allocator, bytes, state.own.fatal, state.own.ignoreBOM, is_last);
 }
 
 /// Extract bytes from AllowSharedBufferSource
@@ -290,19 +292,20 @@ fn extractBytesFromBufferSource(source: typedefs.AllowSharedBufferSource) []cons
 }
 
 /// Process bytes through decoder and run serialize I/O queue algorithm
+///
+/// @param output_allocator: Allocator for the returned string (must be instance.ctx.allocator)
 fn processAndSerialize(
     internal: *InternalState,
+    output_allocator: std.mem.Allocator,
     bytes: []const u8,
     fatal: bool,
     ignore_bom: bool,
     is_last: bool,
 ) ImplError!runtime.USVString {
-    const allocator = internal.allocator;
-
     // ASCII FAST PATH: For ASCII-only input with UTF-8 encoding
     if (std.mem.eql(u8, internal.enc.whatwg_name, "utf-8") and infra.string.isAscii(bytes)) {
         // ASCII can't contain BOM, so just return as-is
-        return allocator.dupe(u8, bytes) catch return ImplError.OutOfMemory;
+        return output_allocator.dupe(u8, bytes) catch return ImplError.OutOfMemory;
     }
 
     // Get or create decoder
@@ -315,25 +318,56 @@ fn processAndSerialize(
     const utf16_buf = try getOrAllocUtf16Buffer(internal, max_utf16_len);
 
     // Step 5c.i: Process bytes through decoder (process an item algorithm)
-    const result = internal.decoder.?.decode(bytes, utf16_buf, is_last);
+    // Loop to handle malformed bytes in replacement mode
+    var input_pos: usize = 0;
+    var output_pos: usize = 0;
 
-    // Step 5c.iii: Handle decoding errors in fatal mode
-    if (fatal and result.status == .malformed) {
-        return ImplError.DecodingError;
+    while (input_pos < bytes.len) {
+        const remaining_input = bytes[input_pos..];
+        const remaining_output = utf16_buf[output_pos..];
+
+        const result = internal.decoder.?.decode(remaining_input, remaining_output, is_last and input_pos + remaining_input.len == bytes.len);
+
+        // Add decoded output
+        output_pos += result.code_units_written;
+        input_pos += result.bytes_consumed;
+
+        if (result.status == .malformed) {
+            // Step 5c.iii: Handle decoding errors based on error mode
+            if (fatal) {
+                return ImplError.DecodingError;
+            }
+            // Replacement mode: emit U+FFFD and skip the bad byte(s)
+            if (output_pos < utf16_buf.len) {
+                utf16_buf[output_pos] = 0xFFFD;
+                output_pos += 1;
+            }
+            // Skip the malformed byte(s)
+            const skip = if (result.error_length > 0) result.error_length else 1;
+            input_pos += skip;
+            // Reset decoder state after error
+            internal.decoder = internal.enc.newDecoder();
+        } else if (result.status == .input_empty) {
+            // All input consumed
+            break;
+        } else if (result.status == .output_full) {
+            // Output buffer full - shouldn't happen with our sizing
+            break;
+        }
     }
 
     // Handle incomplete sequences in streaming mode
-    if (!is_last and result.bytes_consumed < bytes.len) {
-        const remaining = bytes.len - result.bytes_consumed;
+    if (!is_last and input_pos < bytes.len) {
+        const remaining = bytes.len - input_pos;
         if (remaining <= 4) {
-            @memcpy(internal.pending_bytes[0..remaining], bytes[result.bytes_consumed..]);
+            @memcpy(internal.pending_bytes[0..remaining], bytes[input_pos..]);
             internal.pending_len = @intCast(remaining);
         }
     }
 
     // Step 5b/5c.ii: Run serialize I/O queue algorithm
-    const utf16_output = utf16_buf[0..result.code_units_written];
-    return try serializeIoQueue(internal, utf16_output, ignore_bom);
+    const utf16_output = utf16_buf[0..output_pos];
+    return try serializeIoQueue(internal, output_allocator, utf16_output, ignore_bom);
 }
 
 /// Serialize I/O queue algorithm
@@ -354,14 +388,13 @@ fn processAndSerialize(
 ///    d. Append item to output.
 fn serializeIoQueue(
     internal: *InternalState,
+    output_allocator: std.mem.Allocator,
     utf16_output: []const u16,
     ignore_bom: bool,
 ) ImplError![]u8 {
-    const allocator = internal.allocator;
-
     // Fast path: empty output
     if (utf16_output.len == 0) {
-        return allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
+        return output_allocator.alloc(u8, 0) catch return ImplError.OutOfMemory;
     }
 
     // Step 2c: Check if we need BOM handling
@@ -387,7 +420,7 @@ fn serializeIoQueue(
     const output_slice = utf16_output[start_idx..];
 
     // Convert UTF-16 to UTF-8
-    return utf16ToUtf8(allocator, output_slice) catch return ImplError.OutOfMemory;
+    return utf16ToUtf8(output_allocator, output_slice) catch return ImplError.OutOfMemory;
 }
 
 /// Convert UTF-16 code units to UTF-8 bytes
