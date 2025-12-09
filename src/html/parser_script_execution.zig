@@ -259,20 +259,36 @@ pub const DomTreeAdapter = struct {
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
-        // The node_map contains mappings from TreeNode to DOM instances.
-        // We do NOT deinit the DOM instances here because:
+        // Clean up any orphaned DOM nodes that were NOT successfully attached to the tree.
         //
-        // 1. The document is managed externally (by BrowserContext) and will be
-        //    explicitly deinit'd by the caller.
+        // During parsing, onNodeCreated creates DOM nodes and adds them to node_map.
+        // onChildAppended then attaches them to the tree. However, if appendChild fails
+        // (silently caught) or if onChildAppended is never called for a node, that node
+        // becomes an orphan - it exists in node_map but has no parent.
         //
-        // 2. All other DOM nodes (elements, text, comments, doctypes) are attached
-        //    as children of the document during parsing. When Document.deinit is
-        //    called, Node.deinit will recursively clean up all child nodes.
+        // Nodes that ARE attached to the tree will be cleaned up recursively when
+        // Document.deinit is called (via Node.deinit's child traversal).
         //
-        // 3. Deinit'ing nodes here would cause double-free issues since the parent
-        //    document's deinit would also try to clean up the same nodes.
-        //
-        // We only need to clean up the HashMap itself.
+        // We MUST clean up orphaned nodes here to prevent memory leaks.
+        var it = self.node_map.iterator();
+        while (it.next()) |entry| {
+            const dom_node = entry.value_ptr.*;
+
+            // Skip the document node - it's managed externally
+            if (dom_node == self.document) continue;
+
+            // Check if this node has a parent (i.e., was successfully attached)
+            const NodeImpl = impls.Node;
+            if (NodeImpl.getInternalState(dom_node)) |internal| {
+                if (internal.parent == null) {
+                    // This node is an orphan - clean it up
+                    // Use deinitNodeByType to properly clean up based on node type
+                    NodeImpl.deinitNodeByType(dom_node);
+                }
+            }
+        }
+
+        // Clean up the HashMap itself
         self.node_map.deinit();
     }
 

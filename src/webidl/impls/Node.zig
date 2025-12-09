@@ -239,7 +239,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called from Node.deinit when iterating over children. The type-specific
 /// deinit (e.g., Element.deinit) will chain back to Node.deinit, which will then
 /// recursively deinit that node's children. This ensures the entire subtree is cleaned up.
-fn deinitNodeByType(instance: *runtime.Instance) void {
+///
+/// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
+/// to the document tree.
+pub fn deinitNodeByType(instance: *runtime.Instance) void {
     const internal = getInternalFromRegistry(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
         EventTargetImpl.deinit(instance);
