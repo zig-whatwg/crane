@@ -113,7 +113,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
-        return runtime.DOMString.initInterned(ns);
+        // Clone to transfer ownership to caller (interface layer will free)
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, ns);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -123,7 +124,8 @@ pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString
 pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
-        return runtime.DOMString.initInterned(p);
+        // Clone to transfer ownership to caller (interface layer will free)
+        return try runtime.DOMString.initDupe(instance.ctx.allocator, p);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -132,7 +134,8 @@ pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// DOM §4.9 - Returns this's local name.
 pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.local_name);
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.local_name);
 }
 
 /// Getter for name
@@ -144,22 +147,24 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
     if (internal.prefix) |p| {
         // Qualified name: prefix + ":" + localName
+        // Use instance.ctx.allocator for returned strings (interface layer will free)
         const qualified = try std.fmt.allocPrint(
-            internal.allocator,
+            instance.ctx.allocator,
             "{s}:{s}",
             .{ p, internal.local_name },
         );
         return runtime.DOMString.initOwned(qualified);
     }
-    // No prefix, just return local name
-    return runtime.DOMString.initInterned(internal.local_name);
+    // No prefix, clone local name to transfer ownership to caller
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.local_name);
 }
 
 /// Getter for value
 /// DOM §4.9 - Returns this's value.
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.value);
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.value);
 }
 
 /// Getter for ownerElement

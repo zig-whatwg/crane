@@ -672,7 +672,8 @@ pub fn get_compatMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// DOM §4.6 - Returns document's encoding
 pub fn get_characterSet(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.encoding;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.encoding.clone(instance.ctx.allocator);
 }
 
 /// Getter for charset
@@ -691,7 +692,8 @@ pub fn get_inputEncoding(instance: *runtime.Instance) anyerror!runtime.DOMString
 /// DOM §4.6 - Returns document's content type
 pub fn get_contentType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.content_type;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.content_type.clone(instance.ctx.allocator);
 }
 
 /// Getter for doctype
@@ -883,14 +885,16 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.DocumentReadyS
 /// HTML §3.1.3 - Returns the document's title
 pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.title;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.title.clone(instance.ctx.allocator);
 }
 
 /// Getter for dir
 /// HTML §3.2.6 - Returns the document's text direction
 pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.dir;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.dir.clone(instance.ctx.allocator);
 }
 
 /// Getter for body
@@ -1112,7 +1116,8 @@ pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowPro
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode
 pub fn get_designMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.design_mode;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.design_mode.clone(instance.ctx.allocator);
 }
 
 /// Getter for hidden
@@ -1145,35 +1150,40 @@ pub fn get_onvisibilitychange(instance: *runtime.Instance) anyerror!typedefs.Eve
 /// HTML §14.3.11 (obsolete) - Returns document's text color
 pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fg_color;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.fg_color.clone(instance.ctx.allocator);
 }
 
 /// Getter for linkColor
 /// HTML §14.3.11 (obsolete) - Returns document's link color
 pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.link_color;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.link_color.clone(instance.ctx.allocator);
 }
 
 /// Getter for vlinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's visited link color
 pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.vlink_color;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.vlink_color.clone(instance.ctx.allocator);
 }
 
 /// Getter for alinkColor
 /// HTML §14.3.11 (obsolete) - Returns document's active link color
 pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.alink_color;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.alink_color.clone(instance.ctx.allocator);
 }
 
 /// Getter for bgColor
 /// HTML §14.3.11 (obsolete) - Returns document's background color
 pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.bg_color;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.bg_color.clone(instance.ctx.allocator);
 }
 
 /// Getter for anchors

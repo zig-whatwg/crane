@@ -266,7 +266,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §4.11 - Returns this's data.
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return runtime.DOMString.initInterned(internal.getData());
+    // Clone data to transfer ownership to caller (interface layer will free)
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.getData());
 }
 
 /// Getter for length

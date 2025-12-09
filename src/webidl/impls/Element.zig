@@ -540,7 +540,8 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.namespace_uri) |ns| {
-        return ns;
+        // Clone to transfer ownership to caller (interface layer will free)
+        return try ns.clone(instance.ctx.allocator);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -550,7 +551,8 @@ pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString
 pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.prefix) |p| {
-        return p;
+        // Clone to transfer ownership to caller (interface layer will free)
+        return try p.clone(instance.ctx.allocator);
     }
     return runtime.DOMString.initEmpty();
 }
@@ -559,7 +561,8 @@ pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// DOM §4.8 - Returns the local name of this element
 pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.local_name;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.local_name.clone(instance.ctx.allocator);
 }
 
 /// Getter for tagName
@@ -573,26 +576,30 @@ pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
         // TODO: Concatenate prefix:localName
         // For now, return local name
         _ = p;
-        return internal.local_name;
+        // Clone to transfer ownership to caller (interface layer will free)
+        return try internal.local_name.clone(instance.ctx.allocator);
     }
 
     // No prefix, return just local name
     // TODO: Uppercase for HTML elements in HTML documents
-    return internal.local_name;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.local_name.clone(instance.ctx.allocator);
 }
 
 /// Getter for id
 /// DOM §4.8 - Returns the value of the id attribute
 pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.id;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.id.clone(instance.ctx.allocator);
 }
 
 /// Getter for className
 /// DOM §4.8 - Returns the value of the class attribute
 pub fn get_className(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.class_name;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.class_name.clone(instance.ctx.allocator);
 }
 
 /// Getter for classList
@@ -622,7 +629,8 @@ pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// DOM §4.8 - Returns the value of the slot attribute
 pub fn get_slot(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.slot;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try internal.slot.clone(instance.ctx.allocator);
 }
 
 /// Getter for attributes
