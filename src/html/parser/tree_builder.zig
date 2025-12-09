@@ -3183,14 +3183,48 @@ pub const TreeBuilder = struct {
         }
     }
 
-    /// Check if element is in scope.
-    fn hasElementInScope(self: *TreeBuilder, tag_name: []const u8) bool {
-        const scope_elements = [_][]const u8{
-            "applet", "caption",  "html",    "table",
-            "td",     "th",       "marquee", "object",
-            "select", "template",
-        };
+    // === Scope Boundary Helper Functions ===
+    // These use compile-time string matching for faster scope checking.
 
+    /// Check if element name is a general scope boundary.
+    /// Scope boundary elements: applet, caption, html, table, td, th, marquee, object, select, template
+    fn isGeneralScopeBoundary(name: []const u8) bool {
+        // Use length-based dispatch for faster rejection of non-matching strings
+        return switch (name.len) {
+            2 => std.mem.eql(u8, name, "td") or std.mem.eql(u8, name, "th"),
+            4 => std.mem.eql(u8, name, "html"),
+            5 => std.mem.eql(u8, name, "table"),
+            6 => std.mem.eql(u8, name, "applet") or std.mem.eql(u8, name, "object") or std.mem.eql(u8, name, "select"),
+            7 => std.mem.eql(u8, name, "caption") or std.mem.eql(u8, name, "marquee"),
+            8 => std.mem.eql(u8, name, "template"),
+            else => false,
+        };
+    }
+
+    /// Check if element name is a button scope boundary.
+    fn isButtonScopeBoundary(name: []const u8) bool {
+        return isGeneralScopeBoundary(name) or (name.len == 6 and std.mem.eql(u8, name, "button"));
+    }
+
+    /// Check if element name is a table scope boundary.
+    fn isTableScopeBoundary(name: []const u8) bool {
+        return switch (name.len) {
+            4 => std.mem.eql(u8, name, "html"),
+            5 => std.mem.eql(u8, name, "table"),
+            8 => std.mem.eql(u8, name, "template"),
+            else => false,
+        };
+    }
+
+    /// Check if element is transparent in select scope (not a boundary).
+    fn isSelectScopeTransparent(name: []const u8) bool {
+        return (name.len == 8 and std.mem.eql(u8, name, "optgroup")) or
+            (name.len == 6 and std.mem.eql(u8, name, "option"));
+    }
+
+    /// Check if element is in scope.
+    /// Optimized with length-based scope boundary checks.
+    fn hasElementInScope(self: *TreeBuilder, tag_name: []const u8) bool {
         var i = self.open_elements.len;
         while (i > 0) {
             i -= 1;
@@ -3198,11 +3232,7 @@ pub const TreeBuilder = struct {
             if (node.hasTagName(tag_name)) return true;
 
             if (node.local_name) |name| {
-                for (scope_elements) |scope_elem| {
-                    if (std.mem.eql(u8, name, scope_elem)) {
-                        return false;
-                    }
-                }
+                if (isGeneralScopeBoundary(name)) return false;
             }
         }
         return false;
@@ -3217,11 +3247,8 @@ pub const TreeBuilder = struct {
     }
 
     /// Check if element is in button scope.
+    /// Optimized with length-based scope boundary checks.
     fn hasElementInButtonScope(self: *TreeBuilder, tag_name: []const u8) bool {
-        const scope_elements = [_][]const u8{
-            "applet", "caption", "html", "table", "td", "th", "marquee", "object", "select", "template", "button",
-        };
-
         var i = self.open_elements.len;
         while (i > 0) {
             i -= 1;
@@ -3229,11 +3256,7 @@ pub const TreeBuilder = struct {
             if (node.hasTagName(tag_name)) return true;
 
             if (node.local_name) |name| {
-                for (scope_elements) |scope_elem| {
-                    if (std.mem.eql(u8, name, scope_elem)) {
-                        return false;
-                    }
-                }
+                if (isButtonScopeBoundary(name)) return false;
             }
         }
         return false;

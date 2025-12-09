@@ -1103,7 +1103,18 @@ pub const Tokenizer = struct {
             self.reportError(.eof_in_tag);
             return Token.eof;
         } else {
-            try self.appendToCurrentAttributeValue(char.getCodepoint().?);
+            // Optimization: batch append runs of normal ASCII characters
+            // Look ahead in raw input to find extent of normal chars
+            const cp = char.getCodepoint().?;
+            if (cp < 128) {
+                // Current char is ASCII - try to batch more
+                const batch_result = self.batchAppendAttributeValue('"');
+                if (batch_result.consumed > 0) {
+                    return null;
+                }
+            }
+            // Fall back to single character append
+            try self.appendToCurrentAttributeValue(cp);
             return null;
         }
     }
@@ -1127,7 +1138,17 @@ pub const Tokenizer = struct {
             self.reportError(.eof_in_tag);
             return Token.eof;
         } else {
-            try self.appendToCurrentAttributeValue(char.getCodepoint().?);
+            // Optimization: batch append runs of normal ASCII characters
+            const cp = char.getCodepoint().?;
+            if (cp < 128) {
+                // Current char is ASCII - try to batch more
+                const batch_result = self.batchAppendAttributeValue('\'');
+                if (batch_result.consumed > 0) {
+                    return null;
+                }
+            }
+            // Fall back to single character append
+            try self.appendToCurrentAttributeValue(cp);
             return null;
         }
     }
@@ -2511,6 +2532,86 @@ pub const Tokenizer = struct {
             };
             try tag.appendCodepointToAttributeValue(cp);
         }
+    }
+
+    /// Batch append to current attribute value (more efficient for ASCII runs).
+    fn appendSliceToCurrentAttributeValue(self: *Tokenizer, slice: []const u8) !void {
+        if (self.current_token) |*token| {
+            const tag = switch (token.*) {
+                .start_tag => |*t| t,
+                .end_tag => |*t| t,
+                else => return,
+            };
+            try tag.appendSliceToAttributeValue(slice);
+        }
+    }
+
+    /// Batch append attribute value characters until quote or special char.
+    /// Scans ahead in the raw input to find runs of normal ASCII characters
+    /// and appends them all at once, avoiding per-character overhead.
+    ///
+    /// Returns the number of bytes consumed from input (including current char).
+    fn batchAppendAttributeValue(self: *Tokenizer, quote: u8) struct { consumed: usize } {
+        // Get the raw input data starting at current position
+        // Note: We've already consumed current_char, so we're looking at remaining input
+        const remaining = self.input.remaining();
+        if (remaining == 0) {
+            return .{ .consumed = 0 };
+        }
+
+        const data = self.input.data;
+        const start_pos = self.input.position;
+
+        // Scan for run of "normal" ASCII characters (not quote, &, NULL, or non-ASCII)
+        var end_pos = start_pos;
+        while (end_pos < data.len) {
+            const byte = data[end_pos];
+            // Stop on: quote char, ampersand, NULL, CR/LF (need newline normalization), or non-ASCII
+            if (byte == quote or byte == '&' or byte == 0x00 or
+                byte == 0x0D or byte == 0x0A or byte >= 0x80)
+            {
+                break;
+            }
+            end_pos += 1;
+        }
+
+        const batch_len = end_pos - start_pos;
+        if (batch_len == 0) {
+            return .{ .consumed = 0 };
+        }
+
+        // Get the current character that was already consumed
+        const current_cp = self.current_char.getCodepoint() orelse return .{ .consumed = 0 };
+        if (current_cp >= 128) {
+            return .{ .consumed = 0 };
+        }
+
+        // Build slice including current char + batch
+        // Current char is ASCII, so it's 1 byte
+        const current_byte: u8 = @intCast(current_cp);
+
+        // Append current char + batch slice in one go
+        if (self.current_token) |*token| {
+            const tag = switch (token.*) {
+                .start_tag => |*t| t,
+                .end_tag => |*t| t,
+                else => return .{ .consumed = 0 },
+            };
+
+            // Append current char
+            tag.appendSliceToAttributeValue(&[_]u8{current_byte}) catch return .{ .consumed = 0 };
+
+            // Append batch if any
+            if (batch_len > 0) {
+                tag.appendSliceToAttributeValue(data[start_pos..end_pos]) catch return .{ .consumed = 0 };
+
+                // Advance input position past the batch
+                self.input.position = end_pos;
+                self.input.column += @intCast(batch_len);
+            }
+        }
+
+        return .{ .consumed = 1 + batch_len };
     }
 
     /// Set self-closing flag on current tag.
