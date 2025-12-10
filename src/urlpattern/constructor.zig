@@ -583,9 +583,12 @@ fn generatePatternString(allocator: Allocator, parts: []const Part) ![]u8 {
             },
             .full_wildcard => {
                 if (part.name.len > 0 and !isNumericName(part.name)) {
-                    // :name format with asterisk modifier implied
+                    // Named full wildcard: :name(.*) or :name* format
+                    // According to spec, this should serialize as :name(.*)
                     try result.append(allocator, ':');
                     try result.appendSlice(allocator, part.name);
+                    // Must include the (.*) to distinguish from segment wildcard
+                    try result.appendSlice(allocator, "(.*)");
                 } else {
                     // * wildcard
                     try result.append(allocator, '*');
