@@ -30,6 +30,7 @@ const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const DebugAssertions = pointer_tag.DebugAssertions;
+const global_handles = @import("global_handles.zig");
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -952,12 +953,53 @@ pub fn fromV8Value(
     }
 
     // Handle function pointers (callbacks)
+    //
+    // CRITICAL: V8 callback persistence fix
+    //
+    // When JavaScript passes a callback function (e.g., `new WritableStream({ start: fn })`),
+    // the V8 value is a Local<Function> that's only valid within the current HandleScope.
+    // If we just store the Local handle pointer, it becomes invalid when the HandleScope ends
+    // (typically when the constructor returns).
+    //
+    // The fix: Create a V8 Global handle immediately during dictionary extraction.
+    // Global handles persist until explicitly disposed, surviving HandleScope destruction.
+    //
+    // We return the Global handle's internal pointer tagged with `.global_handle` so that
+    // consumers (like jsCallbackAlgorithmGlobal in algorithm.zig) can detect it's a Global
+    // and wrap it appropriately without trying to create another Global from an invalid Local.
+    //
+    // Memory management: The consumer is responsible for disposing the Global handle when done.
+    // The GlobalHandle struct wraps the internal pointer for proper disposal.
+    //
+    // See: src/runtime/engines/v8/global_handles.zig for GlobalHandle documentation
+    // See: src/runtime/engines/v8/pointer_tag.zig for pointer tagging documentation
+    // See: whatwg-9bmsj for the bug report this fixes
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
-            // Function pointer - store as opaque pointer for now
-            // The V8 function object will be wrapped and called later
-            return @ptrCast(@alignCast(@constCast(value)));
+            // Verify this is actually a V8 function
+            if (!v8.v8_Value_IsFunction(value)) {
+                return ConversionError.TypeError;
+            }
+
+            // Create a Global handle to persist the callback across HandleScope boundaries.
+            // This converts the stack-bound Local<Value> to a heap-allocated Global<Value>.
+            const global_handle = global_handles.GlobalHandle.create(isolate, value) orelse {
+                return ConversionError.GlobalHandleCreationFailed;
+            };
+
+            // Return the Global handle's internal pointer, tagged with .global_handle.
+            // The tag tells consumers (like jsCallbackAlgorithmGlobal) that this is already
+            // a Global handle, so they don't need to create another one.
+            //
+            // Consumers should:
+            // 1. Call pointer_tag.untagPointer() to get the raw pointer and tag
+            // 2. Check for .global_handle tag
+            // 3. Wrap in GlobalHandle{ .ptr = @ptrCast(untagged.ptr) } for proper disposal
+            //
+            // Note: The tagged pointer has low bits set (for the tag), so we must use
+            // @alignCast to tell Zig we know what we're doing with alignment.
+            return @ptrCast(@alignCast(pointer_tag.tagPointer(@ptrCast(global_handle.ptr), .global_handle)));
         }
     }
 

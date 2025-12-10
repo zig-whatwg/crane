@@ -299,14 +299,18 @@ pub fn get_responseXML(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
 pub fn set_onreadystatechange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance);
-    const isolate = internal.isolate orelse return;
 
     // Dispose old Global handle first to prevent memory leaks
     v8_engine.disposeOptionalGlobalHandle(&internal.onreadystatechange);
 
-    // Create new Global handle from the Local handle (value)
+    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
     if (value) |handler| {
-        internal.onreadystatechange = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
+        const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(handler));
+        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
+            internal.onreadystatechange = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+        } else {
+            internal.onreadystatechange = null;
+        }
     } else {
         internal.onreadystatechange = null;
     }

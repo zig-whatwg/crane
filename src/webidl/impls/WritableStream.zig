@@ -706,15 +706,51 @@ fn setUpWritableStreamDefaultControllerFromUnderlyingSink(
     _ = underlyingSink; // Will be used when we invoke callbacks
 }
 
+/// Extract a GlobalHandle from a tagged callback pointer.
+///
+/// The V8 conversions layer tags callback pointers with `.global_handle` to indicate
+/// they are V8 Global handles (not Local handles that expire with HandleScope).
+///
+/// This function untags the pointer and wraps it in a GlobalHandle struct for proper
+/// lifetime management and disposal.
+///
+/// Parameters:
+///   callback_ptr: A tagged pointer to a V8 Global handle (cast as ?*const anyopaque)
+///
+/// Returns:
+///   A GlobalHandle wrapping the V8 Global, or null if callback_ptr is null
+fn extractGlobalHandle(callback_ptr: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
+    if (callback_ptr) |ptr| {
+        // Untag the pointer to get the raw V8 Global pointer and the tag
+        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
+
+        // Verify the tag is global_handle (or handle untagged for backwards compatibility)
+        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
+            // Wrap the raw pointer in a GlobalHandle struct for proper disposal
+            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+        } else {
+            // Unexpected tag - this shouldn't happen for callbacks
+            // Return null to avoid crashes, but log in debug mode
+            if (@import("std").debug.runtime_safety) {
+                @import("std").log.err("extractGlobalHandle: unexpected tag {} for callback pointer", .{untagged.tag});
+            }
+            return null;
+        }
+    }
+    return null;
+}
+
 /// SetUpWritableStreamDefaultController
 ///
 /// Spec: https://streams.spec.whatwg.org/#set-up-writable-stream-default-controller
 ///
 /// ## V8 Handle Lifetime
 ///
-/// The callback parameters (start, write, close, abort, size) are Local<Value> handles
-/// extracted from the underlying sink dictionary. These MUST be converted to Global handles
-/// before the constructor's HandleScope ends, or they become dangling pointers.
+/// The callback parameters (start, write, close, abort, size) are tagged pointers to V8 Global
+/// handles. The V8 conversions layer creates Global handles and tags the pointers during
+/// dictionary extraction to ensure callbacks survive HandleScope destruction.
+///
+/// This function untags the pointers and wraps them in GlobalHandle structs.
 fn setUpWritableStreamDefaultController(
     stream_instance: *runtime.Instance,
     stream_internal: *InternalState,
@@ -728,7 +764,7 @@ fn setUpWritableStreamDefaultController(
 ) !void {
     const allocator = stream_internal.allocator;
 
-    // Get V8 isolate for Global handle creation
+    // Get V8 isolate (for potential future use, but Global handles already created)
     const isolate: ?*v8_engine.ffi.Isolate = stream_instance.ctx.getEngineContextAs(v8_engine.ffi.Isolate);
 
     // Get controller state
@@ -743,29 +779,14 @@ fn setUpWritableStreamDefaultController(
     // Note: AbortController impl is currently a stub, but we create instance for structure
     const abort_controller = interfaces.AbortController.call_constructor(stream_instance.ctx) catch null;
 
-    // Convert Local handles to Global handles for cross-scope persistence
-    // These callbacks need to survive after the JavaScript constructor returns
-    // and its HandleScope is destroyed.
-    const start_global = if (isolate) |iso|
-        v8_engine.createOptionalGlobalHandle(iso, @constCast(startAlgorithm))
-    else
-        null;
-    const write_global = if (isolate) |iso|
-        v8_engine.createOptionalGlobalHandle(iso, @constCast(writeAlgorithm))
-    else
-        null;
-    const close_global = if (isolate) |iso|
-        v8_engine.createOptionalGlobalHandle(iso, @constCast(closeAlgorithm))
-    else
-        null;
-    const abort_global = if (isolate) |iso|
-        v8_engine.createOptionalGlobalHandle(iso, @constCast(abortAlgorithm))
-    else
-        null;
-    const size_global = if (isolate) |iso|
-        v8_engine.createOptionalGlobalHandle(iso, @constCast(sizeAlgorithm))
-    else
-        null;
+    // Extract GlobalHandles from tagged callback pointers.
+    // The V8 conversions layer tags callbacks with .global_handle during dictionary extraction.
+    // We just need to untag them and wrap in GlobalHandle structs.
+    const start_global = extractGlobalHandle(startAlgorithm);
+    const write_global = extractGlobalHandle(writeAlgorithm);
+    const close_global = extractGlobalHandle(closeAlgorithm);
+    const abort_global = extractGlobalHandle(abortAlgorithm);
+    const size_global = extractGlobalHandle(sizeAlgorithm);
 
     // Initialize controller internal state with Global handles
     controller_internal.* = .{

@@ -51,7 +51,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Implementation requirements:
 /// 1. Add `callback: v8_engine.OptionalGlobalHandle` to InternalState
 /// 2. Add `isolate: ?*v8_engine.ffi.Isolate` to InternalState
-/// 3. Create Global handle in constructor: `v8_engine.createOptionalGlobalHandle(iso, @ptrCast(callback))`
+/// 3. Extract Global handle from tagged pointer in constructor:
+///    `const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(callback));`
+///    `internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };`
 /// 4. Dispose Global handle in deinit: `v8_engine.disposeOptionalGlobalHandle(&self.callback)`
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ResizeObserverCallback) !*runtime.Instance {
     // Create instance through init()

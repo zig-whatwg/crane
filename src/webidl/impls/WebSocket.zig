@@ -347,72 +347,64 @@ pub fn get_binaryType(instance: *runtime.Instance) anyerror!enums.BinaryType {
     return internal.binary_type;
 }
 
+/// Extract GlobalHandle from a tagged callback pointer (from V8 conversion).
+/// The V8 conversions layer creates Global handles and tags the pointers.
+fn extractEventHandler(handler: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
+    if (handler) |ptr| {
+        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
+        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
+            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+        }
+    }
+    return null;
+}
+
 /// Setter for onopen
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onopen(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const isolate = internal.isolate orelse return;
 
     // Dispose old Global handle first to prevent memory leaks
     v8_engine.disposeOptionalGlobalHandle(&internal.onopen);
 
-    // Create new Global handle from the Local handle (value)
-    if (value) |handler| {
-        internal.onopen = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
-    } else {
-        internal.onopen = null;
-    }
+    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
+    internal.onopen = extractEventHandler(@ptrCast(value));
 }
 
 /// Setter for onerror
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const isolate = internal.isolate orelse return;
 
     // Dispose old Global handle first to prevent memory leaks
     v8_engine.disposeOptionalGlobalHandle(&internal.onerror);
 
-    // Create new Global handle from the Local handle (value)
-    if (value) |handler| {
-        internal.onerror = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
-    } else {
-        internal.onerror = null;
-    }
+    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
+    internal.onerror = extractEventHandler(@ptrCast(value));
 }
 
 /// Setter for onclose
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const isolate = internal.isolate orelse return;
 
     // Dispose old Global handle first to prevent memory leaks
     v8_engine.disposeOptionalGlobalHandle(&internal.onclose);
 
-    // Create new Global handle from the Local handle (value)
-    if (value) |handler| {
-        internal.onclose = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
-    } else {
-        internal.onclose = null;
-    }
+    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
+    internal.onclose = extractEventHandler(@ptrCast(value));
 }
 
 /// Setter for onmessage
-/// Creates a Global handle from the passed value so it survives past the setter's HandleScope.
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const isolate = internal.isolate orelse return;
 
     // Dispose old Global handle first to prevent memory leaks
     v8_engine.disposeOptionalGlobalHandle(&internal.onmessage);
 
-    // Create new Global handle from the Local handle (value)
-    if (value) |handler| {
-        internal.onmessage = v8_engine.createOptionalGlobalHandle(isolate, @ptrCast(@constCast(handler)));
-    } else {
-        internal.onmessage = null;
-    }
+    // Extract Global handle from tagged pointer (V8 conversion already created the Global)
+    internal.onmessage = extractEventHandler(@ptrCast(value));
 }
 
 /// Setter for binaryType

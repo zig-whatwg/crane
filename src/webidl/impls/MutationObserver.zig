@@ -153,11 +153,15 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
     internal.isolate = isolate;
 
-    // Create Global handle from the callback (which is actually a V8 function pointer)
-    // The callback type is a function pointer, but when coming from V8, it's really
-    // a pointer to a V8 Local<Function> that needs to be persisted
-    if (isolate) |iso| {
-        internal.callback = v8_engine.createOptionalGlobalHandle(iso, @ptrCast(@constCast(callback)));
+    // Extract Global handle from the callback.
+    // The callback comes from V8 conversion which creates a Global handle and tags
+    // the pointer. We just need to untag it and wrap in GlobalHandle struct.
+    const callback_ptr: ?*const anyopaque = @ptrCast(callback);
+    if (callback_ptr) |ptr| {
+        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
+        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
+            internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+        }
     }
 
     return instance;
