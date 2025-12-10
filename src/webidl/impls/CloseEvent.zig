@@ -45,7 +45,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own.reason.len > 0) {
         // Note: reason is managed by the event lifecycle
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+
+    // Call parent Event deinit to clean up base class resources (including state.base.own.type)
+    interfaces.Event.deinit(instance);
 }
 
 /// Constructor implementation

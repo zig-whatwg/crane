@@ -30,10 +30,16 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// [[signal]]: The associated AbortSignal
+    /// This signal is created and owned by the AbortController.
+    /// When the controller is destroyed, the signal must also be destroyed.
     signal: *runtime.Instance,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Signal has its own lifecycle
+        // Clean up the owned AbortSignal
+        // The signal was created by AbortController.init() and is owned by this controller.
+        // It is NOT registered with the V8 wrapper cache (since it's created via init(),
+        // not via a JS constructor), so we must explicitly call its deinit.
+        interfaces.AbortSignal.deinit(self.signal);
         allocator.destroy(self);
     }
 };
@@ -67,7 +73,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        // Signal is managed separately (may be retained by user code)
+        // Clean up the owned signal and internal state
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }

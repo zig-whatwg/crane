@@ -64,7 +64,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.allocator.destroy(internal);
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+
+    // Call parent Event deinit to clean up base class resources (including state.base.own.type)
+    interfaces.Event.deinit(instance);
 }
 
 /// Constructor implementation

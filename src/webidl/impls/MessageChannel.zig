@@ -70,11 +70,16 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
 
-    // Clean up ports if they exist
-    // Note: The ports are runtime.Instance pointers, they manage their own cleanup
-    // We don't deinit them here as they may be held by other references
-
+    // Clean up the owned MessagePort instances
+    // The ports were created by MessageChannel.call_constructor() and are owned by this channel.
+    // They are NOT registered with the V8 wrapper cache (since they're created via initWithInternal(),
+    // not via a JS constructor), so we must explicitly call their deinit.
     if (state.own._internal) |internal| {
+        if (internal.initialized) {
+            // Both ports exist if initialized is true
+            MessagePortInterface.deinit(state.own.port1);
+            MessagePortInterface.deinit(state.own.port2);
+        }
         internal.allocator.destroy(internal);
     }
 

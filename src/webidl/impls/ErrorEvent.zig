@@ -61,7 +61,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // DOMString cleanup handled by arena allocator
+        // InternalState is allocated with ArenaAllocator, which batch-frees during GC sweep
+        // We only need to clean up any non-arena allocations here
         _ = self;
     }
 };
@@ -87,10 +88,19 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+
+    // Clean up ErrorEvent-specific resources
     if (state.own._internal) |internal| {
+        // Free owned strings
+        internal.message.deinit(internal.allocator);
+        if (internal.filename.len > 0) {
+            internal.allocator.free(internal.filename);
+        }
         internal.deinit();
     }
-    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+
+    // Call parent Event deinit to clean up base class resources (including state.base.own.type)
+    interfaces.Event.deinit(instance);
 }
 
 /// Constructor implementation
