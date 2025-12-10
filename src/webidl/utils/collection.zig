@@ -4,6 +4,21 @@
 //! found in DOM interfaces: get_length, call_item, and call_namedItem.
 //! These patterns appear in 56+ impl files.
 //!
+//! ## Migration Status
+//!
+//! After analysis of existing impl files, mass migration was determined to have
+//! limited value because:
+//!
+//! 1. Only ~6 files have actual implementations (most are stubs returning NotImplemented)
+//! 2. Each implementation uses different field names (nodes, elements, tokens, etc.)
+//! 3. Different element types (*runtime.Instance, DOMString, []const u8)
+//! 4. Some have special logic (live collections, custom bounds handling)
+//! 5. Code savings are minimal (1-3 lines per function)
+//!
+//! This utility is best used for **new collection implementations** to ensure
+//! consistent patterns. Existing implementations can optionally adopt it during
+//! normal maintenance work.
+//!
 //! ## Usage
 //!
 //! For a simple collection with just length and item:
