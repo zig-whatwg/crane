@@ -28,6 +28,8 @@ const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
+const pointer_tag = @import("pointer_tag.zig");
+const DebugAssertions = pointer_tag.DebugAssertions;
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -1155,8 +1157,7 @@ pub fn fromV8Value(
         //
         // ============================================================================
 
-        const pointer_tag_mod = @import("pointer_tag.zig");
-        const TaggedPointer = pointer_tag_mod.TaggedPointer;
+        const TaggedPointer = pointer_tag.TaggedPointer;
 
         // Step 1: Check if V8 object wraps a Zig instance
         // Detection: Objects with internal fields store Zig instances in field 0
@@ -1167,6 +1168,7 @@ pub fn fromV8Value(
                 if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
                     // TAGGING: .runtime_instance - this is a Zig object, NOT a V8 handle
                     // Consumer MUST NOT pass this to V8 FFI functions!
+                    DebugAssertions.logTaggedPointerCreation(@ptrCast(internal_ptr), .runtime_instance);
                     return TaggedPointer.init(internal_ptr, .runtime_instance).toConstPtr();
                 }
                 // Internal field null - object not fully initialized, fall through
@@ -1189,6 +1191,7 @@ pub fn fromV8Value(
             if (v8.v8_Value_ToWeakGlobal(isolate, @ptrCast(value), null, null)) |global| {
                 // TAGGING: .global_handle - V8 Global<Value>* (weak), survives HandleScope
                 // Consumer: untag before V8 FFI, V8 GC handles disposal
+                DebugAssertions.logTaggedPointerCreation(@ptrCast(global), .global_handle);
                 return TaggedPointer.init(global, .global_handle).toConstPtr();
             }
             // Global creation failed (OOM), fall through to Local
@@ -1197,6 +1200,7 @@ pub fn fromV8Value(
         // Step 3: Return Local handle for primitives
         // TAGGING: .local_value - V8 Local<Value>*, temporary handle
         // Consumer: untag before V8 FFI, only valid within current HandleScope
+        DebugAssertions.logTaggedPointerCreation(@ptrCast(@constCast(value)), .local_value);
         return TaggedPointer.init(@ptrCast(@constCast(value)), .local_value).toConstPtr();
     }
 

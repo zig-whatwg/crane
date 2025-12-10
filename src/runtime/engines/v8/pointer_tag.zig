@@ -467,6 +467,121 @@ pub fn checkUntaggedOrUntag(ptr: *const anyopaque) PointerTagError!*anyopaque {
 }
 
 // ============================================================================
+// Debug Assertions for FFI Boundary Safety
+// ============================================================================
+
+/// Debug assertion helpers for catching pointer tagging bugs early.
+///
+/// These functions compile away in ReleaseFast and ReleaseSmall builds,
+/// providing zero runtime overhead in production while catching bugs in
+/// development.
+///
+/// ## Usage
+///
+/// ```zig
+/// fn v8CallFunction(ptr: *anyopaque) void {
+///     // Catch bugs: tagged pointers passed to V8 will crash
+///     DebugAssertions.assertNotTagged(ptr);
+///     ffi.v8_Function_Call(ptr);
+/// }
+///
+/// fn processValue(ptr: *anyopaque, expected: TaggedPointer.Tag) void {
+///     // Verify we got the expected tag
+///     DebugAssertions.assertTagged(ptr, expected);
+///     // ...
+/// }
+/// ```
+pub const DebugAssertions = struct {
+    const debug_log = std.log.scoped(.pointer_tag);
+
+    /// Assert that a pointer is NOT tagged (low 2 bits are zero).
+    ///
+    /// Use this at FFI entry points before passing pointers to V8.
+    /// Passing tagged pointers to V8 causes crashes or undefined behavior.
+    ///
+    /// In debug/safe builds: panics with detailed message
+    /// In release builds: compiles away completely
+    pub fn assertNotTagged(ptr: *const anyopaque) void {
+        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+            const addr = @intFromPtr(ptr);
+            if (addr & 0x3 != 0) {
+                std.debug.panic(
+                    "Expected untagged pointer, got tagged: 0x{x} (tag bits: 0b{b:0>2}, tag: {})",
+                    .{ addr, addr & 0x3, @as(AnyopaqueTag, @enumFromInt(addr & 0x3)) },
+                );
+            }
+        }
+    }
+
+    /// Assert that a pointer has a specific tag.
+    ///
+    /// Use this to verify pointer type at boundaries where you expect
+    /// a specific type of tagged pointer.
+    ///
+    /// In debug/safe builds: panics with detailed message if wrong tag
+    /// In release builds: compiles away completely
+    pub fn assertTagged(ptr: *const anyopaque, expected: AnyopaqueTag) void {
+        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+            const actual = getTag(ptr);
+            if (actual != expected) {
+                std.debug.panic(
+                    "Pointer tag mismatch: expected {}, got {} (address: 0x{x})",
+                    .{ expected, actual, @intFromPtr(ptr) },
+                );
+            }
+        }
+    }
+
+    /// Assert that a raw address from V8 is aligned (not tagged).
+    ///
+    /// V8 should always return properly aligned pointers. If we get
+    /// a misaligned one, something is very wrong.
+    ///
+    /// In debug/safe builds: panics with detailed message
+    /// In release builds: compiles away completely
+    pub fn assertV8ReturnedAligned(addr: usize) void {
+        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+            if (addr & 0x3 != 0) {
+                std.debug.panic(
+                    "V8 returned misaligned pointer: 0x{x} (low bits: 0b{b:0>2})",
+                    .{ addr, addr & 0x3 },
+                );
+            }
+        }
+    }
+
+    /// Log creation of tagged pointer (debug only, not panic).
+    ///
+    /// Use this at conversion boundaries to trace pointer creation
+    /// when debugging complex tagging issues.
+    ///
+    /// Compiles away in all release builds.
+    pub fn logTaggedPointerCreation(ptr: *const anyopaque, tag: AnyopaqueTag) void {
+        if (builtin.mode == .Debug) {
+            debug_log.debug("Creating tagged pointer: 0x{x} with tag={}", .{
+                @intFromPtr(ptr),
+                tag,
+            });
+        }
+    }
+
+    /// Log untagging of pointer (debug only, not panic).
+    ///
+    /// Use this when untagging to trace pointer flow when debugging.
+    ///
+    /// Compiles away in all release builds.
+    pub fn logPointerUntagging(tagged_addr: usize, result_ptr: *anyopaque, tag: AnyopaqueTag) void {
+        if (builtin.mode == .Debug) {
+            debug_log.debug("Untagging pointer: 0x{x} -> 0x{x} (was tag={})", .{
+                tagged_addr,
+                @intFromPtr(result_ptr),
+                tag,
+            });
+        }
+    }
+};
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -857,4 +972,42 @@ test "TaggedPointer: assertTag does not panic for matching tag" {
 
     const tagged = TaggedPointer.init(ptr, .global_handle);
     tagged.assertTag(.global_handle); // Should not panic
+}
+
+// ============================================================================
+// DebugAssertions Tests
+// ============================================================================
+
+test "DebugAssertions: assertNotTagged does not panic for aligned pointers" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *const anyopaque = @ptrCast(&dummy);
+
+    // Should not panic - pointer is naturally aligned
+    DebugAssertions.assertNotTagged(ptr);
+}
+
+test "DebugAssertions: assertTagged does not panic for matching tag" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = tagPointer(ptr, .global_handle);
+    // Should not panic - tag matches
+    DebugAssertions.assertTagged(tagged, .global_handle);
+}
+
+test "DebugAssertions: assertV8ReturnedAligned does not panic for aligned addresses" {
+    var dummy: u64 align(8) = 0;
+    const addr = @intFromPtr(&dummy);
+
+    // Should not panic - address is aligned
+    DebugAssertions.assertV8ReturnedAligned(addr);
+}
+
+test "DebugAssertions: logging functions compile without error" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *const anyopaque = @ptrCast(&dummy);
+
+    // These should compile and run without issues (no-op in non-debug)
+    DebugAssertions.logTaggedPointerCreation(ptr, .local_value);
+    DebugAssertions.logPointerUntagging(@intFromPtr(ptr), @constCast(ptr), .local_value);
 }

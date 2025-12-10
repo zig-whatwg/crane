@@ -29,6 +29,7 @@ const event_loop_mod = @import("event_loop.zig");
 const callback_wrapper_mod = @import("callback_wrapper.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const TaggedPointer = pointer_tag.TaggedPointer;
+const DebugAssertions = pointer_tag.DebugAssertions;
 
 // Logging for V8 exceptions
 const log = std.log.scoped(.v8_engine);
@@ -195,7 +196,9 @@ fn v8ResolvePromise(
     // Convert value to V8 Value, untagging if necessary
     const v8_value: *ffi.Value = if (value) |v| blk: {
         const tagged = TaggedPointer.fromRaw(@intFromPtr(v));
-        break :blk tagged.untagAs(*ffi.Value);
+        const result = tagged.untagAs(*ffi.Value);
+        DebugAssertions.logPointerUntagging(tagged.raw, @ptrCast(result), tagged.getTag());
+        break :blk result;
     } else ffi.v8_Undefined(handle.isolate) orelse return EngineError.OperationFailed;
 
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, v8_value)) {
@@ -413,6 +416,7 @@ fn v8IsString(
 ) bool {
     const tagged = TaggedPointer.fromRaw(@intFromPtr(js_value));
     const value = tagged.untagAs(*ffi.Value);
+    DebugAssertions.logPointerUntagging(tagged.raw, @ptrCast(value), tagged.getTag());
     return ffi.v8_Value_IsString(value);
 }
 
@@ -428,6 +432,7 @@ fn v8ExtractString(
 
     const tagged = TaggedPointer.fromRaw(@intFromPtr(js_value));
     const value = tagged.untagAs(*ffi.Value);
+    DebugAssertions.logPointerUntagging(tagged.raw, @ptrCast(value), tagged.getTag());
 
     // Use the conversions module to extract the string
     const conv = @import("conversions.zig");
@@ -627,6 +632,7 @@ fn v8InvokeStreamCallback(
     // Get the JS function value from the Global handle, untagging if necessary
     const tagged_callback = TaggedPointer.fromRaw(@intFromPtr(js_callback));
     const callback_value = tagged_callback.untagAs(*ffi.Value);
+    DebugAssertions.logPointerUntagging(tagged_callback.raw, @ptrCast(callback_value), tagged_callback.getTag());
 
     // Check if it's actually a function
     if (!ffi.v8_Value_IsFunction(callback_value)) {
