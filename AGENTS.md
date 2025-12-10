@@ -835,7 +835,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 - **Interfaces** (`src/webidl/interfaces/`) - The public API that external code uses
 - **Impls** (`src/webidl/impls/`) - Internal implementations that manage state and logic
 - Only interfaces can call impls (via delegation)
-- Impls can call other impls when implementing algorithms
+- Impls can call their OWN internal methods, but must use interfaces for OTHER types (see Golden Rule #13)
 
 **Correct Pattern:**
 ```zig
