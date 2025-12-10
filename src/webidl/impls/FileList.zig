@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const file = @import("file");
 const FileImpl = @import("File.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const FileList = interfaces.FileList;
 
 pub const State = FileList.State;
@@ -115,9 +116,11 @@ pub fn createFromFiles(
 }
 
 /// Get internal state from instance
-pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+pub /// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return Accessor.get(instance);
 }
 
 /// Getter for length

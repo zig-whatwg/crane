@@ -209,10 +209,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Validate a custom element name per spec

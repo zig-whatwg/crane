@@ -74,10 +74,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Calling it here would cause a double-free.
 }
 
-/// Get internal state from instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Getter for timeOrigin

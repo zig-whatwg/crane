@@ -21,6 +21,7 @@ const ProcessingInstruction = interfaces.ProcessingInstruction;
 // Import related impls
 const CharacterDataImpl = @import("CharacterData.zig");
 const NodeImpl = @import("Node.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = ProcessingInstruction.State;
 
@@ -49,10 +50,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Initialize instance (creates the instance)

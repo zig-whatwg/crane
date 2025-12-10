@@ -16,6 +16,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const MutationRecord = interfaces.MutationRecord;
 
 pub const State = MutationRecord.State;
@@ -88,9 +89,11 @@ pub const InternalState = struct {
 };
 
 /// Helper to access internal state from instance
+/// Get internal state from instance using shared accessor (pointer cast variant)
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) *InternalState {
-    const state = instance.getState(State);
-    return @ptrCast(@alignCast(state.own._internal));
+    return Accessor.getCast(instance);
 }
 
 /// Initialize instance (creates the instance)

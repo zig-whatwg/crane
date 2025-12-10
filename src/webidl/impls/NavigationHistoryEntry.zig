@@ -25,6 +25,7 @@ const NavigationHistoryEntry = interfaces.NavigationHistoryEntry;
 
 // HTML navigation infrastructure
 const html_core = @import("html_core");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const SessionHistoryEntry = html_core.navigation.SessionHistoryEntry;
 
 pub const State = NavigationHistoryEntry.State;
@@ -73,10 +74,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Initialize NavigationHistoryEntry instance

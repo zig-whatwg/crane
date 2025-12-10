@@ -29,6 +29,7 @@ const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
@@ -108,10 +109,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Initialize instance (creates the instance)

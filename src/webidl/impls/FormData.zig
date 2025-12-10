@@ -116,10 +116,11 @@ pub fn createFromInternal(
     return instance;
 }
 
-/// Get internal state from instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Operation: append (string overload)

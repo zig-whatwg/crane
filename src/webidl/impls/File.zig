@@ -150,9 +150,11 @@ pub fn createFromBytes(
 }
 
 /// Get internal state from instance
-pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+pub /// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return Accessor.get(instance);
 }
 
 /// Getter for name

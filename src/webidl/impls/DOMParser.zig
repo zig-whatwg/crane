@@ -28,6 +28,7 @@ const HTMLParser = @import("HTMLParser.zig");
 
 // Import DOM internals for document state access (Golden Rule #12 compliant)
 const dom = @import("dom");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const document_internals = dom.document_internals;
 
 pub const State = DOMParser.State;
@@ -54,10 +55,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Initialize instance (creates the instance)

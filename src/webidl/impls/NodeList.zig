@@ -36,6 +36,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const NodeList = interfaces.NodeList;
 
 pub const State = NodeList.State;
@@ -98,10 +99,11 @@ pub const InternalState = struct {
     }
 };
 
-/// Get the internal state from an instance
+/// Get internal state from instance using shared accessor
+const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return state.own._internal;
+    return Accessor.get(instance);
 }
 
 /// Initialize instance (creates the instance)
