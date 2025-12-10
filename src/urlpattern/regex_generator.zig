@@ -104,6 +104,24 @@ pub fn generateSegmentWildcardRegexp(allocator: Allocator, options: Options) ![]
 /// Full wildcard regexp value
 pub const full_wildcard_regexp = ".*";
 
+/// Convert a URLPattern group name to a valid PCRE2 group name.
+/// PCRE2 requires group names to start with a non-digit character.
+/// URLPattern allows numeric names like "0", "1" for unnamed groups.
+/// We prefix such names with "_" to make them valid PCRE2 names.
+fn toPcre2GroupName(allocator: Allocator, name: []const u8) ![]u8 {
+    if (name.len > 0 and name[0] >= '0' and name[0] <= '9') {
+        // Name starts with a digit - prefix with underscore
+        const prefixed = try allocator.alloc(u8, name.len + 1);
+        prefixed[0] = '_';
+        @memcpy(prefixed[1..], name);
+        return prefixed;
+    }
+    // Name is valid as-is
+    const copy = try allocator.alloc(u8, name.len);
+    @memcpy(copy, name);
+    return copy;
+}
+
 /// Generate a regular expression and name list from a part list
 ///
 /// This implements the algorithm from:
@@ -167,12 +185,16 @@ pub fn generateRegexAndNameList(
         const has_prefix = part.prefix.len > 0;
         const has_suffix = part.suffix.len > 0;
 
+        // Get PCRE2-valid group name (prefix numeric names with _)
+        const pcre2_name = try toPcre2GroupName(allocator, part.name);
+        defer allocator.free(pcre2_name);
+
         if (!has_prefix and !has_suffix) {
             // No prefix or suffix
             if (part.modifier == .none or part.modifier == .optional) {
                 // Simple case: (?P<name><regexp>)<modifier>
                 try result.appendSlice(allocator, "(?P<");
-                try result.appendSlice(allocator, part.name);
+                try result.appendSlice(allocator, pcre2_name);
                 try result.appendSlice(allocator, ">");
                 try result.appendSlice(allocator, regexp_value);
                 try result.append(allocator, ')');
@@ -180,7 +202,7 @@ pub fn generateRegexAndNameList(
             } else {
                 // Repeating modifier: (?P<name>(?:<regexp>)<modifier>)
                 try result.appendSlice(allocator, "(?P<");
-                try result.appendSlice(allocator, part.name);
+                try result.appendSlice(allocator, pcre2_name);
                 try result.appendSlice(allocator, ">(?:");
                 try result.appendSlice(allocator, regexp_value);
                 try result.append(allocator, ')');
@@ -202,7 +224,7 @@ pub fn generateRegexAndNameList(
             try result.appendSlice(allocator, "(?:");
             try result.appendSlice(allocator, escaped_prefix);
             try result.appendSlice(allocator, "(?P<");
-            try result.appendSlice(allocator, part.name);
+            try result.appendSlice(allocator, pcre2_name);
             try result.appendSlice(allocator, ">");
             try result.appendSlice(allocator, regexp_value);
             try result.append(allocator, ')');
@@ -217,7 +239,7 @@ pub fn generateRegexAndNameList(
         try result.appendSlice(allocator, "(?:");
         try result.appendSlice(allocator, escaped_prefix);
         try result.appendSlice(allocator, "(?P<");
-        try result.appendSlice(allocator, part.name);
+        try result.appendSlice(allocator, pcre2_name);
         try result.appendSlice(allocator, ">(?:");
         try result.appendSlice(allocator, regexp_value);
         try result.appendSlice(allocator, ")(?:");

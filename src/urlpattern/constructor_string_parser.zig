@@ -208,7 +208,26 @@ pub const ConstructorStringParser = struct {
             switch (self.state) {
                 .init => {
                     if (self.isProtocolSuffix()) {
+                        // Found a ':' char - this is a protocol
                         self.rewindAndSetState(.protocol);
+                    } else if (self.isNameTokenWithColonPrefix()) {
+                        // Handle case like "data:text/plain" where tokenizer absorbed
+                        // ":text" as a name token. We need to treat the colon as a
+                        // protocol suffix. But only if we haven't seen a pathname/search/hash
+                        // indicator yet (checked by the fact we're still in .init state
+                        // and haven't transitioned out).
+                        self.rewindAndSetState(.protocol);
+                    } else if (self.isPathnameStart() or self.isSearchPrefix() or self.isHashPrefix()) {
+                        // This isn't a protocol - it's a relative URL
+                        // Transition directly to the appropriate state
+                        self.rewind();
+                        if (self.isHashPrefix()) {
+                            self.changeState(.hash, 1);
+                        } else if (self.isSearchPrefix()) {
+                            self.changeState(.search, 1);
+                        } else {
+                            self.changeState(.pathname, 0);
+                        }
                     }
                 },
                 .protocol => {
@@ -226,6 +245,32 @@ pub const ConstructorStringParser = struct {
                         }
 
                         self.changeState(next_state, skip);
+                    } else if (self.isNameTokenWithColonPrefix()) {
+                        // Handle "data:text/plain,hello" case - the tokenizer created
+                        // a name token for ":text", but this is actually a non-special
+                        // scheme URL where everything after the colon is the pathname.
+                        self.computeProtocolMatchesSpecialScheme();
+
+                        // Save protocol as everything before this token (the colon)
+                        self.result.protocol = self.makeComponentString();
+
+                        if (self.protocol_matches_special_scheme) {
+                            // Special scheme - treat as authority
+                            self.state = .authority;
+                            self.component_start = self.token_index;
+                            self.token_increment = 0;
+                        } else {
+                            // Non-special scheme (data:, javascript:, etc.)
+                            // Everything after the colon is the pathname
+                            // Get the position after the colon in the input
+                            const pathname_start = self.getNameTokenValuePosition();
+                            self.result.pathname = self.input[pathname_start..];
+
+                            // We're done - skip to the end
+                            self.state = .done;
+                            self.token_index = self.token_list.len;
+                            return;
+                        }
                     }
                 },
                 .authority => {
@@ -478,6 +523,23 @@ pub const ConstructorStringParser = struct {
 
     fn isIPv6Close(self: *Self) bool {
         return self.isNonSpecialPatternChar(self.token_index, "]");
+    }
+
+    /// Check if current token is a name token (which starts with ':')
+    /// This handles cases like "data:text" where ":text" becomes a name token
+    fn isNameTokenWithColonPrefix(self: *Self) bool {
+        const token = self.getSafeToken(self.token_index);
+        return token.type == .name;
+    }
+
+    /// Get the byte position in input where the name token's value starts
+    /// (after the leading colon). Used for non-special scheme handling.
+    fn getNameTokenValuePosition(self: *Self) usize {
+        const token = self.getSafeToken(self.token_index);
+        // The token's .index points to the ':' character
+        // The token's .value is the name part (after the ':')
+        // So we need token.index + 1 to skip the ':'
+        return token.index + 1;
     }
 
     // ========================================================================

@@ -475,9 +475,46 @@ pub const Regex = struct {
                         value_end += 1;
                     }
                 } else if (std.mem.eql(u8, group_pattern, ".*")) {
-                    // Greedy match - but need to be careful with suffixes
-                    // For now, match to end or next fixed text
-                    value_end = subject.len;
+                    // Greedy match - but need to look ahead for suffix
+                    // Check if there's a meaningful suffix after the group
+                    // (not just $ or closing parens from non-capturing groups)
+                    const suffix_start = group_end;
+                    var has_meaningful_suffix = false;
+                    if (suffix_start < pattern.len) {
+                        // Check if suffix has any escaped chars (like \.) or alphanumerics
+                        var check_pos = suffix_start;
+                        while (check_pos < pattern.len) {
+                            const c = pattern[check_pos];
+                            if (c == '\\' and check_pos + 1 < pattern.len) {
+                                // Escaped char - this is meaningful suffix
+                                has_meaningful_suffix = true;
+                                break;
+                            } else if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9')) {
+                                // Alphanumeric - meaningful suffix
+                                has_meaningful_suffix = true;
+                                break;
+                            } else if (c == ')' or c == '$' or c == '?') {
+                                // Skip non-meaningful chars
+                                check_pos += 1;
+                            } else {
+                                check_pos += 1;
+                            }
+                        }
+                    }
+
+                    if (has_meaningful_suffix) {
+                        // Extract the suffix pattern (everything after the group)
+                        const suffix_pattern = pattern[suffix_start..];
+                        // Try to find where the suffix would match (backtrack from end)
+                        if (findSuffixMatch(subject, subject_pos, suffix_pattern)) |match_start| {
+                            value_end = match_start;
+                        } else {
+                            return null; // Suffix doesn't match
+                        }
+                    } else {
+                        // No meaningful suffix - match to end
+                        value_end = subject.len;
+                    }
                 } else {
                     // Unknown pattern - match to end
                     value_end = subject.len;
@@ -534,6 +571,82 @@ pub const Regex = struct {
         // Return captures (pointer to static data - only valid until next call)
         // In practice, caller copies the data immediately
         return static_captures[0..capture_idx];
+    }
+
+    /// Find where a suffix pattern would match in the subject string.
+    /// Returns the position where the suffix starts in the subject, or null if no match.
+    /// Used for .* groups followed by fixed text (like \.example\.com)
+    fn findSuffixMatch(subject: []const u8, start_pos: usize, suffix_pattern: []const u8) ?usize {
+        // For simple escaped literal suffixes like \.example\.com, we can search backward
+        // from the end of the subject for where the suffix matches
+
+        // First, try to determine if suffix is purely escaped literals
+        var is_simple_suffix = true;
+        var suffix_len: usize = 0;
+        var pi: usize = 0;
+        while (pi < suffix_pattern.len) {
+            if (suffix_pattern[pi] == '\\' and pi + 1 < suffix_pattern.len) {
+                // Escaped char - simple literal
+                pi += 2;
+                suffix_len += 1;
+            } else if (suffix_pattern[pi] == ')' or suffix_pattern[pi] == '(' or
+                suffix_pattern[pi] == '?' or suffix_pattern[pi] == '*')
+            {
+                // Regex metachar - not simple
+                is_simple_suffix = false;
+                break;
+            } else if (suffix_pattern[pi] >= 'a' and suffix_pattern[pi] <= 'z' or
+                suffix_pattern[pi] >= 'A' and suffix_pattern[pi] <= 'Z' or
+                suffix_pattern[pi] >= '0' and suffix_pattern[pi] <= '9')
+            {
+                // Literal alphanumeric
+                pi += 1;
+                suffix_len += 1;
+            } else {
+                pi += 1;
+                suffix_len += 1;
+            }
+        }
+
+        if (!is_simple_suffix or suffix_len == 0) {
+            return null; // Can't handle complex suffixes in mock
+        }
+
+        // The suffix must end at the end of subject
+        if (subject.len < suffix_len + start_pos) {
+            return null;
+        }
+
+        const suffix_start = subject.len - suffix_len;
+        if (suffix_start < start_pos) {
+            return null; // Not enough room for capture
+        }
+
+        // Verify the suffix matches
+        pi = 0;
+        var si = suffix_start;
+        while (pi < suffix_pattern.len and si < subject.len) {
+            var expected_char: u8 = undefined;
+            if (suffix_pattern[pi] == '\\' and pi + 1 < suffix_pattern.len) {
+                expected_char = suffix_pattern[pi + 1];
+                pi += 2;
+            } else {
+                expected_char = suffix_pattern[pi];
+                pi += 1;
+            }
+
+            if (subject[si] != expected_char) {
+                return null;
+            }
+            si += 1;
+        }
+
+        // Check we matched the whole suffix
+        if (si != subject.len) {
+            return null;
+        }
+
+        return suffix_start;
     }
 
     /// Unescape a regex pattern and compare with subject
