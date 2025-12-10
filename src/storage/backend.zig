@@ -315,6 +315,20 @@ pub const DatabaseInfo = struct {
 /// type safety and performance. All backends (SQLite, LevelDB, Memory) implement
 /// this interface.
 ///
+/// ## VTable Pattern and Type Erasure
+///
+/// This struct uses `*anyopaque` for the `ptr` field intentionally. This is the
+/// idiomatic Zig pattern for type-erased interfaces (like vtables). The pattern:
+///
+/// 1. Store type-erased pointer (`*anyopaque`) alongside vtable
+/// 2. VTable functions receive the erased pointer and cast it back
+/// 3. This enables runtime polymorphism without generics
+///
+/// This is NOT a code smell - it's the correct approach for interfaces that:
+/// - Need runtime dispatch (different backends selected at runtime)
+/// - Don't benefit from comptime generics
+/// - Follow the standard Zig pattern (see std.mem.Allocator)
+///
 /// ## Threading Model
 ///
 /// - Read-only transactions can run concurrently
@@ -334,7 +348,11 @@ pub const DatabaseInfo = struct {
 /// Use `errdefer` for cleanup patterns.
 ///
 pub const StorageBackend = struct {
-    /// Opaque pointer to backend implementation
+    /// Opaque pointer to backend implementation.
+    ///
+    /// This uses `*anyopaque` intentionally for type erasure - this is the
+    /// idiomatic Zig pattern for vtable-based polymorphism. The VTable
+    /// functions cast this back to the concrete type.
     ptr: *anyopaque,
 
     /// Virtual function table

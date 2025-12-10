@@ -56,8 +56,16 @@ const ffi = @import("ffi.zig");
 ///
 /// The lock is released when `release()` is called or when the struct
 /// goes out of scope (use with `defer`).
+///
+/// ## Type Safety
+///
+/// This wrapper uses the typed `ffi.Locker` opaque type rather than
+/// `*anyopaque` to provide compile-time type safety at the FFI boundary.
+/// The Locker type is defined in ffi.zig as `opaque {}` which prevents
+/// accidental misuse while still allowing the C++ side to manage the
+/// actual v8::Locker object.
 pub const IsolateLock = struct {
-    locker: ?*anyopaque,
+    locker: ?*ffi.Locker,
     isolate: *ffi.Isolate,
 
     const Self = @This();
@@ -118,8 +126,16 @@ pub const IsolateLock = struct {
 /// the isolate while the current thread performs blocking operations.
 ///
 /// The lock is automatically reacquired when the unlocker is disposed.
+///
+/// ## Type Safety
+///
+/// This wrapper uses the typed `ffi.Unlocker` opaque type rather than
+/// `*anyopaque` to provide compile-time type safety at the FFI boundary.
+/// The Unlocker type is defined in ffi.zig as `opaque {}` which prevents
+/// accidental misuse while still allowing the C++ side to manage the
+/// actual v8::Unlocker object.
 pub const IsolateUnlock = struct {
-    unlocker: ?*anyopaque,
+    unlocker: ?*ffi.Unlocker,
     isolate: *ffi.Isolate,
 
     const Self = @This();

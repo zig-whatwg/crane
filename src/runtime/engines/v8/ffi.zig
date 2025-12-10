@@ -1663,22 +1663,40 @@ pub extern fn v8_GetAsyncIteratorSelfCallback() FunctionCallback;
 //
 // V8 isolates are NOT thread-safe. When multiple threads need to access
 // the same isolate, they MUST use v8::Locker to acquire exclusive access.
+//
+// DESIGN NOTE: Locker and Unlocker are typed opaque types rather than
+// *anyopaque to provide compile-time type safety at FFI boundaries.
+// This follows the same pattern as other V8 types (Isolate, Context, etc.).
+
+/// V8 Locker - Provides exclusive thread access to an isolate
+///
+/// When created, the locker acquires exclusive access to the isolate.
+/// When disposed, the lock is released allowing other threads to acquire it.
+/// V8 Lockers are recursive - the same thread can acquire multiple lockers.
+pub const Locker = opaque {};
+
+/// V8 Unlocker - Temporarily releases isolate lock for blocking operations
+///
+/// Used within a locked section to temporarily release the lock so other
+/// threads can access the isolate while the current thread performs I/O
+/// or other blocking operations that don't require V8 access.
+pub const Unlocker = opaque {};
 
 /// Create a new Locker for exclusive isolate access
 ///
 /// This blocks if another thread holds the lock.
-/// Returns an opaque pointer that must be passed to v8_Locker_Dispose.
+/// Returns a typed Locker pointer that must be passed to v8_Locker_Dispose.
 ///
 /// @param isolate - The isolate to lock
-/// @return Opaque Locker pointer (caller must dispose)
-pub extern fn v8_Locker_New(isolate: *Isolate) ?*anyopaque;
+/// @return Locker pointer (caller must dispose), or null on failure
+pub extern fn v8_Locker_New(isolate: *Isolate) ?*Locker;
 
 /// Dispose a Locker and release the lock
 ///
 /// After calling this, other threads can acquire the lock.
 ///
 /// @param locker - Locker pointer from v8_Locker_New
-pub extern fn v8_Locker_Dispose(locker: ?*anyopaque) void;
+pub extern fn v8_Locker_Dispose(locker: ?*Locker) void;
 
 /// Check if the current thread holds a lock on the isolate
 ///
@@ -1694,12 +1712,12 @@ pub extern fn v8_Locker_IsLocked(isolate: *Isolate) bool;
 /// IMPORTANT: Only call this when you already hold the lock (via Locker).
 ///
 /// @param isolate - The isolate to temporarily unlock
-/// @return Opaque Unlocker pointer (caller must dispose)
-pub extern fn v8_Unlocker_New(isolate: *Isolate) ?*anyopaque;
+/// @return Unlocker pointer (caller must dispose), or null on failure
+pub extern fn v8_Unlocker_New(isolate: *Isolate) ?*Unlocker;
 
 /// Dispose an Unlocker and reacquire the lock
 ///
 /// This blocks if another thread acquired the lock while unlocked.
 ///
 /// @param unlocker - Unlocker pointer from v8_Unlocker_New
-pub extern fn v8_Unlocker_Dispose(unlocker: ?*anyopaque) void;
+pub extern fn v8_Unlocker_Dispose(unlocker: ?*Unlocker) void;
