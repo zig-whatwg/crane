@@ -2517,11 +2517,13 @@ pub fn generateEnum(
 
 /// Generate a callback Zig file with proper type resolution
 ///
-/// Uses the type registry to properly resolve:
-/// - Interface types to *runtime.Instance (e.g., ReadableStreamController)
-/// - Promise<T> return types are kept as runtime.JSValue
-/// - Enum types to enums.EnumName
-/// - Dictionary types to dictionaries.DictName
+/// Uses the type registry to properly resolve types WITHOUT importing other
+/// generated modules (to avoid circular dependencies):
+/// - Interface types → *runtime.Instance
+/// - Typedef types → *runtime.Instance (most are interface unions)
+/// - Enum types → []const u8 (strings at runtime)
+/// - Dictionary types → runtime.JSValue (complex objects)
+/// - Promise<T> return types → runtime.JSValue
 pub fn generateCallback(
     allocator: std.mem.Allocator,
     callback: types.Callback,
@@ -2551,54 +2553,12 @@ pub fn generateCallback(
     try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
     try w.writeAll("\n");
 
-    // Determine which module imports are needed based on types used
-    var needs_interfaces = false;
-    var needs_typedefs = false;
-    var needs_enums = false;
-    var needs_dictionaries = false;
-
-    // Check return type for module requirements
-    if (type_registry.lookup(callback.idlType.type)) |kind| {
-        switch (kind) {
-            .interface, .callback_interface => needs_interfaces = true,
-            .typedef => needs_typedefs = true,
-            .enum_type => needs_enums = true,
-            .dictionary => needs_dictionaries = true,
-            else => {},
-        }
-    }
-
-    // Check argument types for module requirements
-    for (callback.arguments) |arg| {
-        if (type_registry.lookup(arg.idlType.type)) |kind| {
-            switch (kind) {
-                .interface, .callback_interface => needs_interfaces = true,
-                .typedef => needs_typedefs = true,
-                .enum_type => needs_enums = true,
-                .dictionary => needs_dictionaries = true,
-                else => {},
-            }
-        }
-    }
-
-    // Write imports
+    // Callbacks only import runtime - no other generated modules to avoid circular deps
+    // (typedefs imports callbacks, so callbacks can't import typedefs)
     try w.writeAll("const runtime = @import(\"runtime\");\n");
-    try w.writeAll("const webidl = @import(\"webidl\");\n");
-    if (needs_interfaces) {
-        try w.writeAll("const interfaces = @import(\"interfaces\");\n");
-    }
-    if (needs_typedefs) {
-        try w.writeAll("const typedefs = @import(\"typedefs\");\n");
-    }
-    if (needs_enums) {
-        try w.writeAll("const enums = @import(\"enums\");\n");
-    }
-    if (needs_dictionaries) {
-        try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
-    }
     try w.writeAll("\n");
 
-    // Generate callback function type with proper type resolution
+    // Generate callback function type with callback-specific type resolution
     try w.print("pub const {s} = *const fn (", .{callback.name});
 
     for (callback.arguments, 0..) |arg, i| {
@@ -2611,8 +2571,8 @@ pub fn generateCallback(
             try w.print("{s}: ", .{arg.name});
         }
 
-        // Use type registry for proper parameter type resolution
-        try writeParamType(w, arg, type_registry);
+        // Use callback-specific type resolution (no module imports)
+        try writeCallbackParamType(w, arg, type_registry);
     }
 
     try w.writeAll(") ");
@@ -2625,8 +2585,121 @@ pub fn generateCallback(
     try w.flush();
 }
 
+/// Write a callback parameter type without importing other generated modules
+/// This avoids circular dependencies (typedefs → callbacks → typedefs)
+fn writeCallbackParamType(w: anytype, arg: types.Argument, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    // Handle optional parameters: optional T becomes runtime.JSValue (nullable at JS level)
+    // We can't use webidl.Opt since we only import runtime
+    if (arg.optional) {
+        // Optional params are handled at the JS binding level, not in callback signature
+        // The callback receives the resolved value or undefined
+    }
+
+    // Handle variadic parameters: T... becomes []const T
+    if (arg.variadic) {
+        try w.writeAll("[]const ");
+    }
+
+    // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
+    if (arg.idlType.nullable and !arg.variadic) {
+        try w.writeAll("?");
+    }
+
+    try writeCallbackTypeSimple(w, arg.idlType, type_registry);
+}
+
+/// Write a WebIDL type for callbacks without module imports
+/// Uses runtime types only to avoid circular dependencies
+fn writeCallbackTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    // Handle union types - use JSValue since we can't import typedefs
+    if (webidl_type.unionTypes != null) {
+        try w.writeAll("runtime.JSValue");
+        return;
+    }
+
+    var type_str = webidl_type.type;
+
+    // Strip namespace prefix if present (e.g., "dom::DOMString" -> "DOMString")
+    if (std.mem.indexOf(u8, type_str, "::")) |colon_pos| {
+        type_str = type_str[colon_pos + 2 ..];
+    }
+
+    // Map common primitive types
+    if (std.mem.eql(u8, type_str, "boolean")) {
+        try w.writeAll("bool");
+    } else if (std.mem.eql(u8, type_str, "byte")) {
+        try w.writeAll("i8");
+    } else if (std.mem.eql(u8, type_str, "octet")) {
+        try w.writeAll("u8");
+    } else if (std.mem.eql(u8, type_str, "short")) {
+        try w.writeAll("i16");
+    } else if (std.mem.eql(u8, type_str, "unsigned short")) {
+        try w.writeAll("u16");
+    } else if (std.mem.eql(u8, type_str, "long")) {
+        try w.writeAll("i32");
+    } else if (std.mem.eql(u8, type_str, "unsigned long")) {
+        try w.writeAll("u32");
+    } else if (std.mem.eql(u8, type_str, "long long")) {
+        try w.writeAll("i64");
+    } else if (std.mem.eql(u8, type_str, "unsigned long long")) {
+        try w.writeAll("u64");
+    } else if (std.mem.eql(u8, type_str, "float") or std.mem.eql(u8, type_str, "unrestricted float")) {
+        try w.writeAll("f32");
+    } else if (std.mem.eql(u8, type_str, "double") or std.mem.eql(u8, type_str, "unrestricted double")) {
+        try w.writeAll("f64");
+    } else if (std.mem.eql(u8, type_str, "DOMString")) {
+        try w.writeAll("runtime.DOMString");
+    } else if (std.mem.eql(u8, type_str, "USVString")) {
+        try w.writeAll("runtime.USVString");
+    } else if (std.mem.eql(u8, type_str, "ByteString")) {
+        try w.writeAll("runtime.ByteString");
+    } else if (std.mem.eql(u8, type_str, "undefined") or std.mem.eql(u8, type_str, "void")) {
+        try w.writeAll("void");
+    } else if (std.mem.eql(u8, type_str, "any") or std.mem.eql(u8, type_str, "object")) {
+        try w.writeAll("runtime.JSValue");
+    } else {
+        // Check type registry for known types
+        if (type_registry) |reg| {
+            if (reg.lookup(type_str)) |kind| {
+                switch (kind) {
+                    .interface, .callback_interface => {
+                        // Interface types become *runtime.Instance
+                        try w.writeAll("*runtime.Instance");
+                    },
+                    .typedef => {
+                        // Typedefs are often interface unions - use *runtime.Instance
+                        // since we can't import typedefs module
+                        try w.writeAll("*runtime.Instance");
+                    },
+                    .enum_type => {
+                        // Enums are strings at runtime in WebIDL
+                        try w.writeAll("[]const u8");
+                    },
+                    .dictionary => {
+                        // Dictionaries are complex objects
+                        try w.writeAll("runtime.JSValue");
+                    },
+                    .callback => {
+                        // Nested callbacks - use JSValue for safety
+                        try w.writeAll("runtime.JSValue");
+                    },
+                    .namespace, .mixin, .primitive => {
+                        // These shouldn't appear as callback parameter types
+                        try w.writeAll("runtime.JSValue");
+                    },
+                }
+                return;
+            }
+        }
+
+        // Unknown types - use runtime.JSValue for safety
+        try w.writeAll("runtime.JSValue");
+    }
+}
+
 /// Write callback return type with special handling for Promise types
 /// Promise<undefined> and Promise<T> are represented as runtime.JSValue in our model
+/// Uses callback-specific type resolution to avoid module imports
 fn writeCallbackReturnType(w: anytype, idl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
     const type_str = idl_type.type;
 
@@ -2642,8 +2715,8 @@ fn writeCallbackReturnType(w: anytype, idl_type: types.IDLType, type_registry: ?
         return;
     }
 
-    // For other types, use the standard type resolution
-    try writeTypeSimple(w, idl_type, type_registry);
+    // For other types, use callback-specific type resolution (no module imports)
+    try writeCallbackTypeSimple(w, idl_type, type_registry);
 }
 
 /// Generate a namespace Zig file
