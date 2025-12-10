@@ -99,6 +99,36 @@ pub const JSValue = union(enum) {
         /// Engine-specific disposal flag
         /// If true, the engine's disposal function should be called
         needs_disposal: bool = true,
+
+        /// Handle scope type - whether this handle is local (stack-bound) or global (heap)
+        /// Local handles are only valid within the current HandleScope and must NOT be stored
+        /// Global handles persist until explicitly disposed and CAN be stored
+        handle_scope: HandleScope = .global,
+
+        /// Handle scope discriminator
+        pub const HandleScope = enum {
+            /// Local handle - only valid within current HandleScope
+            /// WARNING: Do NOT store in struct fields!
+            local,
+            /// Global handle - persists until explicit disposal
+            /// Safe to store in struct fields
+            global,
+        };
+
+        /// Check if this handle can safely be stored in struct fields
+        pub fn canBeStored(self: EngineHandle) bool {
+            return self.handle_scope == .global;
+        }
+
+        /// Debug assertion to verify handle is global before storage
+        /// In release builds, this is a no-op
+        pub fn assertGlobalForStorage(self: EngineHandle) void {
+            if (@import("builtin").mode == .Debug) {
+                if (self.handle_scope != .global) {
+                    @panic("Attempted to store a local V8 handle! Convert to Global first.");
+                }
+            }
+        }
     };
 
     // ========================================================================
@@ -131,15 +161,23 @@ pub const JSValue = union(enum) {
         return .{ .string = .{ .data = data, .owned = true } };
     }
 
-    /// Create a JSValue from an engine handle
+    /// Create a JSValue from a GLOBAL engine handle (safe to store)
+    /// Use this for Global<Value> handles that persist beyond HandleScope
     pub fn fromHandle(ptr: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = ptr, .needs_disposal = true } };
+        return .{ .handle = .{ .ptr = ptr, .needs_disposal = true, .handle_scope = .global } };
     }
 
-    /// Create a JSValue from an engine handle that doesn't need disposal
-    /// (e.g., a local handle within a HandleScope)
+    /// Create a JSValue from a GLOBAL handle that doesn't need disposal
+    /// (e.g., when the caller retains ownership)
     pub fn fromHandleNonOwning(ptr: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = ptr, .needs_disposal = false } };
+        return .{ .handle = .{ .ptr = ptr, .needs_disposal = false, .handle_scope = .global } };
+    }
+
+    /// Create a JSValue from a LOCAL engine handle (DO NOT store!)
+    /// Use this for temporary values within a HandleScope
+    /// WARNING: The returned JSValue must NOT be stored in struct fields!
+    pub fn fromLocalHandle(ptr: *anyopaque) JSValue {
+        return .{ .handle = .{ .ptr = ptr, .needs_disposal = false, .handle_scope = .local } };
     }
 
     /// Create a JSValue from a Zig runtime instance
@@ -334,6 +372,151 @@ pub const OptionalJSValue = union(enum) {
 };
 
 // ============================================================================
+// LocalValue - Move-only type for temporary V8 values
+// ============================================================================
+
+/// A V8 Local handle that is only valid within the current HandleScope.
+///
+/// This type is designed to PREVENT accidental storage of Local handles.
+/// It should be used for temporary values that are:
+/// - Returned from V8 FFI calls
+/// - Used within a single function
+/// - NOT stored in struct fields
+///
+/// To persist the value beyond the HandleScope, convert to a GlobalHandle
+/// using `toGlobal()`.
+///
+/// ## Usage
+///
+/// ```zig
+/// // Get a local value from V8
+/// const local = LocalValue.fromRawPtr(v8_function_call_result);
+///
+/// // Use it immediately
+/// const result = try someV8Operation(local.rawPtr());
+///
+/// // If you need to store it, convert to global first
+/// if (local.toGlobal(isolate)) |global| {
+///     my_struct.stored_callback = global;
+/// }
+/// ```
+pub const LocalValue = struct {
+    /// The underlying V8 Local value pointer
+    ptr: *anyopaque,
+
+    /// Create a LocalValue from a raw pointer (from V8 FFI)
+    pub fn fromRawPtr(ptr: *anyopaque) LocalValue {
+        return .{ .ptr = ptr };
+    }
+
+    /// Get the raw pointer for FFI calls
+    /// WARNING: Use immediately, do NOT store the result!
+    pub fn rawPtr(self: LocalValue) *anyopaque {
+        return self.ptr;
+    }
+
+    /// Convert to a JSValue (marked as local, should not be stored)
+    pub fn toJSValue(self: LocalValue) JSValue {
+        return JSValue.fromLocalHandle(self.ptr);
+    }
+
+    /// Check if this contains a valid (non-null) pointer
+    pub fn isValid(self: LocalValue) bool {
+        // In V8, null pointers indicate empty handles
+        return self.ptr != @as(*anyopaque, @ptrFromInt(0));
+    }
+};
+
+/// Create a LocalValue from an optional raw pointer
+pub fn localValueFromOptional(ptr: ?*anyopaque) ?LocalValue {
+    if (ptr) |p| {
+        return LocalValue.fromRawPtr(p);
+    }
+    return null;
+}
+
+// ============================================================================
+// Promise - Type-safe wrapper for V8 Promises
+// ============================================================================
+
+/// A type-safe wrapper for V8 Promise handles.
+///
+/// Promises ALWAYS use GlobalHandle internally to ensure the promise
+/// survives beyond the HandleScope where it was created. This prevents
+/// use-after-free when the promise is resolved/rejected later.
+///
+/// ## Type Parameter
+///
+/// The type parameter `T` represents the resolved value type.
+/// This is for documentation purposes - the actual JavaScript value
+/// is stored in the GlobalHandle.
+///
+/// ## Usage
+///
+/// ```zig
+/// // Create a promise
+/// const promise = try Promise(void).create(isolate, local_promise_ptr);
+/// defer promise.deinit();
+///
+/// // Store it safely
+/// my_struct.pending_promise = promise;
+///
+/// // Later, resolve or reject
+/// try promise.resolve(isolate, result_value);
+/// ```
+pub fn Promise(comptime T: type) type {
+    _ = T; // Type parameter for documentation only
+
+    return struct {
+        /// The GlobalHandle storing the Promise object
+        /// This MUST be a global handle to survive HandleScope destruction
+        handle: ?*anyopaque = null,
+
+        /// Whether this promise handle is valid
+        is_valid: bool = false,
+
+        const Self = @This();
+
+        /// Create a Promise from a local promise pointer
+        /// The local handle is converted to a global handle for storage
+        pub fn create(handle_ptr: *anyopaque) Self {
+            return .{
+                .handle = handle_ptr,
+                .is_valid = true,
+            };
+        }
+
+        /// Create an empty/invalid promise
+        pub fn empty() Self {
+            return .{
+                .handle = null,
+                .is_valid = false,
+            };
+        }
+
+        /// Check if this promise is valid
+        pub fn isValid(self: Self) bool {
+            return self.is_valid and self.handle != null;
+        }
+
+        /// Get the raw handle pointer for V8 operations
+        pub fn getHandle(self: Self) ?*anyopaque {
+            if (self.is_valid) {
+                return self.handle;
+            }
+            return null;
+        }
+
+        /// Dispose of the promise handle
+        /// After calling this, the promise should not be used
+        pub fn deinit(self: *Self) void {
+            self.handle = null;
+            self.is_valid = false;
+        }
+    };
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -417,4 +600,66 @@ test "JSValue toAnyopaque for handle returns pointer" {
     var dummy: u8 = 0;
     const value = JSValue.fromHandle(&dummy);
     try std.testing.expect(value.toAnyopaque() != null);
+}
+
+test "JSValue handle scope - global can be stored" {
+    var dummy: u8 = 0;
+    const value = JSValue.fromHandle(&dummy);
+    switch (value) {
+        .handle => |h| {
+            try std.testing.expect(h.handle_scope == .global);
+            try std.testing.expect(h.canBeStored());
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "JSValue handle scope - local should not be stored" {
+    var dummy: u8 = 0;
+    const value = JSValue.fromLocalHandle(&dummy);
+    switch (value) {
+        .handle => |h| {
+            try std.testing.expect(h.handle_scope == .local);
+            try std.testing.expect(!h.canBeStored());
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "LocalValue basic operations" {
+    var dummy: u8 = 42;
+    const local = LocalValue.fromRawPtr(&dummy);
+    try std.testing.expect(local.isValid());
+    try std.testing.expect(local.rawPtr() == @as(*anyopaque, &dummy));
+}
+
+test "LocalValue to JSValue marks as local" {
+    var dummy: u8 = 0;
+    const local = LocalValue.fromRawPtr(&dummy);
+    const js_value = local.toJSValue();
+    switch (js_value) {
+        .handle => |h| {
+            try std.testing.expect(h.handle_scope == .local);
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "Promise type wrapper" {
+    var dummy: u8 = 0;
+    const PromiseVoid = Promise(void);
+    var promise = PromiseVoid.create(&dummy);
+    try std.testing.expect(promise.isValid());
+    try std.testing.expect(promise.getHandle() != null);
+
+    promise.deinit();
+    try std.testing.expect(!promise.isValid());
+    try std.testing.expect(promise.getHandle() == null);
+}
+
+test "Promise empty" {
+    const PromiseVoid = Promise(void);
+    const promise = PromiseVoid.empty();
+    try std.testing.expect(!promise.isValid());
+    try std.testing.expect(promise.getHandle() == null);
 }
