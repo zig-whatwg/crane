@@ -684,6 +684,11 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
                         // but if they do, use runtime.JSValue for safety
                         try w.writeAll("runtime.JSValue");
                     },
+                    .mixin => {
+                        // Mixins shouldn't appear as attribute types directly
+                        // They are merged into interfaces via 'includes' statements
+                        try w.writeAll("runtime.JSValue");
+                    },
                     .primitive => {
                         // Primitives already handled above
                     },
@@ -1540,7 +1545,7 @@ pub fn generateFromFile(
         var callback_iter = ir.callbacks.iterator();
         while (callback_iter.next()) |entry| {
             const callback = entry.value_ptr.*;
-            try generateCallback(allocator, callback, callbacks_path);
+            try generateCallback(allocator, callback, callbacks_path, &ir.type_registry);
         }
     }
 
@@ -2510,11 +2515,18 @@ pub fn generateEnum(
     try w.flush();
 }
 
-/// Generate a callback Zig file
+/// Generate a callback Zig file with proper type resolution
+///
+/// Uses the type registry to properly resolve:
+/// - Interface types to *runtime.Instance (e.g., ReadableStreamController)
+/// - Promise<T> return types are kept as runtime.JSValue
+/// - Enum types to enums.EnumName
+/// - Dictionary types to dictionaries.DictName
 pub fn generateCallback(
     allocator: std.mem.Allocator,
     callback: types.Callback,
     callbacks_path: []const u8,
+    type_registry: *const ir_mod.TypeRegistry,
 ) !void {
     // Create callbacks directory
     try std.fs.cwd().makePath(callbacks_path);
@@ -2539,12 +2551,54 @@ pub fn generateCallback(
     try w.writeAll("//! This file is AUTO-GENERATED. Do not edit manually.\n");
     try w.writeAll("\n");
 
-    // Write imports
-    // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
-    try w.writeAll("const runtime = @import(\"runtime\");\n");
-    try w.writeAll("const webidl = @import(\"webidl\");\n\n");
+    // Determine which module imports are needed based on types used
+    var needs_interfaces = false;
+    var needs_typedefs = false;
+    var needs_enums = false;
+    var needs_dictionaries = false;
 
-    // Generate callback function type
+    // Check return type for module requirements
+    if (type_registry.lookup(callback.idlType.type)) |kind| {
+        switch (kind) {
+            .interface, .callback_interface => needs_interfaces = true,
+            .typedef => needs_typedefs = true,
+            .enum_type => needs_enums = true,
+            .dictionary => needs_dictionaries = true,
+            else => {},
+        }
+    }
+
+    // Check argument types for module requirements
+    for (callback.arguments) |arg| {
+        if (type_registry.lookup(arg.idlType.type)) |kind| {
+            switch (kind) {
+                .interface, .callback_interface => needs_interfaces = true,
+                .typedef => needs_typedefs = true,
+                .enum_type => needs_enums = true,
+                .dictionary => needs_dictionaries = true,
+                else => {},
+            }
+        }
+    }
+
+    // Write imports
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
+    if (needs_interfaces) {
+        try w.writeAll("const interfaces = @import(\"interfaces\");\n");
+    }
+    if (needs_typedefs) {
+        try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+    }
+    if (needs_enums) {
+        try w.writeAll("const enums = @import(\"enums\");\n");
+    }
+    if (needs_dictionaries) {
+        try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+    }
+    try w.writeAll("\n");
+
+    // Generate callback function type with proper type resolution
     try w.print("pub const {s} = *const fn (", .{callback.name});
 
     for (callback.arguments, 0..) |arg, i| {
@@ -2557,14 +2611,39 @@ pub fn generateCallback(
             try w.print("{s}: ", .{arg.name});
         }
 
-        try writeParamType(w, arg, null);
+        // Use type registry for proper parameter type resolution
+        try writeParamType(w, arg, type_registry);
     }
 
     try w.writeAll(") ");
-    try writeTypeSimple(w, callback.idlType, null);
+
+    // Write return type with proper resolution
+    // Promise<T> becomes runtime.JSValue since JavaScript Promises are represented as JSValue
+    try writeCallbackReturnType(w, callback.idlType, type_registry);
     try w.writeAll(";\n");
 
     try w.flush();
+}
+
+/// Write callback return type with special handling for Promise types
+/// Promise<undefined> and Promise<T> are represented as runtime.JSValue in our model
+fn writeCallbackReturnType(w: anytype, idl_type: types.IDLType, type_registry: ?*const ir_mod.TypeRegistry) !void {
+    const type_str = idl_type.type;
+
+    // Handle Promise types - they're JavaScript values, so use JSValue
+    if (std.mem.eql(u8, type_str, "Promise")) {
+        try w.writeAll("runtime.JSValue");
+        return;
+    }
+
+    // Handle 'any' type - represented as JSValue
+    if (std.mem.eql(u8, type_str, "any")) {
+        try w.writeAll("runtime.JSValue");
+        return;
+    }
+
+    // For other types, use the standard type resolution
+    try writeTypeSimple(w, idl_type, type_registry);
 }
 
 /// Generate a namespace Zig file

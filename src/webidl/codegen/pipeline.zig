@@ -330,7 +330,7 @@ pub fn processDirectory(
 
         while (callback_iter.next()) |entry| {
             const callback = entry.value_ptr.*;
-            try generator.generateCallback(allocator, callback, callbacks_path);
+            try generator.generateCallback(allocator, callback, callbacks_path, &ir.type_registry);
 
             const name_copy = try allocator.dupe(u8, callback.name);
             try callback_names.append(allocator, name_copy);

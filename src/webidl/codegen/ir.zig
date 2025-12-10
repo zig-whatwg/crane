@@ -6,6 +6,15 @@
 const std = @import("std");
 const types = @import("types.zig");
 const spec_priority_mod = @import("spec_priority.zig");
+const type_registry_mod = @import("type_registry.zig");
+
+// Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
+pub const TypeRegistry = type_registry_mod.TypeRegistry;
+pub const TypeKind = type_registry_mod.TypeKind;
+pub const TypeInfo = type_registry_mod.TypeInfo;
+pub const UnionInfo = type_registry_mod.UnionInfo;
+pub const UnionMember = type_registry_mod.UnionMember;
+pub const TypeRegistryStats = type_registry_mod.TypeRegistryStats;
 
 /// Complete IR for all parsed WebIDL specifications
 pub const IR = struct {
@@ -567,76 +576,5 @@ pub const Interface = struct {
             allocator.free(mixin);
         }
         self.mixins.deinit(allocator);
-    }
-};
-
-/// Type kind for the type registry
-pub const TypeKind = enum {
-    interface,
-    callback_interface, // Callback interfaces like EventListener, NodeFilter
-    typedef,
-    dictionary,
-    enum_type,
-    callback, // Callback function types (callback X = ...)
-    namespace,
-    primitive,
-};
-
-/// Registry of all defined types across all WebIDL files
-/// Used to resolve type references during code generation
-pub const TypeRegistry = struct {
-    types: std.StringHashMap(TypeKind),
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) TypeRegistry {
-        return .{
-            .types = std.StringHashMap(TypeKind).init(allocator),
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *TypeRegistry) void {
-        self.types.deinit();
-    }
-
-    /// Register a type in the registry
-    pub fn register(self: *TypeRegistry, name: []const u8, kind: TypeKind) !void {
-        try self.types.put(name, kind);
-    }
-
-    /// Look up a type in the registry
-    pub fn lookup(self: *const TypeRegistry, name: []const u8) ?TypeKind {
-        return self.types.get(name);
-    }
-
-    /// Check if a type is registered
-    pub fn contains(self: *const TypeRegistry, name: []const u8) bool {
-        return self.types.contains(name);
-    }
-
-    /// Register all WebIDL primitive types
-    pub fn registerPrimitives(self: *TypeRegistry) !void {
-        // WebIDL primitive types
-        try self.register("void", .primitive);
-        try self.register("undefined", .primitive);
-        try self.register("boolean", .primitive);
-        try self.register("byte", .primitive);
-        try self.register("octet", .primitive);
-        try self.register("short", .primitive);
-        try self.register("unsigned short", .primitive);
-        try self.register("long", .primitive);
-        try self.register("unsigned long", .primitive);
-        try self.register("long long", .primitive);
-        try self.register("unsigned long long", .primitive);
-        try self.register("float", .primitive);
-        try self.register("unrestricted float", .primitive);
-        try self.register("double", .primitive);
-        try self.register("unrestricted double", .primitive);
-        try self.register("DOMString", .primitive);
-        try self.register("ByteString", .primitive);
-        try self.register("USVString", .primitive);
-        try self.register("object", .primitive);
-        try self.register("symbol", .primitive);
-        try self.register("any", .primitive);
     }
 };

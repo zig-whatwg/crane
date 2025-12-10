@@ -14,6 +14,7 @@ pub const refs = @import("refs.zig");
 pub const extattr = @import("extattr.zig");
 pub const generator = @import("generator.zig");
 pub const ir = @import("ir.zig");
+pub const type_registry = @import("type_registry.zig");
 pub const pipeline = @import("pipeline.zig");
 pub const spec_priority = @import("spec_priority.zig");
 pub const adapter = @import("adapter.zig");
