@@ -27,17 +27,17 @@ pub const ElementInternals = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             ARIAMixin,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "shadowRoot", "get_shadowRoot", null },
@@ -100,7 +100,7 @@ pub const ElementInternals = struct {
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setFormValue", "call_setFormValue", 1 },
@@ -108,7 +108,7 @@ pub const ElementInternals = struct {
             .{ "checkValidity", "call_checkValidity", 0 },
             .{ "reportValidity", "call_reportValidity", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setFormValue",
@@ -116,11 +116,10 @@ pub const ElementInternals = struct {
             "checkValidity",
             "reportValidity",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "form", "get_form", null },
@@ -182,12 +181,12 @@ pub const ElementInternals = struct {
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "shadowRoot", "get_shadowRoot", null },
         };
-        
+
         pub const has_constructor = false;
     };
 
@@ -260,7 +259,6 @@ pub const ElementInternals = struct {
     );
 
     const delegates = .{
-
         .get_ariaActiveDescendantElement = &get_ariaActiveDescendantElement,
         .get_ariaAtomic = &get_ariaAtomic,
         .get_ariaAutoComplete = &get_ariaAutoComplete,
@@ -388,6 +386,17 @@ pub const ElementInternals = struct {
         return ElementInternalsImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ElementInternalsImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ElementInternalsImpl.deinit(instance);
@@ -439,7 +448,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_role(instance, value);
     }
 
@@ -453,7 +462,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaActiveDescendantElement(instance, value);
     }
 
@@ -467,7 +476,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaAtomic(instance, value);
     }
 
@@ -481,7 +490,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaAutoComplete(instance, value);
     }
 
@@ -495,7 +504,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaBrailleLabel(instance, value);
     }
 
@@ -509,7 +518,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaBrailleRoleDescription(instance, value);
     }
 
@@ -523,7 +532,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaBusy(instance, value);
     }
 
@@ -537,7 +546,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaChecked(instance, value);
     }
 
@@ -551,7 +560,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaColCount(instance, value);
     }
 
@@ -565,7 +574,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaColIndex(instance, value);
     }
 
@@ -579,7 +588,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaColIndexText(instance, value);
     }
 
@@ -593,21 +602,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaColSpan(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaControlsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaControlsElements(instance, value);
     }
 
@@ -621,21 +630,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaCurrent(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaDescribedByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaDescribedByElements(instance, value);
     }
 
@@ -649,21 +658,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaDescription(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaDetailsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaDetailsElements(instance, value);
     }
 
@@ -677,21 +686,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaDisabled(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaErrorMessageElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaErrorMessageElements(instance, value);
     }
 
@@ -705,21 +714,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaExpanded(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaFlowToElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaFlowToElements(instance, value);
     }
 
@@ -733,7 +742,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaHasPopup(instance, value);
     }
 
@@ -747,7 +756,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaHidden(instance, value);
     }
 
@@ -761,7 +770,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaInvalid(instance, value);
     }
 
@@ -775,7 +784,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaKeyShortcuts(instance, value);
     }
 
@@ -789,21 +798,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaLabel(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaLabelledByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaLabelledByElements(instance, value);
     }
 
@@ -817,7 +826,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaLevel(instance, value);
     }
 
@@ -831,7 +840,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaLive(instance, value);
     }
 
@@ -845,7 +854,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaModal(instance, value);
     }
 
@@ -859,7 +868,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaMultiLine(instance, value);
     }
 
@@ -873,7 +882,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaMultiSelectable(instance, value);
     }
 
@@ -887,21 +896,21 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaOrientation(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementInternalsImpl.get_ariaOwnsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaOwnsElements(instance, value);
     }
 
@@ -915,7 +924,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaPlaceholder(instance, value);
     }
 
@@ -929,7 +938,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaPosInSet(instance, value);
     }
 
@@ -943,7 +952,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaPressed(instance, value);
     }
 
@@ -957,7 +966,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaReadOnly(instance, value);
     }
 
@@ -971,7 +980,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRelevant(instance, value);
     }
 
@@ -985,7 +994,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRequired(instance, value);
     }
 
@@ -999,7 +1008,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRoleDescription(instance, value);
     }
 
@@ -1013,7 +1022,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRowCount(instance, value);
     }
 
@@ -1027,7 +1036,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRowIndex(instance, value);
     }
 
@@ -1041,7 +1050,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRowIndexText(instance, value);
     }
 
@@ -1055,7 +1064,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaRowSpan(instance, value);
     }
 
@@ -1069,7 +1078,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaSelected(instance, value);
     }
 
@@ -1083,7 +1092,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaSetSize(instance, value);
     }
 
@@ -1097,7 +1106,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaSort(instance, value);
     }
 
@@ -1111,7 +1120,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaValueMax(instance, value);
     }
 
@@ -1125,7 +1134,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaValueMin(instance, value);
     }
 
@@ -1139,7 +1148,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaValueNow(instance, value);
     }
 
@@ -1153,7 +1162,7 @@ pub const ElementInternals = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ElementInternalsImpl.set_ariaValueText(instance, value);
     }
 
@@ -1162,7 +1171,6 @@ pub const ElementInternals = struct {
     }
 
     pub fn call_setValidity(instance: *runtime.Instance, flags: webidl.Opt(ValidityStateFlags), message: webidl.Opt(DOMString), anchor: webidl.Opt(*runtime.Instance)) anyerror!void {
-        
         return try ElementInternalsImpl.call_setValidity(instance, flags, message, anchor);
     }
 
@@ -1170,9 +1178,7 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: webidl.Opt(?*const anyopaque)) anyerror!void {
-        
+    pub fn call_setFormValue(instance: *runtime.Instance, value: ?runtime.JSValue, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
         return try ElementInternalsImpl.call_setFormValue(instance, value, state);
     }
-
 };

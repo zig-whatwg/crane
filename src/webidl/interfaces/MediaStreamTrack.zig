@@ -178,6 +178,17 @@ pub const MediaStreamTrack = struct {
         return MediaStreamTrackImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MediaStreamTrackImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MediaStreamTrackImpl.deinit(instance);
@@ -263,7 +274,7 @@ pub const MediaStreamTrack = struct {
         try MediaStreamTrackImpl.set_onisolationchange(instance, value);
     }
 
-    pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!*const anyopaque {
+    pub fn call_sendCaptureAction(instance: *runtime.Instance, action: CaptureAction) anyerror!runtime.JSValue {
         
         return try MediaStreamTrackImpl.call_sendCaptureAction(instance, action);
     }
@@ -280,12 +291,12 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_getSettings(instance);
     }
 
-    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!*const anyopaque {
+    pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(MediaTrackConstraints)) anyerror!runtime.JSValue {
         
         return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
 
-    pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaStreamTrackImpl.call_getSupportedCaptureActions(instance);
     }
 

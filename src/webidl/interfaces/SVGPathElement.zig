@@ -252,6 +252,17 @@ pub const SVGPathElement = struct {
         return SVGPathElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SVGPathElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SVGPathElementImpl.deinit(instance);
@@ -265,7 +276,7 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getTotalLength(instance);
     }
 
-    pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
+    pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
         
         return try SVGPathElementImpl.call_setPathData(instance, pathData);
     }
@@ -275,7 +286,7 @@ pub const SVGPathElement = struct {
         return try SVGPathElementImpl.call_getPathSegmentAtLength(instance, distance);
     }
 
-    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!*const anyopaque {
+    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!runtime.JSValue {
         
         return try SVGPathElementImpl.call_getPathData(instance, settings);
     }

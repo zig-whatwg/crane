@@ -19,7 +19,7 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
@@ -85,17 +85,28 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
         return WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.deinit(instance);
     }
 
-    pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawArraysInstancedBaseInstanceWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }
 
-    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, baseVerticesList: *const anyopaque, baseVerticesOffset: u64, baseInstancesList: *const anyopaque, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
+    pub fn call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseVerticesList: runtime.JSValue, baseVerticesOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, instanceCountsList, instanceCountsOffset, baseVerticesList, baseVerticesOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }

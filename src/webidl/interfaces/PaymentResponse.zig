@@ -137,6 +137,17 @@ pub const PaymentResponse = struct {
         return PaymentResponseImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PaymentResponseImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PaymentResponseImpl.deinit(instance);
@@ -188,14 +199,14 @@ pub const PaymentResponse = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!*const anyopaque {
+    pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(PaymentComplete), details: webidl.Opt(PaymentCompleteDetails)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentResponseImpl.call_complete(instance, result, details);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(PaymentValidationErrors)) anyerror!*const anyopaque {
+    pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(PaymentValidationErrors)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try PaymentResponseImpl.call_retry(instance, errorFields);

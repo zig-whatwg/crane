@@ -18,52 +18,50 @@ pub const ClipboardItem = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "presentationStyle", "get_presentationStyle", null },
             .{ "types", "get_types", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getType", "call_getType", 1 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_static_supports", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getType",
             "supports",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "presentationStyle", "get_presentationStyle", null },
             .{ "types", "get_types", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -78,7 +76,6 @@ pub const ClipboardItem = struct {
     );
 
     const delegates = .{
-
         .get_presentationStyle = &get_presentationStyle,
         .get_types = &get_types,
 
@@ -93,33 +90,43 @@ pub const ClipboardItem = struct {
         return ClipboardItemImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ClipboardItemImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ClipboardItemImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, items: *const anyopaque, options: webidl.Opt(ClipboardItemOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, items: runtime.JSValue, options: webidl.Opt(ClipboardItemOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ClipboardItemImpl.call_constructor(allocator, ctx, items, options);
+        return try ClipboardItemImpl.call_constructor(ctx, items, options);
     }
 
     pub fn get_presentationStyle(instance: *runtime.Instance) anyerror!PresentationStyle {
         return try ClipboardItemImpl.get_presentationStyle(instance);
     }
 
-    pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ClipboardItemImpl.get_types(instance);
     }
 
-    pub fn call_getType(instance: *runtime.Instance, @"type": DOMString) anyerror!*const anyopaque {
-        
+    pub fn call_getType(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
         return try ClipboardItemImpl.call_getType(instance, @"type");
     }
 
     pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
-        
         return try ClipboardItemImpl.call_static_supports(instance, @"type");
     }
-
 };

@@ -20,7 +20,7 @@ pub const IntersectionObserver = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -116,18 +116,31 @@ pub const IntersectionObserver = struct {
         return IntersectionObserverImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return IntersectionObserverImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         IntersectionObserverImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: IntersectionObserverCallback, options: webidl.Opt(IntersectionObserverInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, callback: IntersectionObserverCallback, options: webidl.Opt(IntersectionObserverInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try IntersectionObserverImpl.call_constructor(allocator, ctx, callback, options);
+        return try IntersectionObserverImpl.call_constructor(ctx, callback, options);
     }
 
-    pub fn get_root(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_root(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try IntersectionObserverImpl.get_root(instance);
     }
 
@@ -139,7 +152,7 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.get_scrollMargin(instance);
     }
 
-    pub fn get_thresholds(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IntersectionObserverImpl.get_thresholds(instance);
     }
 
@@ -165,7 +178,7 @@ pub const IntersectionObserver = struct {
         return try IntersectionObserverImpl.call_disconnect(instance);
     }
 
-    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IntersectionObserverImpl.call_takeRecords(instance);
     }
 

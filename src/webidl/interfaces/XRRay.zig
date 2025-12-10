@@ -18,7 +18,7 @@ pub const XRRay = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
@@ -90,6 +90,17 @@ pub const XRRay = struct {
         return XRRayImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XRRayImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XRRayImpl.deinit(instance);
@@ -107,9 +118,11 @@ pub const XRRay = struct {
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try XRRayImpl.call_constructor(allocator, ctx, args);
+        return try XRRayImpl.call_constructor(ctx, args);
     }
 
     /// Extended attributes: [SameObject]
@@ -137,7 +150,7 @@ pub const XRRay = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_matrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_matrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_matrix) |cached| {

@@ -24,40 +24,36 @@ pub const CSSParserAtRule = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "prelude", "get_prelude", null },
             .{ "body", "get_body", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "prelude", "get_prelude", null },
             .{ "body", "get_body", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -73,7 +69,6 @@ pub const CSSParserAtRule = struct {
     );
 
     const delegates = .{
-
         .get_body = &get_body,
         .get_name = &get_name,
         .get_prelude = &get_prelude,
@@ -87,27 +82,39 @@ pub const CSSParserAtRule = struct {
         return CSSParserAtRuleImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSParserAtRuleImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSParserAtRuleImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: DOMString, prelude: *const anyopaque, body: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, name: DOMString, prelude: runtime.JSValue, body: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSParserAtRuleImpl.call_constructor(allocator, ctx, name, prelude, body);
+        return try CSSParserAtRuleImpl.call_constructor(ctx, name, prelude, body);
     }
 
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try CSSParserAtRuleImpl.get_name(instance);
     }
 
-    pub fn get_prelude(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_prelude(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSParserAtRuleImpl.get_prelude(instance);
     }
 
-    pub fn get_body(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_body(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try CSSParserAtRuleImpl.get_body(instance);
     }
-
 };

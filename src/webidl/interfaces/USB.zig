@@ -108,6 +108,17 @@ pub const USB = struct {
         return USBImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return USBImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         USBImpl.deinit(instance);
@@ -129,12 +140,12 @@ pub const USB = struct {
         try USBImpl.set_ondisconnect(instance, value);
     }
 
-    pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBImpl.call_getDevices(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_requestDevice(instance: *runtime.Instance, options: USBDeviceRequestOptions) anyerror!*const anyopaque {
+    pub fn call_requestDevice(instance: *runtime.Instance, options: USBDeviceRequestOptions) anyerror!runtime.JSValue {
         
         return try USBImpl.call_requestDevice(instance, options);
     }

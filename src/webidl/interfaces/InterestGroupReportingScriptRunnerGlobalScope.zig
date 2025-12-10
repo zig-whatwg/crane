@@ -86,6 +86,17 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
         return InterestGroupReportingScriptRunnerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return InterestGroupReportingScriptRunnerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         InterestGroupReportingScriptRunnerGlobalScopeImpl.deinit(instance);
@@ -96,7 +107,7 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_sendReportTo(instance, url);
     }
 
-    pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) anyerror!void {
+    pub fn call_registerAdBeacon(instance: *runtime.Instance, map: runtime.JSValue) anyerror!void {
         
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_registerAdBeacon(instance, map);
     }

@@ -128,13 +128,24 @@ pub const PublicKeyCredential = struct {
         return PublicKeyCredentialImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PublicKeyCredentialImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PublicKeyCredentialImpl.deinit(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_rawId(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_rawId(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_rawId) |cached| {
@@ -161,7 +172,7 @@ pub const PublicKeyCredential = struct {
         return try PublicKeyCredentialImpl.get_authenticatorAttachment(instance);
     }
 
-    pub fn call_static_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.call_static_isUserVerifyingPlatformAuthenticatorAvailable(instance);
     }
 
@@ -170,21 +181,21 @@ pub const PublicKeyCredential = struct {
         return try PublicKeyCredentialImpl.call_static_parseCreationOptionsFromJSON(instance, options);
     }
 
-    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.call_static_isConditionalMediationAvailable(instance);
     }
 
-    pub fn call_static_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
+    pub fn call_static_signalAllAcceptedCredentials(instance: *runtime.Instance, options: AllAcceptedCredentialsOptions) anyerror!runtime.JSValue {
         
         return try PublicKeyCredentialImpl.call_static_signalAllAcceptedCredentials(instance, options);
     }
 
-    pub fn call_static_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!*const anyopaque {
+    pub fn call_static_signalUnknownCredential(instance: *runtime.Instance, options: UnknownCredentialOptions) anyerror!runtime.JSValue {
         
         return try PublicKeyCredentialImpl.call_static_signalUnknownCredential(instance, options);
     }
 
-    pub fn call_static_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!*const anyopaque {
+    pub fn call_static_signalCurrentUserDetails(instance: *runtime.Instance, options: CurrentUserDetailsOptions) anyerror!runtime.JSValue {
         
         return try PublicKeyCredentialImpl.call_static_signalCurrentUserDetails(instance, options);
     }
@@ -202,7 +213,7 @@ pub const PublicKeyCredential = struct {
         return try PublicKeyCredentialImpl.call_static_parseRequestOptionsFromJSON(instance, options);
     }
 
-    pub fn call_static_getClientCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.call_static_getClientCapabilities(instance);
     }
 

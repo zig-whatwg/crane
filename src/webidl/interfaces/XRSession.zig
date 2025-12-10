@@ -271,6 +271,17 @@ pub const XRSession = struct {
         return XRSessionImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XRSessionImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XRSessionImpl.deinit(instance);
@@ -284,7 +295,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_frameRate(instance);
     }
 
-    pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try XRSessionImpl.get_supportedFrameRates(instance);
     }
 
@@ -324,7 +335,7 @@ pub const XRSession = struct {
         return value;
     }
 
-    pub fn get_enabledFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_enabledFeatures(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.get_enabledFeatures(instance);
     }
 
@@ -432,7 +443,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_depthActive(instance);
     }
 
-    pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.get_persistentAnchors(instance);
     }
 
@@ -448,7 +459,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_interactionMode(instance);
     }
 
-    pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!*const anyopaque {
+    pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_updateTargetFrameRate(instance, rate);
     }
@@ -467,17 +478,17 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_requestAnimationFrame(instance, callback);
     }
 
-    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
+    pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_restorePersistentAnchor(instance, uuid);
     }
 
-    pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!*const anyopaque {
+    pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: DOMString) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_deletePersistentAnchor(instance, uuid);
     }
 
-    pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_initiateRoomCapture(instance);
     }
 
@@ -485,12 +496,12 @@ pub const XRSession = struct {
         return try XRSessionImpl.call_pauseDepthSensing(instance);
     }
 
-    pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: XRTransientInputHitTestOptionsInit) anyerror!*const anyopaque {
+    pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: XRTransientInputHitTestOptionsInit) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_requestHitTestSourceForTransientInput(instance, options);
     }
 
-    pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!*const anyopaque {
+    pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(XRLightProbeInit)) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_requestLightProbe(instance, options);
     }
@@ -501,18 +512,18 @@ pub const XRSession = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": XRReferenceSpaceType) anyerror!*const anyopaque {
+    pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": XRReferenceSpaceType) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try XRSessionImpl.call_requestReferenceSpace(instance, @"type");
     }
 
-    pub fn call_requestHitTestSource(instance: *runtime.Instance, options: XRHitTestOptionsInit) anyerror!*const anyopaque {
+    pub fn call_requestHitTestSource(instance: *runtime.Instance, options: XRHitTestOptionsInit) anyerror!runtime.JSValue {
         
         return try XRSessionImpl.call_requestHitTestSource(instance, options);
     }
 
-    pub fn call_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_end(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRSessionImpl.call_end(instance);
     }
 

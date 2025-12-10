@@ -41,7 +41,7 @@ pub const WebGL2RenderingContextBase = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -2213,6 +2213,17 @@ pub const WebGL2RenderingContextBase = struct {
         return WebGL2RenderingContextBaseImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WebGL2RenderingContextBaseImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WebGL2RenderingContextBaseImpl.deinit(instance);
@@ -2238,12 +2249,12 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_uniformMatrix4x3fv(instance, location, transpose, data, srcOffset, srcLength);
     }
 
-    pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: *const anyopaque) anyerror!void {
+    pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: runtime.JSValue) anyerror!void {
         
         return try WebGL2RenderingContextBaseImpl.call_invalidateFramebuffer(instance, target, attachments);
     }
 
-    pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: *const anyopaque, bufferMode: GLenum) anyerror!void {
+    pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: runtime.JSValue, bufferMode: GLenum) anyerror!void {
         
         return try WebGL2RenderingContextBaseImpl.call_transformFeedbackVaryings(instance, program, varyings, bufferMode);
     }
@@ -2394,7 +2405,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_fenceSync(instance, condition, flags);
     }
 
-    pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: GLenum) anyerror!runtime.JSValue {
+    pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: runtime.JSValue, pname: GLenum) anyerror!runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getActiveUniforms(instance, program, uniformIndices, pname);
     }
@@ -2469,7 +2480,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_endQuery(instance, target);
     }
 
-    pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: *const anyopaque, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
+    pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: GLenum, attachments: runtime.JSValue, x: GLint, y: GLint, width: GLsizei, height: GLsizei) anyerror!void {
         
         return try WebGL2RenderingContextBaseImpl.call_invalidateSubFramebuffer(instance, target, attachments, x, y, width, height);
     }
@@ -2534,7 +2545,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_getSamplerParameter(instance, sampler, pname);
     }
 
-    pub fn call_drawBuffers(instance: *runtime.Instance, buffers: *const anyopaque) anyerror!void {
+    pub fn call_drawBuffers(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
         
         return try WebGL2RenderingContextBaseImpl.call_drawBuffers(instance, buffers);
     }
@@ -2549,7 +2560,7 @@ pub const WebGL2RenderingContextBase = struct {
         return try WebGL2RenderingContextBaseImpl.call_getTransformFeedbackVarying(instance, program, index);
     }
 
-    pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) anyerror!?*const anyopaque {
+    pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: runtime.JSValue) anyerror!?runtime.JSValue {
         
         return try WebGL2RenderingContextBaseImpl.call_getUniformIndices(instance, program, uniformNames);
     }

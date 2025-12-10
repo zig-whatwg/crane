@@ -116,6 +116,17 @@ pub const KeyframeEffect = struct {
         return KeyframeEffectImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return KeyframeEffectImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         KeyframeEffectImpl.deinit(instance);
@@ -127,16 +138,18 @@ pub const KeyframeEffect = struct {
         Element_object_union: struct {
             target: ?Element,
             keyframes: ?runtime.JSValue,
-            options: webidl.Opt(*const anyopaque),
+            options: webidl.Opt(runtime.JSValue),
         },
         /// constructor(source)
         KeyframeEffect: KeyframeEffect,
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try KeyframeEffectImpl.call_constructor(allocator, ctx, args);
+        return try KeyframeEffectImpl.call_constructor(ctx, args);
     }
 
     pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -176,7 +189,7 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.call_setKeyframes(instance, keyframes);
     }
 
-    pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try KeyframeEffectImpl.call_getKeyframes(instance);
     }
 

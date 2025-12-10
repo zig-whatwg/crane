@@ -499,6 +499,17 @@ pub const HTMLMediaElement = struct {
         return HTMLMediaElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HTMLMediaElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HTMLMediaElementImpl.deinit(instance);
@@ -808,7 +819,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.call_captureStream(instance);
     }
 
-    pub fn call_play(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HTMLMediaElementImpl.call_play(instance);
     }
 
@@ -822,13 +833,13 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!*const anyopaque {
+    pub fn call_setSinkId(instance: *runtime.Instance, sinkId: DOMString) anyerror!runtime.JSValue {
         
         return try HTMLMediaElementImpl.call_setSinkId(instance, sinkId);
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!runtime.JSValue {
         
         return try HTMLMediaElementImpl.call_setMediaKeys(instance, mediaKeys);
     }

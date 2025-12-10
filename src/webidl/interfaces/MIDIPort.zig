@@ -33,13 +33,13 @@ pub const MIDIPort = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -51,19 +51,19 @@ pub const MIDIPort = struct {
             .{ "connection", "get_connection", null },
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
             "close",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -71,7 +71,7 @@ pub const MIDIPort = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -83,11 +83,10 @@ pub const MIDIPort = struct {
             .{ "connection", "get_connection", null },
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -98,7 +97,7 @@ pub const MIDIPort = struct {
             id: runtime.DOMString = undefined,
             manufacturer: ?runtime.DOMString = null,
             name: ?runtime.DOMString = null,
-            @"type": MIDIPortType = undefined,
+            type: MIDIPortType = undefined,
             version: ?runtime.DOMString = null,
             state: MIDIPortDeviceState = undefined,
             connection: MIDIPortConnectionState = undefined,
@@ -108,7 +107,6 @@ pub const MIDIPort = struct {
     );
 
     const delegates = .{
-
         .get_connection = &get_connection,
         .get_id = &get_id,
         .get_manufacturer = &get_manufacturer,
@@ -130,6 +128,17 @@ pub const MIDIPort = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return MIDIPortImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MIDIPortImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
@@ -173,12 +182,11 @@ pub const MIDIPort = struct {
         try MIDIPortImpl.set_onstatechange(instance, value);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MIDIPortImpl.call_close(instance);
     }
 
-    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MIDIPortImpl.call_open(instance);
     }
-
 };

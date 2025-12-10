@@ -215,6 +215,17 @@ pub const GPUDevice = struct {
         return GPUDeviceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return GPUDeviceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         GPUDeviceImpl.deinit(instance);
@@ -268,7 +279,7 @@ pub const GPUDevice = struct {
         return value;
     }
 
-    pub fn get_lost(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_lost(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GPUDeviceImpl.get_lost(instance);
     }
 
@@ -302,7 +313,7 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_destroy(instance);
     }
 
-    pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!*const anyopaque {
+    pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: GPUComputePipelineDescriptor) anyerror!runtime.JSValue {
         
         return try GPUDeviceImpl.call_createComputePipelineAsync(instance, descriptor);
     }
@@ -362,12 +373,12 @@ pub const GPUDevice = struct {
         return try GPUDeviceImpl.call_createShaderModule(instance, descriptor);
     }
 
-    pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!*const anyopaque {
+    pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: GPURenderPipelineDescriptor) anyerror!runtime.JSValue {
         
         return try GPUDeviceImpl.call_createRenderPipelineAsync(instance, descriptor);
     }
 
-    pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GPUDeviceImpl.call_popErrorScope(instance);
     }
 

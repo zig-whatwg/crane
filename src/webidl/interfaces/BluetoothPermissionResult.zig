@@ -92,16 +92,27 @@ pub const BluetoothPermissionResult = struct {
         return BluetoothPermissionResultImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothPermissionResultImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothPermissionResultImpl.deinit(instance);
     }
 
-    pub fn get_devices(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_devices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothPermissionResultImpl.get_devices(instance);
     }
 
-    pub fn set_devices(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_devices(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try BluetoothPermissionResultImpl.set_devices(instance, value);
     }
 

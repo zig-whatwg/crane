@@ -23,7 +23,7 @@ pub const USBDevice = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Worker", "Window" } } },
@@ -197,6 +197,17 @@ pub const USBDevice = struct {
         return USBDeviceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return USBDeviceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         USBDeviceImpl.deinit(instance);
@@ -262,7 +273,7 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.get_configuration(instance);
     }
 
-    pub fn get_configurations(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_configurations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBDeviceImpl.get_configurations(instance);
     }
 
@@ -270,73 +281,73 @@ pub const USBDevice = struct {
         return try USBDeviceImpl.get_opened(instance);
     }
 
-    pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumber: u8, alternateSetting: u8) anyerror!*const anyopaque {
+    pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumber: u8, alternateSetting: u8) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_selectAlternateInterface(instance, interfaceNumber, alternateSetting);
     }
 
-    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBDeviceImpl.call_open(instance);
     }
 
-    pub fn call_reset(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_reset(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBDeviceImpl.call_reset(instance);
     }
 
-    pub fn call_transferIn(instance: *runtime.Instance, endpointNumber: u8, length: u32) anyerror!*const anyopaque {
+    pub fn call_transferIn(instance: *runtime.Instance, endpointNumber: u8, length: u32) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_transferIn(instance, endpointNumber, length);
     }
 
-    pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource, packetLengths: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource, packetLengths: runtime.JSValue) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_isochronousTransferOut(instance, endpointNumber, data, packetLengths);
     }
 
-    pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: webidl.Opt(BufferSource)) anyerror!*const anyopaque {
+    pub fn call_controlTransferOut(instance: *runtime.Instance, setup: USBControlTransferParameters, data: webidl.Opt(BufferSource)) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_controlTransferOut(instance, setup, data);
     }
 
-    pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource) anyerror!*const anyopaque {
+    pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: BufferSource) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_transferOut(instance, endpointNumber, data);
     }
 
-    pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u8, packetLengths: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u8, packetLengths: runtime.JSValue) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_isochronousTransferIn(instance, endpointNumber, packetLengths);
     }
 
-    pub fn call_clearHalt(instance: *runtime.Instance, direction: USBDirection, endpointNumber: u8) anyerror!*const anyopaque {
+    pub fn call_clearHalt(instance: *runtime.Instance, direction: USBDirection, endpointNumber: u8) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_clearHalt(instance, direction, endpointNumber);
     }
 
-    pub fn call_claimInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
+    pub fn call_claimInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_claimInterface(instance, interfaceNumber);
     }
 
-    pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue: u8) anyerror!*const anyopaque {
+    pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue: u8) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_selectConfiguration(instance, configurationValue);
     }
 
-    pub fn call_releaseInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
+    pub fn call_releaseInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_releaseInterface(instance, interfaceNumber);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBDeviceImpl.call_close(instance);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBDeviceImpl.call_forget(instance);
     }
 
-    pub fn call_controlTransferIn(instance: *runtime.Instance, setup: USBControlTransferParameters, length: u16) anyerror!*const anyopaque {
+    pub fn call_controlTransferIn(instance: *runtime.Instance, setup: USBControlTransferParameters, length: u16) anyerror!runtime.JSValue {
         
         return try USBDeviceImpl.call_controlTransferIn(instance, setup, length);
     }

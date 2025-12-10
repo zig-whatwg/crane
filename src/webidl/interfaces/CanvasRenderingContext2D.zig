@@ -57,7 +57,7 @@ pub const CanvasRenderingContext2D = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             CanvasSettings,
             CanvasState,
@@ -437,6 +437,17 @@ pub const CanvasRenderingContext2D = struct {
         return CanvasRenderingContext2DImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CanvasRenderingContext2DImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CanvasRenderingContext2DImpl.deinit(instance);
@@ -478,19 +489,19 @@ pub const CanvasRenderingContext2D = struct {
         try CanvasRenderingContext2DImpl.set_imageSmoothingQuality(instance, value);
     }
 
-    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasRenderingContext2DImpl.get_strokeStyle(instance);
     }
 
-    pub fn set_strokeStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try CanvasRenderingContext2DImpl.set_strokeStyle(instance, value);
     }
 
-    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasRenderingContext2DImpl.get_fillStyle(instance);
     }
 
-    pub fn set_fillStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try CanvasRenderingContext2DImpl.set_fillStyle(instance, value);
     }
 
@@ -689,7 +700,7 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_stroke(instance);
     }
 
-    pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
+    pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
         
         return try CanvasRenderingContext2DImpl.call_setLineDash(instance, segments);
     }
@@ -715,7 +726,7 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_getTransform(instance);
     }
 
-    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try CanvasRenderingContext2DImpl.call_roundRect(instance, x, y, w, h, radii);
     }
@@ -837,7 +848,7 @@ pub const CanvasRenderingContext2D = struct {
         return try CanvasRenderingContext2DImpl.call_restore(instance);
     }
 
-    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasRenderingContext2DImpl.call_getLineDash(instance);
     }
 

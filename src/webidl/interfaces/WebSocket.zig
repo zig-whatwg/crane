@@ -181,15 +181,28 @@ pub const WebSocket = struct {
         return WebSocketImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WebSocketImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WebSocketImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WebSocketImpl.call_constructor(allocator, ctx, url, protocols);
+        return try WebSocketImpl.call_constructor(ctx, url, protocols);
     }
 
     pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -252,7 +265,7 @@ pub const WebSocket = struct {
         try WebSocketImpl.set_binaryType(instance, value);
     }
 
-    pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!void {
         
         return try WebSocketImpl.call_send(instance, data);
     }

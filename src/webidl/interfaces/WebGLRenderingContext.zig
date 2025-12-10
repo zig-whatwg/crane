@@ -45,7 +45,7 @@ pub const WebGLRenderingContext = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             WebGLRenderingContextBase,
             WebGLRenderingContextOverloads,
@@ -2645,12 +2645,23 @@ pub const WebGLRenderingContext = struct {
         return WebGLRenderingContextImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WebGLRenderingContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WebGLRenderingContextImpl.deinit(instance);
     }
 
-    pub fn get_canvas(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WebGLRenderingContextImpl.get_canvas(instance);
     }
 
@@ -2753,7 +2764,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_getTexParameter(instance, target, pname);
     }
 
-    pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.JSValue {
         
         return try WebGLRenderingContextImpl.call_getAttachedShaders(instance, program);
     }
@@ -2869,7 +2880,7 @@ pub const WebGLRenderingContext = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try WebGLRenderingContextImpl.call_makeXRCompatible(instance);
     }
@@ -2984,7 +2995,7 @@ pub const WebGLRenderingContext = struct {
         return try WebGLRenderingContextImpl.call_flush(instance);
     }
 
-    pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try WebGLRenderingContextImpl.call_getSupportedExtensions(instance);
     }
 

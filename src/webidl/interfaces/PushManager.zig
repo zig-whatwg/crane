@@ -18,7 +18,7 @@ pub const PushManager = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
@@ -91,13 +91,24 @@ pub const PushManager = struct {
         return PushManagerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PushManagerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PushManagerImpl.deinit(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_supportedContentEncodings) |cached| {
@@ -108,16 +119,16 @@ pub const PushManager = struct {
         return value;
     }
 
-    pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
+    pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
         
         return try PushManagerImpl.call_subscribe(instance, options);
     }
 
-    pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getSubscription(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PushManagerImpl.call_getSubscription(instance);
     }
 
-    pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
+    pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
         
         return try PushManagerImpl.call_permissionState(instance, options);
     }

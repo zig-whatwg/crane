@@ -26,7 +26,7 @@ pub const GPUComputePassEncoder = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             GPUObjectBase,
             GPUCommandsMixin,
@@ -124,6 +124,17 @@ pub const GPUComputePassEncoder = struct {
         return GPUComputePassEncoderImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return GPUComputePassEncoderImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         GPUComputePassEncoderImpl.deinit(instance);
@@ -142,7 +153,7 @@ pub const GPUComputePassEncoder = struct {
         return try GPUComputePassEncoderImpl.call_dispatchWorkgroupsIndirect(instance, indirectBuffer, indirectOffset);
     }
 
-    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try GPUComputePassEncoderImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
     }

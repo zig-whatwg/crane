@@ -38,10 +38,10 @@ pub const PaymentRequest = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -52,19 +52,19 @@ pub const PaymentRequest = struct {
             .{ "onshippingoptionchange", "get_onshippingoptionchange", "set_onshippingoptionchange" },
             .{ "onpaymentmethodchange", "get_onpaymentmethodchange", "set_onpaymentmethodchange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "show", "call_show", 0 },
             .{ "abort", "call_abort", 0 },
             .{ "canMakePayment", "call_canMakePayment", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "securePaymentConfirmationAvailability", "call_static_securePaymentConfirmationAvailability", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "show",
@@ -72,7 +72,7 @@ pub const PaymentRequest = struct {
             "canMakePayment",
             "securePaymentConfirmationAvailability",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -80,7 +80,7 @@ pub const PaymentRequest = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -91,11 +91,10 @@ pub const PaymentRequest = struct {
             .{ "onshippingoptionchange", "get_onshippingoptionchange", "set_onshippingoptionchange" },
             .{ "onpaymentmethodchange", "get_onpaymentmethodchange", "set_onpaymentmethodchange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -115,7 +114,6 @@ pub const PaymentRequest = struct {
     );
 
     const delegates = .{
-
         .get_id = &get_id,
         .get_onpaymentmethodchange = &get_onpaymentmethodchange,
         .get_onshippingaddresschange = &get_onshippingaddresschange,
@@ -141,15 +139,28 @@ pub const PaymentRequest = struct {
         return PaymentRequestImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PaymentRequestImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PaymentRequestImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: PaymentDetailsInit, options: webidl.Opt(PaymentOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, methodData: runtime.JSValue, details: PaymentDetailsInit, options: webidl.Opt(PaymentOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PaymentRequestImpl.call_constructor(allocator, ctx, methodData, details, options);
+        return try PaymentRequestImpl.call_constructor(ctx, methodData, details, options);
     }
 
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
@@ -193,26 +204,25 @@ pub const PaymentRequest = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try PaymentRequestImpl.call_abort(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try PaymentRequestImpl.call_canMakePayment(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
-        
+
         return try PaymentRequestImpl.call_show(instance, detailsPromise);
     }
 
     pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
         return try PaymentRequestImpl.call_static_securePaymentConfirmationAvailability(instance);
     }
-
 };

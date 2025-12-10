@@ -108,6 +108,17 @@ pub const Serial = struct {
         return SerialImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SerialImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SerialImpl.deinit(instance);
@@ -129,12 +140,12 @@ pub const Serial = struct {
         try SerialImpl.set_ondisconnect(instance, value);
     }
 
-    pub fn call_getPorts(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getPorts(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SerialImpl.call_getPorts(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(SerialPortRequestOptions)) anyerror!*const anyopaque {
+    pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(SerialPortRequestOptions)) anyerror!runtime.JSValue {
         
         return try SerialImpl.call_requestPort(instance, options);
     }

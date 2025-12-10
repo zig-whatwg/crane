@@ -89,12 +89,23 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         return InterestGroupBiddingScriptRunnerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return InterestGroupBiddingScriptRunnerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         InterestGroupBiddingScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
-    pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(*const anyopaque)) anyerror!bool {
+    pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(runtime.JSValue)) anyerror!bool {
         
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setBid(instance, oneOrManyBids);
     }

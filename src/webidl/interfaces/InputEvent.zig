@@ -109,15 +109,28 @@ pub const InputEvent = struct {
         return InputEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return InputEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         InputEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(InputEventInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(InputEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try InputEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try InputEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
     pub fn get_data(instance: *runtime.Instance) anyerror!?runtime.USVString {
@@ -136,7 +149,7 @@ pub const InputEvent = struct {
         return try InputEventImpl.get_dataTransfer(instance);
     }
 
-    pub fn call_getTargetRanges(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getTargetRanges(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try InputEventImpl.call_getTargetRanges(instance);
     }
 

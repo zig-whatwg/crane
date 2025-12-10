@@ -115,15 +115,28 @@ pub const AudioWorkletNode = struct {
         return AudioWorkletNodeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return AudioWorkletNodeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         AudioWorkletNodeImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, name: DOMString, options: webidl.Opt(AudioWorkletNodeOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, name: DOMString, options: webidl.Opt(AudioWorkletNodeOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try AudioWorkletNodeImpl.call_constructor(allocator, ctx, context, name, options);
+        return try AudioWorkletNodeImpl.call_constructor(ctx, context, name, options);
     }
 
     pub fn get_parameters(instance: *runtime.Instance) anyerror!*runtime.Instance {

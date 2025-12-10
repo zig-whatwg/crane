@@ -31,10 +31,10 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "device", "get_device", null },
@@ -46,15 +46,13 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ "manufacturerData", "get_manufacturerData", null },
             .{ "serviceData", "get_serviceData", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -63,7 +61,7 @@ pub const BluetoothAdvertisingEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "device", "get_device", null },
@@ -75,11 +73,10 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ "manufacturerData", "get_manufacturerData", null },
             .{ "serviceData", "get_serviceData", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -103,7 +100,6 @@ pub const BluetoothAdvertisingEvent = struct {
     );
 
     const delegates = .{
-
         .get_appearance = &get_appearance,
         .get_device = &get_device,
         .get_manufacturerData = &get_manufacturerData,
@@ -122,15 +118,28 @@ pub const BluetoothAdvertisingEvent = struct {
         return BluetoothAdvertisingEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothAdvertisingEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothAdvertisingEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, init_data: BluetoothAdvertisingEventInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, init_data: BluetoothAdvertisingEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BluetoothAdvertisingEventImpl.call_constructor(allocator, ctx, @"type", init_data);
+        return try BluetoothAdvertisingEventImpl.call_constructor(ctx, @"type", init_data);
     }
 
     /// Extended attributes: [SameObject]
@@ -145,7 +154,7 @@ pub const BluetoothAdvertisingEvent = struct {
         return value;
     }
 
-    pub fn get_uuids(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_uuids(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothAdvertisingEventImpl.get_uuids(instance);
     }
 
@@ -188,5 +197,4 @@ pub const BluetoothAdvertisingEvent = struct {
         state.own.cached_serviceData = value;
         return value;
     }
-
 };

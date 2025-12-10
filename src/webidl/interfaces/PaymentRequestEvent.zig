@@ -140,15 +140,28 @@ pub const PaymentRequestEvent = struct {
         return PaymentRequestEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PaymentRequestEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PaymentRequestEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(PaymentRequestEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PaymentRequestEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try PaymentRequestEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
     pub fn get_topOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -163,7 +176,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_paymentRequestId(instance);
     }
 
-    pub fn get_methodData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_methodData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.get_methodData(instance);
     }
 
@@ -171,7 +184,7 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_total(instance);
     }
 
-    pub fn get_modifiers(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_modifiers(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PaymentRequestEventImpl.get_modifiers(instance);
     }
 
@@ -179,31 +192,31 @@ pub const PaymentRequestEvent = struct {
         return try PaymentRequestEventImpl.get_paymentOptions(instance);
     }
 
-    pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_shippingOptions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try PaymentRequestEventImpl.get_shippingOptions(instance);
     }
 
-    pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: *const anyopaque) anyerror!void {
+    pub fn call_respondWith(instance: *runtime.Instance, handlerResponsePromise: runtime.JSValue) anyerror!void {
         
         return try PaymentRequestEventImpl.call_respondWith(instance, handlerResponsePromise);
     }
 
-    pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
         
         return try PaymentRequestEventImpl.call_openWindow(instance, url);
     }
 
-    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!*const anyopaque {
+    pub fn call_changeShippingOption(instance: *runtime.Instance, shippingOption: DOMString) anyerror!runtime.JSValue {
         
         return try PaymentRequestEventImpl.call_changeShippingOption(instance, shippingOption);
     }
 
-    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    pub fn call_changeShippingAddress(instance: *runtime.Instance, shippingAddress: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try PaymentRequestEventImpl.call_changeShippingAddress(instance, shippingAddress);
     }
 
-    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!*const anyopaque {
+    pub fn call_changePaymentMethod(instance: *runtime.Instance, methodName: DOMString, methodDetails: webidl.Opt(?runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try PaymentRequestEventImpl.call_changePaymentMethod(instance, methodName, methodDetails);
     }

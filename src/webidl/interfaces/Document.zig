@@ -1231,15 +1231,28 @@ pub const Document = struct {
         return DocumentImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return DocumentImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         DocumentImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try DocumentImpl.call_constructor(allocator, ctx);
+        return try DocumentImpl.call_constructor(ctx);
     }
 
     /// Extended attributes: [SameObject]
@@ -1750,11 +1763,11 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.get_adoptedStyleSheets(instance);
     }
 
-    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try DocumentImpl.set_adoptedStyleSheets(instance, value);
     }
 
@@ -2642,7 +2655,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [SecureContext]
-    pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!*const anyopaque {
+    pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(BrowsingTopicsOptions)) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_browsingTopics(instance, options);
     }
@@ -2657,7 +2670,7 @@ pub const Document = struct {
         return try DocumentImpl.call_open(instance, unused1, unused2);
     }
 
-    pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!*const anyopaque {
+    pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
@@ -2700,7 +2713,7 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandSupported(instance, commandId);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_getBoxQuads(instance, options);
     }
@@ -2718,7 +2731,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2760,13 +2773,13 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try DocumentImpl.call_exitPictureInPicture(instance);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2776,12 +2789,12 @@ pub const Document = struct {
         return try DocumentImpl.call_createElement(instance, localName, options);
     }
 
-    pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_hasRedemptionRecord(instance, issuer);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         
         return try DocumentImpl.call_startViewTransition(instance, callbackOptions);
     }
@@ -2857,7 +2870,7 @@ pub const Document = struct {
         return try DocumentImpl.call_createAttributeNS(instance, namespace, qualifiedName);
     }
 
-    pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_requestStorageAccessFor(instance, requestedOrigin);
     }
@@ -2882,7 +2895,7 @@ pub const Document = struct {
         return try DocumentImpl.call_write(instance, text);
     }
 
-    pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_hasStorageAccess(instance);
     }
 
@@ -2907,12 +2920,12 @@ pub const Document = struct {
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
-    pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
         
         return try DocumentImpl.call_hasPrivateToken(instance, issuer);
     }
 
-    pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_requestStorageAccess(instance);
     }
 
@@ -2920,7 +2933,7 @@ pub const Document = struct {
         return try DocumentImpl.call_releaseEvents(instance);
     }
 
-    pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_exitFullscreen(instance);
     }
 
@@ -2944,7 +2957,7 @@ pub const Document = struct {
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_hasUnpartitionedCookieAccess(instance);
     }
 
@@ -2971,7 +2984,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -3010,7 +3023,7 @@ pub const Document = struct {
         return try DocumentImpl.call_prepend(instance, nodes);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentImpl.call_getAnimations(instance);
     }
 

@@ -106,15 +106,28 @@ pub const CSSUnitValue = struct {
         return CSSUnitValueImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSUnitValueImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSUnitValueImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, value: f64, unit: runtime.USVString) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, value: f64, unit: runtime.USVString) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSUnitValueImpl.call_constructor(allocator, ctx, value, unit);
+        return try CSSUnitValueImpl.call_constructor(ctx, value, unit);
     }
 
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {

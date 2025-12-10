@@ -16,7 +16,7 @@ pub const NavigatorContentUtils = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -71,6 +71,17 @@ pub const NavigatorContentUtils = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return NavigatorContentUtilsImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NavigatorContentUtilsImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources

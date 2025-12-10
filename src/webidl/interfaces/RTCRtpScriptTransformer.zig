@@ -111,6 +111,17 @@ pub const RTCRtpScriptTransformer = struct {
         return RTCRtpScriptTransformerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return RTCRtpScriptTransformerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         RTCRtpScriptTransformerImpl.deinit(instance);
@@ -136,12 +147,12 @@ pub const RTCRtpScriptTransformer = struct {
         return try RTCRtpScriptTransformerImpl.get_options(instance);
     }
 
-    pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!*const anyopaque {
+    pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(DOMString)) anyerror!runtime.JSValue {
         
         return try RTCRtpScriptTransformerImpl.call_generateKeyFrame(instance, rid);
     }
 
-    pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCRtpScriptTransformerImpl.call_sendKeyFrameRequest(instance);
     }
 

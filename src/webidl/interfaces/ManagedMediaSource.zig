@@ -113,15 +113,28 @@ pub const ManagedMediaSource = struct {
         return ManagedMediaSourceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ManagedMediaSourceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ManagedMediaSourceImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ManagedMediaSourceImpl.call_constructor(allocator, ctx);
+        return try ManagedMediaSourceImpl.call_constructor(ctx);
     }
 
     pub fn get_streaming(instance: *runtime.Instance) anyerror!bool {

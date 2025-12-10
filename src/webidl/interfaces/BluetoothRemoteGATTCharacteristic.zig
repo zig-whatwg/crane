@@ -142,6 +142,17 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return BluetoothRemoteGATTCharacteristicImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothRemoteGATTCharacteristicImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothRemoteGATTCharacteristicImpl.deinit(instance);
@@ -167,7 +178,7 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         return try BluetoothRemoteGATTCharacteristicImpl.get_properties(instance);
     }
 
-    pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_value(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.get_value(instance);
     }
 
@@ -179,40 +190,40 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         try BluetoothRemoteGATTCharacteristicImpl.set_oncharacteristicvaluechanged(instance, value);
     }
 
-    pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.call_stopNotifications(instance);
     }
 
-    pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(BluetoothDescriptorUUID)) anyerror!*const anyopaque {
+    pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(BluetoothDescriptorUUID)) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_getDescriptors(instance, descriptor);
     }
 
-    pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
+    pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: BufferSource) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValueWithoutResponse(instance, value);
     }
 
-    pub fn call_writeValue(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
+    pub fn call_writeValue(instance: *runtime.Instance, value: BufferSource) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValue(instance, value);
     }
 
-    pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: BluetoothDescriptorUUID) anyerror!*const anyopaque {
+    pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: BluetoothDescriptorUUID) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_getDescriptor(instance, descriptor);
     }
 
-    pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_readValue(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.call_readValue(instance);
     }
 
-    pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: BufferSource) anyerror!*const anyopaque {
+    pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: BufferSource) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTCharacteristicImpl.call_writeValueWithResponse(instance, value);
     }
 
-    pub fn call_startNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_startNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTCharacteristicImpl.call_startNotifications(instance);
     }
 

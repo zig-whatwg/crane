@@ -39,10 +39,10 @@ pub const BluetoothDevice = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -56,19 +56,19 @@ pub const BluetoothDevice = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "forget", "call_forget", 0 },
             .{ "watchAdvertisements", "call_watchAdvertisements", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "forget",
             "watchAdvertisements",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -76,7 +76,7 @@ pub const BluetoothDevice = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -90,11 +90,10 @@ pub const BluetoothDevice = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -117,7 +116,6 @@ pub const BluetoothDevice = struct {
     );
 
     const delegates = .{
-
         .get_gatt = &get_gatt,
         .get_id = &get_id,
         .get_name = &get_name,
@@ -146,6 +144,17 @@ pub const BluetoothDevice = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return BluetoothDeviceImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothDeviceImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
@@ -217,13 +226,11 @@ pub const BluetoothDevice = struct {
         try BluetoothDeviceImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothDeviceImpl.call_forget(instance);
     }
 
-    pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(WatchAdvertisementsOptions)) anyerror!runtime.JSValue {
         return try BluetoothDeviceImpl.call_watchAdvertisements(instance, options);
     }
-
 };

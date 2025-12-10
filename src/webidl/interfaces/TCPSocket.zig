@@ -17,7 +17,7 @@ pub const TCPSocket = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
@@ -90,26 +90,39 @@ pub const TCPSocket = struct {
         return TCPSocketImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return TCPSocketImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         TCPSocketImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, remoteAddress: DOMString, remotePort: u16, options: webidl.Opt(TCPSocketOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, remoteAddress: DOMString, remotePort: u16, options: webidl.Opt(TCPSocketOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TCPSocketImpl.call_constructor(allocator, ctx, remoteAddress, remotePort, options);
+        return try TCPSocketImpl.call_constructor(ctx, remoteAddress, remotePort, options);
     }
 
-    pub fn get_opened(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_opened(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try TCPSocketImpl.get_opened(instance);
     }
 
-    pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try TCPSocketImpl.get_closed(instance);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try TCPSocketImpl.call_close(instance);
     }
 

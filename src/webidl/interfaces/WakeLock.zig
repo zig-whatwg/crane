@@ -16,7 +16,7 @@ pub const WakeLock = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
@@ -78,12 +78,23 @@ pub const WakeLock = struct {
         return WakeLockImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WakeLockImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WakeLockImpl.deinit(instance);
     }
 
-    pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(WakeLockType)) anyerror!*const anyopaque {
+    pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(WakeLockType)) anyerror!runtime.JSValue {
         
         return try WakeLockImpl.call_request(instance, @"type");
     }

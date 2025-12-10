@@ -102,6 +102,17 @@ pub const Keyboard = struct {
         return KeyboardImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return KeyboardImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         KeyboardImpl.deinit(instance);
@@ -119,11 +130,11 @@ pub const Keyboard = struct {
         return try KeyboardImpl.call_unlock(instance);
     }
 
-    pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try KeyboardImpl.call_getLayoutMap(instance);
     }
 
-    pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try KeyboardImpl.call_lock(instance, keyCodes);
     }

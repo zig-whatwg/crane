@@ -19,7 +19,7 @@ pub const ImageCapture = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -93,35 +93,48 @@ pub const ImageCapture = struct {
         return ImageCaptureImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ImageCaptureImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ImageCaptureImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, videoTrack: *runtime.Instance) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, videoTrack: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ImageCaptureImpl.call_constructor(allocator, ctx, videoTrack);
+        return try ImageCaptureImpl.call_constructor(ctx, videoTrack);
     }
 
     pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ImageCaptureImpl.get_track(instance);
     }
 
-    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!*const anyopaque {
+    pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(PhotoSettings)) anyerror!runtime.JSValue {
         
         return try ImageCaptureImpl.call_takePhoto(instance, photoSettings);
     }
 
-    pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageCaptureImpl.call_getPhotoCapabilities(instance);
     }
 
-    pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageCaptureImpl.call_getPhotoSettings(instance);
     }
 
-    pub fn call_grabFrame(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_grabFrame(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageCaptureImpl.call_grabFrame(instance);
     }
 

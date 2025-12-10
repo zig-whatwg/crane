@@ -20,7 +20,7 @@ pub const SmartCardContext = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "DedicatedWorker", "SharedWorker", "Window" } } },
@@ -91,22 +91,33 @@ pub const SmartCardContext = struct {
         return SmartCardContextImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SmartCardContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SmartCardContextImpl.deinit(instance);
     }
 
-    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!*const anyopaque {
+    pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!runtime.JSValue {
         
         return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }
 
-    pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
+    pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: runtime.JSValue, options: webidl.Opt(SmartCardGetStatusChangeOptions)) anyerror!runtime.JSValue {
         
         return try SmartCardContextImpl.call_getStatusChange(instance, readerStates, options);
     }
 
-    pub fn call_listReaders(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_listReaders(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SmartCardContextImpl.call_listReaders(instance);
     }
 

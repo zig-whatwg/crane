@@ -83,15 +83,28 @@ pub const PerformanceMark = struct {
         return PerformanceMarkImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PerformanceMarkImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PerformanceMarkImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, markName: DOMString, markOptions: webidl.Opt(PerformanceMarkOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try PerformanceMarkImpl.call_constructor(allocator, ctx, markName, markOptions);
+        return try PerformanceMarkImpl.call_constructor(ctx, markName, markOptions);
     }
 
     pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {

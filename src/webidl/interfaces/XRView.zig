@@ -18,7 +18,7 @@ pub const XRView = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             XRViewGeometry,
         };
@@ -111,6 +111,17 @@ pub const XRView = struct {
         return XRViewImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XRViewImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XRViewImpl.deinit(instance);
@@ -144,7 +155,7 @@ pub const XRView = struct {
         return try XRViewImpl.get_isFirstPersonObserver(instance);
     }
 
-    pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRViewImpl.get_projectionMatrix(instance);
     }
 

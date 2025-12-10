@@ -87,17 +87,28 @@ pub const SharedStorageWorklet = struct {
         return SharedStorageWorkletImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SharedStorageWorkletImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SharedStorageWorkletImpl.deinit(instance);
     }
 
-    pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: *const anyopaque, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
+    pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: runtime.JSValue, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
         
         return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options);
     }
 
-    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
+    pub fn call_run(instance: *runtime.Instance, name: DOMString, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
         
         return try SharedStorageWorkletImpl.call_run(instance, name, options);
     }

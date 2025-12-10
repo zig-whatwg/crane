@@ -18,7 +18,7 @@ pub const Clients = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
@@ -86,33 +86,44 @@ pub const Clients = struct {
         return ClientsImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ClientsImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ClientsImpl.deinit(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_claim(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_claim(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ClientsImpl.call_claim(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(ClientQueryOptions)) anyerror!*const anyopaque {
+    pub fn call_matchAll(instance: *runtime.Instance, options: webidl.Opt(ClientQueryOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try ClientsImpl.call_matchAll(instance, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try ClientsImpl.call_get(instance, id);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_openWindow(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try ClientsImpl.call_openWindow(instance, url);

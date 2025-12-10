@@ -236,6 +236,17 @@ pub const WorkerGlobalScope = struct {
         return WorkerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WorkerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WorkerGlobalScopeImpl.deinit(instance);
@@ -403,7 +414,7 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
         
         return try WorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
@@ -414,7 +425,7 @@ pub const WorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try WorkerGlobalScopeImpl.call_fetch(instance, input, init_data);

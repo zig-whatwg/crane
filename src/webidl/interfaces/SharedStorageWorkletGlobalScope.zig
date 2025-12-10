@@ -97,6 +97,17 @@ pub const SharedStorageWorkletGlobalScope = struct {
         return SharedStorageWorkletGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SharedStorageWorkletGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SharedStorageWorkletGlobalScopeImpl.deinit(instance);
@@ -114,7 +125,7 @@ pub const SharedStorageWorkletGlobalScope = struct {
         return try SharedStorageWorkletGlobalScopeImpl.get_navigator(instance);
     }
 
-    pub fn call_interestGroups(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_interestGroups(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SharedStorageWorkletGlobalScopeImpl.call_interestGroups(instance);
     }
 

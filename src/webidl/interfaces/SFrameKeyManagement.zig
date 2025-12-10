@@ -17,7 +17,7 @@ pub const SFrameKeyManagement = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -78,6 +78,17 @@ pub const SFrameKeyManagement = struct {
         return SFrameKeyManagementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SFrameKeyManagementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SFrameKeyManagementImpl.deinit(instance);
@@ -91,7 +102,7 @@ pub const SFrameKeyManagement = struct {
         try SFrameKeyManagementImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
         
         return try SFrameKeyManagementImpl.call_setEncryptionKey(instance, key, keyID);
     }

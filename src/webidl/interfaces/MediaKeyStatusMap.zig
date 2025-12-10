@@ -16,7 +16,7 @@ pub const MediaKeyStatusMap = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -94,6 +94,17 @@ pub const MediaKeyStatusMap = struct {
         return MediaKeyStatusMapImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MediaKeyStatusMapImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MediaKeyStatusMapImpl.deinit(instance);
@@ -108,7 +119,7 @@ pub const MediaKeyStatusMap = struct {
         return try MediaKeyStatusMapImpl.call_has(instance, keyId);
     }
 
-    pub fn call_get(instance: *runtime.Instance, keyId: BufferSource) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, keyId: BufferSource) anyerror!runtime.JSValue {
         
         return try MediaKeyStatusMapImpl.call_get(instance, keyId);
     }

@@ -124,15 +124,28 @@ pub const OffscreenCanvas = struct {
         return OffscreenCanvasImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return OffscreenCanvasImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         OffscreenCanvasImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, width: u64, height: u64) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, width: u64, height: u64) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try OffscreenCanvasImpl.call_constructor(allocator, ctx, width, height);
+        return try OffscreenCanvasImpl.call_constructor(ctx, width, height);
     }
 
     /// Extended attributes: [EnforceRange]
@@ -180,7 +193,7 @@ pub const OffscreenCanvas = struct {
         return try OffscreenCanvasImpl.call_getContext(instance, contextId, options);
     }
 
-    pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!*const anyopaque {
+    pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!runtime.JSValue {
         
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }

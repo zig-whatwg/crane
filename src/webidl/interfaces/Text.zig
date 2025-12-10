@@ -151,15 +151,28 @@ pub const Text = struct {
         return TextImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return TextImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         TextImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: webidl.Opt(DOMString)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(DOMString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try TextImpl.call_constructor(allocator, ctx, data);
+        return try TextImpl.call_constructor(ctx, data);
     }
 
     pub fn get_wholeText(instance: *runtime.Instance) anyerror!DOMString {
@@ -187,7 +200,7 @@ pub const Text = struct {
         return try TextImpl.call_splitText(instance, offset);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         
         return try TextImpl.call_getBoxQuads(instance, options);
     }

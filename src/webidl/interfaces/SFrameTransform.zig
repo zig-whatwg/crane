@@ -100,15 +100,28 @@ pub const SFrameTransform = struct {
         return SFrameTransformImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SFrameTransformImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SFrameTransformImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(SFrameTransformOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(SFrameTransformOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SFrameTransformImpl.call_constructor(allocator, ctx, options);
+        return try SFrameTransformImpl.call_constructor(ctx, options);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
@@ -119,7 +132,7 @@ pub const SFrameTransform = struct {
         try SFrameTransformImpl.set_onerror(instance, value);
     }
 
-    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!*const anyopaque {
+    pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(CryptoKeyID)) anyerror!runtime.JSValue {
         
         return try SFrameTransformImpl.call_setEncryptionKey(instance, key, keyID);
     }

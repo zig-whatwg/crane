@@ -110,15 +110,28 @@ pub const NDEFReader = struct {
         return NDEFReaderImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NDEFReaderImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NDEFReaderImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try NDEFReaderImpl.call_constructor(allocator, ctx);
+        return try NDEFReaderImpl.call_constructor(ctx);
     }
 
     pub fn get_onreading(instance: *runtime.Instance) anyerror!EventHandler {
@@ -137,17 +150,17 @@ pub const NDEFReader = struct {
         try NDEFReaderImpl.set_onreadingerror(instance, value);
     }
 
-    pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, message: NDEFMessageSource, options: webidl.Opt(NDEFWriteOptions)) anyerror!runtime.JSValue {
         
         return try NDEFReaderImpl.call_write(instance, message, options);
     }
 
-    pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!*const anyopaque {
+    pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(NDEFScanOptions)) anyerror!runtime.JSValue {
         
         return try NDEFReaderImpl.call_scan(instance, options);
     }
 
-    pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
+    pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(NDEFMakeReadOnlyOptions)) anyerror!runtime.JSValue {
         
         return try NDEFReaderImpl.call_makeReadOnly(instance, options);
     }

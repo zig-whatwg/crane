@@ -119,6 +119,17 @@ pub const ServiceWorker = struct {
         return ServiceWorkerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ServiceWorkerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ServiceWorkerImpl.deinit(instance);
@@ -148,7 +159,7 @@ pub const ServiceWorker = struct {
         try ServiceWorkerImpl.set_onerror(instance, value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         
         return try ServiceWorkerImpl.call_postMessage(instance, message, transfer);
     }

@@ -101,6 +101,17 @@ pub const XRSystem = struct {
         return XRSystemImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XRSystemImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XRSystemImpl.deinit(instance);
@@ -115,13 +126,13 @@ pub const XRSystem = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: webidl.Opt(XRSessionInit)) anyerror!*const anyopaque {
+    pub fn call_requestSession(instance: *runtime.Instance, mode: XRSessionMode, options: webidl.Opt(XRSessionInit)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try XRSystemImpl.call_requestSession(instance, mode, options);
     }
 
-    pub fn call_isSessionSupported(instance: *runtime.Instance, mode: XRSessionMode) anyerror!*const anyopaque {
+    pub fn call_isSessionSupported(instance: *runtime.Instance, mode: XRSessionMode) anyerror!runtime.JSValue {
         
         return try XRSystemImpl.call_isSessionSupported(instance, mode);
     }

@@ -16,7 +16,7 @@ pub const NDEFMessage = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
@@ -77,18 +77,31 @@ pub const NDEFMessage = struct {
         return NDEFMessageImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NDEFMessageImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NDEFMessageImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, messageInit: NDEFMessageInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, messageInit: NDEFMessageInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try NDEFMessageImpl.call_constructor(allocator, ctx, messageInit);
+        return try NDEFMessageImpl.call_constructor(ctx, messageInit);
     }
 
-    pub fn get_records(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_records(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NDEFMessageImpl.get_records(instance);
     }
 

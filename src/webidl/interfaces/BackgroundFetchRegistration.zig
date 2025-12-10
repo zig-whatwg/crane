@@ -34,13 +34,13 @@ pub const BackgroundFetchRegistration = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "id", "get_id", null },
@@ -53,21 +53,21 @@ pub const BackgroundFetchRegistration = struct {
             .{ "recordsAvailable", "get_recordsAvailable", null },
             .{ "onprogress", "get_onprogress", "set_onprogress" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "abort", "call_abort", 0 },
             .{ "match", "call_match", 1 },
             .{ "matchAll", "call_matchAll", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
             "match",
             "matchAll",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -75,7 +75,7 @@ pub const BackgroundFetchRegistration = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "id", "get_id", null },
@@ -88,11 +88,10 @@ pub const BackgroundFetchRegistration = struct {
             .{ "recordsAvailable", "get_recordsAvailable", null },
             .{ "onprogress", "get_onprogress", "set_onprogress" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -114,7 +113,6 @@ pub const BackgroundFetchRegistration = struct {
     );
 
     const delegates = .{
-
         .get_downloadTotal = &get_downloadTotal,
         .get_downloaded = &get_downloaded,
         .get_failureReason = &get_failureReason,
@@ -138,6 +136,17 @@ pub const BackgroundFetchRegistration = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return BackgroundFetchRegistrationImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BackgroundFetchRegistrationImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
@@ -185,18 +194,15 @@ pub const BackgroundFetchRegistration = struct {
         try BackgroundFetchRegistrationImpl.set_onprogress(instance, value);
     }
 
-    pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BackgroundFetchRegistrationImpl.call_abort(instance);
     }
 
-    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchRegistrationImpl.call_match(instance, request, options);
     }
 
-    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(RequestInfo), options: webidl.Opt(CacheQueryOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchRegistrationImpl.call_matchAll(instance, request, options);
     }
-
 };

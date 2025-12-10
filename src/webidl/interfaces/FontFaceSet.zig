@@ -134,6 +134,17 @@ pub const FontFaceSet = struct {
         return FontFaceSetImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FontFaceSetImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FontFaceSetImpl.deinit(instance);
@@ -163,7 +174,7 @@ pub const FontFaceSet = struct {
         try FontFaceSetImpl.set_onloadingerror(instance, value);
     }
 
-    pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FontFaceSetImpl.get_ready(instance);
     }
 
@@ -185,7 +196,7 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.call_check(instance, font, text);
     }
 
-    pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!*const anyopaque {
+    pub fn call_load(instance: *runtime.Instance, font: CSSOMString, text: webidl.Opt(CSSOMString)) anyerror!runtime.JSValue {
         
         return try FontFaceSetImpl.call_load(instance, font, text);
     }

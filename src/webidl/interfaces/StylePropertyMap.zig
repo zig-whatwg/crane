@@ -89,12 +89,23 @@ pub const StylePropertyMap = struct {
         return StylePropertyMapImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return StylePropertyMapImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         StylePropertyMapImpl.deinit(instance);
     }
 
-    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+    pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
         
         return try StylePropertyMapImpl.call_set(instance, property, values);
     }
@@ -108,7 +119,7 @@ pub const StylePropertyMap = struct {
         return try StylePropertyMapImpl.call_clear(instance);
     }
 
-    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+    pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
         
         return try StylePropertyMapImpl.call_append(instance, property, values);
     }

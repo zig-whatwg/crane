@@ -19,19 +19,19 @@ pub const ImageDecoder = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", null },
@@ -39,19 +39,19 @@ pub const ImageDecoder = struct {
             .{ "completed", "get_completed", null },
             .{ "tracks", "get_tracks", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "decode", "call_decode", 0 },
             .{ "reset", "call_reset", 0 },
             .{ "close", "call_close", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "decode",
@@ -59,11 +59,10 @@ pub const ImageDecoder = struct {
             "close",
             "isTypeSupported",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", null },
@@ -71,11 +70,10 @@ pub const ImageDecoder = struct {
             .{ "completed", "get_completed", null },
             .{ "tracks", "get_tracks", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -83,7 +81,7 @@ pub const ImageDecoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             complete: bool = undefined,
             completed: runtime.Promise(void) = undefined,
             tracks: *runtime.Instance = undefined,
@@ -92,7 +90,6 @@ pub const ImageDecoder = struct {
     );
 
     const delegates = .{
-
         .get_complete = &get_complete,
         .get_completed = &get_completed,
         .get_tracks = &get_tracks,
@@ -111,15 +108,28 @@ pub const ImageDecoder = struct {
         return ImageDecoderImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ImageDecoderImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ImageDecoderImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: ImageDecoderInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, init_data: ImageDecoderInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try ImageDecoderImpl.call_constructor(allocator, ctx, init_data);
+        return try ImageDecoderImpl.call_constructor(ctx, init_data);
     }
 
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
@@ -130,7 +140,7 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.get_complete(instance);
     }
 
-    pub fn get_completed(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_completed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageDecoderImpl.get_completed(instance);
     }
 
@@ -142,18 +152,15 @@ pub const ImageDecoder = struct {
         return try ImageDecoderImpl.call_reset(instance);
     }
 
-    pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(ImageDecodeOptions)) anyerror!runtime.JSValue {
         return try ImageDecoderImpl.call_decode(instance, options);
     }
 
     pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": DOMString) anyerror!*const anyopaque {
-        
         return try ImageDecoderImpl.call_static_isTypeSupported(instance, @"type");
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try ImageDecoderImpl.call_close(instance);
     }
-
 };

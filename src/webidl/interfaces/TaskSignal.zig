@@ -31,33 +31,32 @@ pub const TaskSignal = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "priority", "get_priority", null },
             .{ "onprioritychange", "get_onprioritychange", "set_onprioritychange" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "_any", "call_static__any", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "_any",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -68,17 +67,16 @@ pub const TaskSignal = struct {
             "timeout",
             "throwIfAborted",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "priority", "get_priority", null },
             .{ "onprioritychange", "get_onprioritychange", "set_onprioritychange" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -93,7 +91,6 @@ pub const TaskSignal = struct {
     );
 
     const delegates = .{
-
         .get_onprioritychange = &get_onprioritychange,
         .get_priority = &get_priority,
 
@@ -106,6 +103,17 @@ pub const TaskSignal = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return TaskSignalImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return TaskSignalImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
@@ -128,8 +136,7 @@ pub const TaskSignal = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque, init_data: webidl.Opt(TaskSignalAnyInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try TaskSignalImpl.call_static__any(instance, signals, init_data);
     }
-
 };

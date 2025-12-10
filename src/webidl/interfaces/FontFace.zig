@@ -21,18 +21,18 @@ pub const FontFace = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "family", "get_family", "set_family" },
@@ -52,21 +52,20 @@ pub const FontFace = struct {
             .{ "variations", "get_variations", null },
             .{ "palettes", "get_palettes", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "load", "call_load", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "load",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "family", "get_family", "set_family" },
@@ -86,11 +85,10 @@ pub const FontFace = struct {
             .{ "variations", "get_variations", null },
             .{ "palettes", "get_palettes", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -119,7 +117,6 @@ pub const FontFace = struct {
     );
 
     const delegates = .{
-
         .get_ascentOverride = &get_ascentOverride,
         .get_descentOverride = &get_descentOverride,
         .get_display = &get_display,
@@ -160,15 +157,28 @@ pub const FontFace = struct {
         return FontFaceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FontFaceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FontFaceImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, family: CSSOMString, source: *const anyopaque, descriptors: webidl.Opt(FontFaceDescriptors)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, family: CSSOMString, source: runtime.JSValue, descriptors: webidl.Opt(FontFaceDescriptors)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FontFaceImpl.call_constructor(allocator, ctx, family, source, descriptors);
+        return try FontFaceImpl.call_constructor(ctx, family, source, descriptors);
     }
 
     pub fn get_family(instance: *runtime.Instance) anyerror!CSSOMString {
@@ -263,7 +273,7 @@ pub const FontFace = struct {
         return try FontFaceImpl.get_status(instance);
     }
 
-    pub fn get_loaded(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_loaded(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FontFaceImpl.get_loaded(instance);
     }
 
@@ -279,8 +289,7 @@ pub const FontFace = struct {
         return try FontFaceImpl.get_palettes(instance);
     }
 
-    pub fn call_load(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_load(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FontFaceImpl.call_load(instance);
     }
-
 };

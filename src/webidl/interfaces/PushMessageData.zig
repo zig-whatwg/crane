@@ -16,7 +16,7 @@ pub const PushMessageData = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
@@ -88,16 +88,27 @@ pub const PushMessageData = struct {
         return PushMessageDataImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PushMessageDataImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PushMessageDataImpl.deinit(instance);
     }
 
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PushMessageDataImpl.call_arrayBuffer(instance);
     }
 
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PushMessageDataImpl.call_bytes(instance);
     }
 

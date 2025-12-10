@@ -21,7 +21,7 @@ pub const GPUBuffer = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             GPUObjectBase,
         };
@@ -114,6 +114,17 @@ pub const GPUBuffer = struct {
         return GPUBufferImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return GPUBufferImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         GPUBufferImpl.deinit(instance);
@@ -147,12 +158,12 @@ pub const GPUBuffer = struct {
         return try GPUBufferImpl.call_destroy(instance);
     }
 
-    pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
+    pub fn call_mapAsync(instance: *runtime.Instance, mode: GPUMapModeFlags, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!runtime.JSValue {
         
         return try GPUBufferImpl.call_mapAsync(instance, mode, offset, size);
     }
 
-    pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!*const anyopaque {
+    pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!runtime.JSValue {
         
         return try GPUBufferImpl.call_getMappedRange(instance, offset, size);
     }

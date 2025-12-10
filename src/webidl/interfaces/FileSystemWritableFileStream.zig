@@ -91,22 +91,33 @@ pub const FileSystemWritableFileStream = struct {
         return FileSystemWritableFileStreamImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FileSystemWritableFileStreamImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FileSystemWritableFileStreamImpl.deinit(instance);
     }
 
-    pub fn call_write(instance: *runtime.Instance, data: FileSystemWriteChunkType) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, data: FileSystemWriteChunkType) anyerror!runtime.JSValue {
         
         return try FileSystemWritableFileStreamImpl.call_write(instance, data);
     }
 
-    pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!*const anyopaque {
+    pub fn call_seek(instance: *runtime.Instance, position: u64) anyerror!runtime.JSValue {
         
         return try FileSystemWritableFileStreamImpl.call_seek(instance, position);
     }
 
-    pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!*const anyopaque {
+    pub fn call_truncate(instance: *runtime.Instance, size: u64) anyerror!runtime.JSValue {
         
         return try FileSystemWritableFileStreamImpl.call_truncate(instance, size);
     }

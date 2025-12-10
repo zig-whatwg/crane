@@ -115,15 +115,28 @@ pub const FetchEvent = struct {
         return FetchEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FetchEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FetchEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: FetchEventInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: FetchEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FetchEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try FetchEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
     /// Extended attributes: [SameObject]
@@ -138,7 +151,7 @@ pub const FetchEvent = struct {
         return value;
     }
 
-    pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FetchEventImpl.get_preloadResponse(instance);
     }
 
@@ -154,11 +167,11 @@ pub const FetchEvent = struct {
         return try FetchEventImpl.get_replacesClientId(instance);
     }
 
-    pub fn get_handled(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_handled(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FetchEventImpl.get_handled(instance);
     }
 
-    pub fn call_respondWith(instance: *runtime.Instance, r: *const anyopaque) anyerror!void {
+    pub fn call_respondWith(instance: *runtime.Instance, r: runtime.JSValue) anyerror!void {
         
         return try FetchEventImpl.call_respondWith(instance, r);
     }

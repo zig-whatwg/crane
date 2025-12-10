@@ -15,7 +15,7 @@ pub const MulticastController = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
@@ -87,21 +87,32 @@ pub const MulticastController = struct {
         return MulticastControllerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MulticastControllerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MulticastControllerImpl.deinit(instance);
     }
 
-    pub fn get_joinedGroups(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_joinedGroups(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MulticastControllerImpl.get_joinedGroups(instance);
     }
 
-    pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
+    pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!runtime.JSValue {
         
         return try MulticastControllerImpl.call_leaveGroup(instance, ipAddress);
     }
 
-    pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!*const anyopaque {
+    pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!runtime.JSValue {
         
         return try MulticastControllerImpl.call_joinGroup(instance, ipAddress);
     }

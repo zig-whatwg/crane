@@ -16,7 +16,7 @@ pub const CanvasPathDrawingStyles = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -100,6 +100,17 @@ pub const CanvasPathDrawingStyles = struct {
         return CanvasPathDrawingStylesImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CanvasPathDrawingStylesImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CanvasPathDrawingStylesImpl.deinit(instance);
@@ -149,7 +160,7 @@ pub const CanvasPathDrawingStyles = struct {
         return try CanvasPathDrawingStylesImpl.call_getLineDash(instance);
     }
 
-    pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
+    pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
         
         return try CanvasPathDrawingStylesImpl.call_setLineDash(instance, segments);
     }

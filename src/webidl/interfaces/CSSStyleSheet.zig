@@ -123,15 +123,28 @@ pub const CSSStyleSheet = struct {
         return CSSStyleSheetImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSStyleSheetImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSStyleSheetImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(CSSStyleSheetInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(CSSStyleSheetInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSStyleSheetImpl.call_constructor(allocator, ctx, options);
+        return try CSSStyleSheetImpl.call_constructor(ctx, options);
     }
 
     pub fn get_ownerRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -167,7 +180,7 @@ pub const CSSStyleSheet = struct {
         return try CSSStyleSheetImpl.call_removeRule(instance, index);
     }
 
-    pub fn call_replace(instance: *runtime.Instance, text: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_replace(instance: *runtime.Instance, text: runtime.USVString) anyerror!runtime.JSValue {
         
         return try CSSStyleSheetImpl.call_replace(instance, text);
     }

@@ -33,7 +33,7 @@ pub const Request = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             Body,
         };
@@ -193,15 +193,28 @@ pub const Request = struct {
         return RequestImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return RequestImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         RequestImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, input: RequestInfo, init_data: webidl.Opt(RequestInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, input: RequestInfo, init_data: webidl.Opt(RequestInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RequestImpl.call_constructor(allocator, ctx, input, init_data);
+        return try RequestImpl.call_constructor(ctx, input, init_data);
     }
 
     pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {
@@ -289,37 +302,37 @@ pub const Request = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_arrayBuffer(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_json(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_text(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_blob(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_bytes(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try RequestImpl.call_formData(instance);
     }

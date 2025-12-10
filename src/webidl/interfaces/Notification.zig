@@ -199,15 +199,28 @@ pub const Notification = struct {
         return NotificationImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NotificationImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NotificationImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, title: DOMString, options: webidl.Opt(NotificationOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try NotificationImpl.call_constructor(allocator, ctx, title, options);
+        return try NotificationImpl.call_constructor(ctx, title, options);
     }
 
     pub fn get_permission(instance: *runtime.Instance) anyerror!NotificationPermission {
@@ -287,7 +300,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_vibrate(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_vibrate(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_vibrate) |cached| {
@@ -327,7 +340,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_actions(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_actions(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_actions) |cached| {
@@ -339,7 +352,7 @@ pub const Notification = struct {
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!*const anyopaque {
+    pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(NotificationPermissionCallback)) anyerror!runtime.JSValue {
         
         return try NotificationImpl.call_static_requestPermission(instance, deprecatedCallback);
     }

@@ -21,7 +21,7 @@ pub const EventTarget = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
@@ -89,15 +89,28 @@ pub const EventTarget = struct {
         return EventTargetImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return EventTargetImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         EventTargetImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try EventTargetImpl.call_constructor(allocator, ctx);
+        return try EventTargetImpl.call_constructor(ctx);
     }
 
     pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
@@ -105,7 +118,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_dispatchEvent(instance, event);
     }
 
-    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_removeEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try EventTargetImpl.call_removeEventListener(instance, @"type", callback, options);
     }
@@ -115,7 +128,7 @@ pub const EventTarget = struct {
         return try EventTargetImpl.call_when(instance, @"type", options);
     }
 
-    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_addEventListener(instance: *runtime.Instance, @"type": DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try EventTargetImpl.call_addEventListener(instance, @"type", callback, options);
     }

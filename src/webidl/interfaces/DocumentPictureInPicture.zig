@@ -101,6 +101,17 @@ pub const DocumentPictureInPicture = struct {
         return DocumentPictureInPictureImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return DocumentPictureInPictureImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         DocumentPictureInPictureImpl.deinit(instance);
@@ -119,7 +130,7 @@ pub const DocumentPictureInPicture = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(DocumentPictureInPictureOptions)) anyerror!*const anyopaque {
+    pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(DocumentPictureInPictureOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try DocumentPictureInPictureImpl.call_requestWindow(instance, options);

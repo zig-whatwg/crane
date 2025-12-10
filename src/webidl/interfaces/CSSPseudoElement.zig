@@ -127,6 +127,17 @@ pub const CSSPseudoElement = struct {
         return CSSPseudoElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSPseudoElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSPseudoElementImpl.deinit(instance);
@@ -140,7 +151,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.get_element(instance);
     }
 
-    pub fn get_parent(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_parent(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSPseudoElementImpl.get_parent(instance);
     }
 
@@ -154,7 +165,7 @@ pub const CSSPseudoElement = struct {
         return try CSSPseudoElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         
         return try CSSPseudoElementImpl.call_getBoxQuads(instance, options);
     }

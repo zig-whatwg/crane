@@ -130,6 +130,17 @@ pub const ServiceWorkerContainer = struct {
         return ServiceWorkerContainerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ServiceWorkerContainerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ServiceWorkerContainerImpl.deinit(instance);
@@ -139,7 +150,7 @@ pub const ServiceWorkerContainer = struct {
         return try ServiceWorkerContainerImpl.get_controller(instance);
     }
 
-    pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ServiceWorkerContainerImpl.get_ready(instance);
     }
 
@@ -168,14 +179,14 @@ pub const ServiceWorkerContainer = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
+    pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try ServiceWorkerContainerImpl.call_getRegistration(instance, clientURL);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ServiceWorkerContainerImpl.call_getRegistrations(instance);
     }
@@ -185,7 +196,7 @@ pub const ServiceWorkerContainer = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: webidl.Opt(RegistrationOptions)) anyerror!*const anyopaque {
+    pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: webidl.Opt(RegistrationOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options);

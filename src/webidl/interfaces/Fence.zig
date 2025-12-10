@@ -18,7 +18,7 @@ pub const Fence = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -89,6 +89,17 @@ pub const Fence = struct {
         return FenceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FenceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FenceImpl.deinit(instance);
@@ -104,7 +115,7 @@ pub const Fence = struct {
         return try FenceImpl.call_notifyEvent(instance, event);
     }
 
-    pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FenceImpl.call_getNestedConfigs(instance);
     }
 
@@ -113,7 +124,7 @@ pub const Fence = struct {
         return try FenceImpl.call_setReportEventDataForAutomaticBeacons(instance, event);
     }
 
-    pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FenceImpl.call_disableUntrustedNetwork(instance);
     }
 

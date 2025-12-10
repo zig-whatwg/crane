@@ -101,12 +101,23 @@ pub const WindowClient = struct {
         return WindowClientImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WindowClientImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WindowClientImpl.deinit(instance);
     }
 
-    pub fn get_visibilityState(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_visibilityState(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowClientImpl.get_visibilityState(instance);
     }
 
@@ -115,7 +126,7 @@ pub const WindowClient = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_ancestorOrigins) |cached| {
@@ -127,14 +138,14 @@ pub const WindowClient = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try WindowClientImpl.call_navigate(instance, url);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_focus(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_focus(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try WindowClientImpl.call_focus(instance);
     }

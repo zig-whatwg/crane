@@ -103,6 +103,17 @@ pub const CSSRotate = struct {
         return CSSRotateImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSRotateImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSRotateImpl.deinit(instance);
@@ -122,9 +133,11 @@ pub const CSSRotate = struct {
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try CSSRotateImpl.call_constructor(allocator, ctx, args);
+        return try CSSRotateImpl.call_constructor(ctx, args);
     }
 
     pub fn get_x(instance: *runtime.Instance) anyerror!CSSNumberish {

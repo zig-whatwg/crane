@@ -245,6 +245,17 @@ pub const ServiceWorkerGlobalScope = struct {
         return ServiceWorkerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ServiceWorkerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ServiceWorkerGlobalScopeImpl.deinit(instance);
@@ -451,7 +462,7 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ServiceWorkerGlobalScopeImpl.call_skipWaiting(instance);
     }

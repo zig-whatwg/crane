@@ -121,6 +121,17 @@ pub const CookieStore = struct {
         return CookieStoreImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CookieStoreImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CookieStoreImpl.deinit(instance);
@@ -136,22 +147,22 @@ pub const CookieStore = struct {
         try CookieStoreImpl.set_onchange(instance, value);
     }
 
-    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!runtime.JSValue {
         
         return try CookieStoreImpl.call_set(instance, name, value);
     }
 
-    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
         
         return try CookieStoreImpl.call_get(instance, name);
     }
 
-    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
         
         return try CookieStoreImpl.call_getAll(instance, name);
     }
 
-    pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
         
         return try CookieStoreImpl.call_delete(instance, name);
     }

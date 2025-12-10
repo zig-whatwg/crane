@@ -17,7 +17,7 @@ pub const BluetoothRemoteGATTServer = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -96,6 +96,17 @@ pub const BluetoothRemoteGATTServer = struct {
         return BluetoothRemoteGATTServerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothRemoteGATTServerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothRemoteGATTServerImpl.deinit(instance);
@@ -117,12 +128,12 @@ pub const BluetoothRemoteGATTServer = struct {
         return try BluetoothRemoteGATTServerImpl.get_connected(instance);
     }
 
-    pub fn call_getPrimaryService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+    pub fn call_getPrimaryService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryService(instance, service);
     }
 
-    pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_connect(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothRemoteGATTServerImpl.call_connect(instance);
     }
 
@@ -130,7 +141,7 @@ pub const BluetoothRemoteGATTServer = struct {
         return try BluetoothRemoteGATTServerImpl.call_disconnect(instance);
     }
 
-    pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
+    pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServerImpl.call_getPrimaryServices(instance, service);
     }

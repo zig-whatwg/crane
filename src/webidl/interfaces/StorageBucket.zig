@@ -20,7 +20,7 @@ pub const StorageBucket = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
@@ -113,6 +113,17 @@ pub const StorageBucket = struct {
         return StorageBucketImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return StorageBucketImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         StorageBucketImpl.deinit(instance);
@@ -146,29 +157,29 @@ pub const StorageBucket = struct {
         return value;
     }
 
-    pub fn call_setExpires(instance: *runtime.Instance, expires: DOMHighResTimeStamp) anyerror!*const anyopaque {
+    pub fn call_setExpires(instance: *runtime.Instance, expires: DOMHighResTimeStamp) anyerror!runtime.JSValue {
         
         return try StorageBucketImpl.call_setExpires(instance, expires);
     }
 
-    pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageBucketImpl.call_getDirectory(instance);
     }
 
-    pub fn call_expires(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_expires(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageBucketImpl.call_expires(instance);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_persist(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageBucketImpl.call_persist(instance);
     }
 
-    pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_persisted(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageBucketImpl.call_persisted(instance);
     }
 
-    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageBucketImpl.call_estimate(instance);
     }
 

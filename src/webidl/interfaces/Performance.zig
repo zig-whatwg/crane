@@ -163,6 +163,17 @@ pub const Performance = struct {
         return PerformanceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PerformanceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PerformanceImpl.deinit(instance);
@@ -249,7 +260,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_toJSON(instance);
     }
 
-    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
+    pub fn call_measure(instance: *runtime.Instance, measureName: DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         
         return try PerformanceImpl.call_measure(instance, measureName, startOrMeasureOptions, endMark);
     }
@@ -273,7 +284,7 @@ pub const Performance = struct {
     }
 
     /// Extended attributes: [Exposed=(Window,ServiceWorker,SharedWorker)], [CrossOriginIsolated]
-    pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_measureUserAgentSpecificMemory(instance);
     }
 

@@ -106,6 +106,17 @@ pub const WakeLockSentinel = struct {
         return WakeLockSentinelImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WakeLockSentinelImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WakeLockSentinelImpl.deinit(instance);
@@ -127,7 +138,7 @@ pub const WakeLockSentinel = struct {
         try WakeLockSentinelImpl.set_onrelease(instance, value);
     }
 
-    pub fn call_release(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_release(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WakeLockSentinelImpl.call_release(instance);
     }
 

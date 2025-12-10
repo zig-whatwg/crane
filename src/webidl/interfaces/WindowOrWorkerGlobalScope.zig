@@ -32,7 +32,7 @@ pub const WindowOrWorkerGlobalScope = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -158,6 +158,17 @@ pub const WindowOrWorkerGlobalScope = struct {
         return WindowOrWorkerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WindowOrWorkerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WindowOrWorkerGlobalScopeImpl.deinit(instance);
@@ -261,13 +272,13 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
     }
 
-    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!*const anyopaque {
+    pub fn call_createImageBitmap(instance: *runtime.Instance, image: ImageBitmapSource, options: webidl.Opt(ImageBitmapOptions)) anyerror!runtime.JSValue {
         
         return try WindowOrWorkerGlobalScopeImpl.call_createImageBitmap(instance, image, options);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!*const anyopaque {
+    pub fn call_fetch(instance: *runtime.Instance, input: RequestInfo, init_data: webidl.Opt(RequestInit)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         
         return try WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);

@@ -113,15 +113,28 @@ pub const MessageEvent = struct {
         return MessageEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MessageEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MessageEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(MessageEventInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(MessageEventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try MessageEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try MessageEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
@@ -140,11 +153,11 @@ pub const MessageEvent = struct {
         return try MessageEventImpl.get_source(instance);
     }
 
-    pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MessageEventImpl.get_ports(instance);
     }
 
-    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(DOMString), source: webidl.Opt(?MessageEventSource), ports: webidl.Opt(runtime.JSValue)) anyerror!void {
         
         return try MessageEventImpl.call_initMessageEvent(instance, @"type", bubbles, cancelable, data, origin, lastEventId, source, ports);
     }

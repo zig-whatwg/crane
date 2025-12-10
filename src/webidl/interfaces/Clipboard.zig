@@ -98,26 +98,37 @@ pub const Clipboard = struct {
         return ClipboardImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ClipboardImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ClipboardImpl.deinit(instance);
     }
 
-    pub fn call_readText(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_readText(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ClipboardImpl.call_readText(instance);
     }
 
-    pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
+    pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(ClipboardUnsanitizedFormats)) anyerror!runtime.JSValue {
         
         return try ClipboardImpl.call_read(instance, formats);
     }
 
-    pub fn call_write(instance: *runtime.Instance, data: ClipboardItems) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, data: ClipboardItems) anyerror!runtime.JSValue {
         
         return try ClipboardImpl.call_write(instance, data);
     }
 
-    pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!*const anyopaque {
+    pub fn call_writeText(instance: *runtime.Instance, data: DOMString) anyerror!runtime.JSValue {
         
         return try ClipboardImpl.call_writeText(instance, data);
     }

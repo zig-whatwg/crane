@@ -110,6 +110,17 @@ pub const NavigatorManagedData = struct {
         return NavigatorManagedDataImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NavigatorManagedDataImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NavigatorManagedDataImpl.deinit(instance);
@@ -123,28 +134,28 @@ pub const NavigatorManagedData = struct {
         try NavigatorManagedDataImpl.set_onmanagedconfigurationchange(instance, value);
     }
 
-    pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: runtime.JSValue) anyerror!runtime.JSValue {
         
         return try NavigatorManagedDataImpl.call_getManagedConfiguration(instance, keys);
     }
 
-    pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getAnnotatedLocation(instance);
     }
 
-    pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getAnnotatedAssetId(instance);
     }
 
-    pub fn call_getDirectoryId(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getDirectoryId(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getDirectoryId(instance);
     }
 
-    pub fn call_getHostname(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getHostname(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getHostname(instance);
     }
 
-    pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorManagedDataImpl.call_getSerialNumber(instance);
     }
 

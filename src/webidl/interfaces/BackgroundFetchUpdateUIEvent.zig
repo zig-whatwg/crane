@@ -29,24 +29,23 @@ pub const BackgroundFetchUpdateUIEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .ServiceWorker = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateUI", "call_updateUI", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "updateUI",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -56,15 +55,13 @@ pub const BackgroundFetchUpdateUIEvent = struct {
             "initEvent",
             "waitUntil",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -77,7 +74,6 @@ pub const BackgroundFetchUpdateUIEvent = struct {
     );
 
     const delegates = .{
-
         .call_updateUI = &call_updateUI,
 
         .deinit = &deinit,
@@ -89,20 +85,31 @@ pub const BackgroundFetchUpdateUIEvent = struct {
         return BackgroundFetchUpdateUIEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BackgroundFetchUpdateUIEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BackgroundFetchUpdateUIEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, init_data: BackgroundFetchEventInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, init_data: BackgroundFetchEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BackgroundFetchUpdateUIEventImpl.call_constructor(allocator, ctx, @"type", init_data);
+        return try BackgroundFetchUpdateUIEventImpl.call_constructor(ctx, @"type", init_data);
     }
 
-    pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(BackgroundFetchUIOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(BackgroundFetchUIOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchUpdateUIEventImpl.call_updateUI(instance, options);
     }
-
 };

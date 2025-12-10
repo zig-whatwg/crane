@@ -15,7 +15,7 @@ pub const SVGPathSegment = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "NoInterfaceObject" },
@@ -79,6 +79,17 @@ pub const SVGPathSegment = struct {
         return SVGPathSegmentImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SVGPathSegmentImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SVGPathSegmentImpl.deinit(instance);
@@ -92,11 +103,11 @@ pub const SVGPathSegment = struct {
         try SVGPathSegmentImpl.set_type(instance, value);
     }
 
-    pub fn get_values(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_values(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SVGPathSegmentImpl.get_values(instance);
     }
 
-    pub fn set_values(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_values(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try SVGPathSegmentImpl.set_values(instance, value);
     }
 

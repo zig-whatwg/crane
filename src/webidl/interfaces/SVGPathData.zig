@@ -16,7 +16,7 @@ pub const SVGPathData = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -73,17 +73,28 @@ pub const SVGPathData = struct {
         return SVGPathDataImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SVGPathDataImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SVGPathDataImpl.deinit(instance);
     }
 
-    pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
+    pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
         
         return try SVGPathDataImpl.call_setPathData(instance, pathData);
     }
 
-    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!*const anyopaque {
+    pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(SVGPathDataSettings)) anyerror!runtime.JSValue {
         
         return try SVGPathDataImpl.call_getPathData(instance, settings);
     }

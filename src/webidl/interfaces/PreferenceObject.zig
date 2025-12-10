@@ -110,6 +110,17 @@ pub const PreferenceObject = struct {
         return PreferenceObjectImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PreferenceObjectImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PreferenceObjectImpl.deinit(instance);
@@ -123,7 +134,7 @@ pub const PreferenceObject = struct {
         return try PreferenceObjectImpl.get_value(instance);
     }
 
-    pub fn get_validValues(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_validValues(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PreferenceObjectImpl.get_validValues(instance);
     }
 
@@ -135,7 +146,7 @@ pub const PreferenceObject = struct {
         try PreferenceObjectImpl.set_onchange(instance, value);
     }
 
-    pub fn call_requestOverride(instance: *runtime.Instance, value: ?DOMString) anyerror!*const anyopaque {
+    pub fn call_requestOverride(instance: *runtime.Instance, value: ?DOMString) anyerror!runtime.JSValue {
         
         return try PreferenceObjectImpl.call_requestOverride(instance, value);
     }

@@ -122,15 +122,28 @@ pub const Worker = struct {
         return WorkerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WorkerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WorkerImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(WorkerOptions)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(WorkerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WorkerImpl.call_constructor(allocator, ctx, scriptURL, options);
+        return try WorkerImpl.call_constructor(ctx, scriptURL, options);
     }
 
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
@@ -157,7 +170,7 @@ pub const Worker = struct {
         try WorkerImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         
         return try WorkerImpl.call_postMessage(instance, message, transfer);
     }

@@ -18,7 +18,7 @@ pub const URLPattern = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
@@ -120,6 +120,17 @@ pub const URLPattern = struct {
         return URLPatternImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return URLPatternImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         URLPatternImpl.deinit(instance);
@@ -141,9 +152,11 @@ pub const URLPattern = struct {
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try URLPatternImpl.call_constructor(allocator, ctx, args);
+        return try URLPatternImpl.call_constructor(ctx, args);
     }
 
     pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {

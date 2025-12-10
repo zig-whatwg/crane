@@ -19,20 +19,20 @@ pub const URL = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "webkitURL" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
             .SharedWorker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", "set_href" },
@@ -48,12 +48,12 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "parse", "call_static_parse", 1 },
@@ -61,7 +61,7 @@ pub const URL = struct {
             .{ "createObjectURL", "call_static_createObjectURL", 1 },
             .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "parse",
@@ -70,11 +70,10 @@ pub const URL = struct {
             "createObjectURL",
             "revokeObjectURL",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", "set_href" },
@@ -90,11 +89,10 @@ pub const URL = struct {
             .{ "searchParams", "get_searchParams", null },
             .{ "hash", "get_hash", "set_hash" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -120,7 +118,6 @@ pub const URL = struct {
     );
 
     const delegates = .{
-
         .get_hash = &get_hash,
         .get_host = &get_host,
         .get_hostname = &get_hostname,
@@ -156,15 +153,28 @@ pub const URL = struct {
         return URLImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return URLImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         URLImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try URLImpl.call_constructor(allocator, ctx, url, base);
+        return try URLImpl.call_constructor(ctx, url, base);
     }
 
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
@@ -268,23 +278,18 @@ pub const URL = struct {
     }
 
     pub fn call_static_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
-        
         return try URLImpl.call_static_canParse(instance, url, base);
     }
 
     pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
-        
         return try URLImpl.call_static_createObjectURL(instance, obj);
     }
 
     pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
-        
         return try URLImpl.call_static_parse(instance, url, base);
     }
 
     pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
-        
         return try URLImpl.call_static_revokeObjectURL(instance, url);
     }
-
 };

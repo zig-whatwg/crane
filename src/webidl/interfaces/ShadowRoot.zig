@@ -202,6 +202,17 @@ pub const ShadowRoot = struct {
         return ShadowRootImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ShadowRootImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ShadowRootImpl.deinit(instance);
@@ -282,11 +293,11 @@ pub const ShadowRoot = struct {
         return value;
     }
 
-    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ShadowRootImpl.get_adoptedStyleSheets(instance);
     }
 
-    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
@@ -294,7 +305,7 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ShadowRootImpl.call_getAnimations(instance);
     }
 

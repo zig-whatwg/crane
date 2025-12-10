@@ -15,7 +15,7 @@ pub const DigitalGoodsService = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -84,26 +84,37 @@ pub const DigitalGoodsService = struct {
         return DigitalGoodsServiceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return DigitalGoodsServiceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         DigitalGoodsServiceImpl.deinit(instance);
     }
 
-    pub fn call_listPurchases(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_listPurchases(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalGoodsServiceImpl.call_listPurchases(instance);
     }
 
-    pub fn call_getDetails(instance: *runtime.Instance, itemIds: *const anyopaque) anyerror!*const anyopaque {
+    pub fn call_getDetails(instance: *runtime.Instance, itemIds: runtime.JSValue) anyerror!runtime.JSValue {
         
         return try DigitalGoodsServiceImpl.call_getDetails(instance, itemIds);
     }
 
-    pub fn call_consume(instance: *runtime.Instance, purchaseToken: DOMString) anyerror!*const anyopaque {
+    pub fn call_consume(instance: *runtime.Instance, purchaseToken: DOMString) anyerror!runtime.JSValue {
         
         return try DigitalGoodsServiceImpl.call_consume(instance, purchaseToken);
     }
 
-    pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_listPurchaseHistory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalGoodsServiceImpl.call_listPurchaseHistory(instance);
     }
 

@@ -85,29 +85,29 @@ pub const HTMLSlotElement = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", "set_name" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "assignedNodes", "call_assignedNodes", 0 },
             .{ "assignedElements", "call_assignedElements", 0 },
             .{ "assign", "call_assign", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "assignedNodes",
             "assignedElements",
             "assign",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -203,16 +203,15 @@ pub const HTMLSlotElement = struct {
             "focus",
             "blur",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", "set_name" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -226,7 +225,6 @@ pub const HTMLSlotElement = struct {
     );
 
     const delegates = .{
-
         .get_name = &get_name,
 
         .set_name = &set_name,
@@ -244,15 +242,28 @@ pub const HTMLSlotElement = struct {
         return HTMLSlotElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HTMLSlotElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HTMLSlotElementImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try HTMLSlotElementImpl.call_constructor(allocator, ctx);
+        return try HTMLSlotElementImpl.call_constructor(ctx);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -265,23 +276,19 @@ pub const HTMLSlotElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try HTMLSlotElementImpl.set_name(instance, value);
     }
 
-    pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
-        
+    pub fn call_assign(instance: *runtime.Instance, nodes: []const runtime.JSValue) anyerror!void {
         return try HTMLSlotElementImpl.call_assign(instance, nodes);
     }
 
-    pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!runtime.JSValue {
         return try HTMLSlotElementImpl.call_assignedElements(instance, options);
     }
 
-    pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!runtime.JSValue {
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
-
 };

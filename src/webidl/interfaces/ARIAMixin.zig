@@ -16,7 +16,7 @@ pub const ARIAMixin = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -328,6 +328,17 @@ pub const ARIAMixin = struct {
         return ARIAMixinImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ARIAMixinImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ARIAMixinImpl.deinit(instance);
@@ -502,12 +513,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaControlsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -530,12 +541,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaDescribedByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -558,12 +569,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaDetailsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -586,12 +597,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaErrorMessageElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -614,12 +625,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaFlowToElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -698,12 +709,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaLabelledByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -796,12 +807,12 @@ pub const ARIAMixin = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ARIAMixinImpl.get_ariaOwnsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

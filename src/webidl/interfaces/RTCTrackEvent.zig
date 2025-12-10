@@ -103,15 +103,28 @@ pub const RTCTrackEvent = struct {
         return RTCTrackEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return RTCTrackEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         RTCTrackEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: RTCTrackEventInit) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: RTCTrackEventInit) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try RTCTrackEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try RTCTrackEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
     pub fn get_receiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -123,7 +136,7 @@ pub const RTCTrackEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_streams(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_streams(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_streams) |cached| {

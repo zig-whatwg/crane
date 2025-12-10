@@ -954,15 +954,28 @@ pub const HTMLElement = struct {
         return HTMLElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HTMLElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HTMLElementImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try HTMLElementImpl.call_constructor(allocator, ctx);
+        return try HTMLElementImpl.call_constructor(ctx);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1022,12 +1035,12 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn get_hidden(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try HTMLElementImpl.get_hidden(instance);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_hidden(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_hidden(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2234,7 +2247,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_blur(instance);
     }
 
-    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
+    pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
         
         return try HTMLElementImpl.call_togglePopover(instance, options);
     }

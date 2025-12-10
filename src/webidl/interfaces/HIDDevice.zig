@@ -136,6 +136,17 @@ pub const HIDDevice = struct {
         return HIDDeviceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HIDDeviceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HIDDeviceImpl.deinit(instance);
@@ -165,37 +176,37 @@ pub const HIDDevice = struct {
         return try HIDDeviceImpl.get_productName(instance);
     }
 
-    pub fn get_collections(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_collections(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HIDDeviceImpl.get_collections(instance);
     }
 
-    pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {
+    pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!runtime.JSValue {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
         
         return try HIDDeviceImpl.call_sendFeatureReport(instance, reportId, data);
     }
 
-    pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!*const anyopaque {
+    pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!runtime.JSValue {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
         
         return try HIDDeviceImpl.call_receiveFeatureReport(instance, reportId);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HIDDeviceImpl.call_close(instance);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HIDDeviceImpl.call_forget(instance);
     }
 
-    pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try HIDDeviceImpl.call_open(instance);
     }
 
-    pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!*const anyopaque {
+    pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!runtime.JSValue {
         // [EnforceRange] on reportId
         if (!runtime.isInRange(u8, reportId)) return error.TypeError;
         

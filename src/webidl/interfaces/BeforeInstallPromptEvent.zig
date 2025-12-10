@@ -26,24 +26,23 @@ pub const BeforeInstallPromptEvent = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "prompt", "call_prompt", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "prompt",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "composedPath",
@@ -52,15 +51,13 @@ pub const BeforeInstallPromptEvent = struct {
             "preventDefault",
             "initEvent",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -73,7 +70,6 @@ pub const BeforeInstallPromptEvent = struct {
     );
 
     const delegates = .{
-
         .call_prompt = &call_prompt,
 
         .deinit = &deinit,
@@ -85,19 +81,31 @@ pub const BeforeInstallPromptEvent = struct {
         return BeforeInstallPromptEventImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BeforeInstallPromptEventImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BeforeInstallPromptEventImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, @"type": DOMString, eventInitDict: webidl.Opt(EventInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BeforeInstallPromptEventImpl.call_constructor(allocator, ctx, @"type", eventInitDict);
+        return try BeforeInstallPromptEventImpl.call_constructor(ctx, @"type", eventInitDict);
     }
 
-    pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_prompt(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BeforeInstallPromptEventImpl.call_prompt(instance);
     }
-
 };

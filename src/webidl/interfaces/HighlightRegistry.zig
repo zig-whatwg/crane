@@ -16,7 +16,7 @@ pub const HighlightRegistry = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -79,12 +79,23 @@ pub const HighlightRegistry = struct {
         return HighlightRegistryImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HighlightRegistryImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HighlightRegistryImpl.deinit(instance);
     }
 
-    pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!*const anyopaque {
+    pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!runtime.JSValue {
         
         return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options);
     }

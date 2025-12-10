@@ -17,7 +17,7 @@ pub const CredentialsContainer = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -86,26 +86,37 @@ pub const CredentialsContainer = struct {
         return CredentialsContainerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CredentialsContainerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CredentialsContainerImpl.deinit(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!*const anyopaque {
+    pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!runtime.JSValue {
         
         return try CredentialsContainerImpl.call_get(instance, options);
     }
 
-    pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try CredentialsContainerImpl.call_store(instance, credential);
     }
 
-    pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CredentialsContainerImpl.call_preventSilentAccess(instance);
     }
 
-    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(CredentialCreationOptions)) anyerror!*const anyopaque {
+    pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(CredentialCreationOptions)) anyerror!runtime.JSValue {
         
         return try CredentialsContainerImpl.call_create(instance, options);
     }

@@ -149,6 +149,17 @@ pub const OfflineAudioContext = struct {
         return OfflineAudioContextImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return OfflineAudioContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         OfflineAudioContextImpl.deinit(instance);
@@ -167,9 +178,11 @@ pub const OfflineAudioContext = struct {
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try OfflineAudioContextImpl.call_constructor(allocator, ctx, args);
+        return try OfflineAudioContextImpl.call_constructor(ctx, args);
     }
 
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
@@ -184,15 +197,15 @@ pub const OfflineAudioContext = struct {
         try OfflineAudioContextImpl.set_oncomplete(instance, value);
     }
 
-    pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_resume(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try OfflineAudioContextImpl.call_resume(instance);
     }
 
-    pub fn call_startRendering(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_startRendering(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try OfflineAudioContextImpl.call_startRendering(instance);
     }
 
-    pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!*const anyopaque {
+    pub fn call_suspend(instance: *runtime.Instance, suspendTime: f64) anyerror!runtime.JSValue {
         
         return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
     }

@@ -84,6 +84,17 @@ pub const WebTransportWriter = struct {
         return WebTransportWriterImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WebTransportWriterImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WebTransportWriterImpl.deinit(instance);
@@ -93,7 +104,7 @@ pub const WebTransportWriter = struct {
         return try WebTransportWriterImpl.call_commit(instance);
     }
 
-    pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+    pub fn call_atomicWrite(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try WebTransportWriterImpl.call_atomicWrite(instance, chunk);
     }

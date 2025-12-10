@@ -93,16 +93,27 @@ pub const BluetoothLEScanPermissionResult = struct {
         return BluetoothLEScanPermissionResultImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothLEScanPermissionResultImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothLEScanPermissionResultImpl.deinit(instance);
     }
 
-    pub fn get_scans(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_scans(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothLEScanPermissionResultImpl.get_scans(instance);
     }
 
-    pub fn set_scans(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_scans(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try BluetoothLEScanPermissionResultImpl.set_scans(instance, value);
     }
 

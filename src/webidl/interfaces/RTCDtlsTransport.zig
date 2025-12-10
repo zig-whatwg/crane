@@ -110,6 +110,17 @@ pub const RTCDtlsTransport = struct {
         return RTCDtlsTransportImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return RTCDtlsTransportImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         RTCDtlsTransportImpl.deinit(instance);
@@ -147,7 +158,7 @@ pub const RTCDtlsTransport = struct {
         try RTCDtlsTransportImpl.set_onerror(instance, value);
     }
 
-    pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCDtlsTransportImpl.call_getRemoteCertificates(instance);
     }
 

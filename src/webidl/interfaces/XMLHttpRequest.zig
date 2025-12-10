@@ -223,15 +223,28 @@ pub const XMLHttpRequest = struct {
         return XMLHttpRequestImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XMLHttpRequestImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XMLHttpRequestImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try XMLHttpRequestImpl.call_constructor(allocator, ctx);
+        return try XMLHttpRequestImpl.call_constructor(ctx);
     }
 
     pub fn get_onreadystatechange(instance: *runtime.Instance) anyerror!EventHandler {
@@ -312,7 +325,7 @@ pub const XMLHttpRequest = struct {
         return try XMLHttpRequestImpl.call_setRequestHeader(instance, name, value);
     }
 
-    pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
+    pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
         
         return try XMLHttpRequestImpl.call_send(instance, body);
     }

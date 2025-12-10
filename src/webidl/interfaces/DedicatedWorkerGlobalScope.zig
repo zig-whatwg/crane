@@ -161,6 +161,17 @@ pub const DedicatedWorkerGlobalScope = struct {
         return DedicatedWorkerGlobalScopeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return DedicatedWorkerGlobalScopeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         DedicatedWorkerGlobalScopeImpl.deinit(instance);
@@ -200,7 +211,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         return try DedicatedWorkerGlobalScopeImpl.call_cancelAnimationFrame(instance, handle);
     }
 
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
         
         return try DedicatedWorkerGlobalScopeImpl.call_postMessage(instance, message, transfer);
     }

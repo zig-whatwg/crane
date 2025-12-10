@@ -35,10 +35,10 @@ pub const SpeechRecognition = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
@@ -60,7 +60,7 @@ pub const SpeechRecognition = struct {
             .{ "onstart", "get_onstart", "set_onstart" },
             .{ "onend", "get_onend", "set_onend" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
@@ -68,13 +68,13 @@ pub const SpeechRecognition = struct {
             .{ "stop", "call_stop", 0 },
             .{ "abort", "call_abort", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "available", "call_static_available", 1 },
             .{ "install", "call_static_install", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
@@ -84,7 +84,7 @@ pub const SpeechRecognition = struct {
             "available",
             "install",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -92,7 +92,7 @@ pub const SpeechRecognition = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
@@ -113,12 +113,12 @@ pub const SpeechRecognition = struct {
             .{ "onstart", "get_onstart", "set_onstart" },
             .{ "onend", "get_onend", "set_onend" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
             .{ "lang", "get_lang", "set_lang" },
         };
-        
+
         pub const has_constructor = true;
     };
 
@@ -149,7 +149,6 @@ pub const SpeechRecognition = struct {
     );
 
     const delegates = .{
-
         .get_continuous = &get_continuous,
         .get_grammars = &get_grammars,
         .get_interimResults = &get_interimResults,
@@ -201,15 +200,28 @@ pub const SpeechRecognition = struct {
         return SpeechRecognitionImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SpeechRecognitionImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SpeechRecognitionImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try SpeechRecognitionImpl.call_constructor(allocator, ctx);
+        return try SpeechRecognitionImpl.call_constructor(ctx);
     }
 
     pub fn get_grammars(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -260,11 +272,11 @@ pub const SpeechRecognition = struct {
         try SpeechRecognitionImpl.set_processLocally(instance, value);
     }
 
-    pub fn get_phrases(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_phrases(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SpeechRecognitionImpl.get_phrases(instance);
     }
 
-    pub fn set_phrases(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_phrases(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try SpeechRecognitionImpl.set_phrases(instance, value);
     }
 
@@ -369,13 +381,10 @@ pub const SpeechRecognition = struct {
     }
 
     pub fn call_static_install(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
-        
         return try SpeechRecognitionImpl.call_static_install(instance, options);
     }
 
     pub fn call_static_available(instance: *runtime.Instance, options: SpeechRecognitionOptions) anyerror!*const anyopaque {
-        
         return try SpeechRecognitionImpl.call_static_available(instance, options);
     }
-
 };

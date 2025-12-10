@@ -19,7 +19,7 @@ pub const Selection = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -156,6 +156,17 @@ pub const Selection = struct {
         return SelectionImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SelectionImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SelectionImpl.deinit(instance);
@@ -213,7 +224,7 @@ pub const Selection = struct {
         return try SelectionImpl.call_addRange(instance, range);
     }
 
-    pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(GetComposedRangesOptions)) anyerror!*const anyopaque {
+    pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(GetComposedRangesOptions)) anyerror!runtime.JSValue {
         
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }

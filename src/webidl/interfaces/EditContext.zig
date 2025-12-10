@@ -151,15 +151,28 @@ pub const EditContext = struct {
         return EditContextImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return EditContextImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         EditContextImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(EditContextInit)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(EditContextInit)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try EditContextImpl.call_constructor(allocator, ctx, options);
+        return try EditContextImpl.call_constructor(ctx, options);
     }
 
     pub fn get_text(instance: *runtime.Instance) anyerror!DOMString {
@@ -218,7 +231,7 @@ pub const EditContext = struct {
         try EditContextImpl.set_oncompositionend(instance, value);
     }
 
-    pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: *const anyopaque) anyerror!void {
+    pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: runtime.JSValue) anyerror!void {
         
         return try EditContextImpl.call_updateCharacterBounds(instance, rangeStart, characterBounds);
     }
@@ -228,7 +241,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_updateControlBounds(instance, controlBounds);
     }
 
-    pub fn call_attachedElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_attachedElements(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try EditContextImpl.call_attachedElements(instance);
     }
 
@@ -242,7 +255,7 @@ pub const EditContext = struct {
         return try EditContextImpl.call_updateSelection(instance, start, end);
     }
 
-    pub fn call_characterBounds(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_characterBounds(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try EditContextImpl.call_characterBounds(instance);
     }
 

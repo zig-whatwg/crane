@@ -16,7 +16,7 @@ pub const WritableStream = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
@@ -87,27 +87,40 @@ pub const WritableStream = struct {
         return WritableStreamImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WritableStreamImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WritableStreamImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(QueuingStrategy)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WritableStreamImpl.call_constructor(allocator, ctx, underlyingSink, strategy);
+        return try WritableStreamImpl.call_constructor(ctx, underlyingSink, strategy);
     }
 
     pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
         return try WritableStreamImpl.get_locked(instance);
     }
 
-    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try WritableStreamImpl.call_abort(instance, reason);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WritableStreamImpl.call_close(instance);
     }
 

@@ -79,12 +79,23 @@ pub const HTMLFormControlsCollection = struct {
         return HTMLFormControlsCollectionImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return HTMLFormControlsCollectionImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         HTMLFormControlsCollectionImpl.deinit(instance);
     }
 
-    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?*const anyopaque {
+    pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
         
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }

@@ -15,7 +15,7 @@ pub const WritableStreamDefaultWriter = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
@@ -96,18 +96,31 @@ pub const WritableStreamDefaultWriter = struct {
         return WritableStreamDefaultWriterImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return WritableStreamDefaultWriterImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         WritableStreamDefaultWriterImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try WritableStreamDefaultWriterImpl.call_constructor(allocator, ctx, stream);
+        return try WritableStreamDefaultWriterImpl.call_constructor(ctx, stream);
     }
 
-    pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WritableStreamDefaultWriterImpl.get_closed(instance);
     }
 
@@ -115,20 +128,20 @@ pub const WritableStreamDefaultWriter = struct {
         return try WritableStreamDefaultWriterImpl.get_desiredSize(instance);
     }
 
-    pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WritableStreamDefaultWriterImpl.get_ready(instance);
     }
 
-    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+    pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try WritableStreamDefaultWriterImpl.call_abort(instance, reason);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WritableStreamDefaultWriterImpl.call_close(instance);
     }
 
-    pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+    pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try WritableStreamDefaultWriterImpl.call_write(instance, chunk);
     }

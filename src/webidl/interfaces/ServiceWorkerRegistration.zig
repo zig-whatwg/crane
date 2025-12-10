@@ -179,6 +179,17 @@ pub const ServiceWorkerRegistration = struct {
         return ServiceWorkerRegistrationImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ServiceWorkerRegistrationImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ServiceWorkerRegistrationImpl.deinit(instance);
@@ -277,23 +288,23 @@ pub const ServiceWorkerRegistration = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_unregister(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_unregister(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ServiceWorkerRegistrationImpl.call_unregister(instance);
     }
 
-    pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!*const anyopaque {
+    pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!runtime.JSValue {
         
         return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_update(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_update(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try ServiceWorkerRegistrationImpl.call_update(instance);
     }
 
-    pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!*const anyopaque {
+    pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!runtime.JSValue {
         
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }

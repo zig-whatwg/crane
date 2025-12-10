@@ -107,6 +107,17 @@ pub const ScreenOrientation = struct {
         return ScreenOrientationImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ScreenOrientationImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ScreenOrientationImpl.deinit(instance);
@@ -132,7 +143,7 @@ pub const ScreenOrientation = struct {
         return try ScreenOrientationImpl.call_unlock(instance);
     }
 
-    pub fn call_lock(instance: *runtime.Instance, orientation: OrientationLockType) anyerror!*const anyopaque {
+    pub fn call_lock(instance: *runtime.Instance, orientation: OrientationLockType) anyerror!runtime.JSValue {
         
         return try ScreenOrientationImpl.call_lock(instance, orientation);
     }

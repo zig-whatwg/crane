@@ -136,6 +136,17 @@ pub const SerialPort = struct {
         return SerialPortImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SerialPortImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SerialPortImpl.deinit(instance);
@@ -169,20 +180,20 @@ pub const SerialPort = struct {
         return try SerialPortImpl.get_writable(instance);
     }
 
-    pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(SerialOutputSignals)) anyerror!*const anyopaque {
+    pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(SerialOutputSignals)) anyerror!runtime.JSValue {
         
         return try SerialPortImpl.call_setSignals(instance, signals);
     }
 
-    pub fn call_getSignals(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getSignals(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SerialPortImpl.call_getSignals(instance);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SerialPortImpl.call_close(instance);
     }
 
-    pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SerialPortImpl.call_forget(instance);
     }
 
@@ -190,7 +201,7 @@ pub const SerialPort = struct {
         return try SerialPortImpl.call_getInfo(instance);
     }
 
-    pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!*const anyopaque {
+    pub fn call_open(instance: *runtime.Instance, options: SerialOptions) anyerror!runtime.JSValue {
         
         return try SerialPortImpl.call_open(instance, options);
     }

@@ -776,6 +776,17 @@ pub const Element = struct {
         return ElementImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return ElementImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         ElementImpl.deinit(instance);
@@ -1158,12 +1169,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaControlsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1186,12 +1197,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaDescribedByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1214,12 +1225,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaDetailsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1242,12 +1253,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaErrorMessageElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1270,12 +1281,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaFlowToElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1354,12 +1365,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaLabelledByElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1452,12 +1463,12 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.get_ariaOwnsElements(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1800,7 +1811,7 @@ pub const Element = struct {
         return try ElementImpl.call_append(instance, nodes);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_getBoxQuads(instance, options);
     }
@@ -1820,7 +1831,7 @@ pub const Element = struct {
         return try ElementImpl.call_hasPointerCapture(instance, pointerId);
     }
 
-    pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!*const anyopaque {
+    pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(FocusableAreasOption)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_focusableAreas(instance, option);
     }
@@ -1895,7 +1906,7 @@ pub const Element = struct {
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!*const anyopaque {
+    pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_requestPointerLock(instance, options);
     }
@@ -1910,7 +1921,7 @@ pub const Element = struct {
         return try ElementImpl.call_setAttributeNodeNS(instance, attr);
     }
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_animate(instance, keyframes, options);
     }
@@ -1920,7 +1931,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
 
-    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         
         return try ElementImpl.call_startViewTransition(instance, callbackOptions);
     }
@@ -1935,7 +1946,7 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
-    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_scroll(instance, options);
     }
@@ -2012,12 +2023,12 @@ pub const Element = struct {
         return try ElementImpl.call_getHTML(instance, options);
     }
 
-    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_scrollBy(instance, options);
     }
 
-    pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ElementImpl.call_getAttributeNames(instance);
     }
 
@@ -2051,7 +2062,7 @@ pub const Element = struct {
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!*const anyopaque {
+    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_scrollTo(instance, options);
     }
@@ -2066,7 +2077,7 @@ pub const Element = struct {
         return try ElementImpl.call_replaceChildren(instance, nodes);
     }
 
-    pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!*const anyopaque {
+    pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_requestFullscreen(instance, options);
     }
@@ -2081,7 +2092,7 @@ pub const Element = struct {
         return try ElementImpl.call_removeAttribute(instance, qualifiedName);
     }
 
-    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
+    pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ElementImpl.call_getRegionFlowRanges(instance);
     }
 
@@ -2124,12 +2135,12 @@ pub const Element = struct {
         return try ElementImpl.call_getClientRects(instance);
     }
 
-    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+    pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_scrollIntoView(instance, arg);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
         
         return try ElementImpl.call_getAnimations(instance, options);
     }

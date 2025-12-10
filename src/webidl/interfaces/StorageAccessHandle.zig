@@ -27,7 +27,7 @@ pub const StorageAccessHandle = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -122,6 +122,17 @@ pub const StorageAccessHandle = struct {
         return StorageAccessHandleImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return StorageAccessHandleImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         StorageAccessHandleImpl.deinit(instance);
@@ -147,7 +158,7 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.get_caches(instance);
     }
 
-    pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageAccessHandleImpl.call_getDirectory(instance);
     }
 
@@ -156,17 +167,17 @@ pub const StorageAccessHandle = struct {
         return try StorageAccessHandleImpl.call_BroadcastChannel(instance, name);
     }
 
-    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+    pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         
         return try StorageAccessHandleImpl.call_SharedWorker(instance, scriptURL, options);
     }
 
-    pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!DOMString {
+    pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!DOMString {
         
         return try StorageAccessHandleImpl.call_createObjectURL(instance, obj);
     }
 
-    pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageAccessHandleImpl.call_estimate(instance);
     }
 

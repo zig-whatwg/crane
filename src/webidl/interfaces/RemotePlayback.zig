@@ -116,6 +116,17 @@ pub const RemotePlayback = struct {
         return RemotePlaybackImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return RemotePlaybackImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         RemotePlaybackImpl.deinit(instance);
@@ -149,17 +160,17 @@ pub const RemotePlayback = struct {
         try RemotePlaybackImpl.set_ondisconnect(instance, value);
     }
 
-    pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
+    pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!runtime.JSValue {
         
         return try RemotePlaybackImpl.call_cancelWatchAvailability(instance, id);
     }
 
-    pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
+    pub fn call_watchAvailability(instance: *runtime.Instance, callback: RemotePlaybackAvailabilityCallback) anyerror!runtime.JSValue {
         
         return try RemotePlaybackImpl.call_watchAvailability(instance, callback);
     }
 
-    pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_prompt(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RemotePlaybackImpl.call_prompt(instance);
     }
 

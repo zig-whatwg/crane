@@ -109,17 +109,28 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return BrowserCaptureMediaStreamTrackImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BrowserCaptureMediaStreamTrackImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BrowserCaptureMediaStreamTrackImpl.deinit(instance);
     }
 
-    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!runtime.JSValue {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
-    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!runtime.JSValue {
         
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }

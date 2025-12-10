@@ -18,7 +18,7 @@ pub const FileSystemHandle = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
@@ -97,6 +97,17 @@ pub const FileSystemHandle = struct {
         return FileSystemHandleImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FileSystemHandleImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FileSystemHandleImpl.deinit(instance);
@@ -110,17 +121,17 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.get_name(instance);
     }
 
-    pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
+    pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
 
-    pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
-    pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
+    pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }

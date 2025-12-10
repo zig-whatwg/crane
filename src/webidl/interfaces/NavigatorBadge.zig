@@ -14,7 +14,7 @@ pub const NavigatorBadge = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
@@ -73,16 +73,27 @@ pub const NavigatorBadge = struct {
         return NavigatorBadgeImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return NavigatorBadgeImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NavigatorBadgeImpl.deinit(instance);
     }
 
-    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorBadgeImpl.call_clearAppBadge(instance);
     }
 
-    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
+    pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
         // [EnforceRange] on contents
         if (!runtime.isInRange(u64, contents)) return error.TypeError;
         

@@ -106,15 +106,28 @@ pub const CSSHSL = struct {
         return CSSHSLImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSHSLImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSHSLImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, h: CSSColorAngle, s: CSSColorPercent, l: CSSColorPercent, alpha: webidl.Opt(CSSColorPercent)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, h: CSSColorAngle, s: CSSColorPercent, l: CSSColorPercent, alpha: webidl.Opt(CSSColorPercent)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSHSLImpl.call_constructor(allocator, ctx, h, s, l, alpha);
+        return try CSSHSLImpl.call_constructor(ctx, h, s, l, alpha);
     }
 
     pub fn get_h(instance: *runtime.Instance) anyerror!CSSColorAngle {

@@ -19,48 +19,44 @@ pub const BackgroundFetchManager = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{
-        };
-        
+        pub const properties = .{};
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "fetch", "call_fetch", 2 },
             .{ "get", "call_get", 1 },
             .{ "getIds", "call_getIds", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fetch",
             "get",
             "getIds",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{
-        };
-        
+        pub const eager_properties = .{};
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -73,7 +69,6 @@ pub const BackgroundFetchManager = struct {
     );
 
     const delegates = .{
-
         .call_fetch = &call_fetch,
         .call_get = &call_get,
         .call_getIds = &call_getIds,
@@ -87,23 +82,31 @@ pub const BackgroundFetchManager = struct {
         return BackgroundFetchManagerImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BackgroundFetchManagerImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BackgroundFetchManagerImpl.deinit(instance);
     }
 
-    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!*const anyopaque {
-        
+    pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }
 
-    pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getIds(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_getIds(instance);
     }
 
-    pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: *const anyopaque, options: webidl.Opt(BackgroundFetchOptions)) anyerror!*const anyopaque {
-        
+    pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }
-
 };

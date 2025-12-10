@@ -18,7 +18,7 @@ pub const URLSearchParams = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
@@ -110,15 +110,28 @@ pub const URLSearchParams = struct {
         return URLSearchParamsImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return URLSearchParamsImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         URLSearchParamsImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try URLSearchParamsImpl.call_constructor(allocator, ctx, init_data);
+        return try URLSearchParamsImpl.call_constructor(ctx, init_data);
     }
 
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
@@ -145,7 +158,7 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_has(instance, name, value);
     }
 
-    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
         
         return try URLSearchParamsImpl.call_getAll(instance, name);
     }

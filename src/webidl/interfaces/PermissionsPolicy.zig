@@ -15,7 +15,7 @@ pub const PermissionsPolicy = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -83,21 +83,32 @@ pub const PermissionsPolicy = struct {
         return PermissionsPolicyImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return PermissionsPolicyImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         PermissionsPolicyImpl.deinit(instance);
     }
 
-    pub fn call_features(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_features(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PermissionsPolicyImpl.call_features(instance);
     }
 
-    pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: DOMString) anyerror!*const anyopaque {
+    pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: DOMString) anyerror!runtime.JSValue {
         
         return try PermissionsPolicyImpl.call_getAllowlistForFeature(instance, feature);
     }
 
-    pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PermissionsPolicyImpl.call_allowedFeatures(instance);
     }
 

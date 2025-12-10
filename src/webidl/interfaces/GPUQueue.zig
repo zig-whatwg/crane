@@ -25,7 +25,7 @@ pub const GPUQueue = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{
             GPUObjectBase,
         };
@@ -109,6 +109,17 @@ pub const GPUQueue = struct {
         return GPUQueueImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return GPUQueueImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         GPUQueueImpl.deinit(instance);
@@ -122,11 +133,11 @@ pub const GPUQueue = struct {
         try GPUQueueImpl.set_label(instance, value);
     }
 
-    pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GPUQueueImpl.call_onSubmittedWorkDone(instance);
     }
 
-    pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
+    pub fn call_submit(instance: *runtime.Instance, commandBuffers: runtime.JSValue) anyerror!void {
         
         return try GPUQueueImpl.call_submit(instance, commandBuffers);
     }

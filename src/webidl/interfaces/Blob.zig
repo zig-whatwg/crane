@@ -19,25 +19,25 @@ pub const Blob = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "size", "get_size", null },
             .{ "type", "get_type", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "slice", "call_slice", 0 },
@@ -46,7 +46,7 @@ pub const Blob = struct {
             .{ "arrayBuffer", "call_arrayBuffer", 0 },
             .{ "bytes", "call_bytes", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "slice",
@@ -55,21 +55,19 @@ pub const Blob = struct {
             "arrayBuffer",
             "bytes",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "size", "get_size", null },
             .{ "type", "get_type", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -78,13 +76,12 @@ pub const Blob = struct {
         Meta.MixinTypes,
         struct {
             size: u64 = undefined,
-            @"type": runtime.DOMString = undefined,
+            type: runtime.DOMString = undefined,
             _internal: ?*BlobImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-
         .get_size = &get_size,
         .get_type = &get_type,
 
@@ -103,15 +100,28 @@ pub const Blob = struct {
         return BlobImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BlobImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BlobImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(BlobPropertyBag)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(BlobPropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try BlobImpl.call_constructor(allocator, ctx, blobParts, options);
+        return try BlobImpl.call_constructor(ctx, blobParts, options);
     }
 
     pub fn get_size(instance: *runtime.Instance) anyerror!u64 {
@@ -123,13 +133,13 @@ pub const Blob = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_arrayBuffer(instance);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_text(instance);
     }
@@ -139,12 +149,12 @@ pub const Blob = struct {
         const clamped_start = if (start.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, start.value)) else webidl.Opt(i64).notPassed();
         // [Clamp] on end
         const clamped_end = if (end.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, end.value)) else webidl.Opt(i64).notPassed();
-        
+
         return try BlobImpl.call_slice(instance, clamped_start, clamped_end, contentType);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_bytes(instance);
     }
@@ -154,5 +164,4 @@ pub const Blob = struct {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_stream(instance);
     }
-
 };

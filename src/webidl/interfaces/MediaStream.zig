@@ -126,6 +126,17 @@ pub const MediaStream = struct {
         return MediaStreamImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MediaStreamImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MediaStreamImpl.deinit(instance);
@@ -140,9 +151,11 @@ pub const MediaStream = struct {
     };
 
     /// WebIDL constructor (overloaded)
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
         // Pass args union directly to impl
-        return try MediaStreamImpl.call_constructor(allocator, ctx, args);
+        return try MediaStreamImpl.call_constructor(ctx, args);
     }
 
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
@@ -169,11 +182,11 @@ pub const MediaStream = struct {
         try MediaStreamImpl.set_onremovetrack(instance, value);
     }
 
-    pub fn call_getTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getTracks(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaStreamImpl.call_getTracks(instance);
     }
 
-    pub fn call_getVideoTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getVideoTracks(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaStreamImpl.call_getVideoTracks(instance);
     }
 
@@ -192,7 +205,7 @@ pub const MediaStream = struct {
         return try MediaStreamImpl.call_getTrackById(instance, trackId);
     }
 
-    pub fn call_getAudioTracks(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAudioTracks(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaStreamImpl.call_getAudioTracks(instance);
     }
 

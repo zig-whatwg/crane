@@ -102,15 +102,28 @@ pub const CSSColor = struct {
         return CSSColorImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return CSSColorImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         CSSColorImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: CSSKeywordish, channels: *const anyopaque, alpha: webidl.Opt(CSSNumberish)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, colorSpace: CSSKeywordish, channels: runtime.JSValue, alpha: webidl.Opt(CSSNumberish)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try CSSColorImpl.call_constructor(allocator, ctx, colorSpace, channels, alpha);
+        return try CSSColorImpl.call_constructor(ctx, colorSpace, channels, alpha);
     }
 
     pub fn get_colorSpace(instance: *runtime.Instance) anyerror!CSSKeywordish {
@@ -121,11 +134,11 @@ pub const CSSColor = struct {
         try CSSColorImpl.set_colorSpace(instance, value);
     }
 
-    pub fn get_channels(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_channels(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSColorImpl.get_channels(instance);
     }
 
-    pub fn set_channels(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_channels(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try CSSColorImpl.set_channels(instance, value);
     }
 

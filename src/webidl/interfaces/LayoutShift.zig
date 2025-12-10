@@ -95,6 +95,17 @@ pub const LayoutShift = struct {
         return LayoutShiftImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return LayoutShiftImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         LayoutShiftImpl.deinit(instance);
@@ -112,7 +123,7 @@ pub const LayoutShift = struct {
         return try LayoutShiftImpl.get_lastInputTime(instance);
     }
 
-    pub fn get_sources(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_sources(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try LayoutShiftImpl.get_sources(instance);
     }
 

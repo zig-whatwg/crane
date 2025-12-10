@@ -28,28 +28,26 @@ pub const File = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "lastModified", "get_lastModified", null },
             .{ "webkitRelativePath", "get_webkitRelativePath", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-        };
-        
+        pub const methods = .{};
+
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
-        };
-        
+        pub const own_methods = .{};
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "slice",
@@ -58,18 +56,17 @@ pub const File = struct {
             "arrayBuffer",
             "bytes",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
             .{ "lastModified", "get_lastModified", null },
             .{ "webkitRelativePath", "get_webkitRelativePath", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
     };
 
@@ -85,7 +82,6 @@ pub const File = struct {
     );
 
     const delegates = .{
-
         .get_lastModified = &get_lastModified,
         .get_name = &get_name,
         .get_webkitRelativePath = &get_webkitRelativePath,
@@ -99,15 +95,28 @@ pub const File = struct {
         return FileImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return FileImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         FileImpl.deinit(instance);
     }
 
     /// WebIDL constructor
-    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(FilePropertyBag)) !*runtime.Instance {
+    /// Note: Uses ctx.allocator internally for all allocations to ensure
+    /// consistency with deinit which uses instance.ctx.allocator
+    pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(FilePropertyBag)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
-        return try FileImpl.call_constructor(allocator, ctx, fileBits, fileName, options);
+        return try FileImpl.call_constructor(ctx, fileBits, fileName, options);
     }
 
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
@@ -121,5 +130,4 @@ pub const File = struct {
     pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try FileImpl.get_webkitRelativePath(instance);
     }
-
 };

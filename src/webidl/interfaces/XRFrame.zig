@@ -37,7 +37,7 @@ pub const XRFrame = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "SecureContext" },
@@ -156,6 +156,17 @@ pub const XRFrame = struct {
         return XRFrameImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return XRFrameImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         XRFrameImpl.deinit(instance);
@@ -218,17 +229,17 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
     }
 
-    pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) anyerror!bool {
+    pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: runtime.JSValue, radii: runtime.JSValue) anyerror!bool {
         
         return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
     }
 
-    pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) anyerror!bool {
+    pub fn call_fillPoses(instance: *runtime.Instance, spaces: runtime.JSValue, baseSpace: *runtime.Instance, transforms: runtime.JSValue) anyerror!bool {
         
         return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
     }
 
-    pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try XRFrameImpl.call_createAnchor(instance, pose, space);
     }
@@ -238,7 +249,7 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getDepthInformation(instance, view);
     }
 
-    pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try XRFrameImpl.call_getHitTestResults(instance, hitTestSource);
     }
@@ -248,7 +259,7 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getPose(instance, space, baseSpace);
     }
 
-    pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try XRFrameImpl.call_getHitTestResultsForTransientInput(instance, hitTestSource);
     }

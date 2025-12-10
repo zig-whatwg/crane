@@ -22,7 +22,7 @@ pub const Gamepad = struct {
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -127,6 +127,17 @@ pub const Gamepad = struct {
         return GamepadImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return GamepadImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         GamepadImpl.deinit(instance);
@@ -152,15 +163,15 @@ pub const Gamepad = struct {
         return try GamepadImpl.get_mapping(instance);
     }
 
-    pub fn get_axes(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_axes(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadImpl.get_axes(instance);
     }
 
-    pub fn get_buttons(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_buttons(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadImpl.get_buttons(instance);
     }
 
-    pub fn get_touches(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_touches(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadImpl.get_touches(instance);
     }
 
@@ -180,7 +191,7 @@ pub const Gamepad = struct {
         return try GamepadImpl.get_hand(instance);
     }
 
-    pub fn get_hapticActuators(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_hapticActuators(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadImpl.get_hapticActuators(instance);
     }
 

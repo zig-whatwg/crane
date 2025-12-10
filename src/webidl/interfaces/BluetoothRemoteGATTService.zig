@@ -142,6 +142,17 @@ pub const BluetoothRemoteGATTService = struct {
         return BluetoothRemoteGATTServiceImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return BluetoothRemoteGATTServiceImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothRemoteGATTServiceImpl.deinit(instance);
@@ -199,22 +210,22 @@ pub const BluetoothRemoteGATTService = struct {
         try BluetoothRemoteGATTServiceImpl.set_onserviceremoved(instance, value);
     }
 
-    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
+    pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(BluetoothCharacteristicUUID)) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristics(instance, characteristic);
     }
 
-    pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!*const anyopaque {
+    pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(BluetoothServiceUUID)) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedServices(instance, service);
     }
 
-    pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!*const anyopaque {
+    pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: BluetoothCharacteristicUUID) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServiceImpl.call_getCharacteristic(instance, characteristic);
     }
 
-    pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!*const anyopaque {
+    pub fn call_getIncludedService(instance: *runtime.Instance, service: BluetoothServiceUUID) anyerror!runtime.JSValue {
         
         return try BluetoothRemoteGATTServiceImpl.call_getIncludedService(instance, service);
     }

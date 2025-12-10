@@ -29,29 +29,29 @@ pub const AbortSignal = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "aborted", "get_aborted", null },
             .{ "reason", "get_reason", null },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "throwIfAborted", "call_throwIfAborted", 0 },
         };
-        
+
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "abort", "call_static_abort", 0 },
             .{ "timeout", "call_static_timeout", 1 },
             .{ "_any", "call_static__any", 1 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "abort",
@@ -59,7 +59,7 @@ pub const AbortSignal = struct {
             "_any",
             "throwIfAborted",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -67,18 +67,17 @@ pub const AbortSignal = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "aborted", "get_aborted", null },
             .{ "reason", "get_reason", null },
             .{ "onabort", "get_onabort", "set_onabort" },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -94,7 +93,6 @@ pub const AbortSignal = struct {
     );
 
     const delegates = .{
-
         .get_aborted = &get_aborted,
         .get_onabort = &get_onabort,
         .get_reason = &get_reason,
@@ -110,6 +108,17 @@ pub const AbortSignal = struct {
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
         return AbortSignalImpl.init(allocator, State, &vtable, ctx);
+    }
+
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return AbortSignalImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
@@ -140,7 +149,7 @@ pub const AbortSignal = struct {
     /// Extended attributes: [NewObject]
     pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try AbortSignalImpl.call_static_abort(instance, reason);
     }
 
@@ -149,15 +158,14 @@ pub const AbortSignal = struct {
         // [NewObject] - Caller owns the returned object
         // [EnforceRange] on milliseconds
         if (!runtime.isInRange(u64, milliseconds)) return error.TypeError;
-        
+
         return try AbortSignalImpl.call_static_timeout(instance, milliseconds);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try AbortSignalImpl.call_static__any(instance, signals);
     }
-
 };

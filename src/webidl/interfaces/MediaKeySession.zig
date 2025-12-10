@@ -131,6 +131,17 @@ pub const MediaKeySession = struct {
         return MediaKeySessionImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return MediaKeySessionImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         MediaKeySessionImpl.deinit(instance);
@@ -144,7 +155,7 @@ pub const MediaKeySession = struct {
         return try MediaKeySessionImpl.get_expiration(instance);
     }
 
-    pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.get_closed(instance);
     }
 
@@ -168,25 +179,25 @@ pub const MediaKeySession = struct {
         try MediaKeySessionImpl.set_onmessage(instance, value);
     }
 
-    pub fn call_update(instance: *runtime.Instance, response: BufferSource) anyerror!*const anyopaque {
+    pub fn call_update(instance: *runtime.Instance, response: BufferSource) anyerror!runtime.JSValue {
         
         return try MediaKeySessionImpl.call_update(instance, response);
     }
 
-    pub fn call_remove(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_remove(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.call_remove(instance);
     }
 
-    pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MediaKeySessionImpl.call_close(instance);
     }
 
-    pub fn call_load(instance: *runtime.Instance, sessionId: DOMString) anyerror!*const anyopaque {
+    pub fn call_load(instance: *runtime.Instance, sessionId: DOMString) anyerror!runtime.JSValue {
         
         return try MediaKeySessionImpl.call_load(instance, sessionId);
     }
 
-    pub fn call_generateRequest(instance: *runtime.Instance, initDataType: DOMString, initData: BufferSource) anyerror!*const anyopaque {
+    pub fn call_generateRequest(instance: *runtime.Instance, initDataType: DOMString, initData: BufferSource) anyerror!runtime.JSValue {
         
         return try MediaKeySessionImpl.call_generateRequest(instance, initDataType, initData);
     }

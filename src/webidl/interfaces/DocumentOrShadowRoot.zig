@@ -19,7 +19,7 @@ pub const DocumentOrShadowRoot = struct {
         pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{};
         
@@ -105,6 +105,17 @@ pub const DocumentOrShadowRoot = struct {
         return DocumentOrShadowRootImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return DocumentOrShadowRootImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         DocumentOrShadowRootImpl.deinit(instance);
@@ -143,7 +154,7 @@ pub const DocumentOrShadowRoot = struct {
         return try DocumentOrShadowRootImpl.get_adoptedStyleSheets(instance);
     }
 
-    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+    pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
         try DocumentOrShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 

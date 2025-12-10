@@ -120,6 +120,17 @@ pub const SpeechSynthesis = struct {
         return SpeechSynthesisImpl.init(allocator, State, &vtable, ctx);
     }
 
+    /// Initialize with custom state type (for subclasses)
+    /// Subclasses call this to properly initialize the base class state.
+    pub fn initWithState(
+        allocator: std.mem.Allocator,
+        comptime StateType: type,
+        vtable_ptr: *const runtime.VTable,
+        ctx: runtime.Context,
+    ) !*runtime.Instance {
+        return SpeechSynthesisImpl.init(allocator, StateType, vtable_ptr, ctx);
+    }
+
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         SpeechSynthesisImpl.deinit(instance);
@@ -158,7 +169,7 @@ pub const SpeechSynthesis = struct {
         return try SpeechSynthesisImpl.call_speak(instance, utterance);
     }
 
-    pub fn call_getVoices(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getVoices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SpeechSynthesisImpl.call_getVoices(instance);
     }
 
