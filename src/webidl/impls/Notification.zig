@@ -221,7 +221,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: requestPermission
-pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) anyerror!*const anyopaque {
+pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) anyerror!runtime.JSValue {
     _ = instance;
     _ = deprecatedCallback;
     return error.NotImplemented;

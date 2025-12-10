@@ -686,7 +686,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// createObjectURL static method (Blob URLs)
-pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!runtime.DOMString {
+pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
     _ = instance;
     _ = obj;
     return error.NotImplemented;

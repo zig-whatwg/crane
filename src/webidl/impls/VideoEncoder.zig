@@ -79,7 +79,7 @@ pub fn set_ondequeue(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Operation: isConfigSupported
-pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) anyerror!*const anyopaque {
+pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoEncoderConfig) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;
     return error.NotImplemented;

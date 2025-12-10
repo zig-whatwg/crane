@@ -91,7 +91,7 @@ pub fn call_reset(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: isTypeSupported
-pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

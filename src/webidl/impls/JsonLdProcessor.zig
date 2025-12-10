@@ -53,7 +53,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 }
 
 /// Operation: toRdf (static)
-pub fn call_static_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -61,7 +61,7 @@ pub fn call_static_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInpu
 }
 
 /// Operation: flatten (static)
-pub fn call_static_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = context;
@@ -70,7 +70,7 @@ pub fn call_static_flatten(instance: *runtime.Instance, input: typedefs.JsonLdIn
 }
 
 /// Operation: fromRdf (static)
-pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -78,7 +78,7 @@ pub fn call_static_fromRdf(instance: *runtime.Instance, input: *runtime.Instance
 }
 
 /// Operation: expand (static)
-pub fn call_static_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -86,7 +86,7 @@ pub fn call_static_expand(instance: *runtime.Instance, input: typedefs.JsonLdInp
 }
 
 /// Operation: compact (static)
-pub fn call_static_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = context;
@@ -95,7 +95,7 @@ pub fn call_static_compact(instance: *runtime.Instance, input: typedefs.JsonLdIn
 }
 
 /// Operation: frame (static)
-pub fn call_static_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+pub fn call_static_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = frame;

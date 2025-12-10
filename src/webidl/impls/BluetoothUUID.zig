@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getService (static)
-pub fn call_static_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+pub fn call_static_getService(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
@@ -54,19 +54,18 @@ pub fn call_static_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerr
 }
 
 /// Operation: getCharacteristic (static)
-pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptor (static)
-pub fn call_static_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!typedefs.UUID {
+pub fn call_static_getDescriptor(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
-
 
 pub fn call_getCharacteristic(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
     _ = instance;

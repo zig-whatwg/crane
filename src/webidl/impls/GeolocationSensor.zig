@@ -96,7 +96,7 @@ pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
 }
 
 /// Operation: read
-pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!*const anyopaque {
+pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = readOptions;
     return error.NotImplemented;

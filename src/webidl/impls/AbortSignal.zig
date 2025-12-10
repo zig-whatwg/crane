@@ -120,7 +120,7 @@ pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// Spec: § 3.3.2 "Returns a signal that is aborted when any of the given signals are aborted"
 /// Note: Full implementation requires DOM event infrastructure
 /// Static methods use call_static_<name> convention (_any has underscore prefix in IDL)
-pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = signals;
     // Requires iteration over signals and event listener setup
@@ -188,7 +188,6 @@ pub fn signalAbort(instance: *runtime.Instance, reason: ?*anyopaque) ImplError!v
     // Fire abort event (requires DOM event infrastructure)
     // For now, just set the flag - event firing would happen here
 }
-
 
 pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;

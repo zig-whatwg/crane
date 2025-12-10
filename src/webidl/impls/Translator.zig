@@ -59,7 +59,7 @@ pub fn get_inputQuota(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Operation: availability (static)
-pub fn call_static_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) anyerror!*const anyopaque {
+pub fn call_static_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -96,7 +96,7 @@ pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMSt
 }
 
 /// Operation: create (static)
-pub fn call_static_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!*const anyopaque {
+pub fn call_static_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

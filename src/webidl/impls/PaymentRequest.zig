@@ -138,7 +138,7 @@ pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!runtime.JSValue
 }
 
 /// Operation: securePaymentConfirmationAvailability
-pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

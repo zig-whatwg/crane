@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: parse
-pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = cssText;
     return error.NotImplemented;

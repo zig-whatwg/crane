@@ -198,7 +198,7 @@ pub fn call_scaleSelf(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scal
 }
 
 /// Operation: fromFloat32Array (static)
-pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = array32;
     return error.NotImplemented;
@@ -213,7 +213,7 @@ pub fn call_rotateFromVectorSelf(instance: *runtime.Instance, x: webidl.Opt(f64)
 }
 
 /// Operation: fromFloat64Array (static)
-pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = array64;
     return error.NotImplemented;
@@ -304,7 +304,6 @@ pub fn call_preMultiplySelf(instance: *runtime.Instance, other: webidl.Opt(dicti
     _ = other;
     return error.NotImplemented;
 }
-
 
 pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) anyerror!*runtime.Instance {
     _ = instance;

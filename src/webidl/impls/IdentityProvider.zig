@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: resolve (static)
-pub fn call_static_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!*const anyopaque {
+pub fn call_static_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = token;
     _ = options;
@@ -49,7 +49,7 @@ pub fn call_static_resolve(instance: *runtime.Instance, token: runtime.JSValue, 
 }
 
 /// Operation: getUserInfo (static)
-pub fn call_static_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!*const anyopaque {
+pub fn call_static_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;
     return error.NotImplemented;

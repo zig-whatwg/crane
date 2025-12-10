@@ -198,7 +198,7 @@ pub fn get_isIdentity(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: fromFloat32Array (static)
-pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = array32;
     return error.NotImplemented;
@@ -221,7 +221,7 @@ pub fn call_scale3d(instance: *runtime.Instance, scale: webidl.Opt(f64), originX
 }
 
 /// Operation: fromFloat64Array (static)
-pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = array64;
     return error.NotImplemented;
@@ -347,7 +347,6 @@ pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y:
     _ = y;
     return error.NotImplemented;
 }
-
 
 pub fn call_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMMatrixInit)) anyerror!*runtime.Instance {
     _ = instance;

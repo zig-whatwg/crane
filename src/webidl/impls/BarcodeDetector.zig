@@ -54,7 +54,7 @@ pub fn call_constructor(ctx: runtime.Context, barcodeDetectorOptions: webidl.Opt
 }
 
 /// Operation: getSupportedFormats
-pub fn call_static_getSupportedFormats(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_getSupportedFormats(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

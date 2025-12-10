@@ -52,13 +52,13 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: willRequestConditionalCreation (static)
-pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isConditionalMediationAvailable (static)
-pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

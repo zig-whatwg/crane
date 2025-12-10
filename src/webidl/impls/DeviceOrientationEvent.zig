@@ -79,7 +79,7 @@ pub fn get_absolute(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: requestPermission
-pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
+pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
     _ = instance;
     _ = absolute;
     return error.NotImplemented;

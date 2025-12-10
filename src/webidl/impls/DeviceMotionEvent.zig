@@ -79,7 +79,7 @@ pub fn get_interval(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Operation: requestPermission
-pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -53,7 +53,7 @@ pub fn get_inputQuota(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Operation: availability (static)
-pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateCoreOptions)) anyerror!*const anyopaque {
+pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateCoreOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -82,7 +82,7 @@ pub fn call_detect(instance: *runtime.Instance, input: runtime.DOMString, option
 }
 
 /// Operation: create (static)
-pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateOptions)) anyerror!*const anyopaque {
+pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.LanguageDetectorCreateOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

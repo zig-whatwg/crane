@@ -132,13 +132,13 @@ pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls
 }
 
 /// Operation: values (iterable)
-pub fn call_values(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_values(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAsyncIterator (iterable)
-pub fn call_getAsyncIterator(instance: *runtime.Instance) ImplError!*const anyopaque {
+pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
