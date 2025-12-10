@@ -665,6 +665,7 @@ pub fn executeTests(
     discovery: DiscoveryResult,
     options: Options,
     report: *result_reporter.WptReport,
+    server: *wpt_server.WptServer,
 ) !void {
     // Calculate total accounting for multi-context execution
     // This requires parsing all files upfront, but gives accurate progress tracking
@@ -681,7 +682,7 @@ pub fn executeTests(
     defer progress.deinit();
 
     for (discovery.test_files.items) |test_file| {
-        // Load content once per test file
+        // Load content once per test file (still needed for parsing metadata)
         const content = loadTestContent(allocator, options, test_file) catch |err| {
             // Create error result for load failure
             var error_result = try test_harness.TestResult.init(allocator, test_file.path);
@@ -697,7 +698,7 @@ pub fn executeTests(
         };
         defer allocator.free(content);
 
-        // Parse once per test file
+        // Parse once per test file (to get metadata like globals and timeout)
         var parsed = test_parser.parseTestFile(allocator, test_file.path, content) catch |err| {
             // Create error result for parse failure
             var error_result = try test_harness.TestResult.init(allocator, test_file.path);
@@ -734,13 +735,12 @@ pub fn executeTests(
             // Execute test in this context
             const test_result = executeTestFileInContext(
                 allocator,
-                options,
                 test_file,
                 browser,
                 global_context,
-                content,
                 &parsed,
                 context_name,
+                server,
             ) catch |err| {
                 // Create error result with stack trace and context
                 var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
@@ -793,24 +793,24 @@ pub fn executeTests(
 /// context_name is the string to include in results (null for single-context tests).
 fn executeTestFileInContext(
     allocator: std.mem.Allocator,
-    options: Options,
     test_file: TestFile,
     browser: *browser_adapter.BrowserAdapter,
     context: test_parser.GlobalType,
-    content: []const u8,
     parsed: *test_parser.ParsedTest,
     context_name: ?[]const u8,
+    server: *wpt_server.WptServer,
 ) !test_harness.TestResult {
-    // For HTML files, use the HTML parser to build a real DOM
-    // This enables document.querySelector() to find parsed elements
+    // For HTML files, fetch from HTTP server and let the browser handle it properly
+    // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
     if (test_file.file_type == .html) {
-        // Use runHTMLTest which:
-        // 1. Parses HTML and builds DOM
-        // 2. Executes scripts during parsing (in document order)
-        // 3. Fires DOMContentLoaded
-        // 4. Waits for test completion
-        // HTML tests always run in window context (no context suffix)
-        var result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout, .window);
+        // Build HTTP URL for this test
+        const test_url = try server.buildTestUrl(allocator, test_file.path, .window);
+        defer allocator.free(test_url);
+
+        // Fetch and run from HTTP URL
+        // The wpt serve handles proper resource serving (testharness.js, etc.)
+        var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, .window);
+
         // HTML tests are single-context, so context_name should be null
         // But if it's provided (shouldn't happen), we need to set it
         if (context_name) |ctx| {
@@ -819,80 +819,17 @@ fn executeTestFileInContext(
         return result;
     }
 
-    // For JS files, we need to load META scripts first, then the test content
-    // Build test content to execute
-    var test_content: []const u8 = undefined;
-    var test_content_owned: ?[]u8 = null;
-    defer if (test_content_owned) |owned| allocator.free(owned);
+    // For JS files (.any.js, .window.js, .worker.js), fetch from HTTP server
+    // The wpt serve generates proper HTML wrappers (e.g., test.any.html) that:
+    // 1. Include testharness.js and testharnessreport.js
+    // 2. Handle META: script directives automatically
+    // 3. Apply URL rewrites (WebIDLParser.js -> webidl2.js, etc.)
+    // This is the correct browser-like behavior
+    const test_url = try server.buildTestUrl(allocator, test_file.path, context);
+    defer allocator.free(test_url);
 
-    {
-        // For JS files, we need to load META scripts first, then the test content
-        // META scripts are specified like: // META: script=/common/subset-tests-by-key.js
-        var all_scripts: std.ArrayListUnmanaged([]const u8) = .{};
-        defer all_scripts.deinit(allocator);
-
-        // Load external META scripts first
-        for (parsed.metadata.scripts.items) |script| {
-            if (!script.inline_script) {
-                // Apply WPT URL rewrites (e.g., WebIDLParser.js -> webidl2.js)
-                const rewritten_path = try rewriteWptResourcePath(allocator, script.path);
-                defer allocator.free(rewritten_path);
-
-                // Resolve the script path FIRST so we can use the absolute path as cache key
-                var script_path: []u8 = undefined;
-                if (std.mem.startsWith(u8, rewritten_path, "/")) {
-                    // Absolute path from WPT root (e.g., "/common/subset-tests-by-key.js")
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, rewritten_path[1..] });
-                } else {
-                    // Relative path from test file
-                    const test_dir = if (std.mem.lastIndexOf(u8, test_file.path, "/")) |pos|
-                        test_file.path[0..pos]
-                    else
-                        "";
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_dir, rewritten_path });
-                }
-                defer allocator.free(script_path);
-
-                // Read the script file
-                const script_content = std.fs.cwd().readFileAlloc(allocator, script_path, 10 * 1024 * 1024) catch |err| {
-                    // Skip missing scripts with a warning
-                    std.debug.print("Warning: Could not load META script {s}: {}\n", .{ script.path, err });
-                    continue;
-                };
-                try all_scripts.append(allocator, script_content);
-            }
-        }
-
-        // Add the main test content
-        const test_content_copy = try allocator.dupe(u8, parsed.content);
-        try all_scripts.append(allocator, test_content_copy);
-
-        // Calculate total length
-        var total_len: usize = 0;
-        for (all_scripts.items) |s| {
-            total_len += s.len + 2; // +2 for ";\n" separator
-        }
-
-        // Concatenate all scripts
-        const combined = try allocator.alloc(u8, total_len);
-        test_content_owned = combined;
-
-        var offset: usize = 0;
-        for (all_scripts.items) |s| {
-            @memcpy(combined[offset .. offset + s.len], s);
-            offset += s.len;
-            combined[offset] = ';';
-            combined[offset + 1] = '\n';
-            offset += 2;
-            allocator.free(s);
-        }
-
-        test_content = combined;
-    }
-
-    // Execute the test using the BrowserAdapter with the specified context
-    // Each test gets a fresh V8 context for complete isolation (matching real browser behavior)
-    var result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout, context);
+    // Fetch and run from HTTP URL
+    var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, context);
 
     // Set the context name for multi-context tests
     if (context_name) |ctx| {
@@ -908,23 +845,6 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
     defer allocator.free(full_path);
 
     return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
-}
-
-/// Rewrite WPT resource URLs to their actual file paths
-/// The WPT server applies URL rewrites - we need to emulate them for direct file access
-/// See: https://web-platform-tests.org/writing-tests/server-features.html
-fn rewriteWptResourcePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    // WebIDLParser.js is actually webidl2.js
-    // https://github.com/nicolo-ribaudo/webidl2.js provides the parser
-    if (std.mem.eql(u8, path, "/resources/WebIDLParser.js")) {
-        return try allocator.dupe(u8, "/resources/webidl2/lib/webidl2.js");
-    }
-
-    // Add more rewrites as needed:
-    // - /resources/testdriver.js -> vendor specific
-    // - etc.
-
-    return try allocator.dupe(u8, path);
 }
 
 /// Output helper - uses std.debug.print for standalone compatibility
@@ -1012,7 +932,7 @@ pub fn main() !void {
     print("WPT server running at {s}\n", .{server.getBaseUrl()});
 
     // Execute tests (prints progress and summary)
-    try executeTests(allocator, discovery, options, &report);
+    try executeTests(allocator, discovery, options, &report, server);
 
     // Finish and write report
     report.finish();

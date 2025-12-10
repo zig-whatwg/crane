@@ -16,6 +16,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const posix = std.posix;
+const test_parser = @import("test_parser.zig");
 
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
@@ -210,14 +211,24 @@ pub const WptServer = struct {
         return "http://localhost:8000";
     }
 
-    /// Build a test URL from a test path
-    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8) ![]u8 {
+    /// Build a test URL from a test path and context type
+    ///
+    /// For .any.js tests, the WPT server generates different HTML wrappers:
+    /// - Window context: test.any.html (runs test directly in window)
+    /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
+    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
         var url_path = test_path;
         var suffix: []const u8 = "";
 
         if (std.mem.endsWith(u8, test_path, ".any.js")) {
             url_path = test_path[0 .. test_path.len - 7];
-            suffix = ".any.html";
+            // Generate context-specific URL
+            suffix = switch (context) {
+                .worker => ".any.worker.html",
+                .sharedworker => ".any.sharedworker.html",
+                .serviceworker => ".any.serviceworker.html",
+                else => ".any.html", // window and other contexts
+            };
         } else if (std.mem.endsWith(u8, test_path, ".window.js")) {
             url_path = test_path[0 .. test_path.len - 10];
             suffix = ".window.html";
@@ -240,20 +251,30 @@ test "WptServer.buildTestUrl" {
     const server = try WptServer.init(allocator, "tests/wpt");
     defer server.deinit();
 
+    // Window context (default for .any.js)
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js");
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.html", url);
     }
 
+    // Worker context generates .any.worker.html
     {
-        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js");
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.worker.html", url);
+    }
+
+    // Window context for another .any.js test
+    {
+        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://localhost:8000/encoding/api-basics.any.html", url);
     }
 
+    // HTML files ignore context (always use raw path)
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html");
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://localhost:8000/dom/nodes/Element-matches.html", url);
     }

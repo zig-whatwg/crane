@@ -34,6 +34,10 @@ const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
 
+// Browser module for HTTP navigation
+const browser = @import("browser");
+const navigation = browser.navigation;
+
 /// Adapter that provides browser-aligned WPT test execution
 /// with fresh context per test (matching real browser behavior)
 pub const BrowserAdapter = struct {
@@ -216,5 +220,43 @@ pub const BrowserAdapter = struct {
 
         self.tests_run += 1;
         return result;
+    }
+
+    /// Run a WPT test by fetching it from an HTTP URL
+    ///
+    /// This method:
+    /// 1. Fetches the test HTML from the WPT server via HTTP
+    /// 2. Creates a fresh V8 context
+    /// 3. Parses and executes the fetched HTML
+    /// 4. Waits for test completion
+    ///
+    /// For .any.js tests, the WPT server generates HTML wrappers
+    /// (e.g., test.any.html) that we can fetch directly.
+    pub fn runTestFromUrl(
+        self: *BrowserAdapter,
+        test_url: []const u8,
+        test_path: []const u8,
+        timeout: config.Timeout,
+        context_type: test_parser.GlobalType,
+    ) !test_harness.TestResult {
+        // Fetch the test HTML from the WPT server
+        var fetch_result = navigation.fetchUrl(self.allocator, test_url, .{}) catch |err| {
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try std.fmt.allocPrint(self.allocator, "Failed to fetch test from {s}: {}", .{ test_url, err });
+            return result;
+        };
+        defer fetch_result.deinit();
+
+        // Check for successful response
+        if (fetch_result.status_code >= 400) {
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try std.fmt.allocPrint(self.allocator, "HTTP {d} fetching {s}", .{ fetch_result.status_code, test_url });
+            return result;
+        }
+
+        // Run the HTML test with fetched content
+        return self.runHTMLTest(test_path, fetch_result.body, timeout, context_type);
     }
 };
