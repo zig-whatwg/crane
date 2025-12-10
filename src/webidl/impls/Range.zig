@@ -23,6 +23,7 @@ const Range = interfaces.Range;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Range.State;
 

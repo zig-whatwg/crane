@@ -17,6 +17,7 @@ const callbacks = @import("callbacks");
 const ProgressEvent = interfaces.ProgressEvent;
 const Event = interfaces.Event;
 const webidl = @import("webidl");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = ProgressEvent.State;
 

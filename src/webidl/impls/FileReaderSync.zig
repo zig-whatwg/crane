@@ -22,6 +22,7 @@ const file = @import("file");
 const FileReaderSync = interfaces.FileReaderSync;
 const Blob = interfaces.Blob;
 const BlobImpl = @import("Blob.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = FileReaderSync.State;
 

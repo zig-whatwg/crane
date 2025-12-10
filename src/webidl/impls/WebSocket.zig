@@ -32,6 +32,7 @@ const WebSocket = interfaces.WebSocket;
 
 // Import the WebSocket connection module
 const websocket = @import("websocket");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const WebSocketConnection = websocket.WebSocketConnection;
 
 pub const State = WebSocket.State;

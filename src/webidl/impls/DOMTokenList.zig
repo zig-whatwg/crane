@@ -15,6 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const DOMTokenList = interfaces.DOMTokenList;
 
 pub const State = DOMTokenList.State;

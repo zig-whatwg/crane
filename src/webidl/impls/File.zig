@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const file = @import("file");
 const webidl = @import("webidl");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const File = interfaces.File;
 
 pub const State = File.State;
@@ -150,10 +151,10 @@ pub fn createFromBytes(
 }
 
 /// Get internal state from instance
-pub /// Get internal state from instance using shared accessor
+/// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 

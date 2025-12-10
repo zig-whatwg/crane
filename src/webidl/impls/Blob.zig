@@ -24,6 +24,7 @@ const webidl_errors = webidl.errors;
 
 // Import ReadableStream impl for internal API (Zig-only stream creation)
 const ReadableStreamImpl = @import("ReadableStream.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Blob.State;
 
@@ -194,10 +195,10 @@ pub fn createFromBlobData(allocator: std.mem.Allocator, ctx: runtime.Context, bl
 }
 
 /// Get internal state from instance
-pub /// Get internal state from instance using shared accessor
+/// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 

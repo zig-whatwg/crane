@@ -31,6 +31,7 @@ const Navigation = interfaces.Navigation;
 
 // HTML navigation infrastructure
 const html_core = @import("html_core");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const SessionHistoryEntry = html_core.navigation.SessionHistoryEntry;
 const SessionHistoryList = html_core.navigation.SessionHistoryList;
 const TraversableNavigable = html_core.navigation.TraversableNavigable;

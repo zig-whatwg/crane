@@ -26,6 +26,7 @@ const document_internals = dom.document_internals;
 const DocumentTypeImpl = @import("DocumentType.zig");
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = DOMImplementation.State;
 

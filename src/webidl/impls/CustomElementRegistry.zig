@@ -24,6 +24,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const CustomElementRegistry = interfaces.CustomElementRegistry;
 
 pub const State = CustomElementRegistry.State;

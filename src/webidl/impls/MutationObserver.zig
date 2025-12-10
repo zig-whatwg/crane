@@ -17,6 +17,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const v8_engine = @import("v8");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const MutationObserver = interfaces.MutationObserver;
 
 pub const State = MutationObserver.State;

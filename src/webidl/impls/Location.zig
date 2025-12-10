@@ -37,6 +37,7 @@ const url_serializer = @import("url_serializer");
 const host_serializer = @import("host_serializer");
 const origin = @import("origin");
 const basic_parser = @import("basic_parser");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 /// Special schemes default ports
 /// Per WHATWG URL spec: https://url.spec.whatwg.org/#special-scheme

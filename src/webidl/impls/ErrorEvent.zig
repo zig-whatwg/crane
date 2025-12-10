@@ -14,6 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const ErrorEvent = interfaces.ErrorEvent;
 
 pub const State = ErrorEvent.State;

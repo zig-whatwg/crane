@@ -29,6 +29,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const NavigateEvent = interfaces.NavigateEvent;
 
 pub const State = NavigateEvent.State;

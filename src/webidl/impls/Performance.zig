@@ -14,6 +14,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const hr_time = @import("hr_time");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Performance = interfaces.Performance;
 
 pub const State = Performance.State;

@@ -51,6 +51,7 @@ const StorageImpl = @import("Storage.zig");
 
 // IndexedDB types for window.indexedDB
 const storage = @import("storage");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
 // Cache Storage types for window.caches

@@ -24,6 +24,7 @@ const Selection = interfaces.Selection;
 
 // Import related implementations
 const NodeImpl = @import("Node.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 // Import interfaces for calling spec methods (per Golden Rule #13: impls call interfaces, not other impls)
 const Range = interfaces.Range;

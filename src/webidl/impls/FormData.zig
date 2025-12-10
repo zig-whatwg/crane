@@ -16,6 +16,7 @@ const FormData = interfaces.FormData;
 
 // Import internal FormData implementation
 const xhr = @import("xhr");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const InternalFormData = xhr.form_data.FormData;
 
 pub const State = FormData.State;

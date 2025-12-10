@@ -27,6 +27,7 @@ const callbacks = @import("callbacks");
 const file = @import("file");
 const FileReader = interfaces.FileReader;
 const BlobImpl = @import("Blob.zig");
+const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = FileReader.State;
 
