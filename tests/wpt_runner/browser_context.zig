@@ -2177,20 +2177,31 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
             return;
         };
 
-        // Get the directory of the test file
-        const test_dir = if (std.mem.lastIndexOf(u8, test_path, "/")) |pos|
-            test_path[0..pos]
-        else
-            "";
-
-        // Construct full path: wpt_root/test_dir/relative_url
-        const full_path = std.fs.path.join(allocator, &.{ wpt_root, test_dir, url_str }) catch {
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to join path", 19) orelse return;
-            if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
-                _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
-            }
-            return;
-        };
+        // Construct full path based on whether URL is absolute (starts with /) or relative
+        var full_path: []u8 = undefined;
+        if (std.mem.startsWith(u8, url_str, "/")) {
+            // Absolute path from WPT root (e.g., "/interfaces/console.idl")
+            full_path = std.fs.path.join(allocator, &.{ wpt_root, url_str[1..] }) catch {
+                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to join path", 19) orelse return;
+                if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+                }
+                return;
+            };
+        } else {
+            // Relative path - resolve against test directory
+            const test_dir = if (std.mem.lastIndexOf(u8, test_path, "/")) |pos|
+                test_path[0..pos]
+            else
+                "";
+            full_path = std.fs.path.join(allocator, &.{ wpt_root, test_dir, url_str }) catch {
+                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to join path", 19) orelse return;
+                if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+                }
+                return;
+            };
+        }
         defer allocator.free(full_path);
 
         // Read the file

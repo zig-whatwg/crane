@@ -833,18 +833,22 @@ fn executeTestFileInContext(
         // Load external META scripts first
         for (parsed.metadata.scripts.items) |script| {
             if (!script.inline_script) {
+                // Apply WPT URL rewrites (e.g., WebIDLParser.js -> webidl2.js)
+                const rewritten_path = try rewriteWptResourcePath(allocator, script.path);
+                defer allocator.free(rewritten_path);
+
                 // Resolve the script path FIRST so we can use the absolute path as cache key
                 var script_path: []u8 = undefined;
-                if (std.mem.startsWith(u8, script.path, "/")) {
+                if (std.mem.startsWith(u8, rewritten_path, "/")) {
                     // Absolute path from WPT root (e.g., "/common/subset-tests-by-key.js")
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, script.path[1..] });
+                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, rewritten_path[1..] });
                 } else {
                     // Relative path from test file
                     const test_dir = if (std.mem.lastIndexOf(u8, test_file.path, "/")) |pos|
                         test_file.path[0..pos]
                     else
                         "";
-                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_dir, script.path });
+                    script_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_dir, rewritten_path });
                 }
                 defer allocator.free(script_path);
 
@@ -903,6 +907,23 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
     defer allocator.free(full_path);
 
     return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
+}
+
+/// Rewrite WPT resource URLs to their actual file paths
+/// The WPT server applies URL rewrites - we need to emulate them for direct file access
+/// See: https://web-platform-tests.org/writing-tests/server-features.html
+fn rewriteWptResourcePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    // WebIDLParser.js is actually webidl2.js
+    // https://github.com/nicolo-ribaudo/webidl2.js provides the parser
+    if (std.mem.eql(u8, path, "/resources/WebIDLParser.js")) {
+        return try allocator.dupe(u8, "/resources/webidl2/lib/webidl2.js");
+    }
+
+    // Add more rewrites as needed:
+    // - /resources/testdriver.js -> vendor specific
+    // - etc.
+
+    return try allocator.dupe(u8, path);
 }
 
 /// Output helper - uses std.debug.print for standalone compatibility
