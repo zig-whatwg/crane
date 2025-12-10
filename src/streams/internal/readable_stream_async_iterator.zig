@@ -48,7 +48,9 @@ pub const ReadableStreamAsyncIterator = struct {
 /// Iterator result for next() method
 /// Per ES spec, async iterators return { value, done } objects
 pub const IteratorResult = struct {
-    value: ?*anyopaque,
+    /// The value returned by the iterator (may be undefined if done is true)
+    /// Uses runtime.JSValue for type-safe JavaScript value storage
+    value: ?runtime.JSValue,
     done: bool,
 };
 
@@ -145,7 +147,7 @@ pub fn next(
 /// 6. Return a promise resolved with undefined
 pub fn returnEarly(
     iterator: *ReadableStreamAsyncIterator,
-    reason: ?*anyopaque,
+    reason: ?runtime.JSValue,
 ) !*AsyncPromise(void) {
     // Step 1: Get reader
     const reader = iterator.reader;
@@ -155,9 +157,11 @@ pub fn returnEarly(
     // Step 4: If preventCancel is false, cancel the stream
     if (!iterator.prevent_cancel) {
         // Step 4a: Cancel the stream
+        // Convert JSValue to anyopaque for the cancel operation
+        const reason_ptr: ?*anyopaque = if (reason) |r| r.asEngineHandle() else null;
         const cancel_promise = try reader_ops.readableStreamReaderGenericCancel(
             reader,
-            reason,
+            reason_ptr,
         );
 
         // Step 4b: Release reader

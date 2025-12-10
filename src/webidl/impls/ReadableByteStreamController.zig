@@ -1376,7 +1376,8 @@ fn commitPullIntoDescriptor(
     if (pullIntoDescriptor.reader_type == .default) {
         // Step 6.1: Perform ! ReadableStreamFulfillReadRequest(stream, filledView, done)
         const ReadableStreamImpl = @import("ReadableStream.zig");
-        try ReadableStreamImpl.fulfillReadRequest(stream, filled_view, done);
+        // Wrap the filled_view pointer in runtime.JSValue for type-safe storage
+        try ReadableStreamImpl.fulfillReadRequest(stream, runtime.JSValue.fromHandle(filled_view), done);
     } else {
         // Step 7: Otherwise (reader type is "byob")
         // Step 7.1: Perform ! ReadableStreamFulfillReadIntoRequest(stream, filledView, done)
@@ -1499,7 +1500,8 @@ fn fillReadRequestFromQueue(internal: *InternalState, stream: *runtime.Instance)
 
     // Step 7: Fulfill the read request with chunk, done=false
     const ReadableStreamImpl = @import("ReadableStream.zig");
-    try ReadableStreamImpl.fulfillReadRequest(stream, chunk, false);
+    // Wrap the chunk pointer in runtime.JSValue for type-safe storage
+    try ReadableStreamImpl.fulfillReadRequest(stream, runtime.JSValue.fromHandle(chunk), false);
 }
 
 /// ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller, pullIntoDescriptor)
@@ -1664,7 +1666,8 @@ fn enqueueInternal(instance: *runtime.Instance, chunk: typedefs.ArrayBufferView)
             const chunk_for_read: *anyopaque = @ptrCast(buffer_ptr);
 
             // Step 9.2.3: Fulfill read request
-            try ReadableStreamImpl.fulfillReadRequest(stream, chunk_for_read, false);
+            // Wrap the chunk pointer in runtime.JSValue for type-safe storage
+            try ReadableStreamImpl.fulfillReadRequest(stream, runtime.JSValue.fromHandle(chunk_for_read), false);
         }
     } else {
         // Step 10: Otherwise (no default reader), enqueue to queue

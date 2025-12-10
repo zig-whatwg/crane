@@ -159,9 +159,16 @@ fn onReadFulfilled(ctx_ptr: *anyopaque, result: @import("impls").ReadableStreamD
     if (result.done) {
         // Stream closed - call close steps
         ctx.close_steps(ctx.user_context);
-    } else if (result.value) |chunk| {
+    } else if (result.value) |chunk_value| {
         // Got a chunk - call chunk steps
-        ctx.chunk_steps(ctx.user_context, chunk);
+        // Convert runtime.JSValue to *anyopaque for the callback
+        // The callback expects the engine handle pointer
+        const chunk_ptr: *anyopaque = chunk_value.asEngineHandle() orelse {
+            // If no engine handle (primitive value), treat as close
+            ctx.close_steps(ctx.user_context);
+            return;
+        };
+        ctx.chunk_steps(ctx.user_context, chunk_ptr);
     } else {
         // No value but not done - shouldn't happen per spec
         ctx.close_steps(ctx.user_context);

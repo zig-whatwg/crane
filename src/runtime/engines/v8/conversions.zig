@@ -2399,11 +2399,33 @@ pub fn toV8(
                 const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse
                     return ConversionError.OutOfMemory;
 
-                // Value is ?*anyopaque, convert appropriately
-                const value_v8: *v8.Value = if (value.value) |v|
-                    @ptrCast(v)
-                else
-                    v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+                // Value may be runtime.JSValue (tagged union) or *anyopaque
+                // Handle both cases for compatibility
+                const value_v8: *v8.Value = if (value.value) |v| blk: {
+                    // Check if v is a runtime.JSValue by checking if it has asEngineHandle
+                    const V = @TypeOf(v);
+                    if (@typeInfo(V) == .@"union") {
+                        // This is a runtime.JSValue - extract the engine handle
+                        if (v.asEngineHandle()) |handle| {
+                            break :blk @ptrCast(handle);
+                        } else {
+                            // Not a handle - convert based on type
+                            break :blk switch (v) {
+                                .undefined => v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory,
+                                .null => v8.v8_Null(isolate) orelse return ConversionError.OutOfMemory,
+                                .boolean => |b| @ptrCast(toV8Boolean(isolate, b)),
+                                .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
+                                .string => |s| @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.OutOfMemory),
+                                else => v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory,
+                            };
+                        }
+                    } else if (@typeInfo(V) == .pointer) {
+                        // Legacy *anyopaque case
+                        break :blk @ptrCast(v);
+                    } else {
+                        break :blk v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+                    }
+                } else v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
 
                 _ = v8.v8_Object_Set(obj, context, @ptrCast(value_key), value_v8);
 

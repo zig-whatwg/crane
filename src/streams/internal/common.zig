@@ -21,6 +21,9 @@ pub const ErrorValue = struct {
     message: []const u8,
 };
 
+/// Import runtime for type-safe JSValue
+const runtime = @import("runtime");
+
 /// Internal JSValue type (simplified from webidl.JSValue)
 /// Used for internal algorithms - bridges to webidl.JSValue at public boundaries
 pub const JSValue = union(enum) {
@@ -33,6 +36,7 @@ pub const JSValue = union(enum) {
     object: void,
     /// V8 value pointer - stores raw V8 Global<Value>* for JavaScript engine integration
     /// Used when chunks come from JavaScript and need to be passed back unchanged
+    /// NOTE: This stores a Global handle (not Local) to ensure the value survives HandleScope
     v8_value: *anyopaque,
     /// Close sentinel - unique value for WritableStream close signaling
     /// Spec: § 3.9.17 "The close sentinel is a unique value enqueued into [[queue]]"

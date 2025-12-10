@@ -487,10 +487,10 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
         if (reader_internal.read_requests.items.len > 0) {
             const read_request = reader_internal.read_requests.orderedRemove(0);
 
-            // Fulfill with chunk
+            // Fulfill with chunk - convert *anyopaque to runtime.JSValue
             const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
             read_request.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
-                .value = @constCast(chunk),
+                .value = runtime.JSValue.fromHandle(@constCast(chunk)),
                 .done = false,
             });
             return;
@@ -798,21 +798,20 @@ pub fn pullSteps(
         // Step 2.4: Perform chunk steps (fulfill promise with chunk)
         const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
 
-        // Extract the V8 value from JSValue
-        // If it's a v8_value, use the stored pointer directly
-        // Otherwise, create a pointer to the JSValue for conversion
-        const value_ptr: ?*anyopaque = switch (chunk) {
-            .v8_value => |v| v,
-            else => blk: {
-                // Allocate the JSValue on the heap so it can be passed as *anyopaque
-                const chunk_ptr = try internal.allocator.create(streams_common.JSValue);
-                chunk_ptr.* = chunk;
-                break :blk @ptrCast(chunk_ptr);
-            },
+        // Convert the internal JSValue to runtime.JSValue for the ReadResult
+        // The chunk came from the queue and may contain a V8 handle
+        const result_value: ?runtime.JSValue = switch (chunk) {
+            .v8_value => |v| runtime.JSValue.fromHandle(v),
+            .undefined => null, // Map undefined to null (represents JS undefined)
+            .null => runtime.JSValue.jsNull,
+            .boolean => |b| runtime.JSValue.fromBoolean(b),
+            .number => |n| runtime.JSValue.fromNumber(n),
+            .string => |s| runtime.JSValue.fromStringRef(s),
+            else => null, // Other types map to undefined for now
         };
 
         read_promise.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
-            .value = value_ptr,
+            .value = result_value,
             .done = false,
         });
     } else {

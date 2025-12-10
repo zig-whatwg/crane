@@ -1535,7 +1535,7 @@ fn teePullFromSource(tee_state: *TeeState) !void {
 }
 
 /// Enqueue a chunk to a branch stream's controller
-fn teeEnqueueToBranch(branch: *runtime.Instance, chunk: ?*anyopaque) !void {
+fn teeEnqueueToBranch(branch: *runtime.Instance, chunk: ?runtime.JSValue) !void {
     const branch_state = branch.getState(State);
     const branch_internal = branch_state.own._internal orelse return error.InvalidState;
 
@@ -1543,8 +1543,7 @@ fn teeEnqueueToBranch(branch: *runtime.Instance, chunk: ?*anyopaque) !void {
     const controller_impl = @import("ReadableStreamDefaultController.zig");
 
     if (chunk) |c| {
-        const chunk_jsvalue = runtime.JSValue.fromAnyopaque(c);
-        try controller_impl.call_enqueue(controller, webidl.Opt(runtime.JSValue).passed(chunk_jsvalue));
+        try controller_impl.call_enqueue(controller, webidl.Opt(runtime.JSValue).passed(c));
     }
 }
 
@@ -2777,7 +2776,7 @@ pub fn getNumReadIntoRequests(instance: *runtime.Instance) u64 {
 /// Fulfills the first pending read request with the given chunk.
 pub fn fulfillReadRequest(
     instance: *runtime.Instance,
-    chunk: *anyopaque,
+    chunk: runtime.JSValue,
     done: bool,
 ) ImplError!void {
     const state = instance.getState(State);

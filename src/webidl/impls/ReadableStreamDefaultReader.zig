@@ -35,8 +35,11 @@ pub const ImplError = error{
 
 /// Read result structure
 /// Per spec: ReadableStreamReadResult dictionary
+/// Uses runtime.JSValue for type-safe JavaScript value storage
 pub const ReadResult = struct {
-    value: ?*anyopaque,
+    /// The value read from the stream (may be undefined if done is true)
+    /// Uses runtime.JSValue instead of raw *anyopaque for type safety
+    value: ?runtime.JSValue,
     done: bool,
 };
 
@@ -334,6 +337,7 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
     switch (stream_internal.state) {
         .closed => {
             // Close steps: Resolve with { value: undefined, done: true }
+            // Use null for the optional JSValue (represents undefined in JS)
             promise.*.fulfill(ReadResult{
                 .value = null,
                 .done = true,
@@ -498,7 +502,7 @@ pub fn getNumReadRequests(instance: *runtime.Instance) u64 {
 /// Used by ReadableStream.fulfillReadRequest()
 pub fn fulfillReadRequest(
     instance: *runtime.Instance,
-    chunk: *anyopaque,
+    chunk: runtime.JSValue,
     done: bool,
 ) ImplError!void {
     const state = instance.getState(State);
@@ -512,7 +516,7 @@ pub fn fulfillReadRequest(
     // Remove first request from queue
     const read_promise = internal.read_requests.orderedRemove(0);
 
-    // Create result
+    // Create result - use the type-safe JSValue directly
     const result = ReadResult{
         .value = chunk,
         .done = done,
