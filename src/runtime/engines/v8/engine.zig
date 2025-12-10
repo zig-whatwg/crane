@@ -28,6 +28,7 @@ const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
 const callback_wrapper_mod = @import("callback_wrapper.zig");
 const pointer_tag = @import("pointer_tag.zig");
+const TaggedPointer = pointer_tag.TaggedPointer;
 
 // Logging for V8 exceptions
 const log = std.log.scoped(.v8_engine);
@@ -193,8 +194,8 @@ fn v8ResolvePromise(
 
     // Convert value to V8 Value, untagging if necessary
     const v8_value: *ffi.Value = if (value) |v| blk: {
-        const untagged = pointer_tag.untagPointer(v);
-        break :blk @ptrCast(untagged.ptr);
+        const tagged = TaggedPointer.fromRaw(@intFromPtr(v));
+        break :blk tagged.untagAs(*ffi.Value);
     } else ffi.v8_Undefined(handle.isolate) orelse return EngineError.OperationFailed;
 
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, v8_value)) {
@@ -410,8 +411,8 @@ fn v8WrapInstance(
 fn v8IsString(
     js_value: *const anyopaque,
 ) bool {
-    const untagged = pointer_tag.untagPointer(js_value);
-    const value: *ffi.Value = @ptrCast(untagged.ptr);
+    const tagged = TaggedPointer.fromRaw(@intFromPtr(js_value));
+    const value = tagged.untagAs(*ffi.Value);
     return ffi.v8_Value_IsString(value);
 }
 
@@ -425,8 +426,8 @@ fn v8ExtractString(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    const untagged = pointer_tag.untagPointer(js_value);
-    const value: *ffi.Value = @ptrCast(untagged.ptr);
+    const tagged = TaggedPointer.fromRaw(@intFromPtr(js_value));
+    const value = tagged.untagAs(*ffi.Value);
 
     // Use the conversions module to extract the string
     const conv = @import("conversions.zig");
@@ -624,8 +625,8 @@ fn v8InvokeStreamCallback(
         return EngineError.OperationFailed;
 
     // Get the JS function value from the Global handle, untagging if necessary
-    const untagged_callback = pointer_tag.untagPointer(js_callback);
-    const callback_value: *ffi.Value = @ptrCast(untagged_callback.ptr);
+    const tagged_callback = TaggedPointer.fromRaw(@intFromPtr(js_callback));
+    const callback_value = tagged_callback.untagAs(*ffi.Value);
 
     // Check if it's actually a function
     if (!ffi.v8_Value_IsFunction(callback_value)) {
@@ -640,15 +641,13 @@ fn v8InvokeStreamCallback(
 
     // First argument: controller (if provided), untag if necessary
     if (controller_v8) |ctrl| {
-        const untagged_ctrl = pointer_tag.untagPointer(@ptrCast(ctrl));
-        args[arg_count] = @ptrCast(untagged_ctrl.ptr);
+        args[arg_count] = TaggedPointer.fromRaw(@intFromPtr(ctrl)).untagAs(*ffi.Value);
         arg_count += 1;
     }
 
     // Second argument: additional arg (if provided), untag if necessary
     if (arg) |a| {
-        const untagged_arg = pointer_tag.untagPointer(a);
-        args[arg_count] = @ptrCast(untagged_arg.ptr);
+        args[arg_count] = TaggedPointer.fromRaw(@intFromPtr(a)).untagAs(*ffi.Value);
         arg_count += 1;
     }
 
