@@ -26,7 +26,6 @@ const AbstractRange = interfaces.AbstractRange;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
-const AbstractRangeImpl = @import("AbstractRange.zig");
 
 // Import pointer_tag for V8 pointer untagging (via v8 module)
 const pointer_tag = @import("v8").pointer_tag;

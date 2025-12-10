@@ -28,7 +28,6 @@ const RequestCredentials = workers.RequestCredentials;
 const structured_clone = html_core.structured_clone;
 
 // Import MessagePort for communication
-const MessagePortImpl = @import("MessagePort.zig");
 const message_port_internal = @import("streams_internal");
 const InternalMessagePort = message_port_internal.MessagePort;
 

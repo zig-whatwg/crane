@@ -27,13 +27,7 @@ const Document = interfaces.Document;
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-// NOTE: The following impls are used for internal methods. Factory methods
-// (call_constructor, etc.) should use interfaces instead.
-const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
-const CDATASectionImpl = @import("CDATASection.zig");
-const AttrImpl = @import("Attr.zig");
-const DocumentTypeImpl = @import("DocumentType.zig");
 const RangeImpl = @import("Range.zig");
 const NodeIteratorImpl = @import("NodeIterator.zig");
 const TreeWalkerImpl = @import("TreeWalker.zig");

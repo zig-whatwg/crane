@@ -15,7 +15,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
-const EventImpl = @import("Event.zig");
 
 pub const State = CustomEvent.State;
 

@@ -44,7 +44,6 @@ const DocumentImpl = @import("Document.zig");
 const ElementImpl = @import("Element.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const NodeImpl = @import("Node.zig");
-const CharacterDataImpl = @import("CharacterData.zig");
 const HTMLScriptElementImpl = @import("HTMLScriptElement.zig");
 
 // Import script execution module from html module

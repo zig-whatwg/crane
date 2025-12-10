@@ -37,9 +37,7 @@ const NodeImpl = @import("Node.zig");
 const ElementImpl = @import("Element.zig");
 const HTMLCollectionImpl = @import("HTMLCollection.zig");
 const NodeListImpl = @import("NodeList.zig");
-const TextImpl = @import("Text.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
-const DocumentFragmentImpl = @import("DocumentFragment.zig");
 
 pub const ImplError = error{
     NotImplemented,

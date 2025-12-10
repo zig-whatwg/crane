@@ -22,7 +22,6 @@ const DOMImplementation = interfaces.DOMImplementation;
 const DocumentImpl = @import("Document.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const ElementImpl = @import("Element.zig");
-const TextImpl = @import("Text.zig");
 const NodeImpl = @import("Node.zig");
 
 pub const State = DOMImplementation.State;

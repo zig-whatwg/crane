@@ -16,7 +16,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const ProgressEvent = interfaces.ProgressEvent;
 const Event = interfaces.Event;
-const EventImpl = @import("Event.zig");
 const webidl = @import("webidl");
 
 pub const State = ProgressEvent.State;

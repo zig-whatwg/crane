@@ -23,7 +23,6 @@ const Range = interfaces.Range;
 
 // Import related impls
 const NodeImpl = @import("Node.zig");
-const AbstractRangeImpl = @import("AbstractRange.zig");
 
 pub const State = Range.State;
 

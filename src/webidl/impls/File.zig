@@ -13,7 +13,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const file = @import("file");
-const BlobImpl = @import("Blob.zig");
 const webidl = @import("webidl");
 const File = interfaces.File;
 

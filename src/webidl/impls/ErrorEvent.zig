@@ -15,7 +15,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const ErrorEvent = interfaces.ErrorEvent;
-const EventImpl = @import("Event.zig");
 
 pub const State = ErrorEvent.State;
 
