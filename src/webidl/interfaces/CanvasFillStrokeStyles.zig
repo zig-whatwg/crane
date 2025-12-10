@@ -117,7 +117,7 @@ pub const CanvasFillStrokeStyles = struct {
         CanvasFillStrokeStylesImpl.deinit(instance);
     }
 
-    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasFillStrokeStylesImpl.get_strokeStyle(instance);
     }
 
@@ -125,7 +125,7 @@ pub const CanvasFillStrokeStyles = struct {
         try CanvasFillStrokeStylesImpl.set_strokeStyle(instance, value);
     }
 
-    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasFillStrokeStylesImpl.get_fillStyle(instance);
     }
 

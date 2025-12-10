@@ -41,10 +41,10 @@ pub const Bluetooth = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "onavailabilitychanged", "get_onavailabilitychanged", "set_onavailabilitychanged" },
@@ -56,7 +56,7 @@ pub const Bluetooth = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getAvailability", "call_getAvailability", 0 },
@@ -64,7 +64,7 @@ pub const Bluetooth = struct {
             .{ "requestDevice", "call_requestDevice", 0 },
             .{ "requestLEScan", "call_requestLEScan", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getAvailability",
@@ -72,7 +72,7 @@ pub const Bluetooth = struct {
             "requestDevice",
             "requestLEScan",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -80,7 +80,7 @@ pub const Bluetooth = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "onavailabilitychanged", "get_onavailabilitychanged", "set_onavailabilitychanged" },
@@ -92,10 +92,11 @@ pub const Bluetooth = struct {
             .{ "onservicechanged", "get_onservicechanged", "set_onservicechanged" },
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -117,6 +118,7 @@ pub const Bluetooth = struct {
     );
 
     const delegates = .{
+
         .get_onadvertisementreceived = &get_onadvertisementreceived,
         .get_onavailabilitychanged = &get_onavailabilitychanged,
         .get_oncharacteristicvaluechanged = &get_oncharacteristicvaluechanged,
@@ -234,6 +236,7 @@ pub const Bluetooth = struct {
 
     /// Extended attributes: [SecureContext]
     pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(BluetoothLEScanOptions)) anyerror!runtime.JSValue {
+        
         return try BluetoothImpl.call_requestLEScan(instance, options);
     }
 
@@ -246,6 +249,8 @@ pub const Bluetooth = struct {
     }
 
     pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(RequestDeviceOptions)) anyerror!runtime.JSValue {
+        
         return try BluetoothImpl.call_requestDevice(instance, options);
     }
+
 };

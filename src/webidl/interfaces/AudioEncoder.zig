@@ -35,20 +35,20 @@ pub const AudioEncoder = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "state", "get_state", null },
             .{ "encodeQueueSize", "get_encodeQueueSize", null },
             .{ "ondequeue", "get_ondequeue", "set_ondequeue" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "configure", "call_configure", 1 },
@@ -57,12 +57,12 @@ pub const AudioEncoder = struct {
             .{ "reset", "call_reset", 0 },
             .{ "close", "call_close", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "configure",
@@ -72,7 +72,7 @@ pub const AudioEncoder = struct {
             "close",
             "isConfigSupported",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -80,17 +80,18 @@ pub const AudioEncoder = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "state", "get_state", null },
             .{ "encodeQueueSize", "get_encodeQueueSize", null },
             .{ "ondequeue", "get_ondequeue", "set_ondequeue" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -106,6 +107,7 @@ pub const AudioEncoder = struct {
     );
 
     const delegates = .{
+
         .get_encodeQueueSize = &get_encodeQueueSize,
         .get_ondequeue = &get_ondequeue,
         .get_state = &get_state,
@@ -172,10 +174,12 @@ pub const AudioEncoder = struct {
     }
 
     pub fn call_configure(instance: *runtime.Instance, config: AudioEncoderConfig) anyerror!void {
+        
         return try AudioEncoderImpl.call_configure(instance, config);
     }
 
     pub fn call_encode(instance: *runtime.Instance, data: *runtime.Instance) anyerror!void {
+        
         return try AudioEncoderImpl.call_encode(instance, data);
     }
 
@@ -187,7 +191,9 @@ pub const AudioEncoder = struct {
         return try AudioEncoderImpl.call_close(instance);
     }
 
-    pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: AudioEncoderConfig) anyerror!*const anyopaque {
+    pub fn call_static_isConfigSupported(instance: *runtime.Instance, config: AudioEncoderConfig) anyerror!runtime.JSValue {
+        
         return try AudioEncoderImpl.call_static_isConfigSupported(instance, config);
     }
+
 };

@@ -34,36 +34,36 @@ pub const IdleDetector = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .DedicatedWorker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "userState", "get_userState", null },
             .{ "screenState", "get_screenState", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "requestPermission", "call_static_requestPermission", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "requestPermission",
             "start",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -71,17 +71,18 @@ pub const IdleDetector = struct {
             "dispatchEvent",
             "when",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "userState", "get_userState", null },
             .{ "screenState", "get_screenState", null },
             .{ "onchange", "get_onchange", "set_onchange" },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -97,6 +98,7 @@ pub const IdleDetector = struct {
     );
 
     const delegates = .{
+
         .get_onchange = &get_onchange,
         .get_screenState = &get_screenState,
         .get_userState = &get_userState,
@@ -155,11 +157,13 @@ pub const IdleDetector = struct {
     }
 
     pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(IdleOptions)) anyerror!runtime.JSValue {
+        
         return try IdleDetectorImpl.call_start(instance, options);
     }
 
     /// Extended attributes: [Exposed=Window]
-    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IdleDetectorImpl.call_static_requestPermission(instance);
     }
+
 };

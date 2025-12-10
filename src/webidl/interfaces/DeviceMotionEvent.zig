@@ -148,7 +148,7 @@ pub const DeviceMotionEvent = struct {
         return try DeviceMotionEventImpl.get_interval(instance);
     }
 
-    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DeviceMotionEventImpl.call_static_requestPermission(instance);
     }
 

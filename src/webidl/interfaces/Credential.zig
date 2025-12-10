@@ -113,11 +113,11 @@ pub const Credential = struct {
         return try CredentialImpl.get_type(instance);
     }
 
-    pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CredentialImpl.call_static_willRequestConditionalCreation(instance);
     }
 
-    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CredentialImpl.call_static_isConditionalMediationAvailable(instance);
     }
 

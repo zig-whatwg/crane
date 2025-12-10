@@ -150,7 +150,7 @@ pub const DocumentOrShadowRoot = struct {
         return value;
     }
 
-    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentOrShadowRootImpl.get_adoptedStyleSheets(instance);
     }
 
@@ -162,7 +162,7 @@ pub const DocumentOrShadowRoot = struct {
         return try DocumentOrShadowRootImpl.get_activeElement(instance);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DocumentOrShadowRootImpl.call_getAnimations(instance);
     }
 

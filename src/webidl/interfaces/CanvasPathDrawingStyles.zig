@@ -156,7 +156,7 @@ pub const CanvasPathDrawingStyles = struct {
         try CanvasPathDrawingStylesImpl.set_lineDashOffset(instance, value);
     }
 
-    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasPathDrawingStylesImpl.call_getLineDash(instance);
     }
 

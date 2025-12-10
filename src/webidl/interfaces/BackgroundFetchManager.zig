@@ -24,39 +24,43 @@ pub const BackgroundFetchManager = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "fetch", "call_fetch", 2 },
             .{ "get", "call_get", 1 },
             .{ "getIds", "call_getIds", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fetch",
             "get",
             "getIds",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -69,6 +73,7 @@ pub const BackgroundFetchManager = struct {
     );
 
     const delegates = .{
+
         .call_fetch = &call_fetch,
         .call_get = &call_get,
         .call_getIds = &call_getIds,
@@ -99,6 +104,7 @@ pub const BackgroundFetchManager = struct {
     }
 
     pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
+        
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }
 
@@ -107,6 +113,8 @@ pub const BackgroundFetchManager = struct {
     }
 
     pub fn call_fetch(instance: *runtime.Instance, id: DOMString, requests: runtime.JSValue, options: webidl.Opt(BackgroundFetchOptions)) anyerror!runtime.JSValue {
+        
         return try BackgroundFetchManagerImpl.call_fetch(instance, id, requests, options);
     }
+
 };

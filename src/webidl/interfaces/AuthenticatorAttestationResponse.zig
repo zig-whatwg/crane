@@ -110,7 +110,7 @@ pub const AuthenticatorAttestationResponse = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_attestationObject(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_attestationObject(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_attestationObject) |cached| {
@@ -121,7 +121,7 @@ pub const AuthenticatorAttestationResponse = struct {
         return value;
     }
 
-    pub fn call_getTransports(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getTransports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try AuthenticatorAttestationResponseImpl.call_getTransports(instance);
     }
 
@@ -133,7 +133,7 @@ pub const AuthenticatorAttestationResponse = struct {
         return try AuthenticatorAttestationResponseImpl.call_getPublicKey(instance);
     }
 
-    pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try AuthenticatorAttestationResponseImpl.call_getAuthenticatorData(instance);
     }
 

@@ -34,10 +34,10 @@ pub const BiquadFilterNode = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "type", "get_type", "set_type" },
@@ -46,17 +46,17 @@ pub const BiquadFilterNode = struct {
             .{ "Q", "get_Q", null },
             .{ "gain", "get_gain", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getFrequencyResponse", "call_getFrequencyResponse", 3 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getFrequencyResponse",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -73,7 +73,7 @@ pub const BiquadFilterNode = struct {
             "disconnect",
             "disconnect",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "type", "get_type", "set_type" },
@@ -82,10 +82,11 @@ pub const BiquadFilterNode = struct {
             .{ "Q", "get_Q", null },
             .{ "gain", "get_gain", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -93,7 +94,7 @@ pub const BiquadFilterNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: BiquadFilterType = undefined,
+            @"type": BiquadFilterType = undefined,
             frequency: *runtime.Instance = undefined,
             detune: *runtime.Instance = undefined,
             Q: *runtime.Instance = undefined,
@@ -103,6 +104,7 @@ pub const BiquadFilterNode = struct {
     );
 
     const delegates = .{
+
         .get_Q = &get_Q,
         .get_detune = &get_detune,
         .get_frequency = &get_frequency,
@@ -171,6 +173,8 @@ pub const BiquadFilterNode = struct {
     }
 
     pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: runtime.JSValue, magResponse: runtime.JSValue, phaseResponse: runtime.JSValue) anyerror!void {
+        
         return try BiquadFilterNodeImpl.call_getFrequencyResponse(instance, frequencyHz, magResponse, phaseResponse);
     }
+
 };

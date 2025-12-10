@@ -180,7 +180,7 @@ pub const GeolocationSensor = struct {
         return try GeolocationSensorImpl.get_speed(instance);
     }
 
-    pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!*const anyopaque {
+    pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(ReadOptions)) anyerror!runtime.JSValue {
         
         return try GeolocationSensorImpl.call_static_read(instance, readOptions);
     }

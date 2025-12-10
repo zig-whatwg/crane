@@ -32,10 +32,10 @@ pub const Rewriter = struct {
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
             .{ .name = "SecureContext" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sharedContext", "get_sharedContext", null },
@@ -47,7 +47,7 @@ pub const Rewriter = struct {
             .{ "outputLanguage", "get_outputLanguage", null },
             .{ "inputQuota", "get_inputQuota", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "rewrite", "call_rewrite", 1 },
@@ -55,13 +55,13 @@ pub const Rewriter = struct {
             .{ "measureInputUsage", "call_measureInputUsage", 1 },
             .{ "destroy", "call_destroy", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "create", "call_static_create", 0 },
             .{ "availability", "call_static_availability", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "create",
@@ -71,10 +71,11 @@ pub const Rewriter = struct {
             "measureInputUsage",
             "destroy",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "sharedContext", "get_sharedContext", null },
@@ -86,10 +87,11 @@ pub const Rewriter = struct {
             .{ "outputLanguage", "get_outputLanguage", null },
             .{ "inputQuota", "get_inputQuota", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -110,6 +112,7 @@ pub const Rewriter = struct {
     );
 
     const delegates = .{
+
         .get_expectedContextLanguages = &get_expectedContextLanguages,
         .get_expectedInputLanguages = &get_expectedInputLanguages,
         .get_format = &get_format,
@@ -182,10 +185,12 @@ pub const Rewriter = struct {
     }
 
     pub fn call_rewriteStreaming(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!*runtime.Instance {
+        
         return try RewriterImpl.call_rewriteStreaming(instance, input, options);
     }
 
     pub fn call_measureInputUsage(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
+        
         return try RewriterImpl.call_measureInputUsage(instance, input, options);
     }
 
@@ -193,15 +198,19 @@ pub const Rewriter = struct {
         return try RewriterImpl.call_destroy(instance);
     }
 
-    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!*const anyopaque {
+    pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateOptions)) anyerror!runtime.JSValue {
+        
         return try RewriterImpl.call_static_create(instance, options);
     }
 
-    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!*const anyopaque {
+    pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt(RewriterCreateCoreOptions)) anyerror!runtime.JSValue {
+        
         return try RewriterImpl.call_static_availability(instance, options);
     }
 
     pub fn call_rewrite(instance: *runtime.Instance, input: DOMString, options: webidl.Opt(RewriterRewriteOptions)) anyerror!runtime.JSValue {
+        
         return try RewriterImpl.call_rewrite(instance, input, options);
     }
+
 };

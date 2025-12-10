@@ -146,7 +146,7 @@ pub const DeviceOrientationEvent = struct {
         return try DeviceOrientationEventImpl.get_absolute(instance);
     }
 
-    pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
+    pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
         
         return try DeviceOrientationEventImpl.call_static_requestPermission(instance, absolute);
     }

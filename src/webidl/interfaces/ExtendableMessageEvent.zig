@@ -165,7 +165,7 @@ pub const ExtendableMessageEvent = struct {
         return value;
     }
 
-    pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ExtendableMessageEventImpl.get_ports(instance);
     }
 

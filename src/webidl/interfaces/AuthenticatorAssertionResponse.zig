@@ -105,7 +105,7 @@ pub const AuthenticatorAssertionResponse = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_authenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_authenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_authenticatorData) |cached| {
@@ -117,7 +117,7 @@ pub const AuthenticatorAssertionResponse = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_signature(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_signature(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_signature) |cached| {

@@ -97,7 +97,7 @@ pub const CropTarget = struct {
     }
 
     /// Extended attributes: [Exposed=Window], [SecureContext]
-    pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
         
         return try CropTargetImpl.call_static_fromElement(instance, element);
     }

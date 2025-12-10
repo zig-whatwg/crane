@@ -21,16 +21,18 @@ pub const BluetoothUUID = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{};
-
+        pub const methods = .{
+        };
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "getService", "call_static_getService", 1 },
@@ -38,7 +40,7 @@ pub const BluetoothUUID = struct {
             .{ "getDescriptor", "call_static_getDescriptor", 1 },
             .{ "canonicalUUID", "call_static_canonicalUUID", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getService",
@@ -46,16 +48,19 @@ pub const BluetoothUUID = struct {
             "getDescriptor",
             "canonicalUUID",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
     };
 
@@ -68,6 +73,7 @@ pub const BluetoothUUID = struct {
     );
 
     const delegates = .{
+
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
@@ -93,22 +99,26 @@ pub const BluetoothUUID = struct {
         BluetoothUUIDImpl.deinit(instance);
     }
 
-    pub fn call_static_getService(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getService(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+        
         return try BluetoothUUIDImpl.call_static_getService(instance, name);
     }
 
     pub fn call_static_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!UUID {
         // [EnforceRange] on alias
         if (!runtime.isInRange(u32, alias)) return error.TypeError;
-
+        
         return try BluetoothUUIDImpl.call_static_canonicalUUID(instance, alias);
     }
 
-    pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getCharacteristic(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+        
         return try BluetoothUUIDImpl.call_static_getCharacteristic(instance, name);
     }
 
-    pub fn call_static_getDescriptor(instance: *runtime.Instance, name: *const anyopaque) anyerror!UUID {
+    pub fn call_static_getDescriptor(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
+        
         return try BluetoothUUIDImpl.call_static_getDescriptor(instance, name);
     }
+
 };

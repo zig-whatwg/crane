@@ -22,44 +22,46 @@ pub const GroupEffect = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "children", "get_children", null },
             .{ "firstChild", "get_firstChild", null },
             .{ "lastChild", "get_lastChild", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
             .{ "prepend", "call_prepend", 1 },
             .{ "append", "call_append", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "clone",
             "prepend",
             "append",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "children", "get_children", null },
             .{ "firstChild", "get_firstChild", null },
             .{ "lastChild", "get_lastChild", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -75,6 +77,7 @@ pub const GroupEffect = struct {
     );
 
     const delegates = .{
+
         .get_children = &get_children,
         .get_firstChild = &get_firstChild,
         .get_lastChild = &get_lastChild,
@@ -129,6 +132,7 @@ pub const GroupEffect = struct {
     }
 
     pub fn call_prepend(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
         return try GroupEffectImpl.call_prepend(instance, effects);
     }
 
@@ -137,6 +141,8 @@ pub const GroupEffect = struct {
     }
 
     pub fn call_append(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
+        
         return try GroupEffectImpl.call_append(instance, effects);
     }
+
 };

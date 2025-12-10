@@ -26,13 +26,13 @@ pub const DOMMatrixReadOnly = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "Serializable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "a", "get_a", null },
@@ -60,7 +60,7 @@ pub const DOMMatrixReadOnly = struct {
             .{ "is2D", "get_is2D", null },
             .{ "isIdentity", "get_isIdentity", null },
         };
-
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "translate", "call_translate", 0 },
@@ -81,14 +81,14 @@ pub const DOMMatrixReadOnly = struct {
             .{ "toFloat64Array", "call_toFloat64Array", 0 },
             .{ "toJSON", "call_toJSON", 0 },
         };
-
+        
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "fromMatrix", "call_static_fromMatrix", 0 },
             .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
             .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "fromMatrix",
@@ -112,10 +112,11 @@ pub const DOMMatrixReadOnly = struct {
             "toFloat64Array",
             "toJSON",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
-
+        pub const inherited_methods = .{
+        };
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "a", "get_a", null },
@@ -143,10 +144,11 @@ pub const DOMMatrixReadOnly = struct {
             .{ "is2D", "get_is2D", null },
             .{ "isIdentity", "get_isIdentity", null },
         };
-
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = true;
     };
 
@@ -183,6 +185,7 @@ pub const DOMMatrixReadOnly = struct {
     );
 
     const delegates = .{
+
         .get_a = &get_a,
         .get_b = &get_b,
         .get_c = &get_c,
@@ -358,7 +361,7 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_rotate(instance: *runtime.Instance, rotX: webidl.Opt(f64), rotY: webidl.Opt(f64), rotZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_rotate(instance, rotX, rotY, rotZ);
     }
 
@@ -371,14 +374,14 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_multiply(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_multiply(instance, other);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_transformPoint(instance: *runtime.Instance, point: webidl.Opt(DOMPointInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_transformPoint(instance, point);
     }
 
@@ -391,21 +394,21 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_scale(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64), scaleZ: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_scale(instance, scaleX, scaleY, scaleZ, originX, originY, originZ);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_rotateFromVector(instance, x, y);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_translate(instance: *runtime.Instance, tx: webidl.Opt(f64), ty: webidl.Opt(f64), tz: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_translate(instance, tx, ty, tz);
     }
 
@@ -418,7 +421,7 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_skewY(instance: *runtime.Instance, sy: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_skewY(instance, sy);
     }
 
@@ -431,35 +434,35 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_scale3d(instance: *runtime.Instance, scale: webidl.Opt(f64), originX: webidl.Opt(f64), originY: webidl.Opt(f64), originZ: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_scale3d(instance, scale, originX, originY, originZ);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_static_fromMatrix(instance: *runtime.Instance, other: webidl.Opt(DOMMatrixInit)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_static_fromMatrix(instance, other);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_skewX(instance, sx);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_static_fromFloat32Array(instance: *runtime.Instance, array32: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_static_fromFloat32Array(instance, array32);
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: *const anyopaque) anyerror!*runtime.Instance {
+    pub fn call_static_fromFloat64Array(instance: *runtime.Instance, array64: runtime.JSValue) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_static_fromFloat64Array(instance, array64);
     }
 
@@ -477,14 +480,15 @@ pub const DOMMatrixReadOnly = struct {
     /// Extended attributes: [NewObject]
     pub fn call_rotateAxisAngle(instance: *runtime.Instance, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), angle: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_rotateAxisAngle(instance, x, y, z, angle);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_scaleNonUniform(instance: *runtime.Instance, scaleX: webidl.Opt(f64), scaleY: webidl.Opt(f64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-
+        
         return try DOMMatrixReadOnlyImpl.call_scaleNonUniform(instance, scaleX, scaleY);
     }
+
 };

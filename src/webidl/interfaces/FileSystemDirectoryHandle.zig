@@ -31,16 +31,17 @@ pub const FileSystemDirectoryHandle = struct {
             .{ .name = "SecureContext" },
             .{ .name = "Serializable" },
         };
-
+        
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-
+        
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
-        pub const properties = .{};
-
+        pub const properties = .{
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getFileHandle", "call_getFileHandle", 1 },
@@ -50,7 +51,7 @@ pub const FileSystemDirectoryHandle = struct {
             .{ "values", "call_values", 0 },
             .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
         };
-
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getFileHandle",
@@ -60,22 +61,24 @@ pub const FileSystemDirectoryHandle = struct {
             "values",
             "getAsyncIterator",
         };
-
+        
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "isSameEntry",
             "queryPermission",
             "requestPermission",
         };
-
+        
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
-        pub const eager_properties = .{};
-
+        pub const eager_properties = .{
+        };
+        
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{};
-
+        pub const lazy_properties = .{
+        };
+        
         pub const has_constructor = false;
-
+        
         /// Async iterable declaration (for Symbol.asyncIterator support)
         pub const async_iterable = .{
             .value_type = "runtime.USVString",
@@ -93,6 +96,7 @@ pub const FileSystemDirectoryHandle = struct {
     );
 
     const delegates = .{
+
         .call_getAsyncIterator = &call_getAsyncIterator,
         .call_getDirectoryHandle = &call_getDirectoryHandle,
         .call_getFileHandle = &call_getFileHandle,
@@ -126,26 +130,31 @@ pub const FileSystemDirectoryHandle = struct {
     }
 
     pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!runtime.JSValue {
+        
         return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
     }
 
-    pub fn call_values(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_values(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FileSystemDirectoryHandleImpl.call_values(instance);
     }
 
     pub fn call_resolve(instance: *runtime.Instance, possibleDescendant: *runtime.Instance) anyerror!runtime.JSValue {
+        
         return try FileSystemDirectoryHandleImpl.call_resolve(instance, possibleDescendant);
     }
 
     pub fn call_getDirectoryHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetDirectoryOptions)) anyerror!runtime.JSValue {
+        
         return try FileSystemDirectoryHandleImpl.call_getDirectoryHandle(instance, name, options);
     }
 
-    pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_getAsyncIterator(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try FileSystemDirectoryHandleImpl.call_getAsyncIterator(instance);
     }
 
     pub fn call_getFileHandle(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemGetFileOptions)) anyerror!runtime.JSValue {
+        
         return try FileSystemDirectoryHandleImpl.call_getFileHandle(instance, name, options);
     }
+
 };

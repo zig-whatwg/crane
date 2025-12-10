@@ -90,7 +90,7 @@ pub const Animatable = struct {
         AnimatableImpl.deinit(instance);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!*const anyopaque {
+    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
         
         return try AnimatableImpl.call_getAnimations(instance, options);
     }

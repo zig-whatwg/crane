@@ -105,7 +105,7 @@ pub const GamepadHapticActuator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_effects(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_effects(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_effects) |cached| {
@@ -116,16 +116,16 @@ pub const GamepadHapticActuator = struct {
         return value;
     }
 
-    pub fn call_reset(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn call_reset(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadHapticActuatorImpl.call_reset(instance);
     }
 
-    pub fn call_playEffect(instance: *runtime.Instance, @"type": GamepadHapticEffectType, params: webidl.Opt(GamepadEffectParameters)) anyerror!*const anyopaque {
+    pub fn call_playEffect(instance: *runtime.Instance, @"type": GamepadHapticEffectType, params: webidl.Opt(GamepadEffectParameters)) anyerror!runtime.JSValue {
         
         return try GamepadHapticActuatorImpl.call_playEffect(instance, @"type", params);
     }
 
-    pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!*const anyopaque {
+    pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!runtime.JSValue {
         
         return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
     }

@@ -118,7 +118,7 @@ pub const DeviceChangeEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_devices(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_devices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_devices) |cached| {
@@ -130,7 +130,7 @@ pub const DeviceChangeEvent = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_userInsertedDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+    pub fn get_userInsertedDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
         if (state.own.cached_userInsertedDevices) |cached| {

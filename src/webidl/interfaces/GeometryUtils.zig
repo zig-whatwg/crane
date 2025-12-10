@@ -111,7 +111,7 @@ pub const GeometryUtils = struct {
         return try GeometryUtilsImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!*const anyopaque {
+    pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         
         return try GeometryUtilsImpl.call_getBoxQuads(instance, options);
     }
