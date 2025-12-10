@@ -25,9 +25,106 @@ pub const ErrorValue = struct {
 /// Import runtime for type-safe JSValue
 const runtime = @import("runtime");
 
-/// Import V8Handle for lifecycle-managed V8 values
-const v8_handle = @import("../../runtime/engines/v8/handle.zig");
-pub const V8Handle = v8_handle.V8Handle;
+/// ManagedHandle - Reference-counted wrapper for JS engine values.
+///
+/// This provides automatic lifecycle management for JavaScript engine handles
+/// stored in stream algorithms. When the reference count reaches zero, the
+/// underlying engine handle is properly disposed.
+///
+/// Design: This is an engine-agnostic wrapper. The actual implementation
+/// uses V8Handle internally but presents a simple interface to streams code.
+pub const ManagedHandle = struct {
+    /// Internal state with reference counting
+    inner: *Inner,
+
+    const Inner = struct {
+        /// Atomic reference count for thread safety
+        ref_count: std.atomic.Value(u32),
+        /// The underlying engine handle (V8 Global, JSC JSValueRef, etc.)
+        /// This is owned by the ManagedHandle and disposed when ref_count hits 0
+        ptr: *anyopaque,
+        /// Allocator used to create this Inner (for cleanup)
+        allocator: Allocator,
+        /// Disposal function - called when ref_count reaches 0
+        /// Set to null if the handle doesn't need disposal (e.g., non-owning reference)
+        dispose_fn: ?*const fn (*anyopaque) void,
+        /// Whether already disposed
+        disposed: bool,
+
+        pub fn ref(self: *Inner) void {
+            _ = self.ref_count.fetchAdd(1, .monotonic);
+        }
+
+        pub fn unref(self: *Inner) void {
+            if (self.ref_count.fetchSub(1, .release) == 1) {
+                std.atomic.fence(.acquire);
+                self.dispose();
+                self.allocator.destroy(self);
+            }
+        }
+
+        fn dispose(self: *Inner) void {
+            if (!self.disposed) {
+                if (self.dispose_fn) |dispose_fn| {
+                    dispose_fn(self.ptr);
+                }
+                self.disposed = true;
+            }
+        }
+    };
+
+    /// Create a ManagedHandle that owns and will dispose the given pointer.
+    pub fn init(allocator: Allocator, ptr: *anyopaque, dispose_fn: *const fn (*anyopaque) void) !ManagedHandle {
+        const inner = try allocator.create(Inner);
+        inner.* = .{
+            .ref_count = std.atomic.Value(u32).init(1),
+            .ptr = ptr,
+            .allocator = allocator,
+            .dispose_fn = dispose_fn,
+            .disposed = false,
+        };
+        return .{ .inner = inner };
+    }
+
+    /// Create a non-owning ManagedHandle (won't dispose the pointer).
+    pub fn initNonOwning(allocator: Allocator, ptr: *anyopaque) !ManagedHandle {
+        const inner = try allocator.create(Inner);
+        inner.* = .{
+            .ref_count = std.atomic.Value(u32).init(1),
+            .ptr = ptr,
+            .allocator = allocator,
+            .dispose_fn = null,
+            .disposed = false,
+        };
+        return .{ .inner = inner };
+    }
+
+    /// Clone (increment reference count).
+    pub fn clone(self: ManagedHandle) ManagedHandle {
+        self.inner.ref();
+        return self;
+    }
+
+    /// Release this reference.
+    pub fn deinit(self: ManagedHandle) void {
+        self.inner.unref();
+    }
+
+    /// Get the underlying pointer.
+    pub fn get(self: ManagedHandle) *anyopaque {
+        return self.inner.ptr;
+    }
+
+    /// Get reference count (for debugging/testing).
+    pub fn getRefCount(self: ManagedHandle) u32 {
+        return self.inner.ref_count.load(.monotonic);
+    }
+
+    /// Check if this handle is still valid.
+    pub fn isValid(self: ManagedHandle) bool {
+        return !self.inner.disposed;
+    }
+};
 
 /// Internal JSValue type (simplified from webidl.JSValue)
 /// Used for internal algorithms - bridges to webidl.JSValue at public boundaries
@@ -47,8 +144,8 @@ pub const JSValue = union(enum) {
     /// This variant does NOT manage the V8 handle lifecycle - the caller is responsible for
     /// ensuring the handle remains valid and is properly disposed.
     v8_value: *anyopaque,
-    /// V8 handle with lifecycle management - uses reference-counted V8Handle wrapper
-    /// This variant OWNS the V8 handle and will properly dispose it when deinit is called.
+    /// Managed handle with lifecycle management - uses reference-counted ManagedHandle wrapper
+    /// This variant OWNS the engine handle and will properly dispose it when deinit is called.
     ///
     /// Use this when:
     /// - Creating JSValue that will be stored long-term
@@ -56,7 +153,7 @@ pub const JSValue = union(enum) {
     /// - Any case where you want automatic cleanup on last reference
     ///
     /// Note: Clone with clone() to share ownership, call deinit() when done.
-    v8_handle: V8Handle,
+    managed_handle: ManagedHandle,
     /// Close sentinel - unique value for WritableStream close signaling
     /// Spec: § 3.9.17 "The close sentinel is a unique value enqueued into [[queue]]"
     close_sentinel: void,
@@ -105,7 +202,7 @@ pub const JSValue = union(enum) {
             .string => |s| .{ .string = s },
             .bytes, .object => .{ .undefined = {} }, // Bytes/objects as undefined for now
             .v8_value => .{ .undefined = {} }, // Raw V8 values need engine-specific conversion
-            .v8_handle => .{ .undefined = {} }, // V8Handle values need engine-specific conversion
+            .managed_handle => .{ .undefined = {} }, // Managed handles need engine-specific conversion
             .close_sentinel => .{ .undefined = {} }, // Close sentinel never exposed to web
             .error_value => |e| .{ .string = e.message }, // Convert error to string for now
         };
@@ -190,6 +287,83 @@ pub const JSValue = union(enum) {
     /// Create a boolean JSValue
     pub fn fromBool(value: bool) JSValue {
         return .{ .boolean = value };
+    }
+
+    // ========================================================================
+    // ManagedHandle Lifecycle Management
+    // ========================================================================
+
+    /// Create a JSValue from a ManagedHandle (takes ownership)
+    ///
+    /// The JSValue takes ownership of the ManagedHandle. Call clone() on the handle
+    /// before passing if you need to retain your own reference.
+    pub fn fromManagedHandle(handle: ManagedHandle) JSValue {
+        return .{ .managed_handle = handle };
+    }
+
+    /// Clone this JSValue if it contains a reference-counted ManagedHandle.
+    ///
+    /// For managed_handle variants, this increments the reference count so both
+    /// the original and clone share the same underlying engine handle.
+    /// For other variants, this is a simple copy (no lifecycle concerns).
+    ///
+    /// The caller is responsible for calling deinit() on the returned clone.
+    pub fn clone(self: JSValue) JSValue {
+        return switch (self) {
+            .managed_handle => |h| .{ .managed_handle = h.clone() },
+            // All other variants are either value types or unmanaged pointers
+            else => self,
+        };
+    }
+
+    /// Release resources owned by this JSValue.
+    ///
+    /// For managed_handle variants, this decrements the reference count and
+    /// disposes the engine handle when the count reaches zero.
+    /// For other variants, this is a no-op.
+    ///
+    /// After calling deinit(), the JSValue should not be used.
+    pub fn deinit(self: JSValue) void {
+        switch (self) {
+            .managed_handle => |h| h.deinit(),
+            // v8_value is unmanaged - caller is responsible
+            // All other variants don't need cleanup
+            else => {},
+        }
+    }
+
+    /// Check if this JSValue holds an engine value (either managed or unmanaged)
+    pub fn isEngineValue(self: JSValue) bool {
+        return switch (self) {
+            .v8_value, .managed_handle => true,
+            else => false,
+        };
+    }
+
+    /// Get the raw engine pointer for FFI operations.
+    ///
+    /// Returns the underlying engine pointer regardless of whether it's managed (managed_handle)
+    /// or unmanaged (v8_value). For managed_handle, this gets the value from the ManagedHandle.
+    ///
+    /// WARNING: The returned pointer's validity depends on the lifecycle management:
+    /// - For v8_value: Caller is responsible for ensuring handle is valid
+    /// - For managed_handle: Valid as long as the ManagedHandle hasn't been fully deinit'd
+    ///
+    /// Returns null for non-engine variants.
+    pub fn getEnginePtr(self: JSValue) ?*anyopaque {
+        return switch (self) {
+            .v8_value => |ptr| ptr,
+            .managed_handle => |h| h.get(),
+            else => null,
+        };
+    }
+
+    /// Check if this JSValue needs lifecycle management (has owned resources).
+    pub fn needsCleanup(self: JSValue) bool {
+        return switch (self) {
+            .managed_handle => true,
+            else => false,
+        };
     }
 };
 
