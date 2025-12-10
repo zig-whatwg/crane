@@ -31,6 +31,15 @@ const Request = interfaces.Request;
 
 pub const State = Request.State;
 
+// Helper to get promise object and destroy handle to prevent memory leaks
+fn getPromiseAndCleanup(engine: *const runtime.EngineInterface, promise_handle: *anyopaque, allocator: std.mem.Allocator) runtime.JSValue {
+    const promise_obj = engine.getPromiseObject(promise_handle);
+    if (engine.destroyPromiseHandle) |destroy| {
+        destroy(promise_handle, allocator);
+    }
+    return runtime.JSValue.fromHandle(promise_obj);
+}
+
 pub const ImplError = error{
     OutOfMemory,
     TypeError,
@@ -767,7 +776,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 }
             },
         }
@@ -781,7 +790,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -792,12 +801,12 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const createArrayBuffer = engine.createArrayBuffer orelse {
         // No createArrayBuffer support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const js_array_buffer = createArrayBuffer(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Resolve with the JS ArrayBuffer
@@ -806,7 +815,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 /// blob() - Returns promise fulfilled with body as Blob
@@ -844,7 +853,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 }
             },
         }
@@ -858,7 +867,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -868,7 +877,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Create Blob instance
     const blob_data = BlobData.init(internal.allocator, body_bytes, mime_type) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const blob_instance = BlobImpl.createFromBlobData(
@@ -878,18 +887,18 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     ) catch {
         blob_data.deinit();
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Wrap the Blob instance as a V8 object
     const wrapInstance = engine.wrapInstance orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const js_blob = wrapInstance(engine_ctx, blob_instance) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Resolve with the JS Blob
@@ -898,7 +907,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 /// bytes() - Returns promise fulfilled with body as Uint8Array
@@ -930,7 +939,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 }
             },
         }
@@ -944,7 +953,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -955,12 +964,12 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const createUint8Array = engine.createUint8Array orelse {
         // No createUint8Array support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const js_uint8_array = createUint8Array(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Resolve with the JS Uint8Array
@@ -969,7 +978,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 /// formData() - Returns promise fulfilled with body as FormData
@@ -998,11 +1007,11 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const multipart_parser = xhr.multipart_parser;
     const url_parser = @import("form_parser");
 
-    // Helper to reject with error
+    // Helper to reject with error (uses module-level getPromiseAndCleanup)
     const rejectAndReturn = struct {
-        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) runtime.JSValue {
+        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror, alloc: std.mem.Allocator) runtime.JSValue {
             eng.rejectPromise(eng_ctx, handle, err) catch {};
-            return runtime.JSValue.fromHandle(eng.getPromiseObject(handle));
+            return getPromiseAndCleanup(eng, handle, alloc);
         }
     }.call;
 
@@ -1015,7 +1024,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
             .bytes => {},
             .body => |body_obj| {
                 if (body_obj.isDisturbed()) {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
                 }
             },
         }
@@ -1027,7 +1036,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
             .bytes => |bytes| break :blk bytes,
             .body => |body_obj| {
                 const bytes = body_obj.readAllBytes() catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -1040,12 +1049,12 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
             if (std.mem.indexOf(u8, ct, "multipart/form-data") != null) {
                 // Extract boundary and parse multipart
                 const boundary = multipart_parser.extractBoundary(internal.allocator, ct) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
                 };
                 defer internal.allocator.free(boundary);
 
                 const entries = multipart_parser.parseMultipartFormData(internal.allocator, body_bytes, boundary) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
                 };
                 defer {
                     for (entries) |*entry| entry.deinit(internal.allocator);
@@ -1053,20 +1062,20 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 }
 
                 const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                 };
                 errdefer fd.deinit();
 
                 for (entries) |entry| {
                     switch (entry.value) {
                         .string => |s| fd.appendString(entry.name, s) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                         },
                         .file => |f| fd.appendFile(entry.name, f, entry.filename) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                         },
                         .blob_instance => |ptr| fd.appendBlobInstance(entry.name, ptr, entry.filename) catch {
-                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                         },
                     }
                 }
@@ -1075,7 +1084,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
             } else if (std.mem.indexOf(u8, ct, "application/x-www-form-urlencoded") != null) {
                 // Parse URL-encoded
                 const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
                 };
                 defer {
                     for (tuples) |tuple| tuple.deinit(internal.allocator);
@@ -1083,25 +1092,25 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 }
 
                 const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                 };
                 errdefer fd.deinit();
 
                 for (tuples) |tuple| {
                     fd.appendString(tuple.name, tuple.value) catch {
-                        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                     };
                 }
 
                 break :parse_blk fd;
             } else {
                 // Invalid Content-Type
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
             }
         } else {
             // No Content-Type header - default to URL-encoded
             const tuples = url_parser.parse(internal.allocator, body_bytes) catch {
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError);
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.TypeError, internal.allocator);
             };
             defer {
                 for (tuples) |tuple| tuple.deinit(internal.allocator);
@@ -1109,13 +1118,13 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
             }
 
             const fd = xhr.form_data.FormData.init(internal.allocator) catch {
-                return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
             };
             errdefer fd.deinit();
 
             for (tuples) |tuple| {
                 fd.appendString(tuple.name, tuple.value) catch {
-                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+                    return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
                 };
             }
 
@@ -1124,7 +1133,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     } else empty_blk: {
         // Empty body - create empty FormData
         break :empty_blk xhr.form_data.FormData.init(internal.allocator) catch {
-            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+            return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
         };
     };
 
@@ -1135,16 +1144,16 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
         form_data,
     ) catch {
         form_data.deinit();
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory);
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.OutOfMemory, internal.allocator);
     };
 
     // Wrap the FormData instance as a V8 object
     const wrapInstance = engine.wrapInstance orelse {
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState);
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState, internal.allocator);
     };
 
     const js_formdata = wrapInstance(engine_ctx, formdata_instance) catch {
-        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState);
+        return rejectAndReturn(engine, engine_ctx, promise_handle, error.InvalidState, internal.allocator);
     };
 
     // Resolve with the JS FormData
@@ -1153,7 +1162,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 /// json() - Returns promise fulfilled with body parsed as JSON
@@ -1185,7 +1194,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 }
             },
         }
@@ -1199,7 +1208,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -1207,20 +1216,20 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     } else {
         // Null body - reject with SyntaxError (empty JSON is invalid)
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Parse JSON through engine abstraction
     const parseJson = engine.parseJson orelse {
         // No parseJson support - reject with error
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const js_value = parseJson(engine_ctx, body_bytes) catch {
         // JSON parse failed - reject with SyntaxError
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Resolve with the parsed JS value
@@ -1229,7 +1238,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 /// text() - Returns promise fulfilled with body as string
@@ -1261,7 +1270,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 if (body_obj.isDisturbed()) {
                     // Reject with TypeError per spec
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 }
             },
         }
@@ -1275,7 +1284,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 const bytes = body_obj.readAllBytes() catch |err| {
                     // Reject on read error
                     engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+                    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
                 };
                 break :blk bytes;
             },
@@ -1286,12 +1295,12 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const createString = engine.createString orelse {
         // No createString support - resolve with null (undefined)
         engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     const js_string = createString(engine_ctx, body_text) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+        return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
     };
 
     // Resolve with the JS string
@@ -1300,7 +1309,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
+    return getPromiseAndCleanup(engine, promise_handle, internal.allocator);
 }
 
 // === Helper Functions ===

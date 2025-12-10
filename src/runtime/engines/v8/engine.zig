@@ -84,6 +84,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .resolvePromise = v8ResolvePromise,
     .rejectPromise = v8RejectPromise,
     .getPromiseObject = v8GetPromiseObject,
+    .destroyPromiseHandle = v8DestroyPromiseHandle,
     .createString = v8CreateString,
     .createArrayBuffer = v8CreateArrayBuffer,
     .createUint8Array = v8CreateUint8Array,
@@ -244,6 +245,17 @@ fn v8RejectPromise(
 fn v8GetPromiseObject(promise_handle: *anyopaque) *anyopaque {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
     return @ptrCast(handle.promise);
+}
+
+/// Destroy a V8 Promise handle after use
+/// The Promise object itself remains valid (managed by V8 GC), but the
+/// handle struct is freed.
+fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.Allocator) void {
+    const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    // Note: We don't dispose the resolver/promise here as they're V8-managed
+    // and the Promise object needs to remain valid after this call.
+    // The V8 GC will clean them up when the Promise is no longer referenced.
+    allocator.destroy(handle);
 }
 
 /// Create a V8 String from UTF-8 bytes

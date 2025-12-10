@@ -148,6 +148,20 @@ pub const EngineInterface = struct {
         promise_handle: *anyopaque,
     ) *anyopaque,
 
+    /// Destroy a Promise handle after use
+    ///
+    /// Must be called after getPromiseObject() to free the handle allocated
+    /// by createPromise(). The JS Promise object remains valid after this call
+    /// (it's managed by V8's GC), but the handle cannot be used again.
+    ///
+    /// Arguments:
+    ///   - promise_handle: Handle from createPromise
+    ///   - allocator: Same allocator passed to createPromise
+    destroyPromiseHandle: ?*const fn (
+        promise_handle: *anyopaque,
+        allocator: std.mem.Allocator,
+    ) void,
+
     /// Create a JavaScript string from UTF-8 bytes
     ///
     /// Arguments:
@@ -699,6 +713,7 @@ pub const stub_engine: EngineInterface = .{
     .resolvePromise = stubResolvePromise,
     .rejectPromise = stubRejectPromise,
     .getPromiseObject = stubGetPromiseObject,
+    .destroyPromiseHandle = null,
     .createString = null,
     .createArrayBuffer = null,
     .createUint8Array = null,
