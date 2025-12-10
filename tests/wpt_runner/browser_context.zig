@@ -252,14 +252,10 @@ pub const BrowserContext = struct {
 
     /// Set up window/self/globalThis aliases and GLOBAL object via JavaScript
     fn setupGlobalAliases(self: *BrowserContext) !void {
-        // Simple direct assignment on globalThis
-        // Per HTML spec §7.2.2.4 "Accessing related windows":
-        // - window.parent: For top-level window with no parent, returns self
-        // - window.top: For top-level window, returns self
-        // - window.opener: For window with no opener, returns null
-        // - window.frames: Same as window (returns WindowProxy)
-        // - window.length: Number of child navigables (0 for top-level with no iframes)
-        const setup_script =
+        // Context-specific setup based on context_type
+        // Per HTML spec §7.2.2.4 "Accessing related windows" (window context only)
+        const setup_script = switch (self.context_type) {
+            .window =>
             \\// Assign self and window to globalThis
             \\globalThis.self = globalThis;
             \\globalThis.window = globalThis;
@@ -277,14 +273,36 @@ pub const BrowserContext = struct {
             \\globalThis.frames = globalThis;
             \\globalThis.length = 0;
             \\
-            \\// Set up GLOBAL object for WPT tests
-            \\// This is normally injected by the WPT server's HTML wrapper
+            \\// Set up GLOBAL object for WPT tests - WINDOW context
             \\self.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
             \\  isShadowRealm: function() { return false; },
             \\};
-        ;
+            ,
+            .worker =>
+            \\// Worker context: only self, no window
+            \\globalThis.self = globalThis;
+            \\
+            \\// Set up GLOBAL object for WPT tests - WORKER context
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+            .shared_worker, .service_worker =>
+            \\// Shared/Service worker context: only self, no window
+            \\globalThis.self = globalThis;
+            \\
+            \\// Set up GLOBAL object for WPT tests - WORKER context
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+        };
 
         self.executeScript(setup_script) catch |err| {
             std.debug.print("ERROR: Failed to set up global aliases: {}\n", .{err});
@@ -518,6 +536,30 @@ pub const BrowserContext = struct {
 
             const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(loc_key), @ptrCast(v8_location));
+        }
+
+        // Register importScripts() - loads and executes scripts synchronously
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, importScriptsCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register postMessage() - stub for WPT tests (sends message to parent context)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, workerPostMessageCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "postMessage", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register close() - stub for WPT tests (terminates the worker)
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, workerCloseCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "close", 5) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
     }
 
@@ -1852,6 +1894,181 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
 }
 
 // ============================================================================
+// Worker-Specific Callbacks
+// ============================================================================
+
+/// importScripts() callback - loads and executes scripts synchronously from WPT file system
+/// Per Web Workers spec, importScripts(urls...) loads and executes one or more scripts.
+/// For WPT tests, this loads scripts from the WPT file system.
+fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    const arg_count = info.v8_FunctionCallbackInfo_Length();
+    if (arg_count == 0) {
+        // importScripts() with no args is a no-op
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    }
+
+    // Use a temporary allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    // Get WPT root and test path for URL resolution
+    const wpt_root = getWptRoot() orelse {
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: No WPT root set", 30) orelse return;
+        if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    };
+
+    const test_path = getCurrentTestPath();
+    const test_dir = if (test_path) |tp|
+        if (std.mem.lastIndexOf(u8, tp, "/")) |pos| tp[0..pos] else ""
+    else
+        "";
+
+    // Process each URL argument
+    var i: c_int = 0;
+    while (i < arg_count) : (i += 1) {
+        const url_value = info.get(i);
+
+        // Extract URL string
+        const url_str = extractString(allocator, isolate, v8_context, url_value) catch {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Failed to convert URL", 37) orelse return;
+            if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        };
+        defer allocator.free(url_str);
+
+        // Resolve URL to file path
+        var full_path: []u8 = undefined;
+        if (std.mem.startsWith(u8, url_str, "/")) {
+            // Absolute path from WPT root
+            full_path = std.fs.path.join(allocator, &.{ wpt_root, url_str[1..] }) catch {
+                const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Failed to join path", 35) orelse return;
+                if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                    v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+                }
+                return;
+            };
+        } else {
+            // Relative path - resolve against test directory
+            full_path = std.fs.path.join(allocator, &.{ wpt_root, test_dir, url_str }) catch {
+                const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Failed to join path", 35) orelse return;
+                if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                    v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+                }
+                return;
+            };
+        }
+        defer allocator.free(full_path);
+
+        // Read the script file
+        const file = std.fs.cwd().openFile(full_path, .{}) catch {
+            // Format error message with URL
+            var err_buf: [256]u8 = undefined;
+            const err_msg = std.fmt.bufPrint(&err_buf, "importScripts: Failed to load '{s}'", .{url_str}) catch "importScripts: Failed to load script";
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, err_msg.ptr, @intCast(err_msg.len)) orelse return;
+            if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        };
+        defer file.close();
+
+        const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Failed to read script", 36) orelse return;
+            if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        };
+        defer allocator.free(content);
+
+        // Compile and execute the script
+        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Failed to create source string", 45) orelse return;
+            if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        };
+
+        const compile_result = v8.ffi.v8_Script_Compile_Safe(v8_context, source_str);
+        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
+
+        if (compile_result.error_info != null) {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Script compilation failed", 40) orelse return;
+            if (v8.ffi.v8_Exception_SyntaxError(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        }
+
+        const script = compile_result.script orelse {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Script compilation failed", 40) orelse return;
+            if (v8.ffi.v8_Exception_SyntaxError(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        };
+
+        const run_result = v8.ffi.v8_Script_Run_Safe(v8_context, script);
+        defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        if (run_result.error_info != null) {
+            const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Script execution failed", 38) orelse return;
+            if (v8.ffi.v8_Exception_Error(msg)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+            return;
+        }
+
+        // Run microtasks after each script
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    }
+
+    if (v8.ffi.v8_Undefined(isolate)) |undef| {
+        info.setReturnValue(undef);
+    }
+}
+
+/// Worker postMessage() callback - stub for WPT tests
+/// In a real implementation, this would send a message to the parent context.
+/// For WPT tests, this is a no-op since we don't have actual worker threads.
+fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // No-op stub - just return undefined
+    if (v8.ffi.v8_Undefined(isolate)) |undef| {
+        info.setReturnValue(undef);
+    }
+}
+
+/// Worker close() callback - stub for WPT tests
+/// In a real implementation, this would terminate the worker.
+/// For WPT tests, this is a no-op since we don't have actual worker threads.
+fn workerCloseCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // No-op stub - just return undefined
+    if (v8.ffi.v8_Undefined(isolate)) |undef| {
+        info.setReturnValue(undef);
+    }
+}
+
+// ============================================================================
 // Fetch API Callback
 // ============================================================================
 
@@ -2587,4 +2804,95 @@ test "createContextForTest" {
     defer ctx.deinit();
 
     try testing.expectEqual(ContextType.worker, ctx.context_type);
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+test "BrowserContext - window context has correct GLOBAL" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Create window context
+    var ctx = try BrowserContext.init(allocator, .window, "tests/wpt");
+    defer ctx.deinit();
+
+    try ctx.initialize();
+
+    // Test that GLOBAL.isWindow() returns true
+    // We can't easily capture JS return values, so we test by checking
+    // that the script doesn't throw
+    try ctx.executeScript(
+        \\if (!self.GLOBAL.isWindow()) throw new Error("isWindow should be true in window context");
+        \\if (self.GLOBAL.isWorker()) throw new Error("isWorker should be false in window context");
+    );
+}
+
+test "BrowserContext - worker context has correct GLOBAL" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Create worker context
+    var ctx = try BrowserContext.init(allocator, .worker, "tests/wpt");
+    defer ctx.deinit();
+
+    try ctx.initialize();
+
+    // Test that GLOBAL.isWorker() returns true
+    try ctx.executeScript(
+        \\if (self.GLOBAL.isWindow()) throw new Error("isWindow should be false in worker context");
+        \\if (!self.GLOBAL.isWorker()) throw new Error("isWorker should be true in worker context");
+    );
+}
+
+test "BrowserContext - worker context has self but not window" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Create worker context
+    var ctx = try BrowserContext.init(allocator, .worker, "tests/wpt");
+    defer ctx.deinit();
+
+    try ctx.initialize();
+
+    // Test that 'self' exists but 'window' does not
+    try ctx.executeScript(
+        \\if (typeof self === 'undefined') throw new Error("self should be defined in worker");
+        \\if (typeof window !== 'undefined') throw new Error("window should NOT be defined in worker");
+    );
+}
+
+test "BrowserContext - window context has both self and window" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Create window context
+    var ctx = try BrowserContext.init(allocator, .window, "tests/wpt");
+    defer ctx.deinit();
+
+    try ctx.initialize();
+
+    // Test that both 'self' and 'window' exist
+    try ctx.executeScript(
+        \\if (typeof self === 'undefined') throw new Error("self should be defined in window");
+        \\if (typeof window === 'undefined') throw new Error("window should be defined in window");
+        \\if (self !== window) throw new Error("self and window should be the same in window context");
+    );
+}
+
+test "BrowserContext - worker context has navigator" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Create worker context
+    var ctx = try BrowserContext.init(allocator, .worker, "tests/wpt");
+    defer ctx.deinit();
+
+    try ctx.initialize();
+
+    // Test that navigator exists in worker
+    try ctx.executeScript(
+        \\if (typeof navigator === 'undefined') throw new Error("navigator should be defined in worker");
+    );
 }

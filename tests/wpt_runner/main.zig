@@ -693,7 +693,8 @@ fn executeTestFile(
         // 2. Executes scripts during parsing (in document order)
         // 3. Fires DOMContentLoaded
         // 4. Waits for test completion
-        const result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout);
+        // HTML tests always run in window context
+        const result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout, .window);
         return result;
     }
 
@@ -764,9 +765,18 @@ fn executeTestFile(
         test_content = combined;
     }
 
-    // Execute the test using the BrowserAdapter
+    // Determine context type from metadata
+    // For .any.js files, metadata.globals contains the contexts to run in
+    // For .window.js files, it will be [.window]
+    // For .worker.js files, it will be [.worker]
+    const context_type: test_parser.GlobalType = if (parsed.metadata.globals.items.len > 0)
+        parsed.metadata.globals.items[0]
+    else
+        .window;
+
+    // Execute the test using the BrowserAdapter with the specified context
     // Each test gets a fresh V8 context for complete isolation (matching real browser behavior)
-    const result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout);
+    const result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout, context_type);
     return result;
 }
 

@@ -95,9 +95,27 @@ pub const BrowserAdapter = struct {
         test_path: []const u8,
         test_content: []const u8,
         timeout: config.Timeout,
+        context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
-        // Create fresh browser context for this test
-        var ctx = try BrowserContext.init(self.allocator, .window, self.wpt_root);
+        // Map GlobalType (from test_parser) to ContextType (from browser_context)
+        const ctx_type: browser_context.ContextType = switch (context_type) {
+            .window => .window,
+            .worker => .worker,
+            .sharedworker => .shared_worker,
+            .serviceworker => .service_worker,
+            // ShadowRealm variants map to window for now (not implemented)
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => .window,
+        };
+
+        // Create fresh browser context for this test with the specified context type
+        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
         defer ctx.deinit();
 
         // Initialize V8 isolate and context
@@ -130,9 +148,28 @@ pub const BrowserAdapter = struct {
         test_path: []const u8,
         html_content: []const u8,
         timeout: config.Timeout,
+        context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
-        // Create fresh browser context for this test
-        var ctx = try BrowserContext.init(self.allocator, .window, self.wpt_root);
+        // Map GlobalType (from test_parser) to ContextType (from browser_context)
+        // HTML tests typically run in window context, but we support the parameter for consistency
+        const ctx_type: browser_context.ContextType = switch (context_type) {
+            .window => .window,
+            .worker => .worker,
+            .sharedworker => .shared_worker,
+            .serviceworker => .service_worker,
+            // ShadowRealm variants map to window for now (not implemented)
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => .window,
+        };
+
+        // Create fresh browser context for this test with the specified context type
+        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
         defer ctx.deinit();
 
         // Initialize V8 isolate and context

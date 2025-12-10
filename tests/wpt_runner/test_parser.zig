@@ -54,6 +54,21 @@ pub const GlobalType = enum {
     sharedworker,
     /// Service worker context
     serviceworker,
+    // ShadowRealm variants (TC39 Stage 2.7)
+    /// Base ShadowRealm context
+    shadowrealm,
+    /// ShadowRealm created from window
+    shadowrealm_in_window,
+    /// ShadowRealm in dedicated worker
+    shadowrealm_in_dedicatedworker,
+    /// ShadowRealm in shared worker
+    shadowrealm_in_sharedworker,
+    /// Nested ShadowRealm
+    shadowrealm_in_shadowrealm,
+    /// ShadowRealm in AudioWorklet
+    shadowrealm_in_audioworklet,
+    /// ShadowRealm in ServiceWorker
+    shadowrealm_in_serviceworker,
 
     /// Parse a global type from a string
     pub fn fromString(str: []const u8) ?GlobalType {
@@ -62,6 +77,14 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "dedicatedworker")) return .worker;
         if (std.mem.eql(u8, str, "sharedworker")) return .sharedworker;
         if (std.mem.eql(u8, str, "serviceworker")) return .serviceworker;
+        // ShadowRealm variants (WPT uses hyphens, we use underscores in enum)
+        if (std.mem.eql(u8, str, "shadowrealm")) return .shadowrealm;
+        if (std.mem.eql(u8, str, "shadowrealm-in-window")) return .shadowrealm_in_window;
+        if (std.mem.eql(u8, str, "shadowrealm-in-dedicatedworker")) return .shadowrealm_in_dedicatedworker;
+        if (std.mem.eql(u8, str, "shadowrealm-in-sharedworker")) return .shadowrealm_in_sharedworker;
+        if (std.mem.eql(u8, str, "shadowrealm-in-shadowrealm")) return .shadowrealm_in_shadowrealm;
+        if (std.mem.eql(u8, str, "shadowrealm-in-audioworklet")) return .shadowrealm_in_audioworklet;
+        if (std.mem.eql(u8, str, "shadowrealm-in-serviceworker")) return .shadowrealm_in_serviceworker;
         return null;
     }
 
@@ -72,6 +95,47 @@ pub const GlobalType = enum {
             .worker => "worker",
             .sharedworker => "sharedworker",
             .serviceworker => "serviceworker",
+            .shadowrealm => "shadowrealm",
+            .shadowrealm_in_window => "shadowrealm-in-window",
+            .shadowrealm_in_dedicatedworker => "shadowrealm-in-dedicatedworker",
+            .shadowrealm_in_sharedworker => "shadowrealm-in-sharedworker",
+            .shadowrealm_in_shadowrealm => "shadowrealm-in-shadowrealm",
+            .shadowrealm_in_audioworklet => "shadowrealm-in-audioworklet",
+            .shadowrealm_in_serviceworker => "shadowrealm-in-serviceworker",
+        };
+    }
+
+    /// Check if this context type is implemented and can execute tests
+    pub fn isImplemented(self: GlobalType) bool {
+        return switch (self) {
+            .window => true,
+            .worker => true,
+            .sharedworker => false,
+            .serviceworker => false,
+            // All ShadowRealm variants not implemented
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => false,
+        };
+    }
+
+    /// Check if this is any ShadowRealm variant
+    pub fn isShadowRealm(self: GlobalType) bool {
+        return switch (self) {
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => true,
+            else => false,
         };
     }
 };
@@ -989,4 +1053,85 @@ test "extractAttribute" {
 
     // Not found
     try std.testing.expectEqual(@as(?[]const u8, null), extractAttribute("<script>", "src"));
+}
+
+test "GlobalType.fromString - shadowrealm variants" {
+    // Base shadowrealm
+    try std.testing.expectEqual(GlobalType.shadowrealm, GlobalType.fromString("shadowrealm").?);
+
+    // Nested variants (WPT uses hyphens)
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_window, GlobalType.fromString("shadowrealm-in-window").?);
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_dedicatedworker, GlobalType.fromString("shadowrealm-in-dedicatedworker").?);
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_sharedworker, GlobalType.fromString("shadowrealm-in-sharedworker").?);
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_shadowrealm, GlobalType.fromString("shadowrealm-in-shadowrealm").?);
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_audioworklet, GlobalType.fromString("shadowrealm-in-audioworklet").?);
+    try std.testing.expectEqual(GlobalType.shadowrealm_in_serviceworker, GlobalType.fromString("shadowrealm-in-serviceworker").?);
+
+    // Invalid variants should return null
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("shadowrealm-invalid"));
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("shadowrealm-in-"));
+}
+
+test "GlobalType.toString - shadowrealm variants" {
+    try std.testing.expectEqualStrings("shadowrealm", GlobalType.shadowrealm.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-window", GlobalType.shadowrealm_in_window.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-dedicatedworker", GlobalType.shadowrealm_in_dedicatedworker.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-sharedworker", GlobalType.shadowrealm_in_sharedworker.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-shadowrealm", GlobalType.shadowrealm_in_shadowrealm.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-audioworklet", GlobalType.shadowrealm_in_audioworklet.toString());
+    try std.testing.expectEqualStrings("shadowrealm-in-serviceworker", GlobalType.shadowrealm_in_serviceworker.toString());
+}
+
+test "GlobalType.isImplemented - shadowrealm returns false" {
+    // Implemented contexts
+    try std.testing.expect(GlobalType.window.isImplemented());
+    try std.testing.expect(GlobalType.worker.isImplemented());
+
+    // Not implemented contexts
+    try std.testing.expect(!GlobalType.sharedworker.isImplemented());
+    try std.testing.expect(!GlobalType.serviceworker.isImplemented());
+
+    // All ShadowRealm variants return false
+    try std.testing.expect(!GlobalType.shadowrealm.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_window.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_dedicatedworker.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_sharedworker.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_shadowrealm.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_audioworklet.isImplemented());
+    try std.testing.expect(!GlobalType.shadowrealm_in_serviceworker.isImplemented());
+}
+
+test "GlobalType.isShadowRealm" {
+    // Non-ShadowRealm contexts
+    try std.testing.expect(!GlobalType.window.isShadowRealm());
+    try std.testing.expect(!GlobalType.worker.isShadowRealm());
+    try std.testing.expect(!GlobalType.sharedworker.isShadowRealm());
+    try std.testing.expect(!GlobalType.serviceworker.isShadowRealm());
+
+    // All ShadowRealm variants return true
+    try std.testing.expect(GlobalType.shadowrealm.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_window.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_dedicatedworker.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_sharedworker.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_shadowrealm.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_audioworklet.isShadowRealm());
+    try std.testing.expect(GlobalType.shadowrealm_in_serviceworker.isShadowRealm());
+}
+
+test "parseMetaComments - shadowrealm global" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=window,shadowrealm,shadowrealm-in-window
+        \\test(() => {});
+    ;
+
+    var metadata = try parseMetaComments(allocator, content);
+    defer metadata.deinit();
+
+    try testing.expectEqual(@as(usize, 3), metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.shadowrealm, metadata.globals.items[1]);
+    try testing.expectEqual(GlobalType.shadowrealm_in_window, metadata.globals.items[2]);
 }
