@@ -74,6 +74,7 @@ pub const helpers = @import("helpers.zig");
 pub const wrappers = @import("wrappers.zig");
 pub const overload_resolution = @import("overload_resolution.zig");
 pub const legacy_platform_objects = @import("legacy_platform_objects.zig");
+pub const utils = @import("utils/root.zig");
 
 // Re-export common types
 pub const DOMException = errors.DOMException;

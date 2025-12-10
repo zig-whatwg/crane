@@ -54,41 +54,18 @@ pub const InternalState = struct {
     }
 };
 
-// =============================================================================
-// Registry Pattern for DOM Inheritance
-// =============================================================================
-// DocumentFragment inherits from Node, which inherits from EventTarget.
-// Each class in the inheritance chain needs its own internal state.
-// We use a global registry keyed by instance pointer to store each class's state.
-
-var doc_frag_registry: ?std.AutoHashMap(usize, *InternalState) = null;
-
-fn ensureRegistry() void {
-    if (doc_frag_registry == null) {
-        doc_frag_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) void {
-    ensureRegistry();
-    doc_frag_registry.?.put(@intFromPtr(instance), internal) catch {};
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    if (doc_frag_registry) |*reg| {
-        return reg.get(@intFromPtr(instance));
-    }
-    return null;
-}
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
 
 /// Get the internal state from an instance using registry
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Public function to get internal state (for other impls that need it)
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -114,7 +91,7 @@ pub fn init(
     // Initialize DocumentFragment's own internal state and register it
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -127,12 +104,10 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
-    if (getInternalFromRegistry(instance)) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
         // Remove from registry to prevent double-free
-        if (doc_frag_registry) |*reg| {
-            _ = reg.remove(@intFromPtr(instance));
-        }
+        Registry.remove(instance);
     }
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);

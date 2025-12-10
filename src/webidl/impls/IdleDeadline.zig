@@ -42,26 +42,9 @@ pub const InternalState = struct {
     }
 };
 
-/// Global registry for IdleDeadline internal state
-var idle_deadline_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var idle_deadline_registry_initialized: bool = false;
-
-fn ensureRegistry() void {
-    if (!idle_deadline_registry_initialized) {
-        idle_deadline_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        idle_deadline_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureRegistry();
-    try idle_deadline_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureRegistry();
-    return idle_deadline_registry.get(@intFromPtr(instance));
-}
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -86,7 +69,7 @@ pub fn createWithDeadline(
     // Create internal state
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator, deadline, did_timeout);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -94,18 +77,17 @@ pub fn createWithDeadline(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    ensureRegistry();
-    if (idle_deadline_registry.get(@intFromPtr(instance))) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.allocator.destroy(internal);
     }
-    _ = idle_deadline_registry.remove(@intFromPtr(instance));
+    Registry.remove(instance);
 }
 
 /// Getter for didTimeout
 /// Spec: Returns true if the callback was invoked because timeout expired,
 /// false if invoked during an idle period.
 pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternalFromRegistry(instance) orelse return false;
+    const internal = Registry.get(instance) orelse return false;
     return internal.did_timeout;
 }
 
@@ -113,7 +95,7 @@ pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
 /// Spec: Returns the estimated number of milliseconds remaining in the current
 /// idle period. If the deadline has passed, returns 0.
 pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    const internal = getInternalFromRegistry(instance) orelse return 0;
+    const internal = Registry.get(instance) orelse return 0;
 
     const now = std.time.milliTimestamp();
     const remaining = internal.deadline - now;

@@ -111,45 +111,22 @@ pub const InternalState = struct {
     }
 };
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 /// Helper to access internal state from instance using registry
 fn getInternal(instance: *runtime.Instance) *InternalState {
-    return getInternalFromRegistry(instance) orelse {
+    return Registry.get(instance) orelse {
         // Fallback to direct state access for backwards compatibility
         const state = instance.getState(State);
         return @ptrCast(@alignCast(state.own._internal));
     };
 }
 
-// =============================================================================
-// Registry Pattern for DOM Inheritance
-// =============================================================================
-// ShadowRoot inherits from DocumentFragment, which inherits from Node, which inherits from EventTarget.
-// Each class in the inheritance chain needs its own internal state.
-// We use a global registry keyed by instance pointer to store each class's state.
-
-var shadow_root_registry: ?std.AutoHashMap(usize, *InternalState) = null;
-
-fn ensureRegistry() void {
-    if (shadow_root_registry == null) {
-        shadow_root_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) void {
-    ensureRegistry();
-    shadow_root_registry.?.put(@intFromPtr(instance), internal) catch {};
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    if (shadow_root_registry) |*reg| {
-        return reg.get(@intFromPtr(instance));
-    }
-    return null;
-}
-
 /// Public function to get internal state (for other impls that need it)
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -176,7 +153,7 @@ pub fn init(
     // Initialize ShadowRoot's own internal state and register it
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator);
-    setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -190,14 +167,11 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*@import("Node.zig").Intern
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
-    if (getInternalFromRegistry(instance)) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
-        // Remove from registry to prevent double-free
-        if (shadow_root_registry) |*reg| {
-            _ = reg.remove(@intFromPtr(instance));
-        }
     }
+    Registry.remove(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 

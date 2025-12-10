@@ -97,30 +97,13 @@ pub const InternalState = struct {
     }
 };
 
-/// Global registry for HTMLElement internal state
-var html_element_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var html_element_registry_initialized: bool = false;
-
-fn ensureHTMLElementRegistry() void {
-    if (!html_element_registry_initialized) {
-        html_element_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        html_element_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureHTMLElementRegistry();
-    try html_element_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureHTMLElementRegistry();
-    return html_element_registry.get(@intFromPtr(instance));
-}
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
 
 /// Get HTMLElement's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -139,7 +122,7 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -147,11 +130,10 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    ensureHTMLElementRegistry();
-    if (html_element_registry.get(@intFromPtr(instance))) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
-    _ = html_element_registry.remove(@intFromPtr(instance));
+    Registry.remove(instance);
     // Parent cleanup happens via inheritance chain
     ElementImpl.deinit(instance);
 }

@@ -125,9 +125,13 @@ pub const InternalState = struct {
     }
 };
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Get or create the EventTarget internal state (for event handling)
@@ -156,39 +160,14 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
 
-/// Global registry for Node internal state (workaround for state type hierarchy issues)
-var node_internal_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var node_registry_initialized: bool = false;
-
-fn ensureNodeRegistry() void {
-    if (!node_registry_initialized) {
-        node_internal_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        node_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureNodeRegistry();
-    try node_internal_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureNodeRegistry();
-    const key = @intFromPtr(instance);
-    const result = node_internal_registry.get(key);
-    // Debug only for script-related lookups - comment out for normal use
-    // std.debug.print("GET_INTERNAL_FROM_REGISTRY: key={x}, found={}\n", .{ key, result != null });
-    return result;
-}
-
 /// Get Node's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Deinitialize instance
@@ -203,13 +182,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     // First, recursively deinit all child nodes.
     // We must do this BEFORE removing ourselves from the registry,
     // and we need to collect children first since deinit modifies the tree.
-    if (getInternalFromRegistry(instance)) |internal| {
+    if (Registry.get(instance)) |internal| {
         // Iterate through children and deinit each one.
         // We iterate by following next_sibling links starting from first_child.
         var child = internal.first_child;
         while (child) |child_node| {
             // Get the next sibling BEFORE deinit (deinit may clear sibling pointers)
-            const next = if (getInternalFromRegistry(child_node)) |child_internal|
+            const next = if (Registry.get(child_node)) |child_internal|
                 child_internal.next_sibling
             else
                 null;
@@ -230,8 +209,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 
     // Clean up from registry
-    ensureNodeRegistry();
-    _ = node_internal_registry.remove(@intFromPtr(instance));
+    Registry.remove(instance);
 
     // EventTarget cleanup happens via inheritance chain
     EventTargetImpl.deinit(instance);
@@ -247,7 +225,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
-    const internal = getInternalFromRegistry(instance) orelse {
+    const internal = Registry.get(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
         EventTargetImpl.deinit(instance);
         return;
@@ -296,8 +274,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         else => {
             // For unknown types, do generic Node cleanup
             // (this handles ATTRIBUTE_NODE and legacy types)
-            ensureNodeRegistry();
-            _ = node_internal_registry.remove(@intFromPtr(instance));
+            Registry.remove(instance);
             EventTargetImpl.deinit(instance);
         },
     }
@@ -920,7 +897,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
     // (getInternal() uses the registry, not state._internal)
     const copy_internal = try ArenaAllocator.get().create(InternalState);
     copy_internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(copy, copy_internal);
+    try Registry.set(copy, copy_internal);
 
     // Copy node properties
     copy_internal.node_type = node_internal.node_type;

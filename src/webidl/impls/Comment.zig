@@ -37,6 +37,10 @@ pub const InternalState = struct {
     }
 };
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: CharacterData → Node → EventTarget
 pub fn init(
@@ -56,45 +60,23 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
 
-/// Global registry for Comment internal state
-var comment_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var comment_registry_initialized: bool = false;
-
-fn ensureCommentRegistry() void {
-    if (!comment_registry_initialized) {
-        comment_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        comment_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureCommentRegistry();
-    try comment_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureCommentRegistry();
-    return comment_registry.get(@intFromPtr(instance));
-}
-
 /// Get Comment's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    if (getInternalFromRegistry(instance)) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
-        ensureCommentRegistry();
-        _ = comment_registry.remove(@intFromPtr(instance));
     }
+    Registry.remove(instance);
 
     // Chain to parent deinit
     CharacterDataImpl.deinit(instance);

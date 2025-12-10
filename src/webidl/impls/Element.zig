@@ -400,10 +400,14 @@ pub const InternalState = struct {
     }
 };
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 /// Get the internal state from an instance
 /// Made public for use by Document's getElementById, getElementsByTagName, etc.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Get the Node internal state from an Element instance
@@ -434,45 +438,23 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
 
-/// Global registry for Element internal state
-var element_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var element_registry_initialized: bool = false;
-
-fn ensureElementRegistry() void {
-    if (!element_registry_initialized) {
-        element_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        element_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureElementRegistry();
-    try element_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureElementRegistry();
-    return element_registry.get(@intFromPtr(instance));
-}
-
 /// Get Element's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    ensureElementRegistry();
-    if (element_registry.get(@intFromPtr(instance))) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
-    _ = element_registry.remove(@intFromPtr(instance));
+    Registry.remove(instance);
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);
 }

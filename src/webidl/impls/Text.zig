@@ -66,10 +66,14 @@ pub const InternalState = struct {
     }
 };
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser and other modules that need text content
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -91,45 +95,23 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
 
-/// Global registry for Text internal state
-var text_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var text_registry_initialized: bool = false;
-
-fn ensureTextRegistry() void {
-    if (!text_registry_initialized) {
-        text_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        text_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureTextRegistry();
-    try text_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureTextRegistry();
-    return text_registry.get(@intFromPtr(instance));
-}
-
 /// Get Text's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    ensureTextRegistry();
-    if (text_registry.get(@intFromPtr(instance))) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
-    _ = text_registry.remove(@intFromPtr(instance));
+    Registry.remove(instance);
     // CharacterData cleanup happens via inheritance chain
     CharacterDataImpl.deinit(instance);
 }

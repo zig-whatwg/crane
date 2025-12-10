@@ -57,31 +57,14 @@ pub const InternalState = struct {
     }
 };
 
-/// Global registry for DocumentType internal state
-var doctype_registry: std.AutoHashMap(usize, *InternalState) = undefined;
-var doctype_registry_initialized: bool = false;
-
-fn ensureDoctypeRegistry() void {
-    if (!doctype_registry_initialized) {
-        doctype_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        doctype_registry_initialized = true;
-    }
-}
-
-fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    ensureDoctypeRegistry();
-    try doctype_registry.put(@intFromPtr(instance), internal);
-}
-
-fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    ensureDoctypeRegistry();
-    return doctype_registry.get(@intFromPtr(instance));
-}
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
 
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser when creating DOCTYPE nodes.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -103,7 +86,7 @@ pub fn init(
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try setInternalInRegistry(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -111,11 +94,10 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
-    if (getInternalFromRegistry(instance)) |internal| {
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
-        ensureDoctypeRegistry();
-        _ = doctype_registry.remove(@intFromPtr(instance));
     }
+    Registry.remove(instance);
 
     // Chain to parent deinit
     NodeImpl.deinit(instance);
