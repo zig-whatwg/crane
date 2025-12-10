@@ -802,7 +802,7 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
                         .filename = source_url orelse "",
                         .lineno = 1, // Line number from engine if available
                         .colno = 0,
-                        .@"error" = null,
+                        .@"error" = runtime.JSValue.jsNull,
                     },
                 ) catch false;
             }
@@ -853,7 +853,7 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
                         .filename = if (is_muted) "" else source_url orelse "",
                         .lineno = 0, // Would be from engine exception info
                         .colno = 0,
-                        .@"error" = null,
+                        .@"error" = runtime.JSValue.jsNull,
                     },
                 ) catch false;
             }

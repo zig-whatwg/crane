@@ -32,8 +32,10 @@ pub const ErrorInfo = struct {
     lineno: u32,
     /// The column number where the error occurred
     colno: u32,
-    /// The error object (may be null)
-    @"error": ?*const anyopaque,
+    /// The error object as a type-safe JSValue (may be null/undefined)
+    /// Using runtime.JSValue provides type safety and lifecycle clarity
+    /// for V8 error objects that need to survive HandleScope boundaries.
+    @"error": runtime.JSValue,
 };
 
 /// Extract error information from a JavaScript value
@@ -46,7 +48,7 @@ pub const ErrorInfo = struct {
 ///    attributes[colno] to implementation-defined values derived from exception.
 /// 4. Return attributes.
 pub fn extractErrorInfo(
-    exception: ?*const anyopaque,
+    exception: runtime.JSValue,
     message: ?[]const u8,
     filename: ?[]const u8,
     lineno: ?u32,
@@ -59,6 +61,24 @@ pub fn extractErrorInfo(
         .colno = colno orelse 0,
         .@"error" = exception,
     };
+}
+
+/// Legacy helper to extract error info from raw anyopaque pointer
+/// Used for gradual migration from *anyopaque to JSValue
+pub fn extractErrorInfoFromAnyopaque(
+    exception: ?*const anyopaque,
+    message: ?[]const u8,
+    filename: ?[]const u8,
+    lineno: ?u32,
+    colno: ?u32,
+) ErrorInfo {
+    return extractErrorInfo(
+        runtime.JSValue.fromAnyopaque(exception),
+        message,
+        filename,
+        lineno,
+        colno,
+    );
 }
 
 // =============================================================================
@@ -143,6 +163,10 @@ pub fn fireErrorEvent(
     defer if (ctx == null) ctx_data.deinit();
 
     // Create ErrorEvent with the error information
+    // Convert JSValue to raw pointer for the error field
+    // The ErrorEvent impl expects ?*const anyopaque for backward compatibility
+    const error_ptr: ?*const anyopaque = error_info.@"error".toAnyopaque();
+
     const event = try impls.ErrorEvent.createErrorEvent(
         allocator,
         actual_ctx,
@@ -150,7 +174,7 @@ pub fn fireErrorEvent(
         error_info.filename,
         error_info.lineno,
         error_info.colno,
-        error_info.@"error",
+        error_ptr,
         true, // cancelable = true per spec
     );
     // Ensure event is cleaned up after dispatch
@@ -247,7 +271,7 @@ pub fn reportException(
     allocator: std.mem.Allocator,
     ctx: ?runtime.Context,
     global: *runtime.Instance,
-    exception: ?*const anyopaque,
+    exception: runtime.JSValue,
     message: ?[]const u8,
     filename: ?[]const u8,
     lineno: ?u32,
@@ -263,7 +287,7 @@ pub fn reportException(
 
     // Step 4: Handle muted errors (CORS script from different origin)
     if (muted_errors) {
-        error_info.@"error" = null;
+        error_info.@"error" = runtime.JSValue.jsNull;
         error_info.message = "Script error.";
         error_info.filename = "";
         error_info.lineno = 0;
@@ -272,7 +296,7 @@ pub fn reportException(
 
     // Step 5: If omitError is true, set error to null
     if (omit_error) {
-        error_info.@"error" = null;
+        error_info.@"error" = runtime.JSValue.jsNull;
     }
 
     // Step 6: Fire error event at global (if not in error reporting mode)
@@ -298,12 +322,40 @@ pub fn reportException(
     return not_handled;
 }
 
+/// Legacy version that accepts raw anyopaque pointer for gradual migration
+pub fn reportExceptionFromAnyopaque(
+    allocator: std.mem.Allocator,
+    ctx: ?runtime.Context,
+    global: *runtime.Instance,
+    exception: ?*const anyopaque,
+    message: ?[]const u8,
+    filename: ?[]const u8,
+    lineno: ?u32,
+    colno: ?u32,
+    muted_errors: bool,
+    omit_error: bool,
+) !bool {
+    return reportException(
+        allocator,
+        ctx,
+        global,
+        runtime.JSValue.fromAnyopaque(exception),
+        message,
+        filename,
+        lineno,
+        colno,
+        muted_errors,
+        omit_error,
+    );
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
 
 test "extractErrorInfo - with all values" {
-    const dummy_error: *const anyopaque = @ptrFromInt(0x1234);
+    var dummy: u8 = 0;
+    const dummy_error = runtime.JSValue.fromHandle(&dummy);
     const info = extractErrorInfo(
         dummy_error,
         "Test error message",
@@ -316,15 +368,21 @@ test "extractErrorInfo - with all values" {
     try std.testing.expectEqualStrings("test.js", info.filename);
     try std.testing.expectEqual(@as(u32, 42), info.lineno);
     try std.testing.expectEqual(@as(u32, 10), info.colno);
-    try std.testing.expectEqual(dummy_error, info.@"error".?);
+    try std.testing.expect(info.@"error".isHandle());
 }
 
-test "extractErrorInfo - with null values uses defaults" {
-    const info = extractErrorInfo(null, null, null, null, null);
+test "extractErrorInfo - with null/undefined values uses defaults" {
+    const info = extractErrorInfo(runtime.JSValue.jsNull, null, null, null, null);
 
     try std.testing.expectEqualStrings("Script error.", info.message);
     try std.testing.expectEqualStrings("", info.filename);
     try std.testing.expectEqual(@as(u32, 0), info.lineno);
     try std.testing.expectEqual(@as(u32, 0), info.colno);
-    try std.testing.expect(info.@"error" == null);
+    try std.testing.expect(info.@"error".isNull());
+}
+
+test "extractErrorInfoFromAnyopaque - legacy compatibility" {
+    const info = extractErrorInfoFromAnyopaque(null, "Legacy error", null, null, null);
+    try std.testing.expectEqualStrings("Legacy error", info.message);
+    try std.testing.expect(info.@"error".isNull());
 }

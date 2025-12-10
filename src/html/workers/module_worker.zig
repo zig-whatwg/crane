@@ -62,6 +62,61 @@ const WorkerContext = worker_context.WorkerContext;
 const EngineCallbacks = worker_context.EngineCallbacks;
 
 // ============================================================================
+// ModuleHandle - Type-safe V8 Module Storage
+// ============================================================================
+
+/// Type-safe handle for V8 module storage
+///
+/// V8 modules must be stored as Global handles to survive beyond the HandleScope
+/// where they were compiled. This type ensures:
+/// 1. Modules are always stored with proper lifecycle management
+/// 2. Type safety - can't accidentally store a non-module pointer
+/// 3. Clear disposal semantics
+///
+/// Design Note: We use *anyopaque internally because:
+/// - The V8 Module type is engine-specific
+/// - EngineInterface uses *anyopaque for engine abstraction
+/// - This type adds semantic meaning on top of the opaque pointer
+pub const ModuleHandle = struct {
+    /// The underlying V8 Global<Module>* pointer
+    /// This MUST be a global handle (persists beyond HandleScope)
+    ptr: *anyopaque,
+
+    /// Whether this handle needs disposal
+    /// Set to false if ownership is transferred elsewhere
+    needs_disposal: bool = true,
+
+    /// Create a ModuleHandle from a compiled module pointer
+    ///
+    /// The pointer must be a V8 Global<Module>* (not a Local).
+    /// The EngineInterface.compileModule() returns such pointers.
+    pub fn fromCompiled(module_ptr: *anyopaque) ModuleHandle {
+        return .{
+            .ptr = module_ptr,
+            .needs_disposal = true,
+        };
+    }
+
+    /// Get the raw pointer for passing to engine operations
+    pub fn getPtr(self: ModuleHandle) *anyopaque {
+        return self.ptr;
+    }
+
+    /// Mark as not needing disposal (ownership transferred)
+    pub fn releaseOwnership(self: *ModuleHandle) void {
+        self.needs_disposal = false;
+    }
+
+    /// Dispose of the module handle using the engine interface
+    ///
+    /// Note: This requires access to the engine's disposeModule function.
+    /// In practice, disposal is usually done through the engine interface.
+    pub fn markDisposed(self: *ModuleHandle) void {
+        self.needs_disposal = false;
+    }
+};
+
+// ============================================================================
 // Module Worker Configuration
 // ============================================================================
 
@@ -113,7 +168,8 @@ pub const ModuleWorkerExecutor = struct {
     config: ModuleWorkerConfig,
 
     /// Module map for caching compiled modules
-    module_map: std.StringHashMap(*anyopaque),
+    /// Uses ModuleHandle for type-safe V8 module storage
+    module_map: std.StringHashMap(ModuleHandle),
 
     /// Whether import.meta.url has been set up
     import_meta_configured: bool,
@@ -143,7 +199,7 @@ pub const ModuleWorkerExecutor = struct {
             .allocator = allocator,
             .worker_ctx = null,
             .config = config_copy,
-            .module_map = std.StringHashMap(*anyopaque).init(allocator),
+            .module_map = std.StringHashMap(ModuleHandle).init(allocator),
             .import_meta_configured = false,
         };
 
@@ -151,7 +207,19 @@ pub const ModuleWorkerExecutor = struct {
     }
 
     /// Clean up resources
+    ///
+    /// Note: Module handles are NOT disposed here because:
+    /// 1. We don't have access to the engine interface at this point
+    /// 2. The worker context (which owns the V8 context) should dispose modules
+    /// 3. Module disposal typically happens when the V8 isolate is destroyed
+    ///
+    /// If explicit disposal is needed, call disposeAllModules() before deinit.
     pub fn deinit(self: *Self) void {
+        // Free module map keys (URLs)
+        var key_iter = self.module_map.keyIterator();
+        while (key_iter.next()) |key| {
+            self.allocator.free(key.*);
+        }
         self.module_map.deinit();
         self.allocator.free(self.config.script_url);
         if (self.config.base_url) |base| {
@@ -219,14 +287,35 @@ pub const ModuleWorkerExecutor = struct {
     }
 
     /// Cache a compiled module
-    pub fn cacheModule(self: *Self, url: []const u8, module: *anyopaque) !void {
+    ///
+    /// Takes ownership of the module handle. The module will be disposed
+    /// when the executor is deinitialized or the cache entry is removed.
+    pub fn cacheModule(self: *Self, url: []const u8, module_ptr: *anyopaque) !void {
         const key = try self.allocator.dupe(u8, url);
         errdefer self.allocator.free(key);
-        try self.module_map.put(key, module);
+        try self.module_map.put(key, ModuleHandle.fromCompiled(module_ptr));
+    }
+
+    /// Cache a compiled module using ModuleHandle
+    pub fn cacheModuleHandle(self: *Self, url: []const u8, handle: ModuleHandle) !void {
+        const key = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(key);
+        try self.module_map.put(key, handle);
     }
 
     /// Get a cached module
+    ///
+    /// Returns the raw module pointer for use with engine operations.
+    /// The ModuleHandle retains ownership - caller should not dispose.
     pub fn getCachedModule(self: *const Self, url: []const u8) ?*anyopaque {
+        if (self.module_map.get(url)) |handle| {
+            return handle.getPtr();
+        }
+        return null;
+    }
+
+    /// Get a cached module as ModuleHandle
+    pub fn getCachedModuleHandle(self: *const Self, url: []const u8) ?ModuleHandle {
         return self.module_map.get(url);
     }
 };

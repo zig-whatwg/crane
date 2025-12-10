@@ -49,13 +49,22 @@ const WorkerType = types.WorkerType;
 // The V8 FFI is conditionally available based on build configuration
 
 /// Opaque V8 Isolate handle
+/// Using opaque type instead of *anyopaque for type safety at FFI boundary
 const V8Isolate = opaque {};
 
 /// Opaque V8 Context handle
+/// Using opaque type instead of *anyopaque for type safety at FFI boundary
 const V8Context = opaque {};
+
+/// Opaque V8 String handle
+const V8String = opaque {};
+
+/// Opaque V8 Script handle
+const V8Script = opaque {};
 
 /// V8 FFI declarations for isolate management
 /// These are defined in src/runtime/engines/v8/ffi.zig
+/// Using typed opaque pointers instead of *anyopaque for type safety
 extern fn v8_Isolate_New() ?*V8Isolate;
 extern fn v8_Isolate_Dispose(isolate: *V8Isolate) void;
 extern fn v8_Isolate_Enter(isolate: *V8Isolate) void;
@@ -64,9 +73,9 @@ extern fn v8_Context_New(isolate: *V8Isolate) ?*V8Context;
 extern fn v8_Context_Dispose(context: *V8Context) void;
 extern fn v8_Context_Enter(context: *V8Context) void;
 extern fn v8_Context_Exit(context: *V8Context) void;
-extern fn v8_Script_Compile(context: *V8Context, source: *anyopaque) ?*anyopaque;
-extern fn v8_Script_Run(context: *V8Context, script: *anyopaque) ?*anyopaque;
-extern fn v8_String_NewFromUtf8(isolate: *V8Isolate, data: [*]const u8, length: c_int) ?*anyopaque;
+extern fn v8_Script_Compile(context: *V8Context, source: *V8String) ?*V8Script;
+extern fn v8_Script_Run(context: *V8Context, script: *V8Script) ?*anyopaque;
+extern fn v8_String_NewFromUtf8(isolate: *V8Isolate, data: [*]const u8, length: c_int) ?*V8String;
 
 /// Per-worker V8 context data
 ///

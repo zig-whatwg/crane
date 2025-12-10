@@ -24,6 +24,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// NOTE: This module is part of html_core which cannot import runtime.
+// Document and PolicyContainer references use *anyopaque but are actually
+// *runtime.Instance pointers at runtime. The full html module provides
+// type-safe wrappers around these session history types.
+
 // ============================================================================
 // Scroll Restoration Mode - HTML Standard §7.4.1.1
 // ============================================================================
@@ -274,10 +279,18 @@ pub const DocumentState = struct {
 
     /// A Document or null, initially null.
     /// When a history entry is active, it has a Document in its document state.
-    document: ?*anyopaque, // Will be *Document when DOM is integrated
+    ///
+    /// Type: This is a *runtime.Instance pointer to a Document WebIDL interface.
+    /// We use *anyopaque here because html_core cannot import runtime module.
+    /// The full html module provides type-safe accessors.
+    document: ?*anyopaque,
 
     /// A policy container or null, initially null.
-    history_policy_container: ?*anyopaque, // Will be *PolicyContainer
+    ///
+    /// Type: This is a *runtime.Instance pointer to a PolicyContainer.
+    /// PolicyContainer is defined in Fetch spec and contains CSP, referrer policy, etc.
+    /// We use *anyopaque here because html_core cannot import runtime module.
+    history_policy_container: ?*anyopaque,
 
     /// Request referrer: "no-referrer", "client", or a URL, initially "client"
     request_referrer: RequestReferrer,
@@ -563,6 +576,9 @@ pub const SessionHistoryEntry = struct {
     }
 
     /// Get the document from this entry's document state
+    ///
+    /// Returns a *anyopaque which is actually a *runtime.Instance for a Document.
+    /// The full html module provides a type-safe wrapper.
     pub fn getDocument(self: *const SessionHistoryEntry) ?*anyopaque {
         return self.document_state.document;
     }
@@ -591,6 +607,8 @@ pub const SessionHistoryEntry = struct {
     }
 
     /// Check if this entry's document equals the given document
+    ///
+    /// The document parameter is a *anyopaque which should be a *runtime.Instance.
     pub fn hasDocument(self: *const SessionHistoryEntry, document: *anyopaque) bool {
         if (self.document_state.document) |doc| {
             return doc == document;
