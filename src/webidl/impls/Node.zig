@@ -1202,7 +1202,13 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
     }
 
     // Get reference to next sibling before removal
-    const next_ref = child_internal.next_sibling;
+    // Per DOM spec step 7-8: Let referenceChild be child's next sibling.
+    // If referenceChild is node, then set referenceChild to node's next sibling.
+    var next_ref = child_internal.next_sibling;
+    if (next_ref == node) {
+        const node_internal = getInternal(node) orelse return error.InvalidStateError;
+        next_ref = node_internal.next_sibling;
+    }
 
     // Remove the old child
     try removeNodeFromParent(child, instance);
