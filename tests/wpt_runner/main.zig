@@ -33,6 +33,7 @@ const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
 const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
+const wpt_server = @import("wpt_server.zig");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -1002,6 +1003,13 @@ pub fn main() !void {
     // Create report
     var report = result_reporter.WptReport.init(allocator);
     defer report.deinit();
+
+    // Start WPT server (provides URL rewrites and proper resource serving)
+    print("\nStarting wpt serve...\n", .{});
+    const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
+    defer server.deinit();
+    try server.start();
+    print("WPT server running at {s}\n", .{server.getBaseUrl()});
 
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report);

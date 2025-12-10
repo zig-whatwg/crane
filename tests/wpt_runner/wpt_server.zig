@@ -1,8 +1,7 @@
 //! WPT Server Manager
 //!
 //! This module manages the lifecycle of the `wpt serve` Python server.
-//! The WPT server provides proper URL routing, script rewrites (like
-//! WebIDLParser.js → webidl2.js), and test variant generation.
+//! Uses a lockfile to track the server PID and port.
 //!
 //! ## Usage
 //!
@@ -11,40 +10,27 @@
 //! defer server.deinit();
 //!
 //! try server.start();
-//! defer server.stop();
-//!
 //! // Server is now running at http://localhost:8000
-//! // Navigate browser to test URLs like:
-//! // http://localhost:8000/url/url-constructor.any.html
-//! ```
-//!
-//! ## Configuration
-//!
-//! Requires `tests/wpt/config.json` with:
-//! ```json
-//! {
-//!   "browser_host": "localhost",
-//!   "bind_address": true,
-//!   "alternate_hosts": {},
-//!   "check_subdomains": false,
-//!   "ports": {"http": [8000, 8001]}
-//! }
 //! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const posix = std.posix;
+
+/// Lockfile name stored in WPT root
+const LOCKFILE_NAME = ".wpt_serve.lock";
 
 /// WPT Server manager
 pub const WptServer = struct {
     allocator: Allocator,
     /// WPT root directory
     wpt_root: []const u8,
-    /// Child process handle
-    process: ?std.process.Child = null,
-    /// Server port (default 8000)
+    /// Server port
     port: u16 = 8000,
-    /// Whether server is running
-    running: bool = false,
+    /// PID of the server process (from lockfile or spawned)
+    pid: ?posix.pid_t = null,
+    /// Whether we spawned the server (vs found existing)
+    we_spawned: bool = false,
 
     /// Initialize the WPT server manager
     pub fn init(allocator: Allocator, wpt_root: []const u8) !*WptServer {
@@ -56,84 +42,166 @@ pub const WptServer = struct {
         return server;
     }
 
-    /// Cleanup
+    /// Cleanup - kills server if we spawned it
     pub fn deinit(self: *WptServer) void {
-        if (self.running) {
+        if (self.we_spawned and self.pid != null) {
             self.stop();
         }
         self.allocator.free(self.wpt_root);
         self.allocator.destroy(self);
     }
 
+    /// Get lockfile path
+    fn getLockfilePath(self: *WptServer) ![]u8 {
+        return std.fs.path.join(self.allocator, &.{ self.wpt_root, LOCKFILE_NAME });
+    }
+
     /// Start the WPT server
     ///
-    /// Launches `python wpt.py serve` in the WPT root directory.
-    /// Waits for the server to become ready before returning.
+    /// First checks if a server is already running (via lockfile).
+    /// If not, spawns a new server and writes the lockfile.
     pub fn start(self: *WptServer) !void {
-        if (self.running) return;
+        // Check for existing server
+        if (try self.checkExistingServer()) {
+            return; // Server already running
+        }
 
-        // Build the command
+        // Spawn new server
+        try self.spawnServer();
+    }
+
+    /// Check if an existing server is running via lockfile
+    fn checkExistingServer(self: *WptServer) !bool {
+        const lockfile_path = try self.getLockfilePath();
+        defer self.allocator.free(lockfile_path);
+
+        const file = std.fs.cwd().openFile(lockfile_path, .{}) catch |err| {
+            if (err == error.FileNotFound) return false;
+            return err;
+        };
+        defer file.close();
+
+        // Read lockfile: "pid:port"
+        var buf: [64]u8 = undefined;
+        const bytes_read = try file.readAll(&buf);
+        const content = buf[0..bytes_read];
+
+        // Parse PID and port
+        var iter = std.mem.splitScalar(u8, content, ':');
+        const pid_str = iter.next() orelse return false;
+        const port_str = iter.next() orelse return false;
+
+        const pid = std.fmt.parseInt(posix.pid_t, std.mem.trim(u8, pid_str, &std.ascii.whitespace), 10) catch return false;
+        const port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return false;
+
+        // Check if process is still alive (signal 0 just checks existence)
+        if (posix.kill(pid, 0)) {
+            // Process exists, use it
+            self.pid = pid;
+            self.port = port;
+            self.we_spawned = false;
+            return true;
+        } else |_| {
+            // Process doesn't exist - stale lockfile, remove it
+            std.fs.cwd().deleteFile(lockfile_path) catch {};
+            return false;
+        }
+    }
+
+    /// Spawn the wpt serve process
+    fn spawnServer(self: *WptServer) !void {
         const argv = [_][]const u8{
             "python3",
             "wpt.py",
             "serve",
+            "--config",
+            "config.json",
         };
 
-        // Spawn the process
         var child = std.process.Child.init(&argv, self.allocator);
         child.cwd = self.wpt_root;
 
-        // Don't inherit stdout/stderr - capture them to avoid noise
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Pipe;
+        // Ignore output to avoid noise
+        child.stdout_behavior = .Ignore;
+        child.stderr_behavior = .Ignore;
 
         try child.spawn();
-        self.process = child;
-        self.running = true;
 
-        // Wait for server to be ready
+        self.pid = child.id;
+        self.we_spawned = true;
+
+        // Write lockfile
+        try self.writeLockfile();
+
+        // Wait for server to be ready (simple TCP check)
         try self.waitForReady();
     }
 
-    /// Stop the WPT server
-    pub fn stop(self: *WptServer) void {
-        if (!self.running) return;
+    /// Write the lockfile with PID and port
+    fn writeLockfile(self: *WptServer) !void {
+        const lockfile_path = try self.getLockfilePath();
+        defer self.allocator.free(lockfile_path);
 
-        if (self.process) |*child| {
-            // Send SIGTERM to gracefully stop
-            _ = child.kill() catch {};
+        const file = try std.fs.cwd().createFile(lockfile_path, .{});
+        defer file.close();
 
-            // Wait for process to exit
-            _ = child.wait() catch {};
-        }
+        const content = try std.fmt.allocPrint(self.allocator, "{d}:{d}\n", .{ self.pid.?, self.port });
+        defer self.allocator.free(content);
+        try file.writeAll(content);
+    }
 
-        self.process = null;
-        self.running = false;
+    /// Remove the lockfile
+    fn removeLockfile(self: *WptServer) void {
+        const lockfile_path = self.getLockfilePath() catch return;
+        defer self.allocator.free(lockfile_path);
+        std.fs.cwd().deleteFile(lockfile_path) catch {};
     }
 
     /// Wait for server to become ready
     fn waitForReady(self: *WptServer) !void {
-        const max_attempts = 50; // 5 seconds total
-        const delay_ms = 100;
+        const max_attempts = 100; // 10 seconds total
+        const delay_ns: u64 = 100 * std.time.ns_per_ms;
 
         var attempt: usize = 0;
         while (attempt < max_attempts) : (attempt += 1) {
             if (self.isServerReady()) {
                 return;
             }
-            std.time.sleep(delay_ms * std.time.ns_per_ms);
+            std.Thread.sleep(delay_ns);
         }
 
         return error.ServerStartTimeout;
     }
 
-    /// Check if server is ready by attempting to connect
+    /// Check if server is ready by attempting TCP connect
     fn isServerReady(self: *WptServer) bool {
-        // Try to connect to the server
         const address = std.net.Address.parseIp4("127.0.0.1", self.port) catch return false;
         const stream = std.net.tcpConnectToAddress(address) catch return false;
         stream.close();
         return true;
+    }
+
+    /// Stop the WPT server
+    pub fn stop(self: *WptServer) void {
+        if (self.pid) |pid| {
+            // Send SIGTERM
+            posix.kill(pid, posix.SIG.TERM) catch {};
+
+            // Give it a moment to shutdown gracefully
+            std.Thread.sleep(100 * std.time.ns_per_ms);
+
+            // Force kill if still alive
+            if (posix.kill(pid, 0)) {
+                posix.kill(pid, posix.SIG.KILL) catch {};
+            } else |_| {}
+        }
+
+        if (self.we_spawned) {
+            self.removeLockfile();
+        }
+
+        self.pid = null;
+        self.we_spawned = false;
     }
 
     /// Get the base URL for the server
@@ -143,22 +211,18 @@ pub const WptServer = struct {
     }
 
     /// Build a test URL from a test path
-    ///
-    /// Converts paths like "url/url-constructor.any.js" to
-    /// "http://localhost:8000/url/url-constructor.any.html"
     pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8) ![]u8 {
-        // Convert .any.js to .any.html for browser execution
         var url_path = test_path;
         var suffix: []const u8 = "";
 
         if (std.mem.endsWith(u8, test_path, ".any.js")) {
-            url_path = test_path[0 .. test_path.len - 7]; // Remove ".any.js"
+            url_path = test_path[0 .. test_path.len - 7];
             suffix = ".any.html";
         } else if (std.mem.endsWith(u8, test_path, ".window.js")) {
-            url_path = test_path[0 .. test_path.len - 10]; // Remove ".window.js"
+            url_path = test_path[0 .. test_path.len - 10];
             suffix = ".window.html";
         } else if (std.mem.endsWith(u8, test_path, ".worker.js")) {
-            url_path = test_path[0 .. test_path.len - 10]; // Remove ".worker.js"
+            url_path = test_path[0 .. test_path.len - 10];
             suffix = ".worker.html";
         }
 
@@ -173,7 +237,7 @@ pub const WptServer = struct {
 test "WptServer.buildTestUrl" {
     const allocator = std.testing.allocator;
 
-    var server = try WptServer.init(allocator, "tests/wpt");
+    const server = try WptServer.init(allocator, "tests/wpt");
     defer server.deinit();
 
     {
