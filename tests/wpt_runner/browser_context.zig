@@ -1018,11 +1018,14 @@ pub const BrowserContext = struct {
 
     /// Fire the DOMContentLoaded event on the document
     ///
-    /// This should be called after:
-    /// 1. The HTML parser has finished parsing
-    /// 2. All deferred scripts have been executed
+    /// NOTE: For HTML parsing via loadHTMLDocument(), DOMContentLoaded is now
+    /// fired automatically by the HTMLParser after deferred scripts execute.
+    /// This method is kept for:
+    /// - Non-parsing contexts (e.g., dynamic document creation)
+    /// - Manual triggering in tests
+    /// - Compatibility with existing code
     ///
-    /// Per HTML Standard §12.2.7 "The end" step 4:
+    /// Per HTML Standard §13.2.7 "The end" step 4:
     /// Fire an event named "DOMContentLoaded" at the Document object,
     /// with its bubbles attribute initialized to true.
     pub fn fireDOMContentLoaded(self: *BrowserContext) !void {

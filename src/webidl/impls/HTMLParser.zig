@@ -328,9 +328,22 @@ pub fn parseHTMLWithScripting(
         }
     }
 
-    // Step 9: Handle any deferred scripts (TODO: implement in follow-up task)
-    // Per HTML spec, deferred scripts execute after parsing completes
-    // This will be addressed in whatwg-9rji9 (external script loading)
+    // Step 9: Execute deferred scripts
+    // Per HTML Standard §13.2.7 "The end" - After parsing completes:
+    // - Execute scripts that will execute when the document has finished parsing
+    // This includes defer scripts and any scripts waiting for parsing to finish
+    if (options.scripting_enabled) {
+        script_execution.executeScriptsWhenParsingFinished(allocator, document);
+    }
+
+    // Step 10: Fire DOMContentLoaded event
+    // Per HTML Standard §13.2.7 "The end" step 4:
+    // Fire an event named "DOMContentLoaded" at the Document object,
+    // with its bubbles attribute initialized to true.
+    fireDOMContentLoadedEvent(allocator, ctx, document) catch |err| {
+        // Log error but don't fail parsing - the document is valid
+        std.debug.print("HTMLParser: Failed to fire DOMContentLoaded: {}\n", .{err});
+    };
 
     return document;
 }
@@ -822,6 +835,40 @@ fn createDoctypeNode(
     }
 
     return doctype;
+}
+
+// =============================================================================
+// DOMContentLoaded Event Firing
+// =============================================================================
+
+/// Fire the DOMContentLoaded event on the document
+///
+/// Per HTML Standard §13.2.7 "The end" step 4:
+/// Fire an event named "DOMContentLoaded" at the Document object,
+/// with its bubbles attribute initialized to true.
+///
+/// This is called after:
+/// 1. The HTML parser has finished parsing
+/// 2. All deferred scripts have been executed
+fn fireDOMContentLoadedEvent(
+    allocator: Allocator,
+    ctx: runtime.Context,
+    document: *runtime.Instance,
+) !void {
+    // Create the DOMContentLoaded event
+    const event = interfaces.Event.init(allocator, ctx) catch return error.OutOfMemory;
+    errdefer interfaces.Event.deinit(event);
+
+    // Initialize the event with type "DOMContentLoaded"
+    // Per spec: bubbles = true, cancelable = false
+    const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
+    const bubbles = webidl.Opt(bool).passed(true);
+    const cancelable = webidl.Opt(bool).passed(false);
+    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
+
+    // Dispatch the event on the document
+    // Document inherits from EventTarget so it can receive events
+    _ = interfaces.EventTarget.call_dispatchEvent(document, event) catch return error.InvalidStateError;
 }
 
 // =============================================================================

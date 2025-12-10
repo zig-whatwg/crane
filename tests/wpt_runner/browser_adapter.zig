@@ -156,6 +156,8 @@ pub const BrowserAdapter = struct {
         browser_context.setCurrentTestPath(test_path);
 
         // Parse HTML and build DOM - scripts execute during parsing
+        // DOMContentLoaded is fired by the parser after deferred scripts execute
+        // (per HTML Standard §13.2.7 "The end")
         ctx.loadHTMLDocument(html_content, test_path) catch |err| {
             std.debug.print("HTML parse error for {s}: {}\n", .{ test_path, err });
             // Return a failed result
@@ -163,11 +165,6 @@ pub const BrowserAdapter = struct {
             result.status = .@"error";
             result.message = "HTML parsing failed";
             return result;
-        };
-
-        // Fire DOMContentLoaded event
-        ctx.fireDOMContentLoaded() catch |err| {
-            std.debug.print("DOMContentLoaded error for {s}: {}\n", .{ test_path, err });
         };
 
         // Trigger testharness.js completion
