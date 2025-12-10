@@ -97,7 +97,15 @@ pub const V8EventLoop = struct {
     /// Whether this event loop is frozen (for bfcache)
     frozen: bool,
 
+    /// Count of consecutive poll() calls that returned false (no work done)
+    /// Used for exponential backoff to prevent CPU spinning
+    empty_poll_count: u32,
+
     const Self = @This();
+
+    /// Backoff configuration
+    const BACKOFF_THRESHOLD: u32 = 10; // Start backoff after 10 empty polls
+    const MAX_BACKOFF_MS: u64 = 100; // Cap at 100ms
 
     /// Initialize a new V8 event loop with timer support
     ///
@@ -125,6 +133,7 @@ pub const V8EventLoop = struct {
             .in_run_once = false,
             .timer_manager = timer_mgr,
             .frozen = false,
+            .empty_poll_count = 0,
         };
     }
 
@@ -140,6 +149,7 @@ pub const V8EventLoop = struct {
             .in_run_once = false,
             .timer_manager = null,
             .frozen = false,
+            .empty_poll_count = 0,
         };
     }
 
@@ -329,8 +339,8 @@ pub const V8EventLoop = struct {
         // Step 1: Poll libuv for ready timer callbacks
         // This processes any timers that have fired
         if (self.timer_manager) |mgr| {
-            const timer_active = mgr.poll();
-            if (timer_active) {
+            const timer_callback_invoked = mgr.poll();
+            if (timer_callback_invoked) {
                 did_work = true;
             }
         }
@@ -349,6 +359,22 @@ pub const V8EventLoop = struct {
 
             // Step 4: Run microtasks again after task
             v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        }
+
+        // Step 5: Exponential backoff for CPU efficiency
+        // If no work was done, increment counter and potentially sleep
+        // This prevents 100% CPU spin when waiting for timers
+        if (did_work) {
+            self.empty_poll_count = 0;
+        } else {
+            self.empty_poll_count += 1;
+            if (self.empty_poll_count > BACKOFF_THRESHOLD) {
+                // Calculate backoff: 2^(count - threshold), capped at MAX_BACKOFF_MS
+                const exponent = self.empty_poll_count - BACKOFF_THRESHOLD;
+                const backoff_ms: u64 = @min(MAX_BACKOFF_MS, @as(u64, 1) << @min(exponent, 6));
+                const ns_per_ms: u64 = 1_000_000;
+                std.Thread.sleep(backoff_ms * ns_per_ms);
+            }
         }
 
         return did_work;

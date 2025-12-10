@@ -45,6 +45,8 @@ const TimerContext = struct {
     cancelled: bool,
     /// Whether this timer is in the process of closing
     closing: bool,
+    /// Whether the callback was invoked (set by timerCallback)
+    callback_invoked: bool,
 };
 
 /// Manages libuv timers for a single V8 isolate.
@@ -59,6 +61,9 @@ pub const LibuvTimerManager = struct {
     timers: std.AutoHashMap(TimerId, *TimerContext),
     /// Whether the loop has been initialized
     initialized: bool,
+    /// Flag set when a callback is invoked during poll()
+    /// This is used to correctly return whether work was done
+    callback_invoked: bool,
 
     const Self = @This();
 
@@ -84,6 +89,7 @@ pub const LibuvTimerManager = struct {
             .next_id = 1,
             .timers = std.AutoHashMap(TimerId, *TimerContext).init(allocator),
             .initialized = true,
+            .callback_invoked = false,
         };
 
         return self;
@@ -107,8 +113,12 @@ pub const LibuvTimerManager = struct {
         }
 
         // Run the loop to process close callbacks
-        while (self.timers.count() > 0) {
-            _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+        // Use UV_RUN_ONCE to ensure close callbacks are fully processed
+        // UV_RUN_NOWAIT may not process close callbacks scheduled for next iteration
+        var iterations: u32 = 0;
+        const max_iterations: u32 = 1000; // Safety limit to prevent infinite loops
+        while (self.timers.count() > 0 and iterations < max_iterations) : (iterations += 1) {
+            _ = libuv.run(self.loop, .UV_RUN_ONCE);
         }
 
         // Close the loop
@@ -142,6 +152,7 @@ pub const LibuvTimerManager = struct {
             .handle = undefined,
             .cancelled = false,
             .closing = false,
+            .callback_invoked = false,
         };
 
         // Initialize the timer handle
@@ -186,14 +197,25 @@ pub const LibuvTimerManager = struct {
 
     /// Run the event loop once (non-blocking).
     /// This processes any ready timer callbacks without blocking.
-    /// Returns true if there are still active handles.
+    /// Returns true if a callback was actually invoked during this poll.
+    ///
+    /// IMPORTANT: uv_run() returns the count of active handles, NOT whether
+    /// callbacks were invoked. Returning the handle count caused the event loop
+    /// to spin at 100% CPU when handles existed but no callbacks were ready.
+    /// Instead, we track callback invocation via a flag set in timerCallback.
     pub fn poll(self: *Self) bool {
         if (!self.initialized) return false;
+
+        // Reset the callback_invoked flag before polling
+        self.callback_invoked = false;
+
         // Use UV_RUN_NOWAIT for non-blocking behavior.
         // This returns immediately even if there are pending timers.
         // The WPT runner's event loop has its own timeout mechanism.
-        const result = libuv.run(self.loop, .UV_RUN_NOWAIT);
-        return result > 0;
+        _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+
+        // Return whether a callback was actually invoked, NOT handle count
+        return self.callback_invoked;
     }
 
     /// Run the event loop once (blocking).
@@ -244,6 +266,10 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
 
     // Don't invoke callback if cancelled
     if (ctx.cancelled) return;
+
+    // Mark callback as invoked for poll() return value
+    ctx.callback_invoked = true;
+    ctx.manager.callback_invoked = true;
 
     // Mark as closing (one-shot timer)
     ctx.closing = true;

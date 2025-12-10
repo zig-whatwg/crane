@@ -121,6 +121,7 @@ pub const setInternal = internal_state.setInternal;
 pub const removeInternal = internal_state.removeInternal;
 pub const hasInternal = internal_state.hasInternal;
 pub const resetInternalStateRegistry = internal_state.resetRegistry;
+pub const initInternalStateRegistry = internal_state.initRegistry;
 
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
@@ -261,6 +262,9 @@ pub fn isInRange(comptime T: type, value: anytype) bool {
 pub fn initializeRuntime(allocator: std.mem.Allocator) void {
     SlabAllocator.init(allocator);
     ArenaAllocator.init(allocator);
+    // Initialize internal state registry with provided allocator
+    // This prevents memory fragmentation from using page_allocator
+    internal_state.initRegistry(allocator);
 }
 
 /// Deinitialize the WebIDL runtime

@@ -52,10 +52,30 @@ const Instance = @import("instance.zig").Instance;
 /// The actual InternalState type is known by the caller
 var global_registry: std.AutoHashMap(usize, *anyopaque) = undefined;
 var registry_initialized: bool = false;
+var registry_allocator: std.mem.Allocator = undefined;
+
+/// Initialize the registry with a specific allocator
+/// This should be called early in application startup.
+/// If not called, ensureRegistry() will use page_allocator as fallback.
+pub fn initRegistry(allocator: std.mem.Allocator) void {
+    if (registry_initialized) {
+        // Already initialized - just update allocator reference
+        // (Registry contents preserved, but new allocations use new allocator)
+        registry_allocator = allocator;
+        return;
+    }
+    registry_allocator = allocator;
+    global_registry = std.AutoHashMap(usize, *anyopaque).init(allocator);
+    registry_initialized = true;
+}
 
 /// Ensure the global registry is initialized
+/// Falls back to page_allocator if initRegistry() was not called
 fn ensureRegistry() void {
     if (!registry_initialized) {
+        // Fallback to page_allocator if no allocator was provided
+        // This maintains backwards compatibility but may cause fragmentation
+        registry_allocator = std.heap.page_allocator;
         global_registry = std.AutoHashMap(usize, *anyopaque).init(std.heap.page_allocator);
         registry_initialized = true;
     }

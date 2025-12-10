@@ -170,7 +170,8 @@ pub const BrowserContext = struct {
             // Set microtasks policy to explicit to prevent automatic execution during disposal
             v8.ffi.v8_Isolate_SetMicrotasksPolicy(isolate, @intFromEnum(v8.ffi.MicrotasksPolicy.Explicit));
 
-            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            // Single GC call is sufficient after wrapper cache cleanup
+            // Multiple GC calls add unnecessary overhead
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
 
             v8.ffi.v8_Isolate_Exit(isolate);
@@ -1359,12 +1360,19 @@ pub fn getTimerInterface() ?TimerInterface {
 }
 
 /// Clear the timer interface reference and clean up ALL pending timer contexts
+/// This properly cancels libuv timers to prevent handle accumulation
 pub fn clearTimerInterface() void {
     // Clean up any remaining timer contexts (both one-shot and intervals)
     if (timer_contexts) |*map| {
         var iter = map.iterator();
         while (iter.next()) |entry| {
-            entry.value_ptr.*.destroy();
+            const ctx = entry.value_ptr.*;
+            // Cancel the timer at the libuv level to prevent callback from firing
+            // and to properly clean up the libuv timer handle
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(ctx.current_timer_id);
+            }
+            ctx.destroy();
         }
         map.deinit();
         timer_contexts = null;
