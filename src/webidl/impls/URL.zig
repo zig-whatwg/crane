@@ -87,11 +87,13 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
         // Step 2: If parsedURL is failure, throw TypeError
         return error.TypeError;
     };
-    errdefer parsed_url.deinit();
+    // errdefer for parsed_url only until ownership is transferred
+    var url_owned = true;
+    errdefer if (url_owned) parsed_url.deinit();
 
     // Create InternalState
     const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
+    errdefer if (url_owned) ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
         .url_record = parsed_url,
@@ -99,7 +101,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
         .allocator = ctx.allocator,
     };
 
+    // Transfer ownership to instance - from here, errdefer deinit(instance) handles cleanup
     state.own._internal = internal;
+    url_owned = false; // Ownership transferred - don't double-free
 
     // Initialize URLSearchParams instance with query from URLRecord
     const query_str = parsed_url.query() orelse "";
