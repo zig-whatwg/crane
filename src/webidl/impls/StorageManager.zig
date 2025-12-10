@@ -94,7 +94,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://fs.spec.whatwg.org/#dom-storagemanager-getdirectory
 ///
 /// Note: This requires the File System Access API which is not yet implemented.
-pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     // TODO: Implement File System Access API integration
     // Returns Promise<FileSystemDirectoryHandle>
@@ -108,7 +108,7 @@ pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque 
 /// Spec: https://storage.spec.whatwg.org/#dom-storagemanager-persist
 ///
 /// Returns a Promise that resolves to true if persistence was granted.
-pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_persist(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -128,7 +128,7 @@ pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Spec: https://storage.spec.whatwg.org/#dom-storagemanager-estimate
 ///
 /// Returns a Promise that resolves to a StorageEstimate dictionary.
-pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -148,7 +148,7 @@ pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Spec: https://storage.spec.whatwg.org/#dom-storagemanager-persisted
 ///
 /// Returns a Promise that resolves to true if storage is persistent.
-pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_persisted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

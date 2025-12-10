@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: addModule
-pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(dictionaries.WorkletOptions)) anyerror!*const anyopaque {
+pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(dictionaries.WorkletOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = moduleURL;
     _ = options;

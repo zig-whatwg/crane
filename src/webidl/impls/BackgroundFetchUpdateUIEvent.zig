@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, init_data: dictionaries.BackgroundFetchEventInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, init_data: dictionaries.BackgroundFetchEventInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &BackgroundFetchUpdateUIEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &BackgroundFetchUpdateUIEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -55,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: updateUI
-pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BackgroundFetchUIOptions)) anyerror!*const anyopaque {
+pub fn call_updateUI(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BackgroundFetchUIOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -41,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     return error.NotImplemented;
 }
 
 /// Operation: keys
-pub fn call_keys(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_keys(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.StorageBucketOptions)) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.StorageBucketOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     _ = options;

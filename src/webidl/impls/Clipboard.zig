@@ -41,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: read
-pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(dictionaries.ClipboardUnsanitizedFormats)) anyerror!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance, formats: webidl.Opt(dictionaries.ClipboardUnsanitizedFormats)) anyerror!runtime.JSValue {
     _ = instance;
     _ = formats;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, data: typedefs.ClipboardItems) anyerror!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, data: typedefs.ClipboardItems) anyerror!runtime.JSValue {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: readText
-pub fn call_readText(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_readText(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: writeText
-pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_writeText(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = data;
     return error.NotImplemented;

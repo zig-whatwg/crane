@@ -69,7 +69,7 @@ pub fn call_setBlendConstant(instance: *runtime.Instance, color: typedefs.GPUCol
 }
 
 /// Operation: setBindGroup
-pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_setBindGroup(instance: *runtime.Instance, index: typedefs.GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = index;
     _ = bindGroup;
@@ -121,7 +121,7 @@ pub fn call_drawIndexed(instance: *runtime.Instance, indexCount: typedefs.GPUSiz
 }
 
 /// Operation: executeBundles
-pub fn call_executeBundles(instance: *runtime.Instance, bundles: *const anyopaque) anyerror!void {
+pub fn call_executeBundles(instance: *runtime.Instance, bundles: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = bundles;
     return error.NotImplemented;

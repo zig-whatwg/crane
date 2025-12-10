@@ -46,7 +46,7 @@ pub fn get_targetURL(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 }
 
 /// Getter for files
-pub fn get_files(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_files(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

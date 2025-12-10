@@ -447,7 +447,6 @@ pub const DomTreeAdapter = struct {
         const webidl = @import("webidl");
 
         const text = try interfaces.Text.call_constructor(
-            self.allocator,
             self.ctx,
             webidl.Opt(runtime.DOMString).passed(dom_string),
         );
@@ -464,7 +463,6 @@ pub const DomTreeAdapter = struct {
         const webidl = @import("webidl");
 
         const comment = try interfaces.Comment.call_constructor(
-            self.allocator,
             self.ctx,
             webidl.Opt(runtime.DOMString).passed(dom_string),
         );

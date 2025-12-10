@@ -41,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getFile
-pub fn call_getFile(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getFile(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createWritable
-pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FileSystemCreateWritableOptions)) anyerror!*const anyopaque {
+pub fn call_createWritable(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FileSystemCreateWritableOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: createSyncAccessHandle
-pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_createSyncAccessHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

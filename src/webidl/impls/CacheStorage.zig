@@ -90,7 +90,7 @@ fn getCacheName(cacheName: runtime.DOMString) []const u8 {
 /// Operation: delete - Delete a cache by name
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-storage-delete
 /// Returns: Promise<boolean>
-pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -114,7 +114,7 @@ pub fn call_delete(instance: *runtime.Instance, cacheName: runtime.DOMString) an
 /// Returns: Promise<sequence<DOMString>>
 ///
 /// Returns an array of all cache names in creation order.
-pub fn call_keys(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_keys(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -144,7 +144,7 @@ pub fn call_keys(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Operation: has - Check if a cache exists
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-storage-has
 /// Returns: Promise<boolean>
-pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -161,7 +161,7 @@ pub fn call_has(instance: *runtime.Instance, cacheName: runtime.DOMString) anyer
 /// Operation: open - Open or create a cache
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-storage-open
 /// Returns: Promise<Cache>
-pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -169,7 +169,7 @@ pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anye
 
     // If cache exists, return it
     if (internal.caches.get(name)) |cache_instance| {
-        return @ptrCast(cache_instance);
+        return runtime.JSValue.fromInstance(cache_instance);
     }
 
     // Create a new Cache instance
@@ -189,13 +189,13 @@ pub fn call_open(instance: *runtime.Instance, cacheName: runtime.DOMString) anye
 
     try internal.caches.put(internal.allocator, key, cache_instance);
 
-    return @ptrCast(cache_instance);
+    return runtime.JSValue.fromInstance(cache_instance);
 }
 
 /// Operation: match - Search all caches for a matching response
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-storage-match
 /// Returns: Promise<Response | undefined>
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.MultiCacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.MultiCacheQueryOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

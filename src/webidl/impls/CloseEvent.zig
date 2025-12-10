@@ -53,16 +53,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// The CloseEvent(type, eventInitDict) constructor steps are:
 /// 1. Set wasClean, code, and reason from eventInitDict (with defaults)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CloseEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CloseEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CloseEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CloseEvent.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state
     const state = instance.getState(State);
 
     // Initialize base Event attributes (Event fields are in state.base.own)
-    state.base.own.type = try @"type".clone(allocator);
+    state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
     state.base.own.isTrusted = false;
     state.base.own.target = null;

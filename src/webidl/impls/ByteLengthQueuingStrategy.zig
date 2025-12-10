@@ -63,20 +63,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Steps:
 /// 1. Set this.[[highWaterMark]] to init["highWaterMark"]
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.QueuingStrategyInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.QueuingStrategyInit) !*runtime.Instance {
     // Create instance
-    const instance = try init(allocator, State, &ByteLengthQueuingStrategy.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ByteLengthQueuingStrategy.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
     // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
         .high_water_mark = init_data.highWaterMark,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;

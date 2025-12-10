@@ -41,19 +41,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for effects
-pub fn get_effects(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_effects(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_reset(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: pulse
-pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!*const anyopaque {
+pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     _ = duration;
@@ -61,7 +61,7 @@ pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerr
 }
 
 /// Operation: playEffect
-pub fn call_playEffect(instance: *runtime.Instance, @"type": enums.GamepadHapticEffectType, params: webidl.Opt(dictionaries.GamepadEffectParameters)) anyerror!*const anyopaque {
+pub fn call_playEffect(instance: *runtime.Instance, @"type": enums.GamepadHapticEffectType, params: webidl.Opt(dictionaries.GamepadEffectParameters)) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     _ = params;

@@ -58,7 +58,7 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: interestGroups
-pub fn call_interestGroups(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_interestGroups(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callback: callbacks.LockGrantedCallback) anyerror!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callback: callbacks.LockGrantedCallback) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     _ = callback;
@@ -48,7 +48,7 @@ pub fn call_request(instance: *runtime.Instance, name: runtime.DOMString, callba
 }
 
 /// Operation: query
-pub fn call_query(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_query(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

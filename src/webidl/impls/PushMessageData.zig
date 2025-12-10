@@ -58,13 +58,13 @@ pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

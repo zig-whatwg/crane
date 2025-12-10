@@ -119,9 +119,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The Event(type, eventInitDict) constructor steps are:
 /// 1. Set this's initialized flag.
 /// 2. Initialize this with type, bubbles, and cancelable.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.EventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.EventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Event.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Event.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state and initialize
@@ -130,7 +130,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     // Create internal state
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(ctx.allocator);
     state.own._internal = internal;
 
     // Set the initialized flag
@@ -143,7 +143,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     const composed = event_init.composed orelse false;
 
     // Store event type - clone the string to ensure we own it
-    state.own.type = try @"type".clone(allocator);
+    state.own.type = try @"type".clone(ctx.allocator);
 
     // Initialize from EventInit dictionary
     state.own.bubbles = bubbles;
@@ -376,7 +376,7 @@ pub fn call_initEvent(instance: *runtime.Instance, @"type": runtime.DOMString, b
 /// listeners will be invoked), except for any nodes in shadow trees of which
 /// the shadow root's mode is "closed" that are not reachable from event's
 /// currentTarget.
-pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.NotImplemented;
     const state = instance.getState(State);
 
@@ -388,8 +388,8 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque 
 
     // Step 3: If path is empty, then return composedPath
     if (path.len == 0) {
-        // Return pointer to the list (caller will interpret)
-        return @ptrCast(&composed_path);
+        // Return pointer to the list as a JSValue
+        return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
@@ -398,7 +398,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque 
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
         // Path is not empty but currentTarget is null - shouldn't happen during dispatch
-        return @ptrCast(&composed_path);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
     }
 
     // Step 6: Append currentTarget to composedPath
@@ -510,8 +510,8 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!*const anyopaque 
     }
 
     // Step 17: Return composedPath
-    // Note: Returning as opaque pointer - the JS bindings will interpret this
-    return @ptrCast(&composed_path);
+    // Note: Returning as opaque pointer wrapped in JSValue
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
 }
 
 // ============================================================================

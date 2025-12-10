@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, videoTrack: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, videoTrack: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ImageCapture.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ImageCapture.vtable, ctx);
     errdefer deinit(instance);
 
     _ = videoTrack;
@@ -60,25 +60,25 @@ pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: getPhotoCapabilities
-pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getPhotoCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: grabFrame
-pub fn call_grabFrame(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_grabFrame(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPhotoSettings
-pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getPhotoSettings(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: takePhoto
-pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(dictionaries.PhotoSettings)) anyerror!*const anyopaque {
+pub fn call_takePhoto(instance: *runtime.Instance, photoSettings: webidl.Opt(dictionaries.PhotoSettings)) anyerror!runtime.JSValue {
     _ = instance;
     _ = photoSettings;
     return error.NotImplemented;

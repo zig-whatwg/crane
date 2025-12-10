@@ -111,28 +111,28 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: getCharacteristic
-pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: typedefs.BluetoothCharacteristicUUID) anyerror!*const anyopaque {
+pub fn call_getCharacteristic(instance: *runtime.Instance, characteristic: typedefs.BluetoothCharacteristicUUID) anyerror!runtime.JSValue {
     _ = instance;
     _ = characteristic;
     return error.NotImplemented;
 }
 
 /// Operation: getIncludedServices
-pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) anyerror!*const anyopaque {
+pub fn call_getIncludedServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) anyerror!runtime.JSValue {
     _ = instance;
     _ = service;
     return error.NotImplemented;
 }
 
 /// Operation: getCharacteristics
-pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(typedefs.BluetoothCharacteristicUUID)) anyerror!*const anyopaque {
+pub fn call_getCharacteristics(instance: *runtime.Instance, characteristic: webidl.Opt(typedefs.BluetoothCharacteristicUUID)) anyerror!runtime.JSValue {
     _ = instance;
     _ = characteristic;
     return error.NotImplemented;
 }
 
 /// Operation: getIncludedService
-pub fn call_getIncludedService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) anyerror!*const anyopaque {
+pub fn call_getIncludedService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) anyerror!runtime.JSValue {
     _ = instance;
     _ = service;
     return error.NotImplemented;

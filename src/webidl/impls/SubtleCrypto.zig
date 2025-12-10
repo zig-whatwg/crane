@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: generateKey
-pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = extractable;
@@ -50,7 +50,7 @@ pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.Algorit
 }
 
 /// Operation: exportKey
-pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = format;
     _ = key;
@@ -58,7 +58,7 @@ pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key:
 }
 
 /// Operation: sign
-pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -67,7 +67,7 @@ pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdent
 }
 
 /// Operation: encapsulateBits
-pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = encapsulationAlgorithm;
     _ = encapsulationKey;
@@ -75,7 +75,7 @@ pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm:
 }
 
 /// Operation: decapsulateKey
-pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = decapsulationAlgorithm;
     _ = decapsulationKey;
@@ -87,7 +87,7 @@ pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: 
 }
 
 /// Operation: deriveBits
-pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!*const anyopaque {
+pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = baseKey;
@@ -96,7 +96,7 @@ pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.Algorith
 }
 
 /// Operation: getPublicKey
-pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = key;
     _ = keyUsages;
@@ -104,7 +104,7 @@ pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, ke
 }
 
 /// Operation: deriveKey
-pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, derivedKeyType: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, derivedKeyType: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = baseKey;
@@ -115,7 +115,7 @@ pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.Algorithm
 }
 
 /// Operation: verify
-pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, signature: typedefs.BufferSource, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, signature: typedefs.BufferSource, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -134,7 +134,7 @@ pub fn call_static_supports(instance: *runtime.Instance, operation: runtime.DOMS
 }
 
 /// Operation: digest
-pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = data;
@@ -142,7 +142,7 @@ pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
 }
 
 /// Operation: importKey
-pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: *const anyopaque, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: runtime.JSValue, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = format;
     _ = keyData;
@@ -153,7 +153,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
 }
 
 /// Operation: wrapKey
-pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance, wrappingKey: *runtime.Instance, wrapAlgorithm: typedefs.AlgorithmIdentifier) anyerror!*const anyopaque {
+pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance, wrappingKey: *runtime.Instance, wrapAlgorithm: typedefs.AlgorithmIdentifier) anyerror!runtime.JSValue {
     _ = instance;
     _ = format;
     _ = key;
@@ -163,7 +163,7 @@ pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *
 }
 
 /// Operation: decapsulateBits
-pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm: typedefs.AlgorithmIdentifier, decapsulationKey: *runtime.Instance, ciphertext: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = decapsulationAlgorithm;
     _ = decapsulationKey;
@@ -172,7 +172,7 @@ pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm:
 }
 
 /// Operation: unwrapKey
-pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrappedKey: typedefs.BufferSource, unwrappingKey: *runtime.Instance, unwrapAlgorithm: typedefs.AlgorithmIdentifier, unwrappedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrappedKey: typedefs.BufferSource, unwrappingKey: *runtime.Instance, unwrapAlgorithm: typedefs.AlgorithmIdentifier, unwrappedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = format;
     _ = wrappedKey;
@@ -185,7 +185,7 @@ pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrap
 }
 
 /// Operation: encapsulateKey
-pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: typedefs.AlgorithmIdentifier, encapsulationKey: *runtime.Instance, sharedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = encapsulationAlgorithm;
     _ = encapsulationKey;
@@ -196,7 +196,7 @@ pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: 
 }
 
 /// Operation: decrypt
-pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = key;
@@ -205,10 +205,19 @@ pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmId
 }
 
 /// Operation: encrypt
-pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = algorithm;
     _ = key;
     _ = data;
+    return error.NotImplemented;
+}
+
+
+pub fn call_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
+    _ = instance;
+    _ = operation;
+    _ = algorithm;
+    _ = length;
     return error.NotImplemented;
 }

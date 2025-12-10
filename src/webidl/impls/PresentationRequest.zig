@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &PresentationRequest.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &PresentationRequest.vtable, ctx);
     errdefer deinit(instance);
 
     _ = url;
@@ -66,20 +66,20 @@ pub fn set_onconnectionavailable(instance: *runtime.Instance, value: typedefs.Ev
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_start(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reconnect
-pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_reconnect(instance: *runtime.Instance, presentationId: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = presentationId;
     return error.NotImplemented;
 }
 
 /// Operation: getAvailability
-pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAvailability(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

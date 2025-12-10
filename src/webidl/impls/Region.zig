@@ -46,7 +46,7 @@ pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
 }
 
 /// Operation: getRegionFlowRanges
-pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

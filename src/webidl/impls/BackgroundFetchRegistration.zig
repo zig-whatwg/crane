@@ -102,7 +102,7 @@ pub fn set_onprogress(instance: *runtime.Instance, value: typedefs.EventHandler)
 }
 
 /// Operation: matchAll
-pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = request;
     _ = options;
@@ -110,13 +110,13 @@ pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.R
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: match
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = request;
     _ = options;

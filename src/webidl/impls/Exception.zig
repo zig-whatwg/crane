@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: *const anyopaque, options: webidl.Opt(dictionaries.ExceptionOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, exceptionTag: *runtime.Instance, payload: runtime.JSValue, options: webidl.Opt(dictionaries.ExceptionOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Exception.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Exception.vtable, ctx);
     errdefer deinit(instance);
 
     _ = exceptionTag;
@@ -56,7 +56,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, exce
 }
 
 /// Getter for stack
-pub fn get_stack(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_stack(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

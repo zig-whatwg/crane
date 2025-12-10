@@ -48,7 +48,7 @@ pub fn call_registerAdMacro(instance: *runtime.Instance, name: runtime.DOMString
 }
 
 /// Operation: registerAdBeacon
-pub fn call_registerAdBeacon(instance: *runtime.Instance, map: *const anyopaque) anyerror!void {
+pub fn call_registerAdBeacon(instance: *runtime.Instance, map: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = map;
     return error.NotImplemented;

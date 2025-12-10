@@ -41,13 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: listReaders
-pub fn call_listReaders(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_listReaders(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getStatusChange
-pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const anyopaque, options: webidl.Opt(dictionaries.SmartCardGetStatusChangeOptions)) anyerror!*const anyopaque {
+pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: runtime.JSValue, options: webidl.Opt(dictionaries.SmartCardGetStatusChangeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = readerStates;
     _ = options;
@@ -55,7 +55,7 @@ pub fn call_getStatusChange(instance: *runtime.Instance, readerStates: *const an
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: webidl.Opt(dictionaries.SmartCardConnectOptions)) anyerror!*const anyopaque {
+pub fn call_connect(instance: *runtime.Instance, readerName: runtime.DOMString, accessMode: enums.SmartCardAccessMode, options: webidl.Opt(dictionaries.SmartCardConnectOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = readerName;
     _ = accessMode;

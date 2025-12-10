@@ -72,13 +72,13 @@ pub fn set_onkeyframerequest(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: sendKeyFrameRequest
-pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_sendKeyFrameRequest(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: generateKeyFrame
-pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtime.DOMString)) anyerror!*const anyopaque {
+pub fn call_generateKeyFrame(instance: *runtime.Instance, rid: webidl.Opt(runtime.DOMString)) anyerror!runtime.JSValue {
     _ = instance;
     _ = rid;
     return error.NotImplemented;

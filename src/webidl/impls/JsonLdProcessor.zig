@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &JsonLdProcessor.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &JsonLdProcessor.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -96,6 +96,52 @@ pub fn call_static_compact(instance: *runtime.Instance, input: typedefs.JsonLdIn
 
 /// Operation: frame (static)
 pub fn call_static_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = input;
+    _ = frame;
+    _ = options;
+    return error.NotImplemented;
+}
+
+
+pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = input;
+    _ = context;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_compact(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = input;
+    _ = context;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_fromRdf(instance: *runtime.Instance, input: *runtime.Instance, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = input;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_toRdf(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = input;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_expand(instance: *runtime.Instance, input: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = input;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_frame(instance: *runtime.Instance, input: typedefs.JsonLdInput, frame: typedefs.JsonLdInput, options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = frame;

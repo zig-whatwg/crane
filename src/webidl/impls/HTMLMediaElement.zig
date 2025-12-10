@@ -364,7 +364,7 @@ pub fn set_onwaitingforkey(instance: *runtime.Instance, value: typedefs.EventHan
 }
 
 /// Operation: setSinkId
-pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = sinkId;
     return error.NotImplemented;
@@ -377,7 +377,7 @@ pub fn call_load(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: setMediaKeys
-pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!*const anyopaque {
+pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = mediaKeys;
     return error.NotImplemented;
@@ -410,7 +410,7 @@ pub fn call_captureStream(instance: *runtime.Instance) anyerror!*runtime.Instanc
 }
 
 /// Operation: play
-pub fn call_play(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

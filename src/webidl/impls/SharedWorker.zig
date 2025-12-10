@@ -123,31 +123,31 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// creation until connectToWorker() is called. The entangled MessagePort pair:
 /// - outside_port: Returned via sharedWorker.port to the connecting context
 /// - inside_port: Passed in the connect event's ports array to the worker
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &SharedWorker.vtable, ctx);
     errdefer deinit(instance);
 
     // Parse options - for now, use defaults since options is opaque
     _ = options; // Options parsing would require dictionary access
 
     // Copy the script URL
-    const url_copy = try allocator.dupe(u8, scriptURL.asSlice());
-    errdefer allocator.free(url_copy);
+    const url_copy = try ctx.allocator.dupe(u8, scriptURL.asSlice());
+    errdefer ctx.allocator.free(url_copy);
 
     // Get the origin from context (simplified - use script URL origin)
     const origin = extractOrigin(scriptURL.asSlice());
-    const origin_copy = try allocator.dupe(u8, origin);
-    errdefer allocator.free(origin_copy);
+    const origin_copy = try ctx.allocator.dupe(u8, origin);
+    errdefer ctx.allocator.free(origin_copy);
 
     // Create a placeholder MessagePort instance
     // This will be replaced with the proper entangled port when connectToWorker() is called
-    const internal_port = try InternalMessagePort.init(allocator);
+    const internal_port = try InternalMessagePort.init(ctx.allocator);
     errdefer internal_port.deinit();
 
     // Create WebIDL MessagePort instance
     const port_instance = try MessagePortImpl.initWithInternal(
-        allocator,
+        ctx.allocator,
         MessagePort.State,
         &MessagePort.vtable,
         ctx,
@@ -158,8 +158,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
     // Create internal state
     // Note: The actual SharedWorker connection will be established when
     // connectToWorker() is called with the platform's internal SharedWorker
-    const internal_state = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal_state);
+    const internal_state = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal_state);
 
     internal_state.* = .{
         .shared_worker = null, // Set when connected to actual worker
@@ -169,7 +169,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
         .name = "", // Default empty name
         .origin = origin_copy,
         .owns_worker = true, // First creator owns it
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     // Store internal state

@@ -184,7 +184,7 @@ pub fn get_contentEncoding(instance: *runtime.Instance) anyerror!runtime.DOMStri
 }
 
 /// Getter for serverTiming
-pub fn get_serverTiming(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_serverTiming(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

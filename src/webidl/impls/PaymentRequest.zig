@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, methodData: *const anyopaque, details: dictionaries.PaymentDetailsInit, options: webidl.Opt(dictionaries.PaymentOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, methodData: runtime.JSValue, details: dictionaries.PaymentDetailsInit, options: webidl.Opt(dictionaries.PaymentOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &PaymentRequest.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &PaymentRequest.vtable, ctx);
     errdefer deinit(instance);
 
     _ = methodData;
@@ -119,26 +119,32 @@ pub fn set_onpaymentmethodchange(instance: *runtime.Instance, value: typedefs.Ev
 }
 
 /// Operation: abort
-pub fn call_abort(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: show
-pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_show(instance: *runtime.Instance, detailsPromise: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     _ = instance;
     _ = detailsPromise;
     return error.NotImplemented;
 }
 
 /// Operation: canMakePayment
-pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_canMakePayment(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: securePaymentConfirmationAvailability
 pub fn call_static_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+
+pub fn call_securePaymentConfirmationAvailability(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -85,15 +85,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 9.3.1 MessageChannel()
 ///
 /// Creates a new MessageChannel with two entangled MessagePort objects.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MessageChannel.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MessageChannel.vtable, ctx);
     errdefer deinit(instance);
 
     var state = instance.getState(State);
 
     // Create entangled internal MessagePort pair
-    const ports = try createMessagePortPair(allocator);
+    const ports = try createMessagePortPair(ctx.allocator);
     errdefer {
         ports[0].deinit();
         ports[1].deinit();
@@ -101,7 +101,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 
     // Create WebIDL MessagePort instances wrapping the internal ports
     const port1_instance = try MessagePortImpl.initWithInternal(
-        allocator,
+        ctx.allocator,
         MessagePortInterface.State,
         &MessagePortInterface.vtable,
         ctx,
@@ -110,7 +110,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     errdefer MessagePortInterface.deinit(port1_instance);
 
     const port2_instance = try MessagePortImpl.initWithInternal(
-        allocator,
+        ctx.allocator,
         MessagePortInterface.State,
         &MessagePortInterface.vtable,
         ctx,

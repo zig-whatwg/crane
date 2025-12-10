@@ -47,7 +47,7 @@ pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: setPathData
-pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
+pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = pathData;
     return error.NotImplemented;
@@ -67,7 +67,7 @@ pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerro
 }
 
 /// Operation: getPathData
-pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!*const anyopaque {
+pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!runtime.JSValue {
     _ = instance;
     _ = settings;
     return error.NotImplemented;

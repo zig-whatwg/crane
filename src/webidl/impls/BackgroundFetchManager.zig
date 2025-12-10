@@ -41,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: *const anyopaque, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) anyerror!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: runtime.JSValue, options: webidl.Opt(dictionaries.BackgroundFetchOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = id;
     _ = requests;
@@ -57,7 +57,7 @@ pub fn call_fetch(instance: *runtime.Instance, id: runtime.DOMString, requests: 
 }
 
 /// Operation: getIds
-pub fn call_getIds(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getIds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

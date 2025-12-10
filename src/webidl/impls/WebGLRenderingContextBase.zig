@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -325,13 +325,13 @@ pub fn call_getParameter(instance: *runtime.Instance, pname: typedefs.GLenum) an
 }
 
 /// Operation: makeXRCompatible
-pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSupportedExtensions
-pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -1045,7 +1045,7 @@ pub fn call_getUniform(instance: *runtime.Instance, program: *runtime.Instance, 
 }
 
 /// Operation: getAttachedShaders
-pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     _ = program;
     return null;

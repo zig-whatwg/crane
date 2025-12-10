@@ -138,27 +138,27 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: getDevices
-pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RequestDeviceOptions)) anyerror!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RequestDeviceOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: requestLEScan
-pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BluetoothLEScanOptions)) anyerror!*const anyopaque {
+pub fn call_requestLEScan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BluetoothLEScanOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getAvailability
-pub fn call_getAvailability(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAvailability(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

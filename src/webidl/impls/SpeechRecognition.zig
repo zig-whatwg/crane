@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &SpeechRecognition.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &SpeechRecognition.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -88,7 +88,7 @@ pub fn get_processLocally(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for phrases
-pub fn get_phrases(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_phrases(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -202,7 +202,7 @@ pub fn set_processLocally(instance: *runtime.Instance, value: bool) anyerror!voi
 }
 
 /// Setter for phrases
-pub fn set_phrases(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_phrases(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -312,6 +312,19 @@ pub fn call_start(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: install (static)
 pub fn call_static_install(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!*const anyopaque {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+
+pub fn call_available(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_install(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for authenticatorData
-pub fn get_authenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_authenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for signature
-pub fn get_signature(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_signature(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for userHandle
-pub fn get_userHandle(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_userHandle(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

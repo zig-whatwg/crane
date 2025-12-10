@@ -94,21 +94,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 6.1 "The new TransformStream(transformer, writableStrategy, readableStrategy) constructor steps"
 ///
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, transformer: webidl.Opt(runtime.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JSValue), writableStrategy: webidl.Opt(dictionaries.QueuingStrategy), readableStrategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &TransformStream.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &TransformStream.vtable, ctx);
     errdefer deinit(instance);
 
     // Initialize InternalState
     const state = instance.getState(State);
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
     internal.* = InternalState{
-        .allocator = allocator,
+        .allocator = ctx.allocator,
         .backpressure = false,
         .backpressureChangePromise = null,
         .readableStream = null,
@@ -132,7 +132,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     // Spec step 5: Let readableHighWaterMark be ? ExtractHighWaterMark(readableStrategy, 0)
     const readable_strategy = if (readableStrategy.was_passed) readableStrategy.value else dictionaries.QueuingStrategy{};
     const readable_hwm = extractHighWaterMark(&readable_strategy, 0.0) catch {
-        allocator.destroy(internal);
+        ctx.allocator.destroy(internal);
         deinit(instance);
         return error.RangeError;
     };
@@ -143,7 +143,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     // Spec step 7: Let writableHighWaterMark be ? ExtractHighWaterMark(writableStrategy, 1)
     const writable_strategy = if (writableStrategy.was_passed) writableStrategy.value else dictionaries.QueuingStrategy{};
     const writable_hwm = extractHighWaterMark(&writable_strategy, 1.0) catch {
-        allocator.destroy(internal);
+        ctx.allocator.destroy(internal);
         deinit(instance);
         return error.RangeError;
     };
@@ -155,7 +155,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
     const start_promise = Promise(void).pending();
 
     // Spec step 10: Perform ! InitializeTransformStream(this, startPromise, writableHighWaterMark, writableSizeAlgorithm, readableHighWaterMark, readableSizeAlgorithm)
-    try initializeTransformStream(instance, internal, allocator, ctx, start_promise, writable_hwm, readable_hwm);
+    try initializeTransformStream(instance, internal, ctx.allocator, ctx, start_promise, writable_hwm, readable_hwm);
 
     // Spec step 11: Perform ? SetUpTransformStreamDefaultControllerFromTransformer(this, transformer, transformerDict)
     //
@@ -175,7 +175,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, tran
             },
             .handle => |engine_handle| {
                 // Engine handle (V8 object reference) - set up controller
-                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, allocator, ctx, engine_handle.ptr);
+                try setUpTransformStreamDefaultControllerFromTransformer(instance, internal, ctx.allocator, ctx, engine_handle.ptr);
             },
             .instance => {
                 // A Zig runtime.Instance - this should not be passed as a transformer.

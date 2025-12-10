@@ -110,8 +110,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. Set up transformStream with transformAlgorithm set to transformAlgorithm
 ///    and flushAlgorithm set to flushAlgorithm.
 /// 6. Set this's transform to transformStream.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &TextEncoderStream.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &TextEncoderStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -129,7 +129,6 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
     // cause TransformStream to try to use it as a V8 Object handle, resulting in
     // misaligned pointer segfaults. See whatwg-lbw51 for details.
     const transform = try interfaces.TransformStream.call_constructor(
-        allocator,
         ctx,
         webidl.Opt(runtime.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),

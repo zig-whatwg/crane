@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothLEScanFilterInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothLEScanFilterInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &BluetoothLEScanFilter.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &BluetoothLEScanFilter.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;
@@ -66,7 +66,7 @@ pub fn get_namePrefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 }
 
 /// Getter for services
-pub fn get_services(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_services(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

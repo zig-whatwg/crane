@@ -59,7 +59,7 @@ pub fn call_getAsString(instance: *runtime.Instance, _callback: ?callbacks.Funct
 }
 
 /// Operation: getAsFileSystemHandle
-pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

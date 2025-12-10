@@ -52,7 +52,7 @@ pub fn call_delete(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: requestPersistentHandle
-pub fn call_requestPersistentHandle(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_requestPersistentHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

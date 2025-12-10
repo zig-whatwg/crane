@@ -60,7 +60,7 @@ pub fn set_onenter(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 /// Operation: requestWindow
-pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DocumentPictureInPictureOptions)) anyerror!*const anyopaque {
+pub fn call_requestWindow(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DocumentPictureInPictureOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

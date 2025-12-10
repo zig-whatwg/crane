@@ -438,7 +438,7 @@ pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) anyerror
 }
 
 /// Operation: createIndex
-pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: *const anyopaque, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
+pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: runtime.JSValue, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;

@@ -66,7 +66,7 @@ pub fn call_static_availability(instance: *runtime.Instance, options: dictionari
 }
 
 /// Operation: translate
-pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*const anyopaque {
+pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -74,7 +74,7 @@ pub fn call_translate(instance: *runtime.Instance, input: runtime.DOMString, opt
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.TranslatorTranslateOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -97,6 +97,19 @@ pub fn call_translateStreaming(instance: *runtime.Instance, input: runtime.DOMSt
 
 /// Operation: create (static)
 pub fn call_static_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!*const anyopaque {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+
+pub fn call_availability(instance: *runtime.Instance, options: dictionaries.TranslatorCreateCoreOptions) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_create(instance: *runtime.Instance, options: dictionaries.TranslatorCreateOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

@@ -640,7 +640,7 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 }
 
 /// Getter for event
-pub fn get_event(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2766,7 +2766,7 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = message;
     _ = targetOrigin;
@@ -2775,7 +2775,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 }
 
 /// Operation: showDirectoryPicker
-pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) anyerror!*const anyopaque {
+pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DirectoryPickerOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2790,7 +2790,7 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
 
 /// Operation: scroll
 /// Per CSSOM View: Scrolls to a particular position.
-pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if window is closed
@@ -2831,7 +2831,7 @@ pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyer
 }
 
 /// Operation: showSaveFilePicker
-pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) anyerror!*const anyopaque {
+pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SaveFilePickerOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2854,7 +2854,7 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 }
 
 /// Operation: fetch
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = init_data;
@@ -2876,7 +2876,7 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: showOpenFilePicker
-pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) anyerror!*const anyopaque {
+pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(dictionaries.OpenFilePickerOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -2884,7 +2884,7 @@ pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 
 /// Operation: scrollBy
 /// Per CSSOM View: Scrolls by a given amount.
-pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Check if window is closed
@@ -3049,7 +3049,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getDigitalGoodsService
-pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = serviceProvider;
     return error.NotImplemented;
@@ -3187,7 +3187,7 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
 
 /// Operation: scrollTo
 /// Per CSSOM View: Same as scroll() - scrolls to a particular position.
-pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     return call_scroll(instance, options);
 }
 
@@ -3304,7 +3304,7 @@ pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbac
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = image;
     _ = options;
@@ -3337,7 +3337,7 @@ pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: queryLocalFonts
-pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(dictionaries.QueryOptions)) anyerror!*const anyopaque {
+pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(dictionaries.QueryOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -3351,7 +3351,7 @@ pub fn call_navigate(instance: *runtime.Instance, dir: enums.SpatialNavigationDi
 }
 
 /// Operation: getScreenDetails
-pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

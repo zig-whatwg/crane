@@ -169,7 +169,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. Let sizeAlgorithm be ! ExtractSizeAlgorithm(strategy)
 /// 6. Let highWaterMark be ? ExtractHighWaterMark(strategy, 1)
 /// 7. Perform ? SetUpWritableStreamDefaultControllerFromUnderlyingSink(...)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, underlyingSink: webidl.Opt(runtime.JSValue), strategy: webidl.Opt(dictionaries.QueuingStrategy)) !*runtime.Instance {
     // Get event loop from context
     const loop = try ctx.getEventLoop();
 
@@ -200,14 +200,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
     }
 
     // Step 4: Perform InitializeWritableStream
-    const instance = try init(allocator, State, &WritableStream.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &WritableStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
     // Create internal state
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     // InitializeWritableStream: Set initial state
     internal.* = InternalState{
@@ -225,7 +225,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, unde
         .pending_abort_request = null,
         .backpressure = false,
         .event_loop = loop,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;
@@ -273,12 +273,11 @@ pub fn get_locked(instance: *runtime.Instance) anyerror!bool {
 pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    const allocator = internal.allocator;
     const ctx = instance.ctx;
+    _ = internal;
 
     // AcquireWritableStreamDefaultWriter
     const writer = try interfaces.WritableStreamDefaultWriter.call_constructor(
-        allocator,
         ctx,
         instance,
     );
@@ -294,7 +293,7 @@ pub fn call_getWriter(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Steps:
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. Return ! WritableStreamAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -306,7 +305,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
         );
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot abort a locked stream");
         promise.*.reject(exception);
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 2: Return WritableStreamAbort(this, reason)
@@ -595,7 +594,7 @@ fn writableStreamRejectCloseAndClosedPromiseIfNeeded(instance: *runtime.Instance
 /// 1. If ! IsWritableStreamLocked(this) is true, return rejected promise
 /// 2. If ! WritableStreamCloseQueuedOrInFlight(this) is true, return rejected promise
 /// 3. Return ! WritableStreamClose(this)
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -607,7 +606,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         );
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot close a locked stream");
         promise.*.reject(exception);
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 2: Check if close already queued or in flight
@@ -618,7 +617,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
         );
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is already closing");
         promise.*.reject(exception);
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 3: WritableStreamClose
@@ -742,7 +741,7 @@ fn setUpWritableStreamDefaultController(
 
     // Create AbortController for the controller
     // Note: AbortController impl is currently a stub, but we create instance for structure
-    const abort_controller = interfaces.AbortController.call_constructor(allocator, stream_instance.ctx) catch null;
+    const abort_controller = interfaces.AbortController.call_constructor(stream_instance.ctx) catch null;
 
     // Convert Local handles to Global handles for cross-scope persistence
     // These callbacks need to survive after the JavaScript constructor returns
@@ -835,7 +834,7 @@ fn writableStreamAbort(
     instance: *runtime.Instance,
     internal: *InternalState,
     reason: *const anyopaque,
-) !*const anyopaque {
+) !runtime.JSValue {
     // Step 1: If stream.[[state]] is "closed" or "errored", return resolved promise
     if (internal.state == .closed or internal.state == .errored) {
         const promise = try AsyncPromise(void).init(
@@ -843,7 +842,7 @@ fn writableStreamAbort(
             internal.event_loop,
         );
         promise.*.fulfill({});
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
@@ -867,12 +866,12 @@ fn writableStreamAbort(
             internal.event_loop,
         );
         promise.*.fulfill({});
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 5: If stream.[[pendingAbortRequest]] is not undefined, return its promise
     if (internal.pending_abort_request) |existing_abort| {
-        return @ptrCast(existing_abort.promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(existing_abort.promise));
     }
 
     // Step 6: Assert: state is "writable" or "erroring"
@@ -883,7 +882,7 @@ fn writableStreamAbort(
             internal.event_loop,
         );
         promise.*.fulfill({});
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 7: Let wasAlreadyErroring = false
@@ -917,7 +916,7 @@ fn writableStreamAbort(
     }
 
     // Step 12: Return promise
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 /// WritableStreamClose(stream)
@@ -928,7 +927,7 @@ fn writableStreamAbort(
 fn writableStreamClose(
     instance: *runtime.Instance,
     internal: *InternalState,
-) !*const anyopaque {
+) !runtime.JSValue {
     _ = instance;
 
     const promise = try AsyncPromise(void).init(
@@ -946,7 +945,7 @@ fn writableStreamClose(
         promise.*.fulfill({});
     }
 
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 // ============================================================================

@@ -112,11 +112,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 ///
 /// Spec: § 4.5.2 "new ReadableStreamBYOBReader(stream)"
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
     // Note: Event loop is now obtained from context inside init()
     _ = stream.getState(interfaces.ReadableStream.State);
 
-    const instance = try init(allocator, State, &ReadableStreamBYOBReader.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ReadableStreamBYOBReader.vtable, ctx);
     errdefer deinit(instance);
 
     // Step 1: Perform ? SetUpReadableStreamBYOBReader(this, stream)
@@ -132,18 +132,18 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
 /// Getter for closed
 ///
 /// Spec: § 4.5.2 "The closed getter steps are:"
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Step 1: Return this.[[closedPromise]]
-    return @ptrCast(internal.closed_promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(internal.closed_promise));
 }
 
 /// Operation: read
 ///
 /// Spec: § 4.5.3 "The read(view, options) method steps are:"
-pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, options: webidl.Opt(dictionaries.ReadableStreamBYOBReaderReadOptions)) anyerror!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance, view: typedefs.ArrayBufferView, options: webidl.Opt(dictionaries.ReadableStreamBYOBReaderReadOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -191,7 +191,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// Operation: cancel
 ///
 /// Spec: § 4.5.3 "The cancel(reason) method steps are:"
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -223,7 +223,7 @@ fn readInternal(
     instance: *runtime.Instance,
     view: typedefs.ArrayBufferView,
     min: u64,
-) ImplError!*const anyopaque {
+) ImplError!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -251,7 +251,7 @@ fn readInternal(
             .simple = .{ .type = .TypeError, .message = "Stream is in errored state" },
         };
         promise.reject(exception);
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 5: Return ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, min, readIntoRequest)
@@ -287,7 +287,7 @@ fn readInternal(
     try ReadableByteStreamControllerImpl.pullInto(controller, view, min, readIntoRequest);
 
     // Return the promise (caller will wait for it to fulfill)
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 /// SetUpReadableStreamBYOBReader(reader, stream)
@@ -448,7 +448,7 @@ fn readableStreamBYOBReaderErrorReadIntoRequests(internal: *InternalState) void 
 /// ReadableStreamReaderGenericCancel(reader, reason)
 ///
 /// Spec: § 4.5.4 "Cancel with reason"
-fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const anyopaque) ImplError!*const anyopaque {
+fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const anyopaque) ImplError!runtime.JSValue {
     // Step 1: Let stream be reader.[[stream]]
     const stream = internal.stream orelse return error.InvalidState;
 

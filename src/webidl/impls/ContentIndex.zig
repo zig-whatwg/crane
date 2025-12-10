@@ -40,21 +40,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: delete
-pub fn call_delete(instance: *runtime.Instance, id: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, id: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, description: dictionaries.ContentDescription) anyerror!*const anyopaque {
+pub fn call_add(instance: *runtime.Instance, description: dictionaries.ContentDescription) anyerror!runtime.JSValue {
     _ = instance;
     _ = description;
     return error.NotImplemented;
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: createContext
-pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MLContextOptions)) anyerror!*const anyopaque {
+pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MLContextOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

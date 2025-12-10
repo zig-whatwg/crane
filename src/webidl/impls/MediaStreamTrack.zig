@@ -204,20 +204,20 @@ pub fn call_getSettings(instance: *runtime.Instance) anyerror!dictionaries.Media
 }
 
 /// Operation: getSupportedCaptureActions
-pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: sendCaptureAction
-pub fn call_sendCaptureAction(instance: *runtime.Instance, action: enums.CaptureAction) anyerror!*const anyopaque {
+pub fn call_sendCaptureAction(instance: *runtime.Instance, action: enums.CaptureAction) anyerror!runtime.JSValue {
     _ = instance;
     _ = action;
     return error.NotImplemented;
 }
 
 /// Operation: applyConstraints
-pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaTrackConstraints)) anyerror!*const anyopaque {
+pub fn call_applyConstraints(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaTrackConstraints)) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraints;
     return error.NotImplemented;

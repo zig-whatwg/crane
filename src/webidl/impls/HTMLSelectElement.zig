@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &HTMLSelectElement.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &HTMLSelectElement.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -239,7 +239,7 @@ pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOM
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, element: *const anyopaque, before: webidl.Opt(?*const anyopaque)) anyerror!void {
+pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = element;
     _ = before;

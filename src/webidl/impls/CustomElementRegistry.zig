@@ -284,8 +284,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry
 ///
 /// new CustomElementRegistry() creates a scoped registry
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &CustomElementRegistry.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &CustomElementRegistry.vtable, ctx);
     errdefer deinit(instance);
 
     // Mark as scoped registry per spec
@@ -415,15 +415,15 @@ fn isKnownHTMLElement(name: []const u8) bool {
 ///
 /// Returns the constructor for the given name, or undefined if not defined.
 /// Note: Returns the constructor cast to anyopaque pointer to match interface signature.
-pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const name_str = name.asSlice();
 
     // Step 1: If definition set contains an item with name, return that item's constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Cast the function pointer to anyopaque pointer
-        return @ptrCast(def.constructor);
+        // Return the constructor as a JSValue
+        return runtime.JSValue.fromAnyopaque(@ptrCast(def.constructor));
     }
 
     // Step 2: Return undefined - represented as error since return type is non-nullable
@@ -496,7 +496,7 @@ pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) any
 /// Returns a promise that resolves when the named element is defined.
 /// TODO: This should return a Promise<CustomElementConstructor> - for now returns the constructor directly if defined
 /// Note: Returns pointer to match interface signature. Caller should treat as Promise object.
-pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const name_str = name.asSlice();
@@ -508,8 +508,8 @@ pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) an
 
     // Step 2: If already defined, return resolved promise with constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Cast the function pointer to anyopaque pointer
-        return @ptrCast(def.constructor);
+        // Return the constructor as a JSValue
+        return runtime.JSValue.fromAnyopaque(@ptrCast(def.constructor));
     }
 
     // Step 3: Create/return pending promise

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: establishContext
-pub fn call_establishContext(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_establishContext(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

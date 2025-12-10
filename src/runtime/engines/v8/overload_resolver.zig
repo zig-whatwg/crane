@@ -38,7 +38,7 @@ const webidl = @import("webidl");
 ///     isolate,
 ///     context
 /// );
-/// return try Interface.call_constructor(allocator, ctx, args);
+/// return try Interface.call_constructor( ctx, args);
 /// ```
 pub fn resolveConstructorOverload(
     comptime UnionType: type,

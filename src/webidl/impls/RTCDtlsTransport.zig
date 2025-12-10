@@ -78,7 +78,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 /// Operation: getRemoteCertificates
-pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getRemoteCertificates(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

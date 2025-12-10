@@ -58,38 +58,38 @@ pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persist
-pub fn call_persist(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_persist(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: estimate
-pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setExpires
-pub fn call_setExpires(instance: *runtime.Instance, expires: typedefs.DOMHighResTimeStamp) anyerror!*const anyopaque {
+pub fn call_setExpires(instance: *runtime.Instance, expires: typedefs.DOMHighResTimeStamp) anyerror!runtime.JSValue {
     _ = instance;
     _ = expires;
     return error.NotImplemented;
 }
 
 /// Operation: expires
-pub fn call_expires(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_expires(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: persisted
-pub fn call_persisted(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_persisted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

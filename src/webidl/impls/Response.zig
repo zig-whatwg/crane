@@ -94,8 +94,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor - Creates a Response with optional body and init
 /// Spec: https://fetch.spec.whatwg.org/#dom-response
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
-    const instance = try init(allocator, State, &Response.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyInit), init_data: webidl.Opt(dictionaries.ResponseInit)) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &Response.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -170,7 +170,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, body
             if (body_bytes) |bytes| {
                 if (bytes.len > 0) {
                     // Create Body from bytes
-                    const fetch_body = fetch.internal.Body.fromBytes(allocator, bytes) catch {
+                    const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, bytes) catch {
                         return error.OutOfMemory;
                     };
                     internal.response.body = fetch_body;
@@ -238,7 +238,6 @@ pub fn call_static_redirect(instance: *runtime.Instance, url: runtime.USVString,
 /// Note: Takes instance as first param to match V8 static method calling convention.
 /// The instance is a template instance that provides allocator/context.
 pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init_data: webidl.Opt(dictionaries.ResponseInit)) anyerror!*runtime.Instance {
-    const allocator = instance.ctx.allocator;
     const ctx = instance.ctx;
 
     // Step 1: Let bytes be the result of running serialize a JavaScript value to JSON bytes on data
@@ -255,7 +254,7 @@ pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init
     // Create a body from the JSON bytes
     const body = typedefs.BodyInit{ .xmlhttp_request_body_init = .{ .usvstring = body_bytes } };
     const body_opt = webidl.Opt(?typedefs.BodyInit).passed(body);
-    const json_instance = try call_constructor(allocator, ctx, body_opt, init_data);
+    const json_instance = try call_constructor(ctx, body_opt, init_data);
     const json_state = json_instance.getState(State);
     const internal = json_state.own._internal.?;
 
@@ -367,7 +366,6 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // Try to create a ReadableStream from the body data
     // This requires an event loop; if not available, return null
     // (body methods like text()/json() will still work directly)
-    const allocator = internal.allocator;
     const ctx = instance.ctx;
 
     // Check if we have an event loop
@@ -380,7 +378,6 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // Create a basic ReadableStream (use interface per Golden Rule #13)
     // For now, create a simple stream that will serve the body data
     const stream_instance = interfaces.ReadableStream.call_constructor(
-        allocator,
         ctx,
         webidl.Opt(runtime.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),
@@ -446,7 +443,7 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-arraybuffer
 ///
 /// Uses the engine abstraction layer for Promise and ArrayBuffer creation.
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -467,7 +464,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         }
     }
 
@@ -475,7 +472,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
         const bytes = body.readAllBytes() catch |err| {
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         };
         break :blk bytes;
     } else "";
@@ -483,12 +480,12 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Create JS ArrayBuffer through engine abstraction
     const createArrayBuffer = engine.createArrayBuffer orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const js_array_buffer = createArrayBuffer(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Resolve with the JS ArrayBuffer
@@ -496,14 +493,14 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
         return error.InvalidState;
     };
 
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 /// blob() - Returns promise fulfilled with body as Blob
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-blob
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
-pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -533,7 +530,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         }
     }
 
@@ -541,7 +538,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
         const bytes = body.readAllBytes() catch |err| {
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         };
         break :blk bytes;
     } else "";
@@ -549,7 +546,7 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Create Blob instance
     const blob_data = BlobData.init(internal.allocator, body_bytes, mime_type) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const blob_instance = BlobImpl.createFromBlobData(
@@ -559,18 +556,18 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
     ) catch {
         blob_data.deinit();
         engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Wrap the Blob instance as a V8 object
     const wrapInstance = engine.wrapInstance orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const js_blob = wrapInstance(engine_ctx, blob_instance) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Resolve with the JS Blob
@@ -578,14 +575,14 @@ pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
         return error.InvalidState;
     };
 
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 /// bytes() - Returns promise fulfilled with body as Uint8Array
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-bytes
 ///
 /// Uses the engine abstraction layer for Promise and Uint8Array creation.
-pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -606,7 +603,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         }
     }
 
@@ -614,7 +611,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
         const bytes = body.readAllBytes() catch |err| {
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         };
         break :blk bytes;
     } else "";
@@ -622,12 +619,12 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Create JS Uint8Array through engine abstraction
     const createUint8Array = engine.createUint8Array orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const js_uint8_array = createUint8Array(engine_ctx, body_bytes) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Resolve with the JS Uint8Array
@@ -635,14 +632,14 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
         return error.InvalidState;
     };
 
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 /// formData() - Returns promise fulfilled with body as FormData
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-formdata
 ///
 /// Uses the engine abstraction layer for Promise creation and instance wrapping.
-pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -666,9 +663,9 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
 
     // Helper to reject and return
     const rejectAndReturn = struct {
-        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) *const anyopaque {
+        fn call(eng: anytype, eng_ctx: anytype, handle: anytype, err: anyerror) runtime.JSValue {
             eng.rejectPromise(eng_ctx, handle, err) catch {};
-            return eng.getPromiseObject(handle);
+            return runtime.JSValue.fromHandle(eng.getPromiseObject(handle));
         }
     }.call;
 
@@ -803,7 +800,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
         return error.InvalidState;
     };
 
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 /// json() - Returns promise fulfilled with body parsed as JSON
@@ -811,7 +808,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-json
 ///
 /// Uses the engine abstraction layer for Promise and JSON parsing.
-pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -832,7 +829,7 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     if (internal.response.body) |body| {
         if (body.isDisturbed()) {
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         }
     }
 
@@ -840,25 +837,25 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
     const body_bytes: []const u8 = if (internal.response.body) |body| blk: {
         const bytes = body.readAllBytes() catch |err| {
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         };
         break :blk bytes;
     } else {
         // Null body - reject with SyntaxError (empty JSON is invalid)
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Parse JSON through engine abstraction
     const parseJson = engine.parseJson orelse {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const js_value = parseJson(engine_ctx, body_bytes) catch {
         // JSON parse failed - reject with SyntaxError
         engine.rejectPromise(engine_ctx, promise_handle, error.SyntaxError) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Resolve with the parsed JS value
@@ -866,14 +863,14 @@ pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
         return error.InvalidState;
     };
 
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 /// text() - Returns promise fulfilled with body as string
 /// Spec: https://fetch.spec.whatwg.org/#dom-body-text
 ///
 /// Uses the engine abstraction layer for Promise creation and string creation.
-pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -895,7 +892,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
         if (body.isDisturbed()) {
             // Reject with TypeError per spec
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         }
     }
 
@@ -904,7 +901,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
         const bytes = body.readAllBytes() catch |err| {
             // Reject on read error
             engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return engine.getPromiseObject(promise_handle);
+            return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
         };
         break :blk bytes;
     } else "";
@@ -913,12 +910,12 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     const createString = engine.createString orelse {
         // No createString support - resolve with null (undefined)
         engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     const js_string = createString(engine_ctx, body_text) catch {
         engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-        return engine.getPromiseObject(promise_handle);
+        return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
     };
 
     // Resolve with the JS string
@@ -927,7 +924,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     };
 
     // Return the JS Promise object wrapped in Promise(T) type
-    return engine.getPromiseObject(promise_handle);
+    return runtime.JSValue.fromHandle(engine.getPromiseObject(promise_handle));
 }
 
 // === Helper Functions ===
@@ -1003,4 +1000,16 @@ pub fn getResponseData(instance: *runtime.Instance) ResponseData {
         .status_text = internal.response.status_message,
         .body = if (internal.response.body) |body| body.getBytes() else null,
     };
+}
+
+pub fn call_error(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, status: webidl.Opt(u16)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = url;
+    _ = status;
+    return error.NotImplemented;
 }

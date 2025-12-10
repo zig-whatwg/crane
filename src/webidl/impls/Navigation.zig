@@ -301,14 +301,14 @@ pub fn set_oncurrententrychange(instance: *runtime.Instance, value: typedefs.Eve
 
 /// Operation: entries()
 /// HTML Standard §7.2.6.3: Returns a frozen array of NavigationHistoryEntry objects
-pub fn call_entries(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_entries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const history = getSessionHistory(internal) orelse return error.InvalidStateError;
 
-    // Return a pointer to the entries array
+    // Return a pointer to the entries array wrapped in JSValue
     // Full implementation would create NavigationHistoryEntry wrappers
     // For now, return the raw entries pointer
-    return @ptrCast(&history.entries.items);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&history.entries.items));
 }
 
 /// Operation: navigate(url, options)

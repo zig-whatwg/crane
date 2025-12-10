@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.EditContextInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.EditContextInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &EditContext.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &EditContext.vtable, ctx);
     errdefer deinit(instance);
 
     _ = options;
@@ -151,7 +151,7 @@ pub fn call_updateSelection(instance: *runtime.Instance, start: u32, end: u32) a
 }
 
 /// Operation: characterBounds
-pub fn call_characterBounds(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_characterBounds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -164,7 +164,7 @@ pub fn call_updateSelectionBounds(instance: *runtime.Instance, selectionBounds: 
 }
 
 /// Operation: attachedElements
-pub fn call_attachedElements(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_attachedElements(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -177,7 +177,7 @@ pub fn call_updateControlBounds(instance: *runtime.Instance, controlBounds: *run
 }
 
 /// Operation: updateCharacterBounds
-pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: *const anyopaque) anyerror!void {
+pub fn call_updateCharacterBounds(instance: *runtime.Instance, rangeStart: u32, characterBounds: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = rangeStart;
     _ = characterBounds;

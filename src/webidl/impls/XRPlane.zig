@@ -46,7 +46,7 @@ pub fn get_planeSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for polygon
-pub fn get_polygon(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_polygon(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

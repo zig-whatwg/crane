@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.HIDInputReportEventInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.HIDInputReportEventInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &HIDInputReportEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &HIDInputReportEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -66,7 +66,7 @@ pub fn get_reportId(instance: *runtime.Instance) anyerror!u8 {
 }
 
 /// Getter for data
-pub fn get_data(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

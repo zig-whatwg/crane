@@ -67,28 +67,28 @@ pub fn set_oncaptureaction(instance: *runtime.Instance, value: typedefs.EventHan
 }
 
 /// Operation: selectAudioOutput
-pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AudioOutputOptions)) anyerror!*const anyopaque {
+pub fn call_selectAudioOutput(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AudioOutputOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getDisplayMedia
-pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) anyerror!*const anyopaque {
+pub fn call_getDisplayMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getUserMedia
-pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaStreamConstraints)) anyerror!*const anyopaque {
+pub fn call_getUserMedia(instance: *runtime.Instance, constraints: webidl.Opt(dictionaries.MediaStreamConstraints)) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraints;
     return error.NotImplemented;
 }
 
 /// Operation: enumerateDevices
-pub fn call_enumerateDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_enumerateDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -100,14 +100,14 @@ pub fn call_getSupportedConstraints(instance: *runtime.Instance) anyerror!dictio
 }
 
 /// Operation: getViewportMedia
-pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) anyerror!*const anyopaque {
+pub fn call_getViewportMedia(instance: *runtime.Instance, options: webidl.Opt(dictionaries.DisplayMediaStreamOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: setSupportedCaptureActions
-pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: *const anyopaque) anyerror!void {
+pub fn call_setSupportedCaptureActions(instance: *runtime.Instance, actions: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = actions;
     return error.NotImplemented;

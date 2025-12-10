@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for rawId
-pub fn get_rawId(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_rawId(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -58,26 +58,26 @@ pub fn get_authenticatorAttachment(instance: *runtime.Instance) anyerror!?runtim
 }
 
 /// Operation: isUserVerifyingPlatformAuthenticatorAvailable
-pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_isUserVerifyingPlatformAuthenticatorAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: isConditionalMediationAvailable
-pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_isConditionalMediationAvailable(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: signalUnknownCredential
-pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: dictionaries.UnknownCredentialOptions) anyerror!*const anyopaque {
+pub fn call_signalUnknownCredential(instance: *runtime.Instance, options: dictionaries.UnknownCredentialOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: signalCurrentUserDetails
-pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: dictionaries.CurrentUserDetailsOptions) anyerror!*const anyopaque {
+pub fn call_signalCurrentUserDetails(instance: *runtime.Instance, options: dictionaries.CurrentUserDetailsOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -97,7 +97,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!typedefs.PublicKeyCrede
 }
 
 /// Operation: getClientCapabilities
-pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getClientCapabilities(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -109,7 +109,7 @@ pub fn call_getClientExtensionResults(instance: *runtime.Instance) anyerror!dict
 }
 
 /// Operation: signalAllAcceptedCredentials
-pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: dictionaries.AllAcceptedCredentialsOptions) anyerror!*const anyopaque {
+pub fn call_signalAllAcceptedCredentials(instance: *runtime.Instance, options: dictionaries.AllAcceptedCredentialsOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

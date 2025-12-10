@@ -65,13 +65,13 @@ pub fn get_length(instance: *runtime.Instance) anyerror!enums.WriterLength {
 }
 
 /// Getter for expectedInputLanguages
-pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_expectedInputLanguages(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for expectedContextLanguages
-pub fn get_expectedContextLanguages(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_expectedContextLanguages(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -96,7 +96,7 @@ pub fn call_static_availability(instance: *runtime.Instance, options: webidl.Opt
 }
 
 /// Operation: measureInputUsage
-pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) anyerror!*const anyopaque {
+pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -104,7 +104,7 @@ pub fn call_measureInputUsage(instance: *runtime.Instance, input: runtime.DOMStr
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) anyerror!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, input: runtime.DOMString, options: webidl.Opt(dictionaries.WriterWriteOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = options;
@@ -127,6 +127,19 @@ pub fn call_writeStreaming(instance: *runtime.Instance, input: runtime.DOMString
 
 /// Operation: create (static)
 pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WriterCreateOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WriterCreateOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = options;
+    return error.NotImplemented;
+}
+
+pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WriterCreateCoreOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

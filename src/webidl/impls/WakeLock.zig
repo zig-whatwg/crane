@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(enums.WakeLockType)) anyerror!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(enums.WakeLockType)) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

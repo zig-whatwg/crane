@@ -67,14 +67,14 @@ pub fn set_playbackState(instance: *runtime.Instance, value: enums.MediaSessionP
 }
 
 /// Operation: setMicrophoneActive
-pub fn call_setMicrophoneActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+pub fn call_setMicrophoneActive(instance: *runtime.Instance, active: bool) anyerror!runtime.JSValue {
     _ = instance;
     _ = active;
     return error.NotImplemented;
 }
 
 /// Operation: setCameraActive
-pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+pub fn call_setCameraActive(instance: *runtime.Instance, active: bool) anyerror!runtime.JSValue {
     _ = instance;
     _ = active;
     return error.NotImplemented;
@@ -88,7 +88,7 @@ pub fn call_setPositionState(instance: *runtime.Instance, state: webidl.Opt(dict
 }
 
 /// Operation: setScreenshareActive
-pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!*const anyopaque {
+pub fn call_setScreenshareActive(instance: *runtime.Instance, active: bool) anyerror!runtime.JSValue {
     _ = instance;
     _ = active;
     return error.NotImplemented;

@@ -49,19 +49,19 @@ pub fn call_allowsFeature(instance: *runtime.Instance, feature: runtime.DOMStrin
 }
 
 /// Operation: allowedFeatures
-pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_allowedFeatures(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: features
-pub fn call_features(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_features(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getAllowlistForFeature
-pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_getAllowlistForFeature(instance: *runtime.Instance, feature: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = feature;
     return error.NotImplemented;

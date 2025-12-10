@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: startTransaction
-pub fn call_startTransaction(instance: *runtime.Instance, transaction: callbacks.SmartCardTransactionCallback, options: webidl.Opt(dictionaries.SmartCardTransactionOptions)) anyerror!*const anyopaque {
+pub fn call_startTransaction(instance: *runtime.Instance, transaction: callbacks.SmartCardTransactionCallback, options: webidl.Opt(dictionaries.SmartCardTransactionOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = transaction;
     _ = options;
@@ -49,14 +49,14 @@ pub fn call_startTransaction(instance: *runtime.Instance, transaction: callbacks
 }
 
 /// Operation: getAttribute
-pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!*const anyopaque {
+pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!runtime.JSValue {
     _ = instance;
     _ = tag;
     return error.NotImplemented;
 }
 
 /// Operation: transmit
-pub fn call_transmit(instance: *runtime.Instance, sendBuffer: typedefs.BufferSource, options: webidl.Opt(dictionaries.SmartCardTransmitOptions)) anyerror!*const anyopaque {
+pub fn call_transmit(instance: *runtime.Instance, sendBuffer: typedefs.BufferSource, options: webidl.Opt(dictionaries.SmartCardTransmitOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = sendBuffer;
     _ = options;
@@ -64,20 +64,20 @@ pub fn call_transmit(instance: *runtime.Instance, sendBuffer: typedefs.BufferSou
 }
 
 /// Operation: status
-pub fn call_status(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_status(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: disconnect
-pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(enums.SmartCardDisposition)) anyerror!*const anyopaque {
+pub fn call_disconnect(instance: *runtime.Instance, disposition: webidl.Opt(enums.SmartCardDisposition)) anyerror!runtime.JSValue {
     _ = instance;
     _ = disposition;
     return error.NotImplemented;
 }
 
 /// Operation: setAttribute
-pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = tag;
     _ = value;
@@ -85,7 +85,7 @@ pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: typedefs.
 }
 
 /// Operation: control
-pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = controlCode;
     _ = data;

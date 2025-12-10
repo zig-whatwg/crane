@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, bytes: typedefs.BufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, bytes: typedefs.BufferSource, options: webidl.Opt(dictionaries.WebAssemblyCompileOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Module.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Module.vtable, ctx);
     errdefer deinit(instance);
 
     _ = bytes;
@@ -55,21 +55,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, byte
 }
 
 /// Operation: exports
-pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: imports
-pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = moduleObject;
     return error.NotImplemented;
 }
 
 /// Operation: customSections
-pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = moduleObject;
     _ = sectionName;

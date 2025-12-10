@@ -79,15 +79,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form: webidl.Opt(*runtime.Instance), submitter: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance), submitter: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
     _ = form;
     _ = submitter;
 
     // Create empty FormData
-    const form_data = try InternalFormData.init(allocator);
+    const form_data = try InternalFormData.init(ctx.allocator);
     errdefer form_data.deinit();
 
-    return createFromInternal(allocator, ctx, form_data);
+    return createFromInternal(ctx.allocator, ctx, form_data);
 }
 
 /// Create a FormData from internal FormData (internal helper)
@@ -272,7 +272,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 ///
 /// Spec: https://xhr.spec.whatwg.org/#dom-formdata-getall
 /// Returns all values associated with a given key.
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     const values = try internal.form_data.getAll(internal.allocator, name);
@@ -315,7 +315,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         return error.InvalidState;
     };
 
-    return js_array;
+    return runtime.JSValue.fromHandle(js_array);
 }
 
 /// Operation: has

@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, packets: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, packets: runtime.JSValue) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &USBIsochronousOutTransferResult.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &USBIsochronousOutTransferResult.vtable, ctx);
     errdefer deinit(instance);
 
     _ = packets;
@@ -53,7 +53,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, pack
 }
 
 /// Getter for packets
-pub fn get_packets(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_packets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

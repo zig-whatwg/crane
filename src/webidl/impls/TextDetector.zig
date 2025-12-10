@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &TextDetector.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &TextDetector.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -52,7 +52,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*ru
 }
 
 /// Operation: detect
-pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) anyerror!*const anyopaque {
+pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = image;
     return error.NotImplemented;

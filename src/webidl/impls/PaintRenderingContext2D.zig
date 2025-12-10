@@ -65,13 +65,13 @@ pub fn get_imageSmoothingQuality(instance: *runtime.Instance) anyerror!enums.Ima
 }
 
 /// Getter for strokeStyle
-pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fillStyle
-pub fn get_fillStyle(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -159,14 +159,14 @@ pub fn set_imageSmoothingQuality(instance: *runtime.Instance, value: enums.Image
 }
 
 /// Setter for strokeStyle
-pub fn set_strokeStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for fillStyle
-pub fn set_fillStyle(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -245,7 +245,7 @@ pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule:
 }
 
 /// Operation: getLineDash
-pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -366,7 +366,7 @@ pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: roundRect
-pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64, radii: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = x;
     _ = y;
@@ -410,7 +410,7 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
 }
 
 /// Operation: setLineDash
-pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
+pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = segments;
     return error.NotImplemented;

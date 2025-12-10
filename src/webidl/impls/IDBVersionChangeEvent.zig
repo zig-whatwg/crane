@@ -72,9 +72,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &IDBVersionChangeEventInterface.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &IDBVersionChangeEventInterface.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -82,7 +82,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
     // Initialize Event base - set the type on the event base state
     // The Event's type field is stored in state.base.own (Event.State's own fields)
-    state.base.own.type = try @"type".clone(allocator);
+    state.base.own.type = try @"type".clone(ctx.allocator);
 
     // Initialize Event properties from eventInitDict
     // IDBVersionChangeEventInit inherits from EventInit (bubbles, cancelable are in .base)

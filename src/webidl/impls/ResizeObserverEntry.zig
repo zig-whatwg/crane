@@ -52,19 +52,19 @@ pub fn get_contentRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for borderBoxSize
-pub fn get_borderBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_borderBoxSize(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for contentBoxSize
-pub fn get_contentBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_contentBoxSize(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for devicePixelContentBoxSize
-pub fn get_devicePixelContentBoxSize(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_devicePixelContentBoxSize(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

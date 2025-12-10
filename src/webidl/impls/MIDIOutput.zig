@@ -47,7 +47,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: send
-pub fn call_send(instance: *runtime.Instance, data: *const anyopaque, timestamp: webidl.Opt(typedefs.DOMHighResTimeStamp)) anyerror!void {
+pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue, timestamp: webidl.Opt(typedefs.DOMHighResTimeStamp)) anyerror!void {
     _ = instance;
     _ = data;
     _ = timestamp;

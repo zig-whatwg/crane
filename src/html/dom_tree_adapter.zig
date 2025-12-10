@@ -392,7 +392,6 @@ pub const DomTreeAdapter = struct {
         const dom_string = runtime.DOMString.initInterned(text_data);
 
         const text = Text.call_constructor(
-            self.allocator,
             self.ctx,
             webidl.Opt(runtime.DOMString).passed(dom_string),
         ) catch return DomTreeAdapterError.OutOfMemory;
@@ -411,7 +410,6 @@ pub const DomTreeAdapter = struct {
         const dom_string = runtime.DOMString.initInterned(comment_data);
 
         const comment = Comment.call_constructor(
-            self.allocator,
             self.ctx,
             webidl.Opt(runtime.DOMString).passed(dom_string),
         ) catch return DomTreeAdapterError.OutOfMemory;

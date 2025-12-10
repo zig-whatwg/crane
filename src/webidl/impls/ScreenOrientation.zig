@@ -71,7 +71,7 @@ pub fn call_unlock(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: lock
-pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLockType) anyerror!*const anyopaque {
+pub fn call_lock(instance: *runtime.Instance, orientation: enums.OrientationLockType) anyerror!runtime.JSValue {
     _ = instance;
     _ = orientation;
     return error.NotImplemented;

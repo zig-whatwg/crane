@@ -47,14 +47,14 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: item
-pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?*const anyopaque {
+pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?runtime.JSValue {
     _ = instance;
     _ = nameOrIndex;
     return error.NotImplemented;
 }
 
 /// Operation: namedItem
-pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*const anyopaque {
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.JSValue {
     _ = instance;
     _ = name;
     return error.NotImplemented;

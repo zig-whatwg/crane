@@ -176,7 +176,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 1. If ! IsReadableStreamLocked(stream) is true, throw a TypeError exception
 /// 2. Perform ! ReadableStreamReaderGenericInitialize(reader, stream)
 /// 3. Set reader.[[readRequests]] to a new empty list
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
     // Get event loop from context (required for async operations)
     const event_loop = try ctx.getEventLoop();
 
@@ -191,14 +191,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
     }
 
     // Create instance
-    const instance = try init(allocator, State, &ReadableStreamDefaultReader.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ReadableStreamDefaultReader.vtable, ctx);
     errdefer deinit(instance);
 
     const reader_state = instance.getState(State);
 
     // Create InternalState for reader
-    const reader_internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(reader_internal);
+    const reader_internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(reader_internal);
 
     // SetUpReadableStreamDefaultReader Step 2: ReadableStreamReaderGenericInitialize
     // This sets up the bidirectional relationship between reader and stream
@@ -212,24 +212,24 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
     // ReadableStreamReaderGenericInitialize Step 3-5: Initialize closedPromise based on stream state
     const closed_promise = switch (stream_internal.state) {
         // Step 3: If stream.[[state]] is "readable", create pending promise
-        .readable => try AsyncPromise(void).init(allocator, event_loop),
+        .readable => try AsyncPromise(void).init(ctx.allocator, event_loop),
 
         // Step 4: If stream.[[state]] is "closed", create resolved promise
         .closed => blk: {
-            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            const promise = try AsyncPromise(void).init(ctx.allocator, event_loop);
             promise.*.fulfill({});
             break :blk promise;
         },
 
         // Step 5: If stream.[[state]] is "errored", create rejected promise
         .errored => blk: {
-            const promise = try AsyncPromise(void).init(allocator, event_loop);
+            const promise = try AsyncPromise(void).init(ctx.allocator, event_loop);
             // Reject with stream.[[storedError]]
             // Use type-safe StoredError API to check for error
             const exception = if (stream_internal.stored_error.hasError())
-                try webidl.errors.Exception.typeError(allocator, "Stream errored (stored error)")
+                try webidl.errors.Exception.typeError(ctx.allocator, "Stream errored (stored error)")
             else
-                try webidl.errors.Exception.typeError(allocator, "Stream is errored");
+                try webidl.errors.Exception.typeError(ctx.allocator, "Stream is errored");
             promise.*.reject(exception);
             // Note: Should set promise.[[PromiseIsHandled]] to true
             break :blk promise;
@@ -248,7 +248,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
         .closed_promise = closed_promise,
         .read_requests = read_requests,
         .event_loop = event_loop,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     reader_state.own._internal = reader_internal;
@@ -265,13 +265,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
 /// Returns a promise that fulfills when the stream closes.
 ///
 /// Returns: Pointer to AsyncPromise(void)
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
     // Return the closed promise
     // Note: The promise is owned by the reader and should not be deinitialized by caller
-    return @ptrCast(internal.closed_promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(internal.closed_promise));
 }
 
 /// Operation: read
@@ -290,7 +290,7 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// 5. Return promise
 ///
 /// Returns: Pointer to V8 Promise - the promise is managed by V8's GC
-pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_read(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -305,7 +305,7 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
         promise.*.reject(exception);
         // Convert to V8 Promise before returning
         const v8_promise = try convertReadResultPromiseToV8(promise);
-        return @ptrCast(v8_promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(v8_promise));
     }
 
     // Step 2: Create promise
@@ -368,7 +368,7 @@ pub fn call_read(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Step 5: Convert AsyncPromise to V8 Promise and return
     // This creates a bridge that will resolve the V8 Promise when the AsyncPromise settles
     const v8_promise = try convertReadResultPromiseToV8(promise);
-    return @ptrCast(v8_promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(v8_promise));
 }
 
 /// Operation: releaseLock
@@ -452,7 +452,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
 /// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
-pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
@@ -465,7 +465,7 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
         );
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
         promise.*.reject(exception);
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     // Step 2: ReadableStreamReaderGenericCancel

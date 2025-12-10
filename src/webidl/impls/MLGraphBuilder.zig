@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MLGraphBuilder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MLGraphBuilder.vtable, ctx);
     errdefer deinit(instance);
 
     _ = context;
@@ -164,7 +164,7 @@ pub fn call_where(instance: *runtime.Instance, condition: *runtime.Instance, tru
 }
 
 /// Operation: build
-pub fn call_build(instance: *runtime.Instance, outputs: typedefs.MLNamedOperands) anyerror!*const anyopaque {
+pub fn call_build(instance: *runtime.Instance, outputs: typedefs.MLNamedOperands) anyerror!runtime.JSValue {
     _ = instance;
     _ = outputs;
     return error.NotImplemented;
@@ -204,7 +204,7 @@ pub fn call_transpose(instance: *runtime.Instance, input: *runtime.Instance, opt
 }
 
 /// Operation: gru
-pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLGruOptions)) anyerror!*const anyopaque {
+pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLGruOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = weight;
@@ -311,7 +311,7 @@ pub fn call_layerNormalization(instance: *runtime.Instance, input: *runtime.Inst
 }
 
 /// Operation: pad
-pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: *const anyopaque, endingPadding: *const anyopaque, options: webidl.Opt(dictionaries.MLPadOptions)) anyerror!*runtime.Instance {
+pub fn call_pad(instance: *runtime.Instance, input: *runtime.Instance, beginningPadding: runtime.JSValue, endingPadding: runtime.JSValue, options: webidl.Opt(dictionaries.MLPadOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = beginningPadding;
@@ -498,7 +498,7 @@ pub fn call_equal(instance: *runtime.Instance, a: *runtime.Instance, b: *runtime
 }
 
 /// Operation: slice
-pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: *const anyopaque, sizes: *const anyopaque, options: webidl.Opt(dictionaries.MLSliceOptions)) anyerror!*runtime.Instance {
+pub fn call_slice(instance: *runtime.Instance, input: *runtime.Instance, starts: runtime.JSValue, sizes: runtime.JSValue, options: webidl.Opt(dictionaries.MLSliceOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = starts;
@@ -553,7 +553,7 @@ pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weigh
 }
 
 /// Operation: split
-pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: *const anyopaque, options: webidl.Opt(dictionaries.MLSplitOptions)) anyerror!*const anyopaque {
+pub fn call_split(instance: *runtime.Instance, input: *runtime.Instance, splits: runtime.JSValue, options: webidl.Opt(dictionaries.MLSplitOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = splits;
@@ -570,7 +570,7 @@ pub fn call_tanh(instance: *runtime.Instance, input: *runtime.Instance, options:
 }
 
 /// Operation: reshape
-pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
+pub fn call_reshape(instance: *runtime.Instance, input: *runtime.Instance, newShape: runtime.JSValue, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -595,7 +595,7 @@ pub fn call_reciprocal(instance: *runtime.Instance, input: *runtime.Instance, op
 }
 
 /// Operation: expand
-pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
+pub fn call_expand(instance: *runtime.Instance, input: *runtime.Instance, newShape: runtime.JSValue, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = newShape;
@@ -628,7 +628,7 @@ pub fn call_clamp(instance: *runtime.Instance, input: *runtime.Instance, options
 }
 
 /// Operation: lstmCell
-pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmCellOptions)) anyerror!*const anyopaque {
+pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmCellOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = weight;
@@ -752,7 +752,7 @@ pub fn call_neg(instance: *runtime.Instance, input: *runtime.Instance, options: 
 }
 
 /// Operation: lstm
-pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmOptions)) anyerror!*const anyopaque {
+pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(dictionaries.MLLstmOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;
     _ = weight;
@@ -764,7 +764,7 @@ pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: 
 }
 
 /// Operation: concat
-pub fn call_concat(instance: *runtime.Instance, inputs: *const anyopaque, axis: u32, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
+pub fn call_concat(instance: *runtime.Instance, inputs: runtime.JSValue, axis: u32, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = inputs;
     _ = axis;
@@ -886,7 +886,7 @@ pub fn call_sigmoid(instance: *runtime.Instance, input: *runtime.Instance, optio
 }
 
 /// Operation: tile
-pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: *const anyopaque, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
+pub fn call_tile(instance: *runtime.Instance, input: *runtime.Instance, repetitions: runtime.JSValue, options: webidl.Opt(dictionaries.MLOperatorOptions)) anyerror!*runtime.Instance {
     _ = instance;
     _ = input;
     _ = repetitions;

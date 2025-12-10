@@ -536,15 +536,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// DOM §4.6 - new Document()
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &Document.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &Document.vtable, ctx);
     errdefer deinit(instance);
 
     // Set default values
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.content_type = try runtime.DOMString.initDupe(allocator, "application/xml");
-    internal.url = try allocator.dupe(u8, "about:blank");
-    internal.encoding = try runtime.DOMString.initDupe(allocator, "UTF-8");
+    internal.content_type = try runtime.DOMString.initDupe(ctx.allocator, "application/xml");
+    internal.url = try ctx.allocator.dupe(u8, "about:blank");
+    internal.encoding = try runtime.DOMString.initDupe(ctx.allocator, "UTF-8");
 
     return instance;
 }
@@ -1276,11 +1276,10 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for adoptedStyleSheets
 /// Returns the adopted stylesheets for this document.
 /// Returns an empty array sentinel for now.
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
-    // Return empty array sentinel
-    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return @ptrCast(empty.ptr);
+    // Return undefined for empty array (no adopted stylesheets)
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Getter for activeElement
@@ -2136,7 +2135,7 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 /// Setter for adoptedStyleSheets
 /// Sets the adopted stylesheets for this document.
 /// Currently a no-op as CSSOM is not fully implemented.
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - CSSOM not fully implemented
@@ -2701,7 +2700,7 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DO
 }
 
 /// Operation: exitPictureInPicture
-pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_exitPictureInPicture(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -2728,7 +2727,7 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerr
 /// Operation: createElement
 /// DOM §4.6 - Creates an element with the given local name
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createelement
-pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -2791,14 +2790,14 @@ pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtim
 }
 
 /// Operation: hasPrivateToken
-pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = issuer;
     return error.NotImplemented;
 }
 
 /// Operation: requestStorageAccessFor
-pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_requestStorageAccessFor(instance: *runtime.Instance, requestedOrigin: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = requestedOrigin;
     return error.NotImplemented;
@@ -2865,13 +2864,13 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
 }
 
 /// Operation: hasUnpartitionedCookieAccess
-pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: hasRedemptionRecord
-pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = issuer;
     return error.NotImplemented;
@@ -2957,7 +2956,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create the formatting element
-    const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(*const anyopaque).notPassed()) catch return false;
+    const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
 
     // Step 5: Surround the selection with the element
     RangeImpl.call_surroundContents(range, element) catch |err| {
@@ -2989,7 +2988,7 @@ fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const 
     const range = SelectionImpl.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create anchor element
-    const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(*const anyopaque).notPassed()) catch return false;
+    const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
 
     // Step 5: Set href attribute
     // Use Element interface to set attribute
@@ -3222,14 +3221,13 @@ pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runt
 /// Operation: elementsFromPoint
 /// Returns a sequence of elements at the specified coordinates.
 /// Without a layout engine, returns an empty sequence.
-pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!*const anyopaque {
+pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
     _ = instance;
     _ = x;
     _ = y;
     // Without a layout engine, we cannot determine element positions
-    // Return empty sequence sentinel
-    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return @ptrCast(empty.ptr);
+    // Return undefined for empty array
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: createProcessingInstruction
@@ -3268,7 +3266,7 @@ pub fn call_createProcessingInstruction(instance: *runtime.Instance, target: run
 /// 4. If interface not exposed on relevant global object, throw "NotSupportedError"
 /// 5. Return result of creating an event given constructor
 pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     const interface_slice = interface.asSlice();
 
     // Step 2: Check ASCII case-insensitive match against known event types
@@ -3326,7 +3324,7 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
         .composed = false,
     };
     // Use interface instead of impl (per Golden Rule #13)
-    const event = try interfaces.Event.call_constructor(internal.allocator, instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
+    const event = try interfaces.Event.call_constructor(instance.ctx, runtime.DOMString.initEmpty(), webidl.Opt(dictionaries.EventInit).passed(event_init));
 
     return event;
 }
@@ -3348,13 +3346,12 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 /// Operation: getBoxQuads
 /// Returns the CSS box quads for this document.
 /// Without a layout engine, returns an empty sequence.
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     // Without a layout engine, we cannot compute box quads
-    // Return empty sequence sentinel
-    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return @ptrCast(empty.ptr);
+    // Return undefined for empty array
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: convertPointFromNode
@@ -3367,7 +3364,7 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 }
 
 /// Operation: getAnimations
-pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -3550,7 +3547,7 @@ pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMStr
 }
 
 /// Operation: hasStorageAccess
-pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -3562,7 +3559,7 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!*const anyopa
 /// Steps:
 /// 1. If node is a document or shadow root, throw "NotSupportedError"
 /// 2. Return clone a node with document=this, subtree=deep
-pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = options; // TODO: Handle ImportNodeOptions (deep flag)
 
     // Step 1: Check node type
@@ -3632,7 +3629,7 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
             // Use interface instead of impl (per Golden Rule #13)
-            const text = try interfaces.Text.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
+            const text = try interfaces.Text.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk text;
         },
         NodeImpl.NodeType.COMMENT_NODE => blk: {
@@ -3640,7 +3637,7 @@ fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplEr
             const CharacterDataImpl = @import("CharacterData.zig");
             const src_data = CharacterDataImpl.getData(node) orelse "";
             // Use interface instead of impl (per Golden Rule #13)
-            const comment = try interfaces.Comment.call_constructor(internal.allocator, doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
+            const comment = try interfaces.Comment.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
             break :blk comment;
         },
         NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
@@ -3889,7 +3886,7 @@ pub fn call_hasFocus(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: exitFullscreen
-pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -3958,10 +3955,10 @@ fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError
 /// DOM §4.6 - Creates a Text node with the given data
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createtextnode
 pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Use interface instead of impl (per Golden Rule #13)
-    const text = try interfaces.Text.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    const text = try interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
     errdefer interfaces.Text.deinit(text);
 
     // Set owner document
@@ -4226,7 +4223,7 @@ pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, 
 }
 
 /// Operation: startViewTransition
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     return error.NotImplemented;
@@ -4236,10 +4233,10 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 /// DOM §4.6 - Creates a Comment node with the given data
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createcomment
 pub fn call_createComment(instance: *runtime.Instance, data: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Use interface instead of impl (per Golden Rule #13)
-    const comment = try interfaces.Comment.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
+    const comment = try interfaces.Comment.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data));
     errdefer interfaces.Comment.deinit(comment);
 
     // Set owner document
@@ -4359,7 +4356,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: requestStorageAccess
-pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -4372,7 +4369,7 @@ pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!*const an
 /// 1. Validate and extract namespace and qualifiedName
 /// 2. Parse qualifiedName for prefix:localName
 /// 3. Create element with namespace, prefix, localName
-pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -4436,7 +4433,7 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 }
 
 /// Operation: browsingTopics
-pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BrowsingTopicsOptions)) anyerror!*const anyopaque {
+pub fn call_browsingTopics(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BrowsingTopicsOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -5289,4 +5286,10 @@ pub fn setStylesheetBlockingResolvedCallback(
 ) void {
     const internal = getInternal(instance) orelse return;
     internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
+}
+
+pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = html;
+    return error.NotImplemented;
 }

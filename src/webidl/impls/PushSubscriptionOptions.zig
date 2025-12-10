@@ -46,7 +46,7 @@ pub fn get_userVisibleOnly(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for applicationServerKey
-pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

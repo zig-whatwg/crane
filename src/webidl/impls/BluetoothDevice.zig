@@ -143,14 +143,14 @@ pub fn set_onserviceremoved(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Operation: watchAdvertisements
-pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WatchAdvertisementsOptions)) anyerror!*const anyopaque {
+pub fn call_watchAdvertisements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WatchAdvertisementsOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

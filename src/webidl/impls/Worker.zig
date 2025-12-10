@@ -107,9 +107,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Worker.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
     errdefer deinit(instance);
 
     // Parse options - use defaults for type/credentials since dictionary has opaque enum pointers
@@ -135,21 +135,21 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
     }
 
     // Copy the script URL
-    const url_copy = try allocator.dupe(u8, scriptURL.asSlice());
-    errdefer allocator.free(url_copy);
+    const url_copy = try ctx.allocator.dupe(u8, scriptURL.asSlice());
+    errdefer ctx.allocator.free(url_copy);
 
     // Copy the name if present
     const name_copy = if (name.len > 0)
-        try allocator.dupe(u8, name)
+        try ctx.allocator.dupe(u8, name)
     else
         "";
-    errdefer if (name_copy.len > 0) allocator.free(name_copy);
+    errdefer if (name_copy.len > 0) ctx.allocator.free(name_copy);
 
     // Create internal state
     // Note: The actual DedicatedWorker will be created when platform is available
     // For now, we store the configuration
-    const internal_state = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal_state);
+    const internal_state = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal_state);
 
     internal_state.* = .{
         .dedicated_worker = null, // Created when platform is set
@@ -157,7 +157,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, scri
         .name = name_copy,
         .worker_type = worker_type,
         .credentials = credentials,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     // Store internal state in instance
@@ -239,7 +239,7 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 ///
 /// The message is serialized using the structured clone algorithm and
 /// sent to the worker's message queue.
-pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.terminated) {
@@ -250,7 +250,8 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             // The dedicated worker will handle serialization and dispatch
             // Convert JSValue to anyopaque for the internal API
             const message_ptr = message.toAnyopaque() orelse return error.TypeError;
-            try worker.postMessage(message_ptr, transfer);
+            const transfer_ptr = transfer.toAnyopaque() orelse return error.TypeError;
+            try worker.postMessage(message_ptr, transfer_ptr);
         }
     }
 }

@@ -53,7 +53,7 @@ pub fn get_element(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for parent
-pub fn get_parent(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_parent(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,7 +84,7 @@ pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) a
 }
 
 /// Operation: getBoxQuads
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

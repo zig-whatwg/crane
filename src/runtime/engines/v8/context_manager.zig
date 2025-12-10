@@ -38,7 +38,7 @@
 //!     const ctx = mgr.getOrCreate(v8_ctx, allocator) catch return;
 //!
 //!     // Now can use ctx for logging, allocation, etc.
-//!     const instance = Interface.call_constructor(allocator, ctx) catch return;
+//!     const instance = Interface.call_constructor( ctx) catch return;
 //! }
 //! ```
 

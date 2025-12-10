@@ -75,9 +75,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Use provided fileName
 /// 3. Use lastModified from options or current time
 /// 4. Use type from options (normalized)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, fileBits: *const anyopaque, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileName: runtime.USVString, options: webidl.Opt(dictionaries.FilePropertyBag)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &File.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &File.vtable, ctx);
     errdefer deinit(instance);
 
     // Get MIME type from options (inherits from BlobPropertyBag)
@@ -87,7 +87,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, file
     // TODO: Process fileBits when V8 integration is complete
     _ = fileBits;
 
-    const blob_data = try file.BlobData.init(allocator, "", mime_type);
+    const blob_data = try file.BlobData.init(ctx.allocator, "", mime_type);
     errdefer blob_data.deinit();
 
     // Create FileData with name and lastModified
@@ -95,17 +95,17 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, file
     const file_name = fileName;
     const last_modified = if (options.wasPassed()) options.value.lastModified else null;
 
-    const file_data = try file.FileData.init(allocator, blob_data, file_name, last_modified);
+    const file_data = try file.FileData.init(ctx.allocator, blob_data, file_name, last_modified);
     errdefer file_data.deinit();
 
     // Create and store internal state
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = .{
         .file_data = file_data,
         .webkit_relative_path = "", // Empty by default
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     // Store internal state in the instance

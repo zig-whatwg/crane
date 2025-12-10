@@ -71,7 +71,7 @@ pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: getDirectory
-pub fn call_getDirectory(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,20 +84,20 @@ pub fn call_BroadcastChannel(instance: *runtime.Instance, name: runtime.DOMStrin
 }
 
 /// Operation: estimate
-pub fn call_estimate(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_estimate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: createObjectURL
-pub fn call_createObjectURL(instance: *runtime.Instance, obj: *const anyopaque) anyerror!runtime.DOMString {
+pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
     _ = instance;
     _ = obj;
     return error.NotImplemented;
 }
 
 /// Operation: SharedWorker
-pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_SharedWorker(instance: *runtime.Instance, scriptURL: runtime.USVString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = scriptURL;
     _ = options;

@@ -208,7 +208,7 @@ const undefined_sentinel: u8 = 0;
 ///
 /// Add cookie change subscriptions. Each subscription specifies a name and/or
 /// URL to watch for cookie changes.
-pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValue) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
     // Check secure context
@@ -218,7 +218,8 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaq
 
     // The subscriptions parameter is a sequence<CookieStoreGetOptions>
     // In the V8 bindings layer, this is converted to a slice
-    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(subscriptions)));
+    const subs_ptr = subscriptions.toAnyopaque() orelse return error.TypeError;
+    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(subs_ptr)));
 
     for (subs_slice.*) |sub| {
         // Validate URL is within scope if provided
@@ -233,14 +234,14 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: *const anyopaq
     }
 
     // Return undefined for void Promise
-    return @ptrCast(&undefined_sentinel);
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getSubscriptions()
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestoremanager-getsubscriptions
 ///
 /// Returns a Promise that resolves with the current list of subscriptions.
-pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const allocator = internal.allocator;
 
@@ -261,14 +262,14 @@ pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!*const anyopa
         try result.append(allocator, options);
     }
 
-    return @ptrCast(result);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(result));
 }
 
 /// Operation: unsubscribe(subscriptions)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestoremanager-unsubscribe
 ///
 /// Remove cookie change subscriptions.
-pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: runtime.JSValue) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
     // Check secure context
@@ -277,7 +278,8 @@ pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyop
     }
 
     // The subscriptions parameter is a sequence<CookieStoreGetOptions>
-    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(subscriptions)));
+    const unsub_ptr = subscriptions.toAnyopaque() orelse return error.TypeError;
+    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(unsub_ptr)));
 
     for (subs_slice.*) |sub| {
         // Validate URL is within scope if provided
@@ -292,7 +294,7 @@ pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: *const anyop
     }
 
     // Return undefined for void Promise
-    return @ptrCast(&undefined_sentinel);
+    return runtime.JSValue.jsUndefined;
 }
 
 // ============================================================================

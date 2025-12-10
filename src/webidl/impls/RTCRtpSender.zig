@@ -72,7 +72,7 @@ pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransfor
 }
 
 /// Operation: replaceTrack
-pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!*const anyopaque {
+pub fn call_replaceTrack(instance: *runtime.Instance, withTrack: ?*runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = withTrack;
     return error.NotImplemented;
@@ -86,7 +86,7 @@ pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DO
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,9 +105,16 @@ pub fn call_setStreams(instance: *runtime.Instance, streams: []const *runtime.In
 }
 
 /// Operation: setParameters
-pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: webidl.Opt(dictionaries.RTCSetParameterOptions)) anyerror!*const anyopaque {
+pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.RTCRtpSendParameters, setParameterOptions: webidl.Opt(dictionaries.RTCSetParameterOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = parameters;
     _ = setParameterOptions;
     return error.NotImplemented;
+}
+
+
+pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
+    _ = instance;
+    _ = kind;
+    return null;
 }

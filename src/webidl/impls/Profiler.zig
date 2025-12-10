@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.ProfilerInitOptions) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, options: dictionaries.ProfilerInitOptions) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Profiler.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Profiler.vtable, ctx);
     errdefer deinit(instance);
 
     _ = options;
@@ -65,7 +65,7 @@ pub fn get_stopped(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: stop
-pub fn call_stop(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_stop(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

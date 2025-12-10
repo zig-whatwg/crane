@@ -127,7 +127,6 @@ pub fn fireEvent(
     };
 
     const event = try interfaces.Event.call_constructor(
-        allocator,
         actual_ctx,
         runtime.DOMString.initInterned(event_type),
         .{ .was_passed = true, .value = event_init },

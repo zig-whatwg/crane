@@ -69,16 +69,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Per WebIDL spec:
 /// - message: Optional message string, defaults to ""
 /// - name: Optional name string, defaults to "Error"
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &DOMException.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &DOMException.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
     // Create internal state
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     // Get message (default to empty string)
     const msg_str = if (message.was_passed) message.value.asSlice() else "";
@@ -86,16 +86,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, mess
     const name_str = if (name.was_passed) name.value.asSlice() else "Error";
 
     // Duplicate strings so we own them
-    const owned_message = if (msg_str.len > 0) try allocator.dupe(u8, msg_str) else "";
-    errdefer if (owned_message.len > 0) allocator.free(owned_message);
+    const owned_message = if (msg_str.len > 0) try ctx.allocator.dupe(u8, msg_str) else "";
+    errdefer if (owned_message.len > 0) ctx.allocator.free(owned_message);
 
-    const owned_name = try allocator.dupe(u8, name_str);
+    const owned_name = try ctx.allocator.dupe(u8, name_str);
 
     // Get legacy error code from name
     const code = getLegacyCodeForName(name_str);
 
     internal.* = .{
-        .allocator = allocator,
+        .allocator = ctx.allocator,
         .message = owned_message,
         .name = owned_name,
         .code = code,

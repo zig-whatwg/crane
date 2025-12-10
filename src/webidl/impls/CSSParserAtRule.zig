@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: runtime.DOMString, prelude: *const anyopaque, body: webidl.Opt(?*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString, prelude: runtime.JSValue, body: webidl.Opt(?runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CSSParserAtRule.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CSSParserAtRule.vtable, ctx);
     errdefer deinit(instance);
 
     _ = name;
@@ -62,13 +62,13 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for prelude
-pub fn get_prelude(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_prelude(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for body
-pub fn get_body(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_body(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

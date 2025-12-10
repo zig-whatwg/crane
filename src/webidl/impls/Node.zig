@@ -616,7 +616,6 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
             if (slice.len > 0) {
                 // Create Text node with the value (use interface per Golden Rule #13)
                 const text_node = try interfaces.Text.call_constructor(
-                    internal.allocator,
                     instance.ctx,
                     webidl.Opt(runtime.DOMString).passed(value),
                 );

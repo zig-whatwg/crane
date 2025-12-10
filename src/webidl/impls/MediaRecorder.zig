@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance, options: webidl.Opt(dictionaries.MediaRecorderOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance, options: webidl.Opt(dictionaries.MediaRecorderOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MediaRecorder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MediaRecorder.vtable, ctx);
     errdefer deinit(instance);
 
     _ = stream;
@@ -203,5 +203,12 @@ pub fn call_resume(instance: *runtime.Instance) anyerror!void {
 /// Operation: pause
 pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     _ = instance;
+    return error.NotImplemented;
+}
+
+
+pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+    _ = instance;
+    _ = @"type";
     return error.NotImplemented;
 }

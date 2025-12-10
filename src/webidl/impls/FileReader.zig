@@ -108,12 +108,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// The FileReader() constructor, when invoked, must return a new FileReader
 /// object with readyState set to EMPTY.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &FileReader.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &FileReader.vtable, ctx);
     errdefer deinit(instance);
 
     // Create internal state
-    const internal = try InternalState.init(allocator);
+    const internal = try InternalState.init(ctx.allocator);
     errdefer internal.deinit();
 
     const state = instance.getState(State);
@@ -139,12 +139,12 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
 /// Getter for result
 ///
 /// Returns the file's contents (string or ArrayBuffer) or null
-pub fn get_result(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
     return switch (internal.reader_data.result) {
-        .array_buffer => |buf| @ptrCast(buf.ptr),
-        .string => |str| @ptrCast(str.ptr),
+        .array_buffer => |buf| runtime.JSValue.fromAnyopaque(@ptrCast(buf.ptr)),
+        .string => |str| runtime.JSValue.fromAnyopaque(@ptrCast(str.ptr)),
         .none => null,
     };
 }

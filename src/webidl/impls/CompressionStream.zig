@@ -104,8 +104,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. Let transformAlgorithm be an algorithm which takes chunk and compresses it
 /// 4. Let flushAlgorithm be an algorithm which finishes compression
 /// 5. Set this's transform to a new TransformStream
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, format: enums.CompressionFormat) !*runtime.Instance {
-    const instance = try init(allocator, State, &CompressionStream.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &CompressionStream.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -128,7 +128,6 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, form
     // cause TransformStream to try to use it as a V8 Object handle, resulting in
     // misaligned pointer segfaults. See whatwg-lbw51 for details.
     const transform = try interfaces.TransformStream.call_constructor(
-        allocator,
         ctx,
         webidl.Opt(runtime.JSValue).notPassed(),
         webidl.Opt(dictionaries.QueuingStrategy).notPassed(),

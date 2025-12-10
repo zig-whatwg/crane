@@ -304,7 +304,8 @@ pub fn writeMetadata(
             try writer.print("        pub const BaseType = *{s};\n", .{base});
         }
     } else {
-        try writer.writeAll("        pub const BaseType = ?*anyopaque;\n");
+        // Root interfaces have no base type - use null so FlattenedState produces void
+        try writer.writeAll("        pub const BaseType = null;\n");
     }
 
     if (mixins.len > 0) {
@@ -1732,6 +1733,18 @@ pub fn writeLifecycleFunctions(
     try writer.print("        return {s}.init(allocator, State, &vtable, ctx);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
 
+    // initWithState() - for subclasses to call with their own StateType and vtable
+    try writer.writeAll("    /// Initialize with custom state type (for subclasses)\n");
+    try writer.writeAll("    /// Subclasses call this to properly initialize the base class state.\n");
+    try writer.writeAll("    pub fn initWithState(\n");
+    try writer.writeAll("        allocator: std.mem.Allocator,\n");
+    try writer.writeAll("        comptime StateType: type,\n");
+    try writer.writeAll("        vtable_ptr: *const runtime.VTable,\n");
+    try writer.writeAll("        ctx: runtime.Context,\n");
+    try writer.writeAll("    ) !*runtime.Instance {\n");
+    try writer.print("        return {s}.init(allocator, StateType, vtable_ptr, ctx);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+
     // deinit() - delegates to Impl.deinit()
     try writer.writeAll("    /// Clean up instance resources\n");
     try writer.print("    pub fn deinit(instance: *runtime.Instance) void {{\n", .{});
@@ -1760,7 +1773,9 @@ pub fn writeConstructor(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
     try writer.writeAll("    /// WebIDL constructor\n");
-    try writer.writeAll("    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context");
+    try writer.writeAll("    /// Note: Uses ctx.allocator internally for all allocations to ensure\n");
+    try writer.writeAll("    /// consistency with deinit which uses instance.ctx.allocator\n");
+    try writer.writeAll("    pub fn call_constructor(ctx: runtime.Context");
 
     // Write constructor parameters
     for (constructor.arguments) |arg| {
@@ -1841,7 +1856,7 @@ pub fn writeConstructor(
 
     try writer.writeAll(") !*runtime.Instance {\n");
     try writer.writeAll("        // Directly return result from impl.call_constructor\n");
-    try writer.print("        return try {s}.call_constructor(allocator, ctx", .{impl_name});
+    try writer.print("        return try {s}.call_constructor(ctx", .{impl_name});
 
     // Pass arguments to impl constructor
     // Note: webidl.Opt() parameters are passed directly (not unwrapped)
@@ -2021,9 +2036,11 @@ pub fn writeOverloadedConstructor(
 
     // Generate dispatch function
     try writer.writeAll("    /// WebIDL constructor (overloaded)\n");
-    try writer.writeAll("    pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {\n");
+    try writer.writeAll("    /// Note: Uses ctx.allocator internally for all allocations to ensure\n");
+    try writer.writeAll("    /// consistency with deinit which uses instance.ctx.allocator\n");
+    try writer.writeAll("    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {\n");
     try writer.writeAll("        // Pass args union directly to impl\n");
-    try writer.print("        return try {s}.call_constructor(allocator, ctx, args);\n", .{impl_name});
+    try writer.print("        return try {s}.call_constructor(ctx, args);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
 }
 
@@ -3193,7 +3210,7 @@ test "writeMetadata handles no base type" {
     try writeMetadata(writer.any(), "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null);
 
     const output = buffer.items;
-    try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = ?*anyopaque;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
 }
 
 test "writeMetadata includes mixins" {
@@ -3408,9 +3425,10 @@ test "writeConstructor generates constructor function" {
     try writeConstructor(writer.any(), "EventImpl", ctor, null);
 
     const output = buffer.items;
-    try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context") != null);
+    // Note: allocator parameter was removed - constructors now use ctx.allocator
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context") != null);
     try testing.expect(std.mem.indexOf(u8, output, "@\"type\": runtime.DOMString") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "return try EventImpl.call_constructor(allocator, ctx") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return try EventImpl.call_constructor(ctx") != null);
 }
 
 test "writeConstructor handles no-argument constructor" {
@@ -3426,6 +3444,7 @@ test "writeConstructor handles no-argument constructor" {
     try writeConstructor(writer.any(), "EventTargetImpl", ctor, null);
 
     const output = buffer.items;
-    try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "return try EventTargetImpl.call_constructor(allocator, ctx)") != null);
+    // Note: allocator parameter was removed - constructors now use ctx.allocator
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return try EventTargetImpl.call_constructor(ctx)") != null);
 }

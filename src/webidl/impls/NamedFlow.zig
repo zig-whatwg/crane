@@ -58,19 +58,19 @@ pub fn get_firstEmptyRegionIndex(instance: *runtime.Instance) anyerror!i16 {
 }
 
 /// Operation: getRegions
-pub fn call_getRegions(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getRegions(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getContent
-pub fn call_getContent(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getContent(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegionsByContent
-pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getRegionsByContent(instance: *runtime.Instance, node: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = node;
     return error.NotImplemented;

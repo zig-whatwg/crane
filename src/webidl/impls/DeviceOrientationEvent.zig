@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.DeviceOrientationEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.DeviceOrientationEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &DeviceOrientationEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &DeviceOrientationEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -80,6 +80,13 @@ pub fn get_absolute(instance: *runtime.Instance) anyerror!bool {
 
 /// Operation: requestPermission
 pub fn call_static_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = absolute;
+    return error.NotImplemented;
+}
+
+
+pub fn call_requestPermission(instance: *runtime.Instance, absolute: webidl.Opt(bool)) anyerror!runtime.JSValue {
     _ = instance;
     _ = absolute;
     return error.NotImplemented;

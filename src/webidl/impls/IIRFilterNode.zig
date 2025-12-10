@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.IIRFilterOptions) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, options: dictionaries.IIRFilterOptions) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &IIRFilterNode.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &IIRFilterNode.vtable, ctx);
     errdefer deinit(instance);
 
     _ = context;
@@ -54,7 +54,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, cont
 }
 
 /// Operation: getFrequencyResponse
-pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: *const anyopaque, magResponse: *const anyopaque, phaseResponse: *const anyopaque) anyerror!void {
+pub fn call_getFrequencyResponse(instance: *runtime.Instance, frequencyHz: runtime.JSValue, magResponse: runtime.JSValue, phaseResponse: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = frequencyHz;
     _ = magResponse;

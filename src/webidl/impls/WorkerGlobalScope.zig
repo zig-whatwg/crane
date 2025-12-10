@@ -574,7 +574,7 @@ fn noopTimerCallback(_: ?*anyopaque) void {
 }
 
 /// Operation: createImageBitmap
-pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!*const anyopaque {
+pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = image;
     _ = options;
@@ -802,7 +802,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 /// - Parses RequestInfo into an InternalRequest
 /// - Executes the fetch algorithm
 /// - Resolves/rejects the Promise with the Response
-pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!*const anyopaque {
+pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.NotImplemented;
     const allocator = internal.allocator;
@@ -944,5 +944,5 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // 4. When fetch completes, resolve promise with Response
     //
     // For now, we return the Response synchronously
-    return @ptrCast(response);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(response));
 }

@@ -67,13 +67,13 @@ pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandle
 }
 
 /// Operation: getPorts
-pub fn call_getPorts(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getPorts(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestPort
-pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SerialPortRequestOptions)) anyerror!*const anyopaque {
+pub fn call_requestPort(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SerialPortRequestOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

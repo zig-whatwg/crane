@@ -63,9 +63,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://urlpattern.spec.whatwg.org/#dom-urlpattern-urlpattern
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: URLPatternInterface.ConstructorArgs) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.ConstructorArgs) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &URLPatternInterface.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &URLPatternInterface.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -89,7 +89,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
                 .usvstring => |s| {
                     // Parse URL string pattern - treat as full URL pattern string
                     // The constructor_string_parser will handle this
-                    input_init = urlpattern.parseConstructorString(allocator, s) catch {
+                    input_init = urlpattern.parseConstructorString(ctx.allocator, s) catch {
                         return error.TypeError;
                     };
                 },
@@ -108,7 +108,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
             if (variant.input.was_passed) {
                 switch (variant.input.value) {
                     .usvstring => |s| {
-                        input_init = urlpattern.parseConstructorString(allocator, s) catch {
+                        input_init = urlpattern.parseConstructorString(ctx.allocator, s) catch {
                             return error.TypeError;
                         };
                     },
@@ -122,20 +122,20 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args
     }
 
     // Create the core URLPattern
-    var pattern = URLPatternCore.create(allocator, .{ .init = input_init }, .{
+    var pattern = URLPatternCore.create(ctx.allocator, .{ .init = input_init }, .{
         .ignore_case = ignore_case,
     }) catch {
         return error.TypeError;
     };
-    errdefer pattern.deinit(allocator);
+    errdefer pattern.deinit(ctx.allocator);
 
     // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
         .pattern = pattern,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;

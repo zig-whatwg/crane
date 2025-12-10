@@ -447,12 +447,12 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per HTML Standard: Returns a frozen array of preferred languages.
 /// Note: For WPT tests, we return a pointer to a static array structure.
 /// The V8 binding layer should convert this to a JS array.
-pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     // Return pointer to static "en-US" string as a minimal implementation
     // The interface/binding layer needs to handle conversion to array
     const static_lang: []const u8 = "en-US";
-    return @ptrCast(&static_lang);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&static_lang));
 }
 
 /// Getter for onLine
@@ -505,21 +505,21 @@ pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Operation: requestMIDIAccess
-pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MIDIOptions)) anyerror!*const anyopaque {
+pub fn call_requestMIDIAccess(instance: *runtime.Instance, options: webidl.Opt(dictionaries.MIDIOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: adAuctionComponents
-pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!*const anyopaque {
+pub fn call_adAuctionComponents(instance: *runtime.Instance, numAdComponents: u16) anyerror!runtime.JSValue {
     _ = instance;
     _ = numAdComponents;
     return error.NotImplemented;
 }
 
 /// Operation: joinAdInterestGroup
-pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroup) anyerror!*const anyopaque {
+pub fn call_joinAdInterestGroup(instance: *runtime.Instance, group: dictionaries.AuctionAdInterestGroup) anyerror!runtime.JSValue {
     _ = instance;
     _ = group;
     return error.NotImplemented;
@@ -533,21 +533,21 @@ pub fn call_vibrate(instance: *runtime.Instance, pattern: typedefs.VibratePatter
 }
 
 /// Operation: createHandwritingRecognizer
-pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) anyerror!*const anyopaque {
+pub fn call_createHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraint;
     return error.NotImplemented;
 }
 
 /// Operation: leaveAdInterestGroup
-pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(dictionaries.AuctionAdInterestGroupKey)) anyerror!*const anyopaque {
+pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(dictionaries.AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
     _ = instance;
     _ = group;
     return error.NotImplemented;
 }
 
 /// Operation: getGamepads
-pub fn call_getGamepads(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getGamepads(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -559,7 +559,7 @@ pub fn call_updateAdInterestGroups(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getBattery
-pub fn call_getBattery(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getBattery(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -571,7 +571,7 @@ pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
     _ = instance;
     _ = contents;
     return error.NotImplemented;
@@ -584,7 +584,7 @@ pub fn call_canLoadAdAuctionFencedFrame(instance: *runtime.Instance) anyerror!bo
 }
 
 /// Operation: createAuctionNonce
-pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -606,34 +606,34 @@ pub fn call_unregisterProtocolHandler(instance: *runtime.Instance, scheme: runti
 }
 
 /// Operation: queryHandwritingRecognizer
-pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) anyerror!*const anyopaque {
+pub fn call_queryHandwritingRecognizer(instance: *runtime.Instance, constraint: dictionaries.HandwritingModelConstraint) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraint;
     return error.NotImplemented;
 }
 
 /// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: share
-pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(dictionaries.ShareData)) anyerror!*const anyopaque {
+pub fn call_share(instance: *runtime.Instance, data: webidl.Opt(dictionaries.ShareData)) anyerror!runtime.JSValue {
     _ = instance;
     _ = data;
     return error.NotImplemented;
 }
 
 /// Operation: runAdAuction
-pub fn call_runAdAuction(instance: *runtime.Instance, config: dictionaries.AuctionAdConfig) anyerror!*const anyopaque {
+pub fn call_runAdAuction(instance: *runtime.Instance, config: dictionaries.AuctionAdConfig) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: deprecatedReplaceInURN
-pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, replacements: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_deprecatedReplaceInURN(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, replacements: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = urnOrConfig;
     _ = replacements;
@@ -654,7 +654,7 @@ pub fn call_javaEnabled(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: getInstalledRelatedApps
-pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -667,7 +667,7 @@ pub fn call_canShare(instance: *runtime.Instance, data: webidl.Opt(dictionaries.
 }
 
 /// Operation: clearOriginJoinedAdInterestGroups
-pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner: runtime.USVString, interestGroupsToKeep: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     _ = instance;
     _ = owner;
     _ = interestGroupsToKeep;
@@ -675,14 +675,14 @@ pub fn call_clearOriginJoinedAdInterestGroups(instance: *runtime.Instance, owner
 }
 
 /// Operation: getInterestGroupAdAuctionData
-pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(dictionaries.AdAuctionDataConfig)) anyerror!*const anyopaque {
+pub fn call_getInterestGroupAdAuctionData(instance: *runtime.Instance, config: webidl.Opt(dictionaries.AdAuctionDataConfig)) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;
     return error.NotImplemented;
 }
 
 /// Operation: requestMediaKeySystemAccess
-pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = keySystem;
     _ = supportedConfigurations;
@@ -690,7 +690,7 @@ pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: 
 }
 
 /// Operation: deprecatedURNtoURL
-pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!*const anyopaque {
+pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: typedefs.UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!runtime.JSValue {
     _ = instance;
     _ = urnOrConfig;
     _ = send_reports;

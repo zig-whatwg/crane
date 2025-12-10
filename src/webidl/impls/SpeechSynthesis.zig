@@ -78,7 +78,7 @@ pub fn call_speak(instance: *runtime.Instance, utterance: *runtime.Instance) any
 }
 
 /// Operation: getVoices
-pub fn call_getVoices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getVoices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

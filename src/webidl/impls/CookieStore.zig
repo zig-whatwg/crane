@@ -131,7 +131,7 @@ const undefined_sentinel: u8 = 0;
 ///
 /// Note: The interface expects *const anyopaque for Promise-returning operations.
 /// The V8 bindings handle Promise creation/resolution.
-pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const allocator = internal.allocator;
 
@@ -148,16 +148,16 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*
         items.deinit(allocator);
     }
 
-    // Return first item or null (using sentinel for null)
+    // Return first item or null
     if (items.items.len > 0) {
         // Clone the first item to return
         const result = try allocator.create(CookieListItem);
         result.* = try items.items[0].clone(allocator);
-        return @ptrCast(result);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(result));
     }
 
-    // Return sentinel pointer for "no cookie found" (represents null/undefined)
-    return @ptrCast(&undefined_sentinel);
+    // Return undefined for "no cookie found"
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getAll(name)
@@ -165,7 +165,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!*
 ///
 /// Returns a Promise that resolves with a sequence of CookieListItem
 /// for all matching cookies.
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const allocator = internal.allocator;
 
@@ -184,14 +184,14 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     // Prevent items from being cleaned up since we transferred ownership
     items = .{};
 
-    return @ptrCast(result);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(result));
 }
 
 /// Operation: set(name, value)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-set
 ///
 /// Returns a Promise that resolves when the cookie has been set.
-pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const allocator = internal.allocator;
 
@@ -206,15 +206,15 @@ pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: run
         .value = value,
     });
 
-    // Return sentinel for void Promise resolution (represents undefined)
-    return @ptrCast(&undefined_sentinel);
+    // Return undefined for void Promise resolution
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: delete(name)
 /// https://cookiestore.spec.whatwg.org/#dom-cookiestore-delete
 ///
 /// Returns a Promise that resolves when the cookie has been deleted.
-pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const allocator = internal.allocator;
 
@@ -223,8 +223,8 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
         .name = name,
     });
 
-    // Return sentinel for void Promise resolution (represents undefined)
-    return @ptrCast(&undefined_sentinel);
+    // Return undefined for void Promise resolution
+    return runtime.JSValue.jsUndefined;
 }
 
 // ============================================================================

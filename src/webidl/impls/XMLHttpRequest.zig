@@ -112,9 +112,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: "The new XMLHttpRequest() constructor steps are:
 /// 1. Set this's upload object to a new XMLHttpRequestUpload object."
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &XMLHttpRequest.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &XMLHttpRequest.vtable, ctx);
     errdefer deinit(instance);
 
     // Store V8 isolate for Global handle management
@@ -492,7 +492,7 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 ///
 /// Spec: https://xhr.spec.whatwg.org/#the-send()-method
 /// TODO: Implement full send() with Fetch integration
-pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?*const anyopaque)) anyerror!void {
+pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
     const xhr_state = getXHRState(instance);
     _ = body;
 

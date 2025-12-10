@@ -73,19 +73,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Creates a new UTF-8 encoder (stateless).
 ///
 /// The new TextEncoder() constructor steps are to do nothing.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &TextEncoder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &TextEncoder.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
     // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;
@@ -115,7 +115,7 @@ pub fn get_encoding(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// 2. Let output be the I/O queue of bytes
 /// 3. Process with UTF-8 encoder
 /// 4. Return Uint8Array
-pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
+pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return ImplError.InvalidState;
     const allocator = internal.allocator;
@@ -179,12 +179,13 @@ pub fn call_encode(instance: *runtime.Instance, input: webidl.Opt(runtime.USVStr
 ///            4. Increment written by the number of bytes in result.
 ///       ii.  Otherwise, break.
 /// 7. Return «[ "read" → read, "written" → written ]».
-pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: *const anyopaque) anyerror!dictionaries.TextEncoderEncodeIntoResult {
+pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, destination: runtime.JSValue) anyerror!dictionaries.TextEncoderEncodeIntoResult {
     _ = instance;
 
     // Extract destination buffer from opaque pointer
     // The V8 bindings layer should have passed a Uint8Array that we can write to
-    const dest_buf = extractUint8ArrayBuffer(destination);
+    const dest_ptr = destination.toAnyopaque() orelse return error.TypeError;
+    const dest_buf = extractUint8ArrayBuffer(dest_ptr);
 
     // Step 1-2: Initialize counters
     var read: u64 = 0;
@@ -318,14 +319,14 @@ const Uint8ArrayDescriptor = extern struct {
 };
 
 /// Create a Uint8Array descriptor for V8 bindings
-/// The descriptor is allocated and the pointer is returned as *const anyopaque
-fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !*const anyopaque {
+/// The descriptor is allocated and the pointer is returned as runtime.JSValue
+fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !runtime.JSValue {
     const desc = try allocator.create(Uint8ArrayDescriptor);
     desc.* = .{
         .data = data.ptr,
         .len = data.len,
     };
-    return @ptrCast(desc);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(desc));
 }
 
 /// Extract the byte buffer from a Uint8Array opaque pointer (tagged V8 Value)

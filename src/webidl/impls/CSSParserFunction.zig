@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, name: runtime.DOMString, args: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString, args: runtime.JSValue) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CSSParserFunction.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CSSParserFunction.vtable, ctx);
     errdefer deinit(instance);
 
     _ = name;
@@ -60,7 +60,7 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for args
-pub fn get_args(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_args(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

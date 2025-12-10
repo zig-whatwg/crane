@@ -78,17 +78,17 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: ProgressEvent inherits from Event. We must initialize both inherited
 /// Event fields AND ProgressEvent's own fields.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ProgressEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ProgressEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ProgressEvent.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state
     const state = instance.getState(State);
 
     // Create internal state for ProgressEvent-specific properties
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     // Get values from eventInitDict if passed
     const length_computable = if (eventInitDict.wasPassed()) eventInitDict.value.lengthComputable orelse false else false;
@@ -96,7 +96,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     const total = if (eventInitDict.wasPassed()) eventInitDict.value.total orelse 0 else 0;
 
     internal.* = .{
-        .allocator = allocator,
+        .allocator = ctx.allocator,
         .length_computable = length_computable,
         .loaded = loaded,
         .total = total,
@@ -110,7 +110,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
     // Initialize inherited Event fields
     // Clone the type string to ensure we own it
-    state.base.own.type = try @"type".clone(allocator);
+    state.base.own.type = try @"type".clone(ctx.allocator);
 
     // Get EventInit base values from ProgressEventInit
     const bubbles = if (eventInitDict.wasPassed()) eventInitDict.value.base.bubbles orelse false else false;

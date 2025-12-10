@@ -52,7 +52,7 @@ pub fn get_returnType(instance: *runtime.Instance) anyerror!typedefs.CSSOMString
 }
 
 /// Operation: getParameters
-pub fn call_getParameters(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getParameters(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.SubscribeCallback) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, callback: callbacks.SubscribeCallback) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Observable.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Observable.vtable, ctx);
     errdefer deinit(instance);
 
     _ = callback;
@@ -68,7 +68,7 @@ pub fn call_inspect(instance: *runtime.Instance, inspectorUnion: webidl.Opt(type
 }
 
 /// Operation: forEach
-pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = callback;
     _ = options;
@@ -76,7 +76,7 @@ pub fn call_forEach(instance: *runtime.Instance, callback: callbacks.Visitor, op
 }
 
 /// Operation: every
-pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -84,7 +84,7 @@ pub fn call_every(instance: *runtime.Instance, predicate: callbacks.Predicate, o
 }
 
 /// Operation: some
-pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -92,7 +92,7 @@ pub fn call_some(instance: *runtime.Instance, predicate: callbacks.Predicate, op
 }
 
 /// Operation: first
-pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_first(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -106,7 +106,7 @@ pub fn call_takeUntil(instance: *runtime.Instance, value: runtime.JSValue) anyer
 }
 
 /// Operation: find
-pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = predicate;
     _ = options;
@@ -114,7 +114,7 @@ pub fn call_find(instance: *runtime.Instance, predicate: callbacks.Predicate, op
 }
 
 /// Operation: last
-pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_last(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -149,14 +149,14 @@ pub fn call_take(instance: *runtime.Instance, amount: u64) anyerror!*runtime.Ins
 }
 
 /// Operation: toArray
-pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_toArray(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: reduce
-pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!*const anyopaque {
+pub fn call_reduce(instance: *runtime.Instance, reducer: callbacks.Reducer, initialValue: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.SubscribeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = reducer;
     _ = initialValue;
@@ -197,5 +197,12 @@ pub fn call_subscribe(instance: *runtime.Instance, observer: webidl.Opt(typedefs
     _ = instance;
     _ = observer;
     _ = options;
+    return error.NotImplemented;
+}
+
+
+pub fn call_from(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = value;
     return error.NotImplemented;
 }

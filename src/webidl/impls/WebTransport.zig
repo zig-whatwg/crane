@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, options: webidl.Opt(dictionaries.WebTransportOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, options: webidl.Opt(dictionaries.WebTransportOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &WebTransport.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &WebTransport.vtable, ctx);
     errdefer deinit(instance);
 
     _ = url;
@@ -55,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -91,13 +91,13 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for closed
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for draining
-pub fn get_draining(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_draining(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -147,13 +147,13 @@ pub fn call_createSendGroup(instance: *runtime.Instance) anyerror!*runtime.Insta
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: exportKeyingMaterial
-pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: webidl.Opt(typedefs.BufferSource)) anyerror!*const anyopaque {
+pub fn call_exportKeyingMaterial(instance: *runtime.Instance, label: typedefs.BufferSource, context: webidl.Opt(typedefs.BufferSource)) anyerror!runtime.JSValue {
     _ = instance;
     _ = label;
     _ = context;
@@ -168,14 +168,14 @@ pub fn call_close(instance: *runtime.Instance, closeInfo: webidl.Opt(dictionarie
 }
 
 /// Operation: createBidirectionalStream
-pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) anyerror!*const anyopaque {
+pub fn call_createBidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: createUnidirectionalStream
-pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) anyerror!*const anyopaque {
+pub fn call_createUnidirectionalStream(instance: *runtime.Instance, options: webidl.Opt(dictionaries.WebTransportSendStreamOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

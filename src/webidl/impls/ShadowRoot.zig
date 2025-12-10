@@ -342,21 +342,22 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets getter
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
-        return sheets;
+        return runtime.JSValue.fromAnyopaque(sheets);
     }
-    // Return empty pointer for null
+    // Return empty pointer for null wrapped in JSValue
     const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return @ptrCast(empty.ptr);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(empty.ptr));
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets setter
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance);
     // TODO: Proper FrozenArray<CSSStyleSheet> handling
-    internal.adopted_style_sheets = @constCast(value);
+    // Extract the anyopaque pointer from JSValue for storage
+    internal.adopted_style_sheets = @constCast(value.toAnyopaque());
 }
 
 /// DocumentOrShadowRoot.activeElement getter
@@ -387,12 +388,12 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) 
 }
 
 /// getAnimations() - Get all animations in shadow tree
-pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // TODO: Implement animation collection
     _ = instance;
-    // Return empty array as opaque pointer
+    // Return empty array as opaque pointer wrapped in JSValue
     const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return @ptrCast(empty.ptr);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(empty.ptr));
 }
 
 // ============================================================================

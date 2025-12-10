@@ -46,7 +46,7 @@ pub fn get_inputSource(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for results
-pub fn get_results(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_results(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

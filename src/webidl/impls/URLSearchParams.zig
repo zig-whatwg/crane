@@ -76,11 +76,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Takes union type: (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
 /// The init_data parameter is a type-erased pointer that we need to interpret
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // For now, treat as empty string
     // Proper union type handling requires runtime type tags
     _ = init_data;
-    return initWithString(allocator, ctx, "");
+    return initWithString(ctx.allocator, ctx, "");
 }
 
 /// Initialize from string (query string)
@@ -327,7 +327,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 
 /// getAll method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-getall (lines 2082-2091)
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -353,8 +353,8 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         }
     }
 
-    // Return as opaque pointer (caller will interpret as sequence)
-    return @ptrCast(result.ptr);
+    // Return as JSValue (caller will interpret as sequence)
+    return runtime.JSValue.fromAnyopaque(@ptrCast(result.ptr));
 }
 
 /// has method

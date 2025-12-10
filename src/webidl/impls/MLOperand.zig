@@ -46,7 +46,7 @@ pub fn get_dataType(instance: *runtime.Instance) anyerror!enums.MLOperandDataTyp
 }
 
 /// Getter for shape
-pub fn get_shape(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_shape(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

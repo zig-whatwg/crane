@@ -115,7 +115,7 @@ pub fn call_createDynamicsCompressor(instance: *runtime.Instance) anyerror!*runt
 }
 
 /// Operation: createPeriodicWave
-pub fn call_createPeriodicWave(instance: *runtime.Instance, real: *const anyopaque, imag: *const anyopaque, constraints: webidl.Opt(dictionaries.PeriodicWaveConstraints)) anyerror!*runtime.Instance {
+pub fn call_createPeriodicWave(instance: *runtime.Instance, real: runtime.JSValue, imag: runtime.JSValue, constraints: webidl.Opt(dictionaries.PeriodicWaveConstraints)) anyerror!*runtime.Instance {
     _ = instance;
     _ = real;
     _ = imag;
@@ -166,7 +166,7 @@ pub fn call_createAnalyser(instance: *runtime.Instance) anyerror!*runtime.Instan
 }
 
 /// Operation: createIIRFilter
-pub fn call_createIIRFilter(instance: *runtime.Instance, feedforward: *const anyopaque, feedback: *const anyopaque) anyerror!*runtime.Instance {
+pub fn call_createIIRFilter(instance: *runtime.Instance, feedforward: runtime.JSValue, feedback: runtime.JSValue) anyerror!*runtime.Instance {
     _ = instance;
     _ = feedforward;
     _ = feedback;
@@ -218,7 +218,7 @@ pub fn call_createChannelSplitter(instance: *runtime.Instance, numberOfOutputs: 
 }
 
 /// Operation: decodeAudioData
-pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: *const anyopaque, successCallback: webidl.Opt(?callbacks.DecodeSuccessCallback), errorCallback: webidl.Opt(?callbacks.DecodeErrorCallback)) anyerror!*const anyopaque {
+pub fn call_decodeAudioData(instance: *runtime.Instance, audioData: runtime.JSValue, successCallback: webidl.Opt(?callbacks.DecodeSuccessCallback), errorCallback: webidl.Opt(?callbacks.DecodeErrorCallback)) anyerror!runtime.JSValue {
     _ = instance;
     _ = audioData;
     _ = successCallback;

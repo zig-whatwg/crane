@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, position: webidl.Opt(dictionaries.DOMPointInit), orientation: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, position: webidl.Opt(dictionaries.DOMPointInit), orientation: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &XRRigidTransform.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &XRRigidTransform.vtable, ctx);
     errdefer deinit(instance);
 
     _ = position;
@@ -67,7 +67,7 @@ pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for matrix
-pub fn get_matrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_matrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

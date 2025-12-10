@@ -162,8 +162,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// HTML Standard §7.2.6.5: NavigateEvent constructor
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigateEventInit) !*runtime.Instance {
-    const instance = try init(allocator, State, &NavigateEvent.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.NavigateEventInit) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &NavigateEvent.vtable, ctx);
     errdefer deinit(instance);
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
@@ -198,7 +198,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     }
 
     if (eventInitDict.downloadRequest) |download| {
-        internal.download_request = try allocator.dupe(u8, download.asSlice());
+        internal.download_request = try ctx.allocator.dupe(u8, download.asSlice());
     }
 
     // Convert JSValue to anyopaque if provided

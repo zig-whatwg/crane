@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, effect: webidl.Opt(?*runtime.Instance), timeline: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Animation.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Animation.vtable, ctx);
     errdefer deinit(instance);
 
     _ = effect;
@@ -109,13 +109,13 @@ pub fn get_pending(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -145,13 +145,13 @@ pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for rangeStart
-pub fn get_rangeStart(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_rangeStart(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for rangeEnd
-pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_rangeEnd(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -233,14 +233,14 @@ pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) anyerr
 }
 
 /// Setter for rangeStart
-pub fn set_rangeStart(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_rangeStart(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for rangeEnd
-pub fn set_rangeEnd(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_rangeEnd(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -105,13 +105,13 @@ pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void
 }
 
 /// Operation: getLineDash
-pub fn call_getLineDash(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setLineDash
-pub fn call_setLineDash(instance: *runtime.Instance, segments: *const anyopaque) anyerror!void {
+pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = segments;
     return error.NotImplemented;

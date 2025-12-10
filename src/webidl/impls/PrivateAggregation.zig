@@ -48,7 +48,7 @@ pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: dic
 }
 
 /// Operation: contributeToHistogramOnEvent
-pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: runtime.DOMString, contribution: *const anyopaque) anyerror!void {
+pub fn call_contributeToHistogramOnEvent(instance: *runtime.Instance, event: runtime.DOMString, contribution: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = event;
     _ = contribution;

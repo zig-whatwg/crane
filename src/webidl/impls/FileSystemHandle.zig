@@ -53,21 +53,21 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Operation: isSameEntry
-pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_isSameEntry(instance: *runtime.Instance, other: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = other;
     return error.NotImplemented;
 }
 
 /// Operation: queryPermission
-pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
+pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: requestPermission
-pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) anyerror!*const anyopaque {
+pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

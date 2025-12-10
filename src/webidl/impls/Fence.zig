@@ -48,7 +48,7 @@ pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(typedefs.
 }
 
 /// Operation: getNestedConfigs
-pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getNestedConfigs(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -61,7 +61,7 @@ pub fn call_setReportEventDataForAutomaticBeacons(instance: *runtime.Instance, e
 }
 
 /// Operation: disableUntrustedNetwork
-pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_disableUntrustedNetwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

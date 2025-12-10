@@ -41,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: store
-pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_store(instance: *runtime.Instance, credential: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = credential;
     return error.NotImplemented;
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialRequestOptions)) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialRequestOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: preventSilentAccess
-pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_preventSilentAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: create
-pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialCreationOptions)) anyerror!*const anyopaque {
+pub fn call_create(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CredentialCreationOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

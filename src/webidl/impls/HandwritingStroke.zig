@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &HandwritingStroke.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &HandwritingStroke.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -65,7 +65,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getPoints
-pub fn call_getPoints(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getPoints(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

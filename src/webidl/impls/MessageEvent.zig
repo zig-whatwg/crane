@@ -94,14 +94,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-messageevent
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MessageEventInit)) !*runtime.Instance {
-    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MessageEventInit)) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &MessageEvent.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
 
     // Initialize base Event attributes (Event fields in state.base.own)
-    state.base.own.type = try @"type".clone(allocator);
+    state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
     state.base.own.isTrusted = false;
     state.base.own.target = null;
@@ -190,10 +190,10 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 ///
 /// For WebSocket, this is always an empty frozen array.
 /// This is used by postMessage for transferring MessagePorts.
-pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    // Return the ports array (empty for WebSocket)
-    return @ptrCast(&state.own.ports);
+    // Return the ports array (empty for WebSocket) wrapped in JSValue
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&state.own.ports));
 }
 
 /// Operation: initMessageEvent (legacy)
@@ -201,7 +201,7 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!*const anyopaque {
 ///
 /// This is a legacy method for initializing MessageEvent.
 /// New code should use the constructor instead.
-pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(runtime.JSValue)) anyerror!void {
     const state = instance.getState(State);
 
     // Update event properties (Event fields in state.base.own)

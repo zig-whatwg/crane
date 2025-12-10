@@ -905,6 +905,42 @@ See epic `whatwg-jwgc` for the refactoring plan.
 - An impl MUST use interfaces/namespaces/mixins to interact with OTHER types
 - This ensures proper encapsulation and allows interfaces to add cross-cutting concerns
 
+**Critical: Inheritance Deinit Chain**
+
+When implementing a subclass, the `deinit` function MUST call the parent's deinit through the **interface**, not the impl:
+
+```zig
+// src/webidl/impls/Element.zig
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;  // Parent interface for deinit chain
+
+pub fn deinit(instance: *runtime.Instance) void {
+    // Clean up Element's own resources
+    if (Registry.get(instance)) |internal| {
+        internal.deinit();
+    }
+    Registry.remove(instance);
+    
+    // ✅ CORRECT: Call parent deinit through interface
+    Node.deinit(instance);
+}
+```
+
+```zig
+// ❌ WRONG: Calling parent impl directly
+const NodeImpl = @import("Node.zig");
+
+pub fn deinit(instance: *runtime.Instance) void {
+    // ...cleanup...
+    NodeImpl.deinit(instance);  // ❌ WRONG - bypasses interface
+}
+```
+
+**Note on init vs deinit:**
+- `init` may call parent impl directly (for StateType comptime parameter)
+- `deinit` MUST always call parent through interface
+- Use `errdefer ParentInterface.deinit(instance)` in init functions
+
 **Correct Pattern:**
 ```zig
 // src/webidl/impls/HTMLParser.zig
@@ -939,11 +975,13 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 - Direct impl calls bypass these important behaviors
 - Maintains consistent API surface throughout the codebase
 - Allows interfaces to evolve independently of impls
+- **Inheritance chain cleanup requires going through interfaces to ensure proper resource cleanup**
 
-**Scope of Violation (53 files, 245 instances):**
-- DOM impls: Document, Element, Node, Attr, CharacterData, etc.
-- Streams impls: ReadableStream, WritableStream, TransformStream, controllers, readers
-- Other impls: HTMLParser, Range, Selection, Request, Response, etc.
+**Inheritance Chains That Must Follow This Pattern:**
+- EventTarget → Node → Element → HTMLElement → specific HTML elements
+- EventTarget → Node → CharacterData → Text/Comment
+- EventTarget → Node → Document
+- Event → CustomEvent, ErrorEvent, ProgressEvent, MessageEvent, etc.
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
 

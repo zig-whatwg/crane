@@ -53,7 +53,7 @@ pub fn set_userHint(instance: *runtime.Instance, value: runtime.DOMString) anyer
 }
 
 /// Operation: enableDelegations
-pub fn call_enableDelegations(instance: *runtime.Instance, delegations: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_enableDelegations(instance: *runtime.Instance, delegations: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = delegations;
     return error.NotImplemented;

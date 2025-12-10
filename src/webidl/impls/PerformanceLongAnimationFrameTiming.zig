@@ -88,7 +88,7 @@ pub fn get_firstUIEventTimestamp(instance: *runtime.Instance) anyerror!typedefs.
 }
 
 /// Getter for scripts
-pub fn get_scripts(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_scripts(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

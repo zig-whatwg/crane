@@ -60,3 +60,22 @@ pub fn call_static_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
+
+
+pub fn call_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = config;
+    return error.NotImplemented;
+}
+
+pub fn call_close(instance: *runtime.Instance) anyerror!void {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+pub fn call_resolve(instance: *runtime.Instance, token: runtime.JSValue, options: webidl.Opt(dictionaries.IdentityResolveOptions)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = token;
+    _ = options;
+    return error.NotImplemented;
+}

@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for canvas
-pub fn get_canvas(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -352,7 +352,7 @@ pub fn call_drawElements(instance: *runtime.Instance, mode: typedefs.GLenum, cou
 }
 
 /// Operation: drawBuffers
-pub fn call_drawBuffers(instance: *runtime.Instance, buffers: *const anyopaque) anyerror!void {
+pub fn call_drawBuffers(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = buffers;
     return error.NotImplemented;
@@ -1031,7 +1031,7 @@ pub fn call_uniformMatrix4fv(instance: *runtime.Instance, location: ?*runtime.In
 }
 
 /// Operation: getAttachedShaders
-pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getAttachedShaders(instance: *runtime.Instance, program: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     _ = program;
     return null;
@@ -1109,7 +1109,7 @@ pub fn call_generateMipmap(instance: *runtime.Instance, target: typedefs.GLenum)
 }
 
 /// Operation: getUniformIndices
-pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) anyerror!?*const anyopaque {
+pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: runtime.JSValue) anyerror!?runtime.JSValue {
     _ = instance;
     _ = program;
     _ = uniformNames;
@@ -1339,7 +1339,7 @@ pub fn call_bindBuffer(instance: *runtime.Instance, target: typedefs.GLenum, buf
 }
 
 /// Operation: makeXRCompatible
-pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_makeXRCompatible(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -1371,7 +1371,7 @@ pub fn call_deleteQuery(instance: *runtime.Instance, query: ?*runtime.Instance) 
 }
 
 /// Operation: getSupportedExtensions
-pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getSupportedExtensions(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -1478,7 +1478,7 @@ pub fn call_framebufferTexture2D(instance: *runtime.Instance, target: typedefs.G
 }
 
 /// Operation: invalidateFramebuffer
-pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: *const anyopaque) anyerror!void {
+pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = target;
     _ = attachments;
@@ -1627,7 +1627,7 @@ pub fn call_vertexAttrib3f(instance: *runtime.Instance, index: typedefs.GLuint, 
 }
 
 /// Operation: transformFeedbackVaryings
-pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: *const anyopaque, bufferMode: typedefs.GLenum) anyerror!void {
+pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: runtime.JSValue, bufferMode: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = program;
     _ = varyings;
@@ -1663,7 +1663,7 @@ pub fn call_viewport(instance: *runtime.Instance, x: typedefs.GLint, y: typedefs
 }
 
 /// Operation: invalidateSubFramebuffer
-pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: *const anyopaque, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei) anyerror!void {
+pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: runtime.JSValue, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = target;
     _ = attachments;
@@ -1899,7 +1899,7 @@ pub fn call_createBuffer(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Operation: getActiveUniforms
-pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!runtime.JSValue {
+pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: runtime.JSValue, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = program;
     _ = uniformIndices;

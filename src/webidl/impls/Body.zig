@@ -52,37 +52,37 @@ pub fn get_bodyUsed(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: formData
-pub fn call_formData(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: text
-pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: json
-pub fn call_json(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_json(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: bytes
-pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: arrayBuffer
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -86,21 +86,21 @@ pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandle
 }
 
 /// Operation: watchAvailability
-pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.RemotePlaybackAvailabilityCallback) anyerror!*const anyopaque {
+pub fn call_watchAvailability(instance: *runtime.Instance, callback: callbacks.RemotePlaybackAvailabilityCallback) anyerror!runtime.JSValue {
     _ = instance;
     _ = callback;
     return error.NotImplemented;
 }
 
 /// Operation: cancelWatchAvailability
-pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!*const anyopaque {
+pub fn call_cancelWatchAvailability(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!runtime.JSValue {
     _ = instance;
     _ = id;
     return error.NotImplemented;
 }
 
 /// Operation: prompt
-pub fn call_prompt(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_prompt(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

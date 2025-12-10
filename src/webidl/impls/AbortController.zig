@@ -79,9 +79,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: § 3.2.1 "The AbortController() constructor steps are:"
 /// 1. Let signal be a new AbortSignal object
 /// 2. Set this's signal to signal
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init() which handles signal creation
-    const instance = try init(allocator, State, &AbortController.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AbortController.vtable, ctx);
     errdefer deinit(instance);
 
     return instance;

@@ -47,7 +47,7 @@ pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) any
 }
 
 /// Operation: append
-pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
     _ = instance;
     _ = property;
     _ = values;
@@ -61,7 +61,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: set
-pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const *const anyopaque) anyerror!void {
+pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
     _ = instance;
     _ = property;
     _ = values;

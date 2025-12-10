@@ -71,12 +71,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
     const x_val = if (x.was_passed) x.value else 0;
     const y_val = if (y.was_passed) y.value else 0;
     const width_val = if (width.was_passed) width.value else 0;
     const height_val = if (height.was_passed) height.value else 0;
-    return initWithDimensions(allocator, ctx, x_val, y_val, width_val, height_val);
+    return initWithDimensions(ctx.allocator, ctx, x_val, y_val, width_val, height_val);
 }
 
 /// Getter for x
@@ -151,4 +151,11 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
     }
 
     return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
+}
+
+
+pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = other;
+    return error.NotImplemented;
 }

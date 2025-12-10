@@ -52,20 +52,20 @@ pub fn get_uuid(instance: *runtime.Instance) anyerror!typedefs.UUID {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Operation: writeValue
-pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: readValue
-pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_readValue(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,21 +40,21 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: revoke
-pub fn call_revoke(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
+pub fn call_revoke(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;
 }
 
 /// Operation: request
-pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
+pub fn call_request(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;
 }
 
 /// Operation: query
-pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!*const anyopaque {
+pub fn call_query(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = permissionDesc;
     return error.NotImplemented;

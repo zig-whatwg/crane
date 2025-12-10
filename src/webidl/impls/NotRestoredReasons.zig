@@ -64,13 +64,13 @@ pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
 }
 
 /// Getter for reasons
-pub fn get_reasons(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_reasons(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for children
-pub fn get_children(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_children(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

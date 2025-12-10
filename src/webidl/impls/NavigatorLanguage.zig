@@ -46,7 +46,7 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for languages
-pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

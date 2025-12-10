@@ -40,14 +40,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: encodingInfo
-pub fn call_encodingInfo(instance: *runtime.Instance, configuration: dictionaries.MediaEncodingConfiguration) anyerror!*const anyopaque {
+pub fn call_encodingInfo(instance: *runtime.Instance, configuration: dictionaries.MediaEncodingConfiguration) anyerror!runtime.JSValue {
     _ = instance;
     _ = configuration;
     return error.NotImplemented;
 }
 
 /// Operation: decodingInfo
-pub fn call_decodingInfo(instance: *runtime.Instance, configuration: dictionaries.MediaDecodingConfiguration) anyerror!*const anyopaque {
+pub fn call_decodingInfo(instance: *runtime.Instance, configuration: dictionaries.MediaDecodingConfiguration) anyerror!runtime.JSValue {
     _ = instance;
     _ = configuration;
     return error.NotImplemented;

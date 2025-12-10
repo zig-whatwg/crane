@@ -140,8 +140,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#htmlelement
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &HTMLElement.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &HTMLElement.vtable, ctx);
     errdefer deinit(instance);
 
     // HTMLElement constructor is typically not called directly
@@ -255,16 +255,15 @@ pub fn get_dir(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for hidden
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-hidden-attribute
 /// Returns null (not hidden), true ("hidden"), or "until-found"
-pub fn get_hidden(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     if (getContentAttribute(instance, "hidden")) |value| {
         const s = value.asSlice();
         if (std.mem.eql(u8, s, "until-found")) {
-            // Return pointer to static string "until-found"
-            // In real implementation, this would be properly typed
-            return @ptrCast(&until_found_str);
+            // Return pointer to static string "until-found" wrapped in JSValue
+            return runtime.JSValue.fromAnyopaque(@ptrCast(&until_found_str));
         }
         // Any other value (including empty) means hidden=true
-        return @ptrCast(&hidden_true);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(&hidden_true));
     }
     return null; // Not hidden
 }
@@ -1169,7 +1168,7 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 
 /// Setter for hidden
 /// Complex type: can be boolean, null, or "until-found"
-pub fn set_hidden(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_hidden(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     // Simplified: treat as boolean
     // The value pointer being non-null means hidden is set
     // In full implementation, would check if it's "until-found" string
@@ -1753,7 +1752,7 @@ pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
 
 /// Operation: togglePopover
 /// Spec: https://html.spec.whatwg.org/multipage/popover.html#dom-togglepopover
-pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(*const anyopaque)) anyerror!bool {
+pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
     _ = options; // ShowPopoverOptions - simplified for now
 

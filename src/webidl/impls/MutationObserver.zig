@@ -139,9 +139,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructs a MutationObserver and sets its callback to callback.
 /// The callback is invoked with a list of MutationRecord objects as first
 /// argument and the constructed MutationObserver object as second argument.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MutationObserver.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
 
     // Store the callback as a Global handle
@@ -256,7 +256,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 /// Empties the record queue and returns what was in there.
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-takerecords
-pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
 
     // Step 1: Let records be a clone of this's record queue.
@@ -265,9 +265,9 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Step 2: Empty this's record queue.
     // (Already emptied by toOwnedSlice)
 
-    // Step 3: Return records as opaque pointer to slice.
+    // Step 3: Return records as JSValue
     // TODO: Return proper sequence<MutationRecord>
-    return @ptrCast(records.ptr);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(records.ptr));
 }
 
 // ============================================================================

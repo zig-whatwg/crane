@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.FetchEventInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: dictionaries.FetchEventInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &FetchEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &FetchEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -60,7 +60,7 @@ pub fn get_request(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for preloadResponse
-pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_preloadResponse(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,13 +84,13 @@ pub fn get_replacesClientId(instance: *runtime.Instance) anyerror!runtime.DOMStr
 }
 
 /// Getter for handled
-pub fn get_handled(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_handled(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: respondWith
-pub fn call_respondWith(instance: *runtime.Instance, r: *const anyopaque) anyerror!void {
+pub fn call_respondWith(instance: *runtime.Instance, r: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = r;
     return error.NotImplemented;

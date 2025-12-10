@@ -277,7 +277,7 @@ fn writeConstructorCallback(allocator: std.mem.Allocator, writer: anytype, confi
     try writer.writeAll("    };\n\n");
 
     try writer.writeAll("    // Call impl constructor\n");
-    try writer.print("    const instance = {s}Impl.call_constructor(allocator, ctx) catch |err| {{\n", .{config.interface_name});
+    try writer.print("    const instance = {s}Impl.call_constructor( ctx) catch |err| {{\n", .{config.interface_name});
     try writer.writeAll("        conv.throwError(isolate, @errorName(err));\n");
     try writer.writeAll("        return;\n");
     try writer.writeAll("    };\n\n");

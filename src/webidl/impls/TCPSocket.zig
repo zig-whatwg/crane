@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, remoteAddress: runtime.DOMString, remotePort: u16, options: webidl.Opt(dictionaries.TCPSocketOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, remoteAddress: runtime.DOMString, remotePort: u16, options: webidl.Opt(dictionaries.TCPSocketOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &TCPSocket.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &TCPSocket.vtable, ctx);
     errdefer deinit(instance);
 
     _ = remoteAddress;
@@ -56,19 +56,19 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, remo
 }
 
 /// Getter for opened
-pub fn get_opened(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_opened(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for closed
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

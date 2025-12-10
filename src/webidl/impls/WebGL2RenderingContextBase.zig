@@ -130,7 +130,7 @@ pub fn call_clearBufferuiv(instance: *runtime.Instance, buffer: typedefs.GLenum,
 }
 
 /// Operation: getUniformIndices
-pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: *const anyopaque) anyerror!?*const anyopaque {
+pub fn call_getUniformIndices(instance: *runtime.Instance, program: *runtime.Instance, uniformNames: runtime.JSValue) anyerror!?runtime.JSValue {
     _ = instance;
     _ = program;
     _ = uniformNames;
@@ -205,7 +205,7 @@ pub fn call_clientWaitSync(instance: *runtime.Instance, sync: *runtime.Instance,
 }
 
 /// Operation: transformFeedbackVaryings
-pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: *const anyopaque, bufferMode: typedefs.GLenum) anyerror!void {
+pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *runtime.Instance, varyings: runtime.JSValue, bufferMode: typedefs.GLenum) anyerror!void {
     _ = instance;
     _ = program;
     _ = varyings;
@@ -214,7 +214,7 @@ pub fn call_transformFeedbackVaryings(instance: *runtime.Instance, program: *run
 }
 
 /// Operation: invalidateSubFramebuffer
-pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: *const anyopaque, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei) anyerror!void {
+pub fn call_invalidateSubFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: runtime.JSValue, x: typedefs.GLint, y: typedefs.GLint, width: typedefs.GLsizei, height: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = target;
     _ = attachments;
@@ -533,7 +533,7 @@ pub fn call_getActiveUniformBlockName(instance: *runtime.Instance, program: *run
 }
 
 /// Operation: drawBuffers
-pub fn call_drawBuffers(instance: *runtime.Instance, buffers: *const anyopaque) anyerror!void {
+pub fn call_drawBuffers(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = buffers;
     return error.NotImplemented;
@@ -638,7 +638,7 @@ pub fn call_isSync(instance: *runtime.Instance, sync: ?*runtime.Instance) anyerr
 }
 
 /// Operation: getActiveUniforms
-pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: *const anyopaque, pname: typedefs.GLenum) anyerror!runtime.JSValue {
+pub fn call_getActiveUniforms(instance: *runtime.Instance, program: *runtime.Instance, uniformIndices: runtime.JSValue, pname: typedefs.GLenum) anyerror!runtime.JSValue {
     _ = instance;
     _ = program;
     _ = uniformIndices;
@@ -739,7 +739,7 @@ pub fn call_getActiveUniformBlockParameter(instance: *runtime.Instance, program:
 }
 
 /// Operation: invalidateFramebuffer
-pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: *const anyopaque) anyerror!void {
+pub fn call_invalidateFramebuffer(instance: *runtime.Instance, target: typedefs.GLenum, attachments: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = target;
     _ = attachments;

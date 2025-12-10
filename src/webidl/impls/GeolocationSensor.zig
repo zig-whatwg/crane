@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: webidl.Opt(dictionaries.GeolocationSensorOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, options: webidl.Opt(dictionaries.GeolocationSensorOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &GeolocationSensor.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &GeolocationSensor.vtable, ctx);
     errdefer deinit(instance);
 
     _ = options;
@@ -97,6 +97,13 @@ pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
 
 /// Operation: read
 pub fn call_static_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = readOptions;
+    return error.NotImplemented;
+}
+
+
+pub fn call_read(instance: *runtime.Instance, readOptions: webidl.Opt(dictionaries.ReadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = readOptions;
     return error.NotImplemented;

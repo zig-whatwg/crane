@@ -126,8 +126,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
-    const instance = try initHeaders(allocator, State, &Headers.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
+    const instance = try initHeaders(ctx.allocator, State, &Headers.vtable, ctx);
     errdefer deinit(instance);
 
     // Handle init_data based on its variant
@@ -224,7 +224,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!
 }
 
 /// getSetCookie() -> sequence<ByteString>
-pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
@@ -235,8 +235,8 @@ pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!*const anyopaque 
         };
     };
 
-    // Return as opaque pointer (V8 will handle conversion)
-    return @ptrCast(values.ptr);
+    // Return as JSValue (V8 will handle conversion)
+    return runtime.JSValue.fromAnyopaque(@ptrCast(values.ptr));
 }
 
 /// has(name) -> boolean

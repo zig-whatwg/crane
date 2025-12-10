@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &HTMLSlotElement.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &HTMLSlotElement.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -66,21 +66,21 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 }
 
 /// Operation: assignedElements
-pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!*const anyopaque {
+pub fn call_assignedElements(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: assignedNodes
-pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!*const anyopaque {
+pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(dictionaries.AssignedNodesOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: assign
-pub fn call_assign(instance: *runtime.Instance, nodes: []const *const anyopaque) anyerror!void {
+pub fn call_assign(instance: *runtime.Instance, nodes: []const runtime.JSValue) anyerror!void {
     _ = instance;
     _ = nodes;
     return error.NotImplemented;

@@ -64,7 +64,7 @@ pub fn get_gripSpace(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for profiles
-pub fn get_profiles(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_profiles(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

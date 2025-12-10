@@ -46,14 +46,14 @@ pub fn get_aggregationServices(instance: *runtime.Instance) anyerror!*runtime.In
 }
 
 /// Operation: measureConversion
-pub fn call_measureConversion(instance: *runtime.Instance, options: dictionaries.AttributionConversionOptions) anyerror!*const anyopaque {
+pub fn call_measureConversion(instance: *runtime.Instance, options: dictionaries.AttributionConversionOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: saveImpression
-pub fn call_saveImpression(instance: *runtime.Instance, options: dictionaries.AttributionImpressionOptions) anyerror!*const anyopaque {
+pub fn call_saveImpression(instance: *runtime.Instance, options: dictionaries.AttributionImpressionOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

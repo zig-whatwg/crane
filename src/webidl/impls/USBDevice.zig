@@ -131,7 +131,7 @@ pub fn get_configuration(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 }
 
 /// Getter for configurations
-pub fn get_configurations(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_configurations(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -143,27 +143,27 @@ pub fn get_opened(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: releaseInterface
-pub fn call_releaseInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
+pub fn call_releaseInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = interfaceNumber;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: selectConfiguration
-pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue: u8) anyerror!*const anyopaque {
+pub fn call_selectConfiguration(instance: *runtime.Instance, configurationValue: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = configurationValue;
     return error.NotImplemented;
 }
 
 /// Operation: controlTransferOut
-pub fn call_controlTransferOut(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, data: webidl.Opt(typedefs.BufferSource)) anyerror!*const anyopaque {
+pub fn call_controlTransferOut(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, data: webidl.Opt(typedefs.BufferSource)) anyerror!runtime.JSValue {
     _ = instance;
     _ = setup;
     _ = data;
@@ -171,7 +171,7 @@ pub fn call_controlTransferOut(instance: *runtime.Instance, setup: dictionaries.
 }
 
 /// Operation: controlTransferIn
-pub fn call_controlTransferIn(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, length: u16) anyerror!*const anyopaque {
+pub fn call_controlTransferIn(instance: *runtime.Instance, setup: dictionaries.USBControlTransferParameters, length: u16) anyerror!runtime.JSValue {
     _ = instance;
     _ = setup;
     _ = length;
@@ -179,19 +179,19 @@ pub fn call_controlTransferIn(instance: *runtime.Instance, setup: dictionaries.U
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: reset
-pub fn call_reset(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_reset(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: transferOut
-pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = endpointNumber;
     _ = data;
@@ -199,7 +199,7 @@ pub fn call_transferOut(instance: *runtime.Instance, endpointNumber: u8, data: t
 }
 
 /// Operation: isochronousTransferIn
-pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u8, packetLengths: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u8, packetLengths: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = endpointNumber;
     _ = packetLengths;
@@ -207,7 +207,7 @@ pub fn call_isochronousTransferIn(instance: *runtime.Instance, endpointNumber: u
 }
 
 /// Operation: clearHalt
-pub fn call_clearHalt(instance: *runtime.Instance, direction: enums.USBDirection, endpointNumber: u8) anyerror!*const anyopaque {
+pub fn call_clearHalt(instance: *runtime.Instance, direction: enums.USBDirection, endpointNumber: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = direction;
     _ = endpointNumber;
@@ -215,14 +215,14 @@ pub fn call_clearHalt(instance: *runtime.Instance, direction: enums.USBDirection
 }
 
 /// Operation: claimInterface
-pub fn call_claimInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!*const anyopaque {
+pub fn call_claimInterface(instance: *runtime.Instance, interfaceNumber: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = interfaceNumber;
     return error.NotImplemented;
 }
 
 /// Operation: selectAlternateInterface
-pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumber: u8, alternateSetting: u8) anyerror!*const anyopaque {
+pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumber: u8, alternateSetting: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = interfaceNumber;
     _ = alternateSetting;
@@ -230,7 +230,7 @@ pub fn call_selectAlternateInterface(instance: *runtime.Instance, interfaceNumbe
 }
 
 /// Operation: isochronousTransferOut
-pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: u8, data: typedefs.BufferSource, packetLengths: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: u8, data: typedefs.BufferSource, packetLengths: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = endpointNumber;
     _ = data;
@@ -239,13 +239,13 @@ pub fn call_isochronousTransferOut(instance: *runtime.Instance, endpointNumber: 
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: transferIn
-pub fn call_transferIn(instance: *runtime.Instance, endpointNumber: u8, length: u32) anyerror!*const anyopaque {
+pub fn call_transferIn(instance: *runtime.Instance, endpointNumber: u8, length: u32) anyerror!runtime.JSValue {
     _ = instance;
     _ = endpointNumber;
     _ = length;

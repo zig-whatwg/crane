@@ -66,3 +66,11 @@ pub fn call_static__any(instance: *runtime.Instance, signals: *const anyopaque, 
     _ = init_data;
     return error.NotImplemented;
 }
+
+
+pub fn call__any(instance: *runtime.Instance, signals: runtime.JSValue, init_data: webidl.Opt(dictionaries.TaskSignalAnyInit)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = signals;
+    _ = init_data;
+    return error.NotImplemented;
+}

@@ -65,7 +65,7 @@ pub fn set_onrelease(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Operation: release
-pub fn call_release(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_release(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

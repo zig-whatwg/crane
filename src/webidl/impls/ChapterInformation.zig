@@ -52,7 +52,7 @@ pub fn get_startTime(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for artwork
-pub fn get_artwork(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_artwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

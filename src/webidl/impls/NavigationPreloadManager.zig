@@ -40,26 +40,26 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setHeaderValue
-pub fn call_setHeaderValue(instance: *runtime.Instance, value: runtime.ByteString) anyerror!*const anyopaque {
+pub fn call_setHeaderValue(instance: *runtime.Instance, value: runtime.ByteString) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: disable
-pub fn call_disable(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_disable(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getState
-pub fn call_getState(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: enable
-pub fn call_enable(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_enable(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

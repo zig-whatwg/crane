@@ -46,13 +46,13 @@ pub fn get_styleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: intrinsicSizes
-pub fn call_intrinsicSizes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_intrinsicSizes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: layoutNextFragment
-pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_layoutNextFragment(instance: *runtime.Instance, constraints: dictionaries.LayoutConstraintsOptions, breakToken: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = constraints;
     _ = breakToken;

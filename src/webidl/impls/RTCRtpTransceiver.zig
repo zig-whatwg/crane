@@ -77,7 +77,7 @@ pub fn set_direction(instance: *runtime.Instance, value: enums.RTCRtpTransceiver
 }
 
 /// Operation: setCodecPreferences
-pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: *const anyopaque) anyerror!void {
+pub fn call_setCodecPreferences(instance: *runtime.Instance, codecs: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = codecs;
     return error.NotImplemented;

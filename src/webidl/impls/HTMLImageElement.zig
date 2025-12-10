@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &HTMLImageElement.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &HTMLImageElement.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -374,7 +374,7 @@ pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyer
 }
 
 /// Operation: decode
-pub fn call_decode(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -213,19 +213,19 @@ pub fn set_onupdatefound(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: unregister
-pub fn call_unregister(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_unregister(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_update(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: showNotification
-pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) anyerror!*const anyopaque {
+pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = title;
     _ = options;
@@ -233,7 +233,7 @@ pub fn call_showNotification(instance: *runtime.Instance, title: runtime.DOMStri
 }
 
 /// Operation: getNotifications
-pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dictionaries.GetNotificationOptions)) anyerror!*const anyopaque {
+pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(dictionaries.GetNotificationOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = filter;
     return error.NotImplemented;

@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setServerCertificate
-pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = serverCertificate;
     return error.NotImplemented;
@@ -55,7 +55,7 @@ pub fn call_createSession(instance: *runtime.Instance, sessionType: webidl.Opt(e
 }
 
 /// Operation: getStatusForPolicy
-pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(dictionaries.MediaKeysPolicy)) anyerror!*const anyopaque {
+pub fn call_getStatusForPolicy(instance: *runtime.Instance, policy: webidl.Opt(dictionaries.MediaKeysPolicy)) anyerror!runtime.JSValue {
     _ = instance;
     _ = policy;
     return error.NotImplemented;

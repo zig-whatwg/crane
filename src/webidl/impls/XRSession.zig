@@ -53,7 +53,7 @@ pub fn get_frameRate(instance: *runtime.Instance) anyerror!?f32 {
 }
 
 /// Getter for supportedFrameRates
-pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_supportedFrameRates(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -77,7 +77,7 @@ pub fn get_trackedSources(instance: *runtime.Instance) anyerror!*runtime.Instanc
 }
 
 /// Getter for enabledFeatures
-pub fn get_enabledFeatures(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_enabledFeatures(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -179,7 +179,7 @@ pub fn get_depthActive(instance: *runtime.Instance) anyerror!?bool {
 }
 
 /// Getter for persistentAnchors
-pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -273,21 +273,21 @@ pub fn set_onframeratechange(instance: *runtime.Instance, value: typedefs.EventH
 }
 
 /// Operation: deletePersistentAnchor
-pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_deletePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = uuid;
     return error.NotImplemented;
 }
 
 /// Operation: requestHitTestSourceForTransientInput
-pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: dictionaries.XRTransientInputHitTestOptionsInit) anyerror!*const anyopaque {
+pub fn call_requestHitTestSourceForTransientInput(instance: *runtime.Instance, options: dictionaries.XRTransientInputHitTestOptionsInit) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: requestReferenceSpace
-pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": enums.XRReferenceSpaceType) anyerror!*const anyopaque {
+pub fn call_requestReferenceSpace(instance: *runtime.Instance, @"type": enums.XRReferenceSpaceType) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
@@ -301,20 +301,20 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyer
 }
 
 /// Operation: requestLightProbe
-pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.XRLightProbeInit)) anyerror!*const anyopaque {
+pub fn call_requestLightProbe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.XRLightProbeInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: end
-pub fn call_end(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_end(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: initiateRoomCapture
-pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_initiateRoomCapture(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -327,14 +327,14 @@ pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbac
 }
 
 /// Operation: updateTargetFrameRate
-pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!*const anyopaque {
+pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!runtime.JSValue {
     _ = instance;
     _ = rate;
     return error.NotImplemented;
 }
 
 /// Operation: requestHitTestSource
-pub fn call_requestHitTestSource(instance: *runtime.Instance, options: dictionaries.XRHitTestOptionsInit) anyerror!*const anyopaque {
+pub fn call_requestHitTestSource(instance: *runtime.Instance, options: dictionaries.XRHitTestOptionsInit) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -348,7 +348,7 @@ pub fn call_updateRenderState(instance: *runtime.Instance, state: webidl.Opt(dic
 }
 
 /// Operation: restorePersistentAnchor
-pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_restorePersistentAnchor(instance: *runtime.Instance, uuid: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = uuid;
     return error.NotImplemented;

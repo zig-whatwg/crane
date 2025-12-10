@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.MediaStreamTrackProcessorInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.MediaStreamTrackProcessorInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MediaStreamTrackProcessor.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MediaStreamTrackProcessor.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;

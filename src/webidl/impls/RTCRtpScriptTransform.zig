@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, worker: *runtime.Instance, options: webidl.Opt(runtime.JSValue), transfer: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &RTCRtpScriptTransform.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &RTCRtpScriptTransform.vtable, ctx);
     errdefer deinit(instance);
 
     _ = worker;

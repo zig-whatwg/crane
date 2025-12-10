@@ -70,7 +70,7 @@ pub fn get_baseLayer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for layers
-pub fn get_layers(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_layers(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

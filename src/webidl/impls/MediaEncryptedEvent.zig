@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MediaEncryptedEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.MediaEncryptedEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MediaEncryptedEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MediaEncryptedEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -61,7 +61,7 @@ pub fn get_initDataType(instance: *runtime.Instance) anyerror!runtime.DOMString 
 }
 
 /// Getter for initData
-pub fn get_initData(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_initData(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

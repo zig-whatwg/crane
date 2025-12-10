@@ -46,7 +46,7 @@ pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for advances
-pub fn get_advances(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_advances(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -112,13 +112,13 @@ pub fn get_dominantBaseline(instance: *runtime.Instance) anyerror!*runtime.Insta
 }
 
 /// Getter for baselines
-pub fn get_baselines(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_baselines(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for fonts
-pub fn get_fonts(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_fonts(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -82,7 +82,7 @@ pub fn get_metaData(instance: *runtime.Instance) anyerror!dictionaries.XRMetadat
 }
 
 /// Operation: createAnchor
-pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = pose;
     _ = space;
@@ -97,7 +97,7 @@ pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.
 }
 
 /// Operation: getHitTestResults
-pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getHitTestResults(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
@@ -119,14 +119,14 @@ pub fn call_getPose(instance: *runtime.Instance, space: *runtime.Instance, baseS
 }
 
 /// Operation: getHitTestResultsForTransientInput
-pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = hitTestSource;
     return error.NotImplemented;
 }
 
 /// Operation: fillPoses
-pub fn call_fillPoses(instance: *runtime.Instance, spaces: *const anyopaque, baseSpace: *runtime.Instance, transforms: *const anyopaque) anyerror!bool {
+pub fn call_fillPoses(instance: *runtime.Instance, spaces: runtime.JSValue, baseSpace: *runtime.Instance, transforms: runtime.JSValue) anyerror!bool {
     _ = instance;
     _ = spaces;
     _ = baseSpace;
@@ -143,7 +143,7 @@ pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, 
 }
 
 /// Operation: fillJointRadii
-pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: *const anyopaque, radii: *const anyopaque) anyerror!bool {
+pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: runtime.JSValue, radii: runtime.JSValue) anyerror!bool {
     _ = instance;
     _ = jointSpaces;
     _ = radii;

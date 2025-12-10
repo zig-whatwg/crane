@@ -94,7 +94,7 @@ pub fn get_sortingCode(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for addressLine
-pub fn get_addressLine(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_addressLine(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

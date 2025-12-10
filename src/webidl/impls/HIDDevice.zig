@@ -70,7 +70,7 @@ pub fn get_productName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for collections
-pub fn get_collections(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_collections(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -83,19 +83,19 @@ pub fn set_oninputreport(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: sendFeatureReport
-pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = reportId;
     _ = data;
@@ -103,20 +103,20 @@ pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: t
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: receiveFeatureReport
-pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!*const anyopaque {
+pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!runtime.JSValue {
     _ = instance;
     _ = reportId;
     return error.NotImplemented;
 }
 
 /// Operation: sendReport
-pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = reportId;
     _ = data;

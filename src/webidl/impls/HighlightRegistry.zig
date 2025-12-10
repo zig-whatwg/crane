@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: highlightsFromPoint
-pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(dictionaries.HighlightsFromPointOptions)) anyerror!*const anyopaque {
+pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(dictionaries.HighlightsFromPointOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = x;
     _ = y;

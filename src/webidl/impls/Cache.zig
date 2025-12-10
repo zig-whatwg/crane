@@ -206,7 +206,7 @@ pub fn getMatchData(instance: *runtime.Instance, url: []const u8, options: dicti
 /// Operation: delete - Remove a cached entry
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-delete
 /// Returns: Promise<boolean>
-pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -240,7 +240,7 @@ pub fn call_delete(instance: *runtime.Instance, request: typedefs.RequestInfo, o
 /// Operation: match - Find a matching response
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-match
 /// Returns: Promise<Response | undefined>
-pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -264,19 +264,18 @@ pub fn call_match(instance: *runtime.Instance, request: typedefs.RequestInfo, op
                 // Body would be set here if we had the full response body handling
             }
 
-            return @ptrCast(response_instance);
+            return runtime.JSValue.fromInstance(response_instance);
         }
     }
 
-    // No match found - return NotImplemented to signal "no match"
-    // The V8 layer should create a Promise resolved with undefined
-    return error.NotImplemented;
+    // No match found - return undefined
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: keys - Get all cached request keys
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-keys
 /// Returns: Promise<sequence<Request>>
-pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -328,7 +327,7 @@ pub fn call_keys(instance: *runtime.Instance, request: webidl.Opt(typedefs.Reque
 /// Operation: matchAll - Find all matching responses
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-matchall
 /// Returns: Promise<sequence<Response>>
-pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!*const anyopaque {
+pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.RequestInfo), options: webidl.Opt(dictionaries.CacheQueryOptions)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -396,7 +395,7 @@ pub fn call_matchAll(instance: *runtime.Instance, request: webidl.Opt(typedefs.R
 ///    a. If response's type is "error", reject.
 ///    b. If response's status is not an ok status, reject.
 ///    c. Call Cache.put() with the request and response.
-pub fn call_add(instance: *runtime.Instance, request: typedefs.RequestInfo) anyerror!*const anyopaque {
+pub fn call_add(instance: *runtime.Instance, request: typedefs.RequestInfo) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -455,7 +454,7 @@ fn isValidCacheScheme(url: []const u8) bool {
 /// 4. Wait for all promises to settle.
 /// 5. For each response, if error or not ok, reject.
 /// 6. Batch store all request/response pairs atomically.
-pub fn call_addAll(instance: *runtime.Instance, requests: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_addAll(instance: *runtime.Instance, requests: runtime.JSValue) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     _ = internal;
@@ -493,7 +492,7 @@ pub fn call_addAll(instance: *runtime.Instance, requests: *const anyopaque) anye
 /// Operation: put - Store a request/response pair
 /// Spec: https://w3c.github.io/ServiceWorker/#cache-put
 /// Returns: Promise<undefined>
-pub fn call_put(instance: *runtime.Instance, request: typedefs.RequestInfo, response: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_put(instance: *runtime.Instance, request: typedefs.RequestInfo, response: *runtime.Instance) anyerror!runtime.JSValue {
     const url = extractUrl(request);
 
     // Get response details from the Response instance

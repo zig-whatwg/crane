@@ -133,7 +133,7 @@ pub fn set_onresourcetimingbufferfull(instance: *runtime.Instance, value: typede
 }
 
 /// Operation: measure
-pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(*const anyopaque), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
+pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString, startOrMeasureOptions: webidl.Opt(runtime.JSValue), endMark: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     _ = instance;
     _ = measureName;
     _ = startOrMeasureOptions;
@@ -212,7 +212,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: measureUserAgentSpecificMemory
-pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_measureUserAgentSpecificMemory(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

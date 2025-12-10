@@ -114,7 +114,7 @@ pub fn call_cancelScheduledValues(instance: *runtime.Instance, cancelTime: f64) 
 }
 
 /// Operation: setValueCurveAtTime
-pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: *const anyopaque, startTime: f64, duration: f64) anyerror!*runtime.Instance {
+pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: runtime.JSValue, startTime: f64, duration: f64) anyerror!*runtime.Instance {
     _ = instance;
     _ = values;
     _ = startTime;

@@ -54,7 +54,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 /// Operation: setEncryptionKey
-pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(typedefs.CryptoKeyID)) anyerror!*const anyopaque {
+pub fn call_setEncryptionKey(instance: *runtime.Instance, key: *runtime.Instance, keyID: webidl.Opt(typedefs.CryptoKeyID)) anyerror!runtime.JSValue {
     _ = instance;
     _ = key;
     _ = keyID;

@@ -46,7 +46,7 @@ pub fn get_accelerated(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for lost
-pub fn get_lost(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_lost(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -75,14 +75,14 @@ pub fn call_writeTensor(instance: *runtime.Instance, tensor: *runtime.Instance, 
 }
 
 /// Operation: readTensor
-pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_readTensor(instance: *runtime.Instance, tensor: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = tensor;
     return error.NotImplemented;
 }
 
 /// Operation: createTensor
-pub fn call_createTensor(instance: *runtime.Instance, descriptor: dictionaries.MLTensorDescriptor) anyerror!*const anyopaque {
+pub fn call_createTensor(instance: *runtime.Instance, descriptor: dictionaries.MLTensorDescriptor) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -95,7 +95,7 @@ pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: createConstantTensor
-pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: dictionaries.MLOperandDescriptor, inputData: typedefs.AllowSharedBufferSource) anyerror!*const anyopaque {
+pub fn call_createConstantTensor(instance: *runtime.Instance, descriptor: dictionaries.MLOperandDescriptor, inputData: typedefs.AllowSharedBufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     _ = inputData;

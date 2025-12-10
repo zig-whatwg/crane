@@ -73,7 +73,6 @@ pub fn create(
     // NOTE: This calls ReadableStream.getReader() which in turn calls
     // AcquireReadableStreamDefaultReader
     const reader = try reader_ops.acquireReadableStreamDefaultReader(
-        allocator,
         ctx,
         stream,
     );
@@ -121,12 +120,17 @@ pub fn next(
     // Steps 3-5: Call reader.read() which implements the spec algorithm
     // Use interface instead of impl (per Golden Rule #12)
     const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
-    const read_result_promise_ptr = try ReadableStreamDefaultReader.call_read(reader);
+    const read_result_js_value = try ReadableStreamDefaultReader.call_read(reader);
 
     // ReadResult and IteratorResult have identical structure: { value, done }
     // So we can safely cast the promise type
-    // Untag V8 pointer before casting (V8 uses pointer tagging)
-    const untagged = pointer_tag.untagPointer(read_result_promise_ptr);
+    // Extract the handle pointer from JSValue and untag V8 pointer before casting (V8 uses pointer tagging)
+    const handle_ptr = switch (read_result_js_value) {
+        .handle => |h| h.ptr,
+        .instance => |ptr| ptr,
+        else => return error.TypeError,
+    };
+    const untagged = pointer_tag.untagPointer(handle_ptr);
     const iterator_promise: *AsyncPromise(IteratorResult) = @ptrCast(@alignCast(untagged.ptr));
 
     // Step 6: Return promise

@@ -65,7 +65,7 @@ pub fn get_queue(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for lost
-pub fn get_lost(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_lost(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -118,7 +118,7 @@ pub fn call_createRenderPipeline(instance: *runtime.Instance, descriptor: dictio
 }
 
 /// Operation: createRenderPipelineAsync
-pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPipelineDescriptor) anyerror!*const anyopaque {
+pub fn call_createRenderPipelineAsync(instance: *runtime.Instance, descriptor: dictionaries.GPURenderPipelineDescriptor) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -146,7 +146,7 @@ pub fn call_createCommandEncoder(instance: *runtime.Instance, descriptor: webidl
 }
 
 /// Operation: createComputePipelineAsync
-pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePipelineDescriptor) anyerror!*const anyopaque {
+pub fn call_createComputePipelineAsync(instance: *runtime.Instance, descriptor: dictionaries.GPUComputePipelineDescriptor) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
@@ -215,7 +215,7 @@ pub fn call_createBindGroup(instance: *runtime.Instance, descriptor: dictionarie
 }
 
 /// Operation: popErrorScope
-pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_popErrorScope(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

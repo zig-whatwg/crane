@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: requestPresenter
-pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(dictionaries.InkPresenterParam)) anyerror!*const anyopaque {
+pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(dictionaries.InkPresenterParam)) anyerror!runtime.JSValue {
     _ = instance;
     _ = param;
     return error.NotImplemented;

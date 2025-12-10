@@ -188,3 +188,22 @@ pub fn signalAbort(instance: *runtime.Instance, reason: ?*anyopaque) ImplError!v
     // Fire abort event (requires DOM event infrastructure)
     // For now, just set the flag - event firing would happen here
 }
+
+
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = reason;
+    return error.NotImplemented;
+}
+
+pub fn call_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = milliseconds;
+    return error.NotImplemented;
+}
+
+pub fn call__any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = signals;
+    return error.NotImplemented;
+}

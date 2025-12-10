@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &IdleDetector.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &IdleDetector.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -78,7 +78,7 @@ pub fn set_onchange(instance: *runtime.Instance, value: typedefs.EventHandler) a
 }
 
 /// Operation: start
-pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IdleOptions)) anyerror!*const anyopaque {
+pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IdleOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -86,6 +86,12 @@ pub fn call_start(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
 
 /// Operation: requestPermission
 pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!*const anyopaque {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+
+pub fn call_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

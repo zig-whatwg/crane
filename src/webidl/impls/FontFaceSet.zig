@@ -59,7 +59,7 @@ pub fn get_onloadingerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -112,7 +112,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: load
-pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) anyerror!*const anyopaque {
+pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) anyerror!runtime.JSValue {
     _ = instance;
     _ = font;
     _ = text;

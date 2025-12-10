@@ -88,8 +88,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    return init(allocator, State, &XSLTProcessor.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    return init(ctx.allocator, State, &XSLTProcessor.vtable, ctx);
 }
 
 /// Operation: importStylesheet

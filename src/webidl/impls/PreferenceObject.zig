@@ -52,7 +52,7 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for validValues
-pub fn get_validValues(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_validValues(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,7 +77,7 @@ pub fn call_clearOverride(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: requestOverride
-pub fn call_requestOverride(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_requestOverride(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;

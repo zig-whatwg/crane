@@ -66,3 +66,28 @@ pub fn call_static_getDescriptor(instance: *runtime.Instance, name: *const anyop
     _ = name;
     return error.NotImplemented;
 }
+
+
+pub fn call_getCharacteristic(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}
+
+pub fn call_getService(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}
+
+pub fn call_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!typedefs.UUID {
+    _ = instance;
+    _ = alias;
+    return error.NotImplemented;
+}
+
+pub fn call_getDescriptor(instance: *runtime.Instance, name: runtime.JSValue) anyerror!typedefs.UUID {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
+}

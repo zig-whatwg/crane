@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: multiDrawArraysWEBGL
-pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = firstsList;
@@ -52,7 +52,7 @@ pub fn call_multiDrawArraysWEBGL(instance: *runtime.Instance, mode: typedefs.GLe
 }
 
 /// Operation: multiDrawElementsWEBGL
-pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = countsList;
@@ -65,7 +65,7 @@ pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: typedefs.G
 }
 
 /// Operation: multiDrawArraysInstancedWEBGL
-pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: *const anyopaque, firstsOffset: u64, countsList: *const anyopaque, countsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = firstsList;
@@ -79,7 +79,7 @@ pub fn call_multiDrawArraysInstancedWEBGL(instance: *runtime.Instance, mode: typ
 }
 
 /// Operation: multiDrawElementsInstancedWEBGL
-pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: *const anyopaque, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: *const anyopaque, offsetsOffset: u64, instanceCountsList: *const anyopaque, instanceCountsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
+pub fn call_multiDrawElementsInstancedWEBGL(instance: *runtime.Instance, mode: typedefs.GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": typedefs.GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, drawcount: typedefs.GLsizei) anyerror!void {
     _ = instance;
     _ = mode;
     _ = countsList;

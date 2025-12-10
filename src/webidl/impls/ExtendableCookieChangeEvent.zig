@@ -107,9 +107,9 @@ fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Constructor implementation
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-extendablecookiechangeevent
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableCookieChangeEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableCookieChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ExtendableCookieChangeEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ExtendableCookieChangeEvent.vtable, ctx);
     errdefer deinit(instance);
 
     const internal = getInternalState(instance) orelse return error.NotImplemented;
@@ -119,7 +119,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
     // Initialize ExtendableEvent -> Event base properties
     // ExtendableEvent.State.parent is Event.State
-    state.parent.parent.own.type = try @"type".clone(allocator);
+    state.parent.parent.own.type = try @"type".clone(ctx.allocator);
     state.parent.parent.own.bubbles = false;
     state.parent.parent.own.cancelable = false;
     state.parent.parent.own.composed = false;
@@ -153,9 +153,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
             const changed_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(changed_ptr)));
             for (changed_list.*) |dict_item| {
                 const item = CookieListItem{
-                    .name = try allocator.dupe(u8, dict_item.name orelse ""),
-                    .value = try allocator.dupe(u8, dict_item.value orelse ""),
-                    .allocator = allocator,
+                    .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
+                    .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
+                    .allocator = ctx.allocator,
                 };
                 try internal.addChanged(item);
             }
@@ -166,9 +166,9 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
             const deleted_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(deleted_ptr)));
             for (deleted_list.*) |dict_item| {
                 const item = CookieListItem{
-                    .name = try allocator.dupe(u8, dict_item.name orelse ""),
-                    .value = try allocator.dupe(u8, dict_item.value orelse ""),
-                    .allocator = allocator,
+                    .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
+                    .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
+                    .allocator = ctx.allocator,
                 };
                 try internal.addDeleted(item);
             }
@@ -180,14 +180,14 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
 /// Getter for changed
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-changed
-pub fn get_changed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     return @ptrCast(&internal.changed);
 }
 
 /// Getter for deleted
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-deleted
-pub fn get_deleted(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     return @ptrCast(&internal.deleted);
 }

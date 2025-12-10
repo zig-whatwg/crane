@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: interfaces.XRRay.ConstructorArgs) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, args: interfaces.XRRay.ConstructorArgs) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &XRRay.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &XRRay.vtable, ctx);
     errdefer deinit(instance);
 
     _ = args;
@@ -66,7 +66,7 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for matrix
-pub fn get_matrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_matrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

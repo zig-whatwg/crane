@@ -46,13 +46,13 @@ pub fn get_meshSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for vertices
-pub fn get_vertices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_vertices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for indices
-pub fn get_indices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_indices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

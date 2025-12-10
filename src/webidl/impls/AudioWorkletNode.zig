@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.AudioWorkletNodeOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.AudioWorkletNodeOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &AudioWorkletNode.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AudioWorkletNode.vtable, ctx);
     errdefer deinit(instance);
 
     _ = context;

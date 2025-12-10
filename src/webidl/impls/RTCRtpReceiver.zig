@@ -78,7 +78,7 @@ pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransfor
 }
 
 /// Operation: getContributingSources
-pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getContributingSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -91,7 +91,7 @@ pub fn call_static_getCapabilities(instance: *runtime.Instance, kind: runtime.DO
 }
 
 /// Operation: getStats
-pub fn call_getStats(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getStats(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -103,7 +103,14 @@ pub fn call_getParameters(instance: *runtime.Instance) anyerror!dictionaries.RTC
 }
 
 /// Operation: getSynchronizationSources
-pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSynchronizationSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
+}
+
+
+pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
+    _ = instance;
+    _ = kind;
+    return null;
 }

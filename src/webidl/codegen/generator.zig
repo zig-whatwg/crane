@@ -848,12 +848,13 @@ fn generateImplFile(
     if (own_constructors.items.len > 0) {
         try w.writeAll("/// Constructor implementation\n");
         try w.writeAll("/// This is called when the interface is constructed from JavaScript\n");
+        try w.writeAll("/// Note: Use ctx.allocator for all allocations to ensure consistency with deinit\n");
 
         // If multiple constructors (overloaded), accept ConstructorArgs union
         if (own_constructors.items.len > 1) {
-            try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
-            try w.writeAll("    // Create instance through init()\n");
-            try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+            try w.print("pub fn call_constructor(ctx: runtime.Context, args: interfaces.{s}.ConstructorArgs) !*runtime.Instance {{\n", .{interface.name});
+            try w.writeAll("    // Create instance through init() - use ctx.allocator for consistency with deinit\n");
+            try w.print("    const instance = try init(ctx.allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
             try w.writeAll("    errdefer deinit(instance);\n");
             try w.writeAll("\n");
             try w.writeAll("    _ = args;\n");
@@ -865,7 +866,7 @@ fn generateImplFile(
         } else {
             // Single constructor - use direct parameters
             const ctor = own_constructors.items[0];
-            try w.print("pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context", .{});
+            try w.print("pub fn call_constructor(ctx: runtime.Context", .{});
             for (ctor.arguments) |arg| {
                 try w.writeAll(", ");
                 try writeEscapedImplParamName(w, arg.name);
@@ -873,8 +874,8 @@ fn generateImplFile(
                 try writeParamType(w, arg, type_reg);
             }
             try w.writeAll(") !*runtime.Instance {\n");
-            try w.writeAll("    // Create instance through init()\n");
-            try w.print("    const instance = try init(allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
+            try w.writeAll("    // Create instance through init() - use ctx.allocator for consistency with deinit\n");
+            try w.print("    const instance = try init(ctx.allocator, State, &{s}.vtable, ctx);\n", .{interface.name});
             try w.writeAll("    errdefer deinit(instance);\n");
             try w.writeAll("\n");
             for (ctor.arguments) |arg| {
@@ -2624,7 +2625,8 @@ pub fn generateNamespace(
     try w.print("    pub const Meta = struct {{\n", .{});
     try w.print("        pub const name = \"{s}\";\n", .{namespace.name});
     try w.writeAll("        pub const is_namespace = true;\n");
-    try w.writeAll("        pub const BaseType = ?*anyopaque;\n");
+    // Namespaces have no base type - use null so FlattenedState produces void
+    try w.writeAll("        pub const BaseType = null;\n");
     try w.writeAll("        pub const MixinTypes = &.{};\n");
     try w.writeAll("        \n");
     try w.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name)\n");

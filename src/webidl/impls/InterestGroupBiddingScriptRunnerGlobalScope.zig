@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setBid
-pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(*const anyopaque)) anyerror!bool {
+pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(runtime.JSValue)) anyerror!bool {
     _ = instance;
     _ = oneOrManyBids;
     return error.NotImplemented;

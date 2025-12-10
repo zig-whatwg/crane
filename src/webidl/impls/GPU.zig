@@ -47,7 +47,7 @@ pub fn get_wgslLanguageFeatures(instance: *runtime.Instance) anyerror!*runtime.I
 }
 
 /// Operation: requestAdapter
-pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GPURequestAdapterOptions)) anyerror!*const anyopaque {
+pub fn call_requestAdapter(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GPURequestAdapterOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

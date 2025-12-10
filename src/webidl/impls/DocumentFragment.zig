@@ -115,8 +115,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// DOM §4.8 - DocumentFragment()
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &DocumentFragment.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &DocumentFragment.vtable, ctx);
     errdefer deinit(instance);
 
     // Set node type to DOCUMENT_FRAGMENT_NODE (11)

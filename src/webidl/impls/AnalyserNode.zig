@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.AnalyserOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, context: *runtime.Instance, options: webidl.Opt(dictionaries.AnalyserOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &AnalyserNode.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AnalyserNode.vtable, ctx);
     errdefer deinit(instance);
 
     _ = context;
@@ -113,28 +113,28 @@ pub fn set_smoothingTimeConstant(instance: *runtime.Instance, value: f64) anyerr
 }
 
 /// Operation: getByteFrequencyData
-pub fn call_getByteFrequencyData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+pub fn call_getByteFrequencyData(instance: *runtime.Instance, array: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = array;
     return error.NotImplemented;
 }
 
 /// Operation: getFloatFrequencyData
-pub fn call_getFloatFrequencyData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+pub fn call_getFloatFrequencyData(instance: *runtime.Instance, array: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = array;
     return error.NotImplemented;
 }
 
 /// Operation: getFloatTimeDomainData
-pub fn call_getFloatTimeDomainData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+pub fn call_getFloatTimeDomainData(instance: *runtime.Instance, array: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = array;
     return error.NotImplemented;
 }
 
 /// Operation: getByteTimeDomainData
-pub fn call_getByteTimeDomainData(instance: *runtime.Instance, array: *const anyopaque) anyerror!void {
+pub fn call_getByteTimeDomainData(instance: *runtime.Instance, array: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = array;
     return error.NotImplemented;

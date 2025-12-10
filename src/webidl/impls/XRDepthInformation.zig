@@ -64,7 +64,7 @@ pub fn get_rawValueToMeters(instance: *runtime.Instance) anyerror!f32 {
 }
 
 /// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

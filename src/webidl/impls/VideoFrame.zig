@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, image: typedefs.CanvasImageSource, init_data: webidl.Opt(dictionaries.VideoFrameInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, image: typedefs.CanvasImageSource, init_data: webidl.Opt(dictionaries.VideoFrameInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &VideoFrame.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &VideoFrame.vtable, ctx);
     errdefer deinit(instance);
 
     _ = image;
@@ -134,7 +134,7 @@ pub fn call_allocationSize(instance: *runtime.Instance, options: webidl.Opt(dict
 }
 
 /// Operation: copyTo
-pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.VideoFrameCopyToOptions)) anyerror!*const anyopaque {
+pub fn call_copyTo(instance: *runtime.Instance, destination: typedefs.AllowSharedBufferSource, options: webidl.Opt(dictionaries.VideoFrameCopyToOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = destination;
     _ = options;

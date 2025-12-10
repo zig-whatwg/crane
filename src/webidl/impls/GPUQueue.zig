@@ -54,7 +54,7 @@ pub fn set_label(instance: *runtime.Instance, value: runtime.USVString) anyerror
 }
 
 /// Operation: onSubmittedWorkDone
-pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_onSubmittedWorkDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -81,7 +81,7 @@ pub fn call_writeTexture(instance: *runtime.Instance, destination: dictionaries.
 }
 
 /// Operation: submit
-pub fn call_submit(instance: *runtime.Instance, commandBuffers: *const anyopaque) anyerror!void {
+pub fn call_submit(instance: *runtime.Instance, commandBuffers: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = commandBuffers;
     return error.NotImplemented;

@@ -41,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
     _ = instance;
     _ = contents;
     return error.NotImplemented;
 }
 
 /// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

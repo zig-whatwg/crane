@@ -41,27 +41,27 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for supportedContentEncodings
-pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: permissionState
-pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
+pub fn call_permissionState(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: subscribe
-pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!*const anyopaque {
+pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: getSubscription
-pub fn call_getSubscription(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSubscription(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

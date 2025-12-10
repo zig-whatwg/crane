@@ -78,7 +78,7 @@ pub fn call_unmap(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getMappedRange
-pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!*const anyopaque {
+pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!runtime.JSValue {
     _ = instance;
     _ = offset;
     _ = size;
@@ -86,7 +86,7 @@ pub fn call_getMappedRange(instance: *runtime.Instance, offset: webidl.Opt(typed
 }
 
 /// Operation: mapAsync
-pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!*const anyopaque {
+pub fn call_mapAsync(instance: *runtime.Instance, mode: typedefs.GPUMapModeFlags, offset: webidl.Opt(typedefs.GPUSize64), size: webidl.Opt(typedefs.GPUSize64)) anyerror!runtime.JSValue {
     _ = instance;
     _ = mode;
     _ = offset;

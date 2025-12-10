@@ -59,7 +59,7 @@ pub fn get_properties(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for value
-pub fn get_value(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_value(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -78,54 +78,54 @@ pub fn set_oncharacteristicvaluechanged(instance: *runtime.Instance, value: type
 }
 
 /// Operation: startNotifications
-pub fn call_startNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_startNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: writeValueWithResponse
-pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_writeValueWithResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: writeValue
-pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_writeValue(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptors
-pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(typedefs.BluetoothDescriptorUUID)) anyerror!*const anyopaque {
+pub fn call_getDescriptors(instance: *runtime.Instance, descriptor: webidl.Opt(typedefs.BluetoothDescriptorUUID)) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: getDescriptor
-pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) anyerror!*const anyopaque {
+pub fn call_getDescriptor(instance: *runtime.Instance, descriptor: typedefs.BluetoothDescriptorUUID) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;
 }
 
 /// Operation: writeValueWithoutResponse
-pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_writeValueWithoutResponse(instance: *runtime.Instance, value: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Operation: stopNotifications
-pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_stopNotifications(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: readValue
-pub fn call_readValue(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_readValue(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

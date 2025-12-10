@@ -85,7 +85,7 @@ pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandle
 }
 
 /// Operation: forget
-pub fn call_forget(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_forget(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -97,27 +97,27 @@ pub fn call_getInfo(instance: *runtime.Instance) anyerror!dictionaries.SerialPor
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance, options: dictionaries.SerialOptions) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance, options: dictionaries.SerialOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: setSignals
-pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(dictionaries.SerialOutputSignals)) anyerror!*const anyopaque {
+pub fn call_setSignals(instance: *runtime.Instance, signals: webidl.Opt(dictionaries.SerialOutputSignals)) anyerror!runtime.JSValue {
     _ = instance;
     _ = signals;
     return error.NotImplemented;
 }
 
 /// Operation: getSignals
-pub fn call_getSignals(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSignals(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

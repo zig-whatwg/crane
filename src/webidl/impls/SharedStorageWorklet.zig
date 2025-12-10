@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: run
-pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
+pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     _ = options;
@@ -49,7 +49,7 @@ pub fn call_run(instance: *runtime.Instance, name: runtime.DOMString, options: w
 }
 
 /// Operation: selectURL
-pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: *const anyopaque, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!*const anyopaque {
+pub fn call_selectURL(instance: *runtime.Instance, name: runtime.DOMString, urls: runtime.JSValue, options: webidl.Opt(dictionaries.SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     _ = urls;

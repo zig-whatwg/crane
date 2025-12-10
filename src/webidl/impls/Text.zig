@@ -119,8 +119,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try init(allocator, State, &Text.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &Text.vtable, ctx);
     errdefer deinit(instance);
 
     // Set node type to TEXT_NODE (3)
@@ -257,11 +257,11 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
 ///
 /// Returns a sequence of DOMQuads representing the CSS boxes for this element.
 /// Note: Returns sentinel for empty array - requires CSSOM/layout integration
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     // Return sentinel for empty array - layout engine required for actual box computation
-    return &undefined_sentinel;
+    return runtime.JSValue.fromAnyopaque(&undefined_sentinel);
 }
 
 /// Operation: convertQuadFromNode (from GeometryUtils mixin)

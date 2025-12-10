@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

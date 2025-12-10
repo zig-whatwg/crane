@@ -64,7 +64,7 @@ pub fn get_style(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Operation: blob
-pub fn call_blob(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_blob(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.AudioEncoderInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.AudioEncoderInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &AudioEncoder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AudioEncoder.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;
@@ -111,7 +111,14 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: flush
-pub fn call_flush(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_flush(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
+    return error.NotImplemented;
+}
+
+
+pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.AudioEncoderConfig) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = config;
     return error.NotImplemented;
 }

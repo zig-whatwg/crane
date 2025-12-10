@@ -952,12 +952,12 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
 /// 2. Get start node/offset and adjust for shadow boundaries
 /// 3. Get end node/offset and adjust for shadow boundaries
 /// 4. Return array with a single StaticRange
-pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!*const anyopaque {
+pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetComposedRangesOptions)) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: If this is empty, return empty array
     if (internal.anchor_node == null or internal.focus_node == null) {
-        // Return pointer to static empty array
-        return @ptrCast(&empty_array_sentinel);
+        // Return pointer to static empty array wrapped in JSValue
+        return runtime.JSValue.fromAnyopaque(@ptrCast(&empty_array_sentinel));
     }
 
     // Get allowed shadow roots from options
@@ -1008,9 +1008,9 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(d
     try StaticRangeImpl.setStart(static_range, adjusted_start.node, adjusted_start.offset);
     try StaticRangeImpl.setEnd(static_range, adjusted_end.node, adjusted_end.offset);
 
-    // Return pointer to the StaticRange
+    // Return pointer to the StaticRange wrapped in JSValue
     // Note: In a full implementation, this would be a proper sequence/array
-    return @ptrCast(static_range);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(static_range));
 }
 
 /// Adjust a boundary point for shadow boundaries
@@ -1113,7 +1113,7 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
 
     // Create a new Range (use interface per Golden Rule #13)
     // Note: We need a context here - get it from anchor node
-    const range = try interfaces.Range.call_constructor(internal.allocator, anchor.ctx);
+    const range = try interfaces.Range.call_constructor(anchor.ctx);
 
     // Set the range boundaries based on direction
     switch (internal.direction) {

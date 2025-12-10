@@ -10,7 +10,7 @@ pub const console = struct {
     pub const Meta = struct {
         pub const name = "console";
         pub const is_namespace = true;
-        pub const BaseType = ?*anyopaque;
+        pub const BaseType = null;
         pub const MixinTypes = &.{};
         
         /// Method binding hints for V8Interface (JS name, Zig function name)

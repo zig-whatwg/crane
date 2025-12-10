@@ -52,7 +52,7 @@ pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!dictionaries.
 }
 
 /// Operation: createMediaKeys
-pub fn call_createMediaKeys(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_createMediaKeys(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, matrix: *runtime.Instance, options: webidl.Opt(dictionaries.CSSMatrixComponentOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, matrix: *runtime.Instance, options: webidl.Opt(dictionaries.CSSMatrixComponentOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CSSMatrixComponent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CSSMatrixComponent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = matrix;

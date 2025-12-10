@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &NDEFReader.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &NDEFReader.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -79,14 +79,14 @@ pub fn set_onreadingerror(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: scan
-pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFScanOptions)) anyerror!*const anyopaque {
+pub fn call_scan(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFScanOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
 }
 
 /// Operation: write
-pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: webidl.Opt(dictionaries.NDEFWriteOptions)) anyerror!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSource, options: webidl.Opt(dictionaries.NDEFWriteOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = message;
     _ = options;
@@ -94,7 +94,7 @@ pub fn call_write(instance: *runtime.Instance, message: typedefs.NDEFMessageSour
 }
 
 /// Operation: makeReadOnly
-pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFMakeReadOnlyOptions)) anyerror!*const anyopaque {
+pub fn call_makeReadOnly(instance: *runtime.Instance, options: webidl.Opt(dictionaries.NDEFMakeReadOnlyOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

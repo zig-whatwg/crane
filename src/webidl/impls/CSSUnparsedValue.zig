@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, members: *const anyopaque) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, members: runtime.JSValue) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CSSUnparsedValue.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CSSUnparsedValue.vtable, ctx);
     errdefer deinit(instance);
 
     _ = members;

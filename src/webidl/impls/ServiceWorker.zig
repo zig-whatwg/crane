@@ -78,7 +78,7 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 /// Operation: postMessage
-pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: *const anyopaque) anyerror!void {
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = message;
     _ = transfer;

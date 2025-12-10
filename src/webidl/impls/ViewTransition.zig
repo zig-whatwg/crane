@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for updateCallbackDone
-pub fn get_updateCallbackDone(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_updateCallbackDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -77,7 +77,7 @@ pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror
 }
 
 /// Operation: waitUntil
-pub fn call_waitUntil(instance: *runtime.Instance, promise: *const anyopaque) anyerror!void {
+pub fn call_waitUntil(instance: *runtime.Instance, promise: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = promise;
     return error.NotImplemented;

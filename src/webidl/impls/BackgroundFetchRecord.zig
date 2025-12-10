@@ -46,7 +46,7 @@ pub fn get_request(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for responseReady
-pub fn get_responseReady(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_responseReady(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for brands
-pub fn get_brands(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_brands(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -58,7 +58,7 @@ pub fn get_platform(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: getHighEntropyValues
-pub fn call_getHighEntropyValues(instance: *runtime.Instance, hints: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_getHighEntropyValues(instance: *runtime.Instance, hints: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = hints;
     return error.NotImplemented;

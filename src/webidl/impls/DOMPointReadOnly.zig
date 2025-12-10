@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), z: webidl.Opt(f64), w: webidl.Opt(f64)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &DOMPointReadOnly.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &DOMPointReadOnly.vtable, ctx);
     errdefer deinit(instance);
 
     _ = x;
@@ -95,6 +95,13 @@ pub fn call_matrixTransform(instance: *runtime.Instance, matrix: webidl.Opt(dict
 
 /// Operation: fromPoint
 pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = other;
+    return error.NotImplemented;
+}
+
+
+pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = other;
     return error.NotImplemented;

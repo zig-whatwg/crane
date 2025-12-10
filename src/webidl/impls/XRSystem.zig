@@ -54,7 +54,7 @@ pub fn set_ondevicechange(instance: *runtime.Instance, value: typedefs.EventHand
 }
 
 /// Operation: requestSession
-pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: webidl.Opt(dictionaries.XRSessionInit)) anyerror!*const anyopaque {
+pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMode, options: webidl.Opt(dictionaries.XRSessionInit)) anyerror!runtime.JSValue {
     _ = instance;
     _ = mode;
     _ = options;
@@ -62,7 +62,7 @@ pub fn call_requestSession(instance: *runtime.Instance, mode: enums.XRSessionMod
 }
 
 /// Operation: isSessionSupported
-pub fn call_isSessionSupported(instance: *runtime.Instance, mode: enums.XRSessionMode) anyerror!*const anyopaque {
+pub fn call_isSessionSupported(instance: *runtime.Instance, mode: enums.XRSessionMode) anyerror!runtime.JSValue {
     _ = instance;
     _ = mode;
     return error.NotImplemented;

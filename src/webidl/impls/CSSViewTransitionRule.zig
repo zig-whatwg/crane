@@ -46,7 +46,7 @@ pub fn get_navigation(instance: *runtime.Instance) anyerror!typedefs.CSSOMString
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

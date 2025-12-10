@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, width: u64, height: u64) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, width: u64, height: u64) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &OffscreenCanvas.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &OffscreenCanvas.vtable, ctx);
     errdefer deinit(instance);
 
     _ = width;
@@ -115,7 +115,7 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: enums.OffscreenRe
 }
 
 /// Operation: convertToBlob
-pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageEncodeOptions)) anyerror!*const anyopaque {
+pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageEncodeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

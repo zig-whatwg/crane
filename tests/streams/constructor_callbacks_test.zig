@@ -48,51 +48,51 @@ test "ReadableStream: constructor accepts underlyingSource parameter" {
     // In Zig 0.15+, function types are in .@"fn" field
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be underlyingSource: webidl.Opt(JSValue)
-    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // Parameter 1 (index 1) should be underlyingSource: webidl.Opt(JSValue)
+    // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
     // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
-    try testing.expect(params.len >= 4);
-    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(params.len >= 3);
+    const param_type_info = @typeInfo(params[1].type.?);
     try testing.expect(param_type_info == .@"struct");
     // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
-    try testing.expect(@hasField(params[2].type.?, "was_passed"));
-    try testing.expect(@hasField(params[2].type.?, "value"));
+    try testing.expect(@hasField(params[1].type.?, "was_passed"));
+    try testing.expect(@hasField(params[1].type.?, "value"));
 }
 
 test "WritableStream: constructor accepts underlyingSink parameter" {
     // Verify the constructor signature exists and accepts the correct parameter type
-    // call_constructor(allocator, ctx, underlyingSink, strategy)
+    // call_constructor(ctx, underlyingSink, strategy)
     const ConstructorFn = @TypeOf(impls.WritableStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be underlyingSink: webidl.Opt(JSValue)
-    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // Parameter 1 (index 1) should be underlyingSink: webidl.Opt(JSValue)
+    // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
     // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
-    try testing.expect(params.len >= 4);
-    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(params.len >= 3);
+    const param_type_info = @typeInfo(params[1].type.?);
     try testing.expect(param_type_info == .@"struct");
     // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
-    try testing.expect(@hasField(params[2].type.?, "was_passed"));
-    try testing.expect(@hasField(params[2].type.?, "value"));
+    try testing.expect(@hasField(params[1].type.?, "was_passed"));
+    try testing.expect(@hasField(params[1].type.?, "value"));
 }
 
 test "TransformStream: constructor accepts transformer parameter" {
     // Verify the constructor signature exists and accepts the correct parameter type
-    // call_constructor(allocator, ctx, transformer, writableStrategy, readableStrategy)
+    // call_constructor(ctx, transformer, writableStrategy, readableStrategy)
     const ConstructorFn = @TypeOf(impls.TransformStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
     const params = type_info.@"fn".params;
 
-    // Parameter 2 (index 2) should be transformer: webidl.Opt(JSValue)
-    // Note: Previously *const anyopaque, now JSValue after codegen update
+    // Parameter 1 (index 1) should be transformer: webidl.Opt(JSValue)
+    // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
     // We verify by checking it's an Optional type (since v8 module isn't directly accessible)
-    try testing.expect(params.len >= 5);
-    const param_type_info = @typeInfo(params[2].type.?);
+    try testing.expect(params.len >= 4);
+    const param_type_info = @typeInfo(params[1].type.?);
     try testing.expect(param_type_info == .@"struct");
     // Verify it's a webidl.Opt wrapper (has was_passed and value fields)
-    try testing.expect(@hasField(params[2].type.?, "was_passed"));
-    try testing.expect(@hasField(params[2].type.?, "value"));
+    try testing.expect(@hasField(params[1].type.?, "was_passed"));
+    try testing.expect(@hasField(params[1].type.?, "value"));
 }
 
 // =============================================================================

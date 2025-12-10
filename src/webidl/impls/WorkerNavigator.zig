@@ -310,11 +310,11 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
 ///
 /// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
 /// "Must return a frozen array of valid BCP 47 language tags."
-pub fn get_languages(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        // Return as opaque pointer to slice
-        return @ptrCast(internal.internal_navigator.getLanguages().ptr);
+        // Return as JSValue wrapping pointer to slice
+        return runtime.JSValue.fromAnyopaque(@ptrCast(internal.internal_navigator.getLanguages().ptr));
     }
     return error.NotImplemented;
 }
@@ -356,14 +356,14 @@ pub fn call_taintEnabled(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: setAppBadge
-pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!*const anyopaque {
+pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
     _ = instance;
     _ = contents;
     return error.NotImplemented;
 }
 
 /// Operation: clearAppBadge
-pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

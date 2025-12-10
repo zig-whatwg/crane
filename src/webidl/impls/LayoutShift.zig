@@ -58,7 +58,7 @@ pub fn get_lastInputTime(instance: *runtime.Instance) anyerror!typedefs.DOMHighR
 }
 
 /// Getter for sources
-pub fn get_sources(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_sources(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

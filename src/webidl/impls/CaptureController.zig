@@ -41,9 +41,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CaptureController.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CaptureController.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Implement constructor logic with parameters
@@ -84,13 +84,13 @@ pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: typedefs.Ev
 }
 
 /// Operation: increaseZoomLevel
-pub fn call_increaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_increaseZoomLevel(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: forwardWheel
-pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!*const anyopaque {
+pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = element;
     return error.NotImplemented;
@@ -104,19 +104,19 @@ pub fn call_setFocusBehavior(instance: *runtime.Instance, focusBehavior: enums.C
 }
 
 /// Operation: decreaseZoomLevel
-pub fn call_decreaseZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_decreaseZoomLevel(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: resetZoomLevel
-pub fn call_resetZoomLevel(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_resetZoomLevel(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getSupportedZoomLevels
-pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getSupportedZoomLevels(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

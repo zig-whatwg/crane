@@ -143,8 +143,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Constructor implementation
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &HTMLIFrameElement.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &HTMLIFrameElement.vtable, ctx);
     errdefer deinit(instance);
     return instance;
 }

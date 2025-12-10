@@ -150,7 +150,7 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
 /// Returns a Promise that resolves to a sequence of IDBDatabaseInfo dictionaries.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbfactory-databases
-pub fn call_databases(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_databases(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

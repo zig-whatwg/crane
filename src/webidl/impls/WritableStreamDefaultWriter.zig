@@ -77,13 +77,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Steps:
 /// 1. Perform ? SetUpWritableStreamDefaultWriter(this, stream)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &WritableStreamDefaultWriter.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &WritableStreamDefaultWriter.vtable, ctx);
     errdefer deinit(instance);
 
     // SetUpWritableStreamDefaultWriter
-    try setUpWritableStreamDefaultWriter(instance, stream, allocator);
+    try setUpWritableStreamDefaultWriter(instance, stream, ctx.allocator);
 
     return instance;
 }
@@ -95,12 +95,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, stre
 ///
 /// Steps:
 /// 1. Return this.[[closedPromise]]
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.closed_promise) |promise| {
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     return error.InvalidState;
@@ -133,12 +133,12 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
 ///
 /// Steps:
 /// 1. Return this.[[readyPromise]]
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.ready_promise) |promise| {
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     return error.InvalidState;
@@ -173,7 +173,7 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterAbort(this, reason)
-pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -200,7 +200,7 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
 /// Steps:
 /// 1. If this.[[stream]] is undefined, return promise rejected with TypeError
 /// 2. Return WritableStreamDefaultWriterWrite(this, chunk)
-pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!*const anyopaque {
+pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -218,7 +218,7 @@ pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -340,14 +340,14 @@ fn writableStreamCloseQueuedOrInFlight(stream_internal: *const @import("Writable
 /// Returns: Promise<undefined>
 ///
 /// Simplified for now - returns a placeholder promise
-fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !*const anyopaque {
+fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !runtime.JSValue {
     const state = writer.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Future: Implement full WritableStreamClose algorithm
     // For now, just return the closed promise
     if (internal.closed_promise) |promise| {
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     return error.InvalidState;
@@ -440,7 +440,7 @@ fn writableStreamDefaultWriterAbort(
     writer: *runtime.Instance,
     stream: *runtime.Instance,
     reason: *const anyopaque,
-) !*const anyopaque {
+) !runtime.JSValue {
     const writer_state = writer.getState(State);
     const writer_internal = writer_state.own._internal orelse return error.InvalidState;
 
@@ -450,7 +450,7 @@ fn writableStreamDefaultWriterAbort(
 
     // For now, return closed promise as placeholder
     if (writer_internal.closed_promise) |promise| {
-        return @ptrCast(promise);
+        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
     }
 
     return error.InvalidState;
@@ -483,7 +483,7 @@ fn writableStreamDefaultWriterWrite(
     writer: *runtime.Instance,
     stream: *runtime.Instance,
     chunk: *const anyopaque,
-) !*const anyopaque {
+) !runtime.JSValue {
     const writer_state = writer.getState(State);
     const writer_internal = writer_state.own._internal orelse return error.InvalidState;
 
@@ -529,5 +529,5 @@ fn writableStreamDefaultWriterWrite(
     const write_promise = try WritableStreamDefaultController.write(controller, chunk, chunk_size);
 
     // 12. Return promise
-    return @ptrCast(write_promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(write_promise));
 }

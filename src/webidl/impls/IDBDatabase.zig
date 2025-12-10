@@ -200,7 +200,7 @@ pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHan
 /// Creates a new transaction on the database.
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
-pub fn call_transaction(instance: *runtime.Instance, storeNames: *const anyopaque, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
+pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 

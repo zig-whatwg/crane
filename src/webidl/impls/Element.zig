@@ -1058,7 +1058,7 @@ pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 ///
 /// Returns a frozen array of elements referenced by space-separated IDs in aria-controls.
 /// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1076,7 +1076,7 @@ pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-describedby
 /// Note: Returns null - full implementation requires FrozenArray support
-pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1094,7 +1094,7 @@ pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-details
 /// Note: Returns null - full implementation requires FrozenArray support
-pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1112,7 +1112,7 @@ pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-errormessage
 /// Note: Returns null - full implementation requires FrozenArray support
-pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1130,7 +1130,7 @@ pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-flowto.
 /// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1172,7 +1172,7 @@ pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-labelledby.
 /// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -1220,7 +1220,7 @@ pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 ///
 /// Returns an array of elements referenced by space-separated IDs in aria-owns.
 /// Note: Returns null - full implementation requires FrozenArray support and ID resolution.
-pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // Return null - full implementation requires resolving space-separated IDs
     return null;
@@ -2054,7 +2054,7 @@ pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) an
 /// Sets the elements that this element controls. This should set
 /// aria-controls to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-controls
@@ -2073,7 +2073,7 @@ pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) an
 /// Sets the elements that describe this element. This should set
 /// aria-describedby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-describedby
@@ -2092,7 +2092,7 @@ pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that provide details for this element. This should set
 /// aria-details to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-details
@@ -2111,7 +2111,7 @@ pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) a
 /// Sets the elements that contain error messages for this element. This should set
 /// aria-errormessage to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-errormessage
@@ -2130,7 +2130,7 @@ pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) a
 /// Sets the elements that are the next in reading order. This should set
 /// aria-flowto to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-flowto
@@ -2173,7 +2173,7 @@ pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anye
 /// Sets the elements that label this element. This should set
 /// aria-labelledby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-labelledby
@@ -2222,7 +2222,7 @@ pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that are owned by this element. This should set
 /// aria-owns to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-owns
@@ -2425,12 +2425,12 @@ pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Inst
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scroll
 ///
 /// Without a layout engine, this is a no-op (returns sentinel for undefined)
-pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // No-op without layout engine - returns sentinel for undefined
+    // No-op without layout engine - returns undefined
     // TODO: Should return a resolved Promise<undefined>
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getClientRects
@@ -2450,12 +2450,12 @@ pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instan
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollby
 ///
 /// Without a layout engine, this is a no-op (returns sentinel for undefined)
-pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // No-op without layout engine - returns sentinel for undefined
+    // No-op without layout engine - returns undefined
     // TODO: Should return a resolved Promise<undefined>
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: prepend
@@ -2635,12 +2635,12 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollto
 ///
 /// Without a layout engine, this is a no-op (returns sentinel for undefined)
-pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!*const anyopaque {
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // No-op without layout engine - returns sentinel for undefined
+    // No-op without layout engine - returns undefined
     // TODO: Should return a resolved Promise<undefined>
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getElementsByTagNameNS
@@ -2701,7 +2701,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 /// Spec: https://drafts.csswg.org/css-regions-1/#dom-region-getregionflowranges
 ///
 /// Note: CSS Regions is deprecated - returns null
-pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     // CSS Regions is deprecated - return null
     return null;
@@ -2712,23 +2712,23 @@ pub fn call_getRegionFlowRanges(instance: *runtime.Instance) anyerror!?*const an
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getboxquads
 ///
 /// Note: Returns sentinel for empty array - requires layout engine
-pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!*const anyopaque {
+pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // Requires layout engine - return sentinel for empty array
-    return &undefined_sentinel;
+    // Requires layout engine - return undefined (empty array)
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: focusableAreas
 /// CSS Spatial Navigation §5 - Returns focusable areas in specified direction
 /// Spec: https://drafts.csswg.org/css-nav-1/#dom-element-focusableareas
 ///
-/// Note: Returns sentinel for empty array - spatial navigation not implemented
-pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dictionaries.FocusableAreasOption)) anyerror!*const anyopaque {
+/// Note: Returns undefined (empty array) - spatial navigation not implemented
+pub fn call_focusableAreas(instance: *runtime.Instance, option: webidl.Opt(dictionaries.FocusableAreasOption)) anyerror!runtime.JSValue {
     _ = instance;
     _ = option;
-    // Spatial navigation not implemented - return sentinel for empty array
-    return &undefined_sentinel;
+    // Spatial navigation not implemented - return undefined (empty array)
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: convertPointFromNode
@@ -2750,11 +2750,11 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
 ///
 /// Returns sentinel for empty array (no animations without rendering engine)
-pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // Returns sentinel for empty array - no animations without rendering engine
-    return &undefined_sentinel;
+    // Returns undefined (empty array) - no animations without rendering engine
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getElementsByClassName
@@ -3009,11 +3009,11 @@ pub fn call_removeAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
 /// 1. Let text be a new Text node whose data is data and node document is this's node document.
 /// 2. Run the insert adjacent algorithm given this, where, and text.
 pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create a new Text node with the given data
     // Use interface instead of impl (per Golden Rule #13)
-    const text_node = interfaces.Text.call_constructor(internal.allocator, instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
+    const text_node = interfaces.Text.call_constructor(instance.ctx, webidl.Opt(runtime.DOMString).passed(data)) catch return error.OutOfMemory;
     errdefer interfaces.Text.deinit(text_node);
 
     // Step 2: Run insert adjacent algorithm
@@ -3030,12 +3030,12 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen
 ///
 /// Note: Returns sentinel - fullscreen requires browser integration
-pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) anyerror!*const anyopaque {
+pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // Fullscreen requires browser integration - return sentinel
+    // Fullscreen requires browser integration - return undefined
     // TODO: Should return a rejected Promise with TypeError
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: animate
@@ -3043,7 +3043,7 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(d
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
 ///
 /// Note: Returns null - requires Web Animations API and rendering engine
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = keyframes;
     _ = options;
@@ -3156,7 +3156,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
 /// Spec: https://drafts.csswg.org/css-view-transitions-1/#dom-document-startviewtransition
 ///
 /// Note: Returns null - View Transitions require rendering engine
-pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(*const anyopaque)) anyerror!*runtime.Instance {
+pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = instance;
     _ = callbackOptions;
     // View Transitions require rendering engine - return null
@@ -3180,12 +3180,12 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) 
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview
 ///
 /// Without a layout engine, this is a no-op (returns sentinel for undefined)
-pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     _ = instance;
     _ = arg;
-    // No-op without layout engine - returns sentinel for undefined
+    // No-op without layout engine - returns undefined
     // TODO: Should return a resolved Promise<undefined>
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: hasAttributes
@@ -3407,7 +3407,7 @@ pub fn call_checkVisibility(instance: *runtime.Instance, options: webidl.Opt(dic
 ///
 /// Returns a sequence of DOMStrings (the qualified names of attributes).
 /// Note: These are not guaranteed to be unique.
-pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a NodeList to hold the attribute names as a sequence
@@ -3431,9 +3431,9 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!*const anyop
         // Store as opaque - in practice this would be added to an array
     }
 
-    // Return the list as opaque pointer
+    // Return the list wrapped as JSValue
     // Note: This is a simplified implementation - full impl would return JS Array
-    return @ptrCast(node_list);
+    return runtime.JSValue.fromInstance(node_list);
 }
 
 /// Operation: attachShadow
@@ -3533,12 +3533,12 @@ fn parseSlotAssignmentMode(ptr: *const anyopaque) enums.SlotAssignmentMode {
 /// Spec: https://w3c.github.io/pointerlock/#dom-element-requestpointerlock
 ///
 /// Note: Returns sentinel - pointer lock requires browser integration
-pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PointerLockOptions)) anyerror!*const anyopaque {
+pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(dictionaries.PointerLockOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // Pointer lock requires browser integration - return sentinel
+    // Pointer lock requires browser integration - return undefined
     // TODO: Should return a rejected Promise with SecurityError
-    return &undefined_sentinel;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: hasAttributeNS
@@ -3559,10 +3559,10 @@ pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
 /// Returns a DOMRect representing the smallest rectangle containing the entire element.
 /// Without a layout engine, returns a DOMRect with zero dimensions at origin.
 pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Without a layout engine, return a zero-sized rect at origin
-    return interfaces.DOMRect.call_constructor(internal.allocator, instance.ctx, webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0)) catch return error.OutOfMemory;
+    return interfaces.DOMRect.call_constructor(instance.ctx, webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0)) catch return error.OutOfMemory;
 }
 
 /// Operation: querySelectorAll

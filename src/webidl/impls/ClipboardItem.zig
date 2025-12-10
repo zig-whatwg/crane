@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, items: *const anyopaque, options: webidl.Opt(dictionaries.ClipboardItemOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, items: runtime.JSValue, options: webidl.Opt(dictionaries.ClipboardItemOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ClipboardItem.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ClipboardItem.vtable, ctx);
     errdefer deinit(instance);
 
     _ = items;
@@ -61,13 +61,13 @@ pub fn get_presentationStyle(instance: *runtime.Instance) anyerror!enums.Present
 }
 
 /// Getter for types
-pub fn get_types(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getType
-pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
@@ -75,6 +75,13 @@ pub fn call_getType(instance: *runtime.Instance, @"type": runtime.DOMString) any
 
 /// Operation: supports
 pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
+    _ = instance;
+    _ = @"type";
+    return error.NotImplemented;
+}
+
+
+pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;

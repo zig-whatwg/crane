@@ -733,7 +733,7 @@ fn createElementNode(
 
 /// Create a Text DOM node from a TreeNode
 fn createTextNode(
-    allocator: Allocator,
+    _: Allocator,
     ctx: runtime.Context,
     tree_node: *TreeNode,
     owner_document: ?*runtime.Instance,
@@ -743,7 +743,6 @@ fn createTextNode(
     // Create Text node using constructor
     const dom_string = runtime.DOMString.initInterned(text_data);
     const text = interfaces.Text.call_constructor(
-        allocator,
         ctx,
         webidl.Opt(runtime.DOMString).passed(dom_string),
     ) catch return error.OutOfMemory;
@@ -759,7 +758,7 @@ fn createTextNode(
 
 /// Create a Comment DOM node from a TreeNode
 fn createCommentNode(
-    allocator: Allocator,
+    _: Allocator,
     ctx: runtime.Context,
     tree_node: *TreeNode,
     owner_document: ?*runtime.Instance,
@@ -769,7 +768,6 @@ fn createCommentNode(
     // Create Comment node
     const dom_string = runtime.DOMString.initInterned(comment_data);
     const comment = interfaces.Comment.call_constructor(
-        allocator,
         ctx,
         webidl.Opt(runtime.DOMString).passed(dom_string),
     ) catch return error.OutOfMemory;

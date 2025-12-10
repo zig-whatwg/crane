@@ -52,7 +52,7 @@ pub fn get_href(instance: *runtime.Instance) anyerror!?runtime.USVString {
 }
 
 /// Getter for ownerNode
-pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ownerNode(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

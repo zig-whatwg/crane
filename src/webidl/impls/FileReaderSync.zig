@@ -70,16 +70,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Note: Per [Exposed=(DedicatedWorker,SharedWorker)], this should only
 /// be constructible in Worker contexts. The V8 binding layer enforces this.
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &FileReaderSync.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &FileReaderSync.vtable, ctx);
     errdefer deinit(instance);
 
     // Create internal state
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = .{
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     const state = instance.getState(State);
@@ -106,7 +106,7 @@ fn getBlobInternal(blob: *runtime.Instance) ?*BlobImpl.InternalState {
 ///
 /// Synchronously reads the entire Blob contents as an ArrayBuffer.
 /// This method blocks until the read completes.
-pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const blob_internal = getBlobInternal(blob) orelse return error.InvalidState;
 
@@ -122,8 +122,8 @@ pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instan
         null,
     ) catch return error.OutOfMemory;
 
-    // Return the array_buffer bytes (V8 layer wraps in ArrayBuffer)
-    return @ptrCast(result.array_buffer.ptr);
+    // Return the array_buffer bytes wrapped in JSValue (V8 layer wraps in ArrayBuffer)
+    return runtime.JSValue.fromAnyopaque(@ptrCast(result.array_buffer.ptr));
 }
 
 /// Operation: readAsBinaryString

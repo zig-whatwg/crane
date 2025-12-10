@@ -61,9 +61,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://url.spec.whatwg.org/#dom-url-url (lines 1794-1800)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
     // Create instance
-    const instance = try init(allocator, State, &URL.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &URL.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -72,7 +72,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     var base_record: ?URLRecord = null;
     const base_slice = if (base.was_passed) base.value else "";
     if (base_slice.len > 0) {
-        base_record = api_parser.parseURL(allocator, base_slice, null) catch {
+        base_record = api_parser.parseURL(ctx.allocator, base_slice, null) catch {
             return error.TypeError; // Base URL parse failed
         };
     }
@@ -80,7 +80,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 
     // Step 1: Parse URL with optional base
     var parsed_url = api_parser.parseURL(
-        allocator,
+        ctx.allocator,
         url,
         if (base_record) |*br| br else null,
     ) catch {
@@ -90,13 +90,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     errdefer parsed_url.deinit();
 
     // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
         .url_record = parsed_url,
         .query_params_instance = null,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;
@@ -107,9 +107,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
 
     // Create URLSearchParams instance - pass empty init_data for now
     const query_params_instance = try URLSearchParamsInterface.call_constructor(
-        allocator,
         ctx,
-        webidl.Opt(*const anyopaque).notPassed(),
+        webidl.Opt(runtime.JSValue).notPassed(),
     );
     errdefer URLSearchParamsInterface.deinit(query_params_instance);
 
@@ -119,11 +118,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     if (params_state.own._internal) |params_internal| {
         // Parse query string into list
         if (query_str.len > 0) {
-            const tuples = try form_parser.parse(allocator, query_str);
+            const tuples = try form_parser.parse(ctx.allocator, query_str);
             for (tuples) |tuple| {
                 try params_internal.list.append(tuple);
             }
-            allocator.free(tuples);
+            ctx.allocator.free(tuples);
         }
 
         // Set back-reference to URL
@@ -698,4 +697,30 @@ pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOM
     _ = instance;
     _ = url;
     return error.NotImplemented;
+}
+
+pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
+    _ = instance;
+    _ = obj;
+    return error.NotImplemented;
+}
+
+pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
+    _ = instance;
+    _ = url;
+    _ = base;
+    return error.NotImplemented;
+}
+
+pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
+    _ = instance;
+    _ = url;
+    return error.NotImplemented;
+}
+
+pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
+    _ = instance;
+    _ = url;
+    _ = base;
+    return null;
 }

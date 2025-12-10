@@ -155,7 +155,7 @@ pub fn get_ariaColSpan(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 }
 
 /// Getter for ariaControlsElements
-pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaControlsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -167,7 +167,7 @@ pub fn get_ariaCurrent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 }
 
 /// Getter for ariaDescribedByElements
-pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaDescribedByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -179,7 +179,7 @@ pub fn get_ariaDescription(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 }
 
 /// Getter for ariaDetailsElements
-pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaDetailsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -191,7 +191,7 @@ pub fn get_ariaDisabled(instance: *runtime.Instance) anyerror!?runtime.DOMString
 }
 
 /// Getter for ariaErrorMessageElements
-pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaErrorMessageElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -203,7 +203,7 @@ pub fn get_ariaExpanded(instance: *runtime.Instance) anyerror!?runtime.DOMString
 }
 
 /// Getter for ariaFlowToElements
-pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaFlowToElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -239,7 +239,7 @@ pub fn get_ariaLabel(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 }
 
 /// Getter for ariaLabelledByElements
-pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaLabelledByElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -281,7 +281,7 @@ pub fn get_ariaOrientation(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 }
 
 /// Getter for ariaOwnsElements
-pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_ariaOwnsElements(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
@@ -479,7 +479,7 @@ pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) an
 }
 
 /// Setter for ariaControlsElements
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -493,7 +493,7 @@ pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) an
 }
 
 /// Setter for ariaDescribedByElements
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -507,7 +507,7 @@ pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString
 }
 
 /// Setter for ariaDetailsElements
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -521,7 +521,7 @@ pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) a
 }
 
 /// Setter for ariaErrorMessageElements
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -535,7 +535,7 @@ pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) a
 }
 
 /// Setter for ariaFlowToElements
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -577,7 +577,7 @@ pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anye
 }
 
 /// Setter for ariaLabelledByElements
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -626,7 +626,7 @@ pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString
 }
 
 /// Setter for ariaOwnsElements
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -780,7 +780,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: setFormValue
-pub fn call_setFormValue(instance: *runtime.Instance, value: ?*const anyopaque, state: webidl.Opt(?*const anyopaque)) anyerror!void {
+pub fn call_setFormValue(instance: *runtime.Instance, value: ?runtime.JSValue, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = value;
     _ = state;

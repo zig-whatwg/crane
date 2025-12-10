@@ -40,19 +40,19 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for attestationObject
-pub fn get_attestationObject(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_attestationObject(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPublicKey
-pub fn call_getPublicKey(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn call_getPublicKey(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Operation: getTransports
-pub fn call_getTransports(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getTransports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -64,7 +64,7 @@ pub fn call_getPublicKeyAlgorithm(instance: *runtime.Instance) anyerror!typedefs
 }
 
 /// Operation: getAuthenticatorData
-pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAuthenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

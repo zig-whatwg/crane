@@ -59,20 +59,20 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getPrimaryServices
-pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) anyerror!*const anyopaque {
+pub fn call_getPrimaryServices(instance: *runtime.Instance, service: webidl.Opt(typedefs.BluetoothServiceUUID)) anyerror!runtime.JSValue {
     _ = instance;
     _ = service;
     return error.NotImplemented;
 }
 
 /// Operation: connect
-pub fn call_connect(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_connect(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPrimaryService
-pub fn call_getPrimaryService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) anyerror!*const anyopaque {
+pub fn call_getPrimaryService(instance: *runtime.Instance, service: typedefs.BluetoothServiceUUID) anyerror!runtime.JSValue {
     _ = instance;
     _ = service;
     return error.NotImplemented;

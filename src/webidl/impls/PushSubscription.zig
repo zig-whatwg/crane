@@ -58,7 +58,7 @@ pub fn get_options(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: unsubscribe
-pub fn call_unsubscribe(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_unsubscribe(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -70,7 +70,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.PushSubscr
 }
 
 /// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) anyerror!?*const anyopaque {
+pub fn call_getKey(instance: *runtime.Instance, name: enums.PushEncryptionKeyName) anyerror!?runtime.JSValue {
     _ = instance;
     _ = name;
     return null;

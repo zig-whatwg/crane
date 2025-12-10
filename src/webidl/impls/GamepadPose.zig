@@ -52,37 +52,37 @@ pub fn get_hasPosition(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for position
-pub fn get_position(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_position(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for linearVelocity
-pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_linearVelocity(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for linearAcceleration
-pub fn get_linearAcceleration(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_linearAcceleration(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for orientation
-pub fn get_orientation(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_orientation(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for angularVelocity
-pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_angularVelocity(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }
 
 /// Getter for angularAcceleration
-pub fn get_angularAcceleration(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_angularAcceleration(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

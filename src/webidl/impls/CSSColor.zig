@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, colorSpace: typedefs.CSSKeywordish, channels: *const anyopaque, alpha: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, colorSpace: typedefs.CSSKeywordish, channels: runtime.JSValue, alpha: webidl.Opt(typedefs.CSSNumberish)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &CSSColor.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CSSColor.vtable, ctx);
     errdefer deinit(instance);
 
     _ = colorSpace;
@@ -62,7 +62,7 @@ pub fn get_colorSpace(instance: *runtime.Instance) anyerror!typedefs.CSSKeywordi
 }
 
 /// Getter for channels
-pub fn get_channels(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_channels(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -81,7 +81,7 @@ pub fn set_colorSpace(instance: *runtime.Instance, value: typedefs.CSSKeywordish
 }
 
 /// Setter for channels
-pub fn set_channels(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_channels(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -116,8 +116,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §5 - Range constructor
 /// The new Range() constructor steps are to set this's start and end to
 /// (current global object's associated Document, 0).
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-    const instance = try init(allocator, State, &Range.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &Range.vtable, ctx);
     errdefer deinit(instance);
 
     // TODO: Get document from current global object
@@ -727,7 +727,7 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create fragment (use interface per Golden Rule #13)
-    const fragment = interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    const fragment = interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
 
     // Step 2: If collapsed, return empty fragment
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -803,7 +803,7 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Create fragment (use interface per Golden Rule #13)
-    const fragment = interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    const fragment = interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
 
     // Step 2: If collapsed, return empty fragment
     const start = internal.start_container orelse return error.InvalidStateError;
@@ -1168,12 +1168,12 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
 /// Parses the given string as HTML and returns a DocumentFragment
 /// Note: Requires HTML parser integration
 pub fn call_createContextualFragment(instance: *runtime.Instance, string: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     _ = string;
 
     // NOTE: Full implementation requires HTML parser
     // For now, return an empty DocumentFragment (use interface per Golden Rule #13)
-    return interfaces.DocumentFragment.call_constructor(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    return interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
 }
 
 /// DOM §5.7 - Range stringifier (toString)

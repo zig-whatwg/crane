@@ -99,9 +99,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The ErrorEvent(type, eventInitDict) constructor steps are:
 /// 1. Set the Event-related attributes (type, bubbles, cancelable, composed)
 /// 2. Set the ErrorEvent-specific attributes from eventInitDict
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ErrorEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ErrorEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ErrorEvent.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state
@@ -110,7 +110,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     // Create internal state
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(ctx.allocator);
     state.own._internal = internal;
 
     // Initialize Event base class attributes (Event fields are in state.base.own)
@@ -121,7 +121,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
     const composed = event_init.composed orelse false;
 
     // Store event type - clone the string to ensure we own it
-    state.base.own.type = try @"type".clone(allocator);
+    state.base.own.type = try @"type".clone(ctx.allocator);
 
     // Initialize Event attributes (all in state.base.own)
     state.base.own.bubbles = bubbles;
@@ -143,12 +143,12 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 
         // message defaults to ""
         if (init_dict.message) |msg| {
-            internal.message = try msg.clone(allocator);
+            internal.message = try msg.clone(ctx.allocator);
         }
 
         // filename defaults to "" (USVString is []const u8)
         if (init_dict.filename) |fname| {
-            internal.filename = try allocator.dupe(u8, fname);
+            internal.filename = try ctx.allocator.dupe(u8, fname);
         }
 
         // lineno defaults to 0
@@ -226,7 +226,7 @@ const undefined_marker: u8 = 0;
 /// Create an ErrorEvent with the given attributes
 /// This is used by the "report an exception" algorithm
 pub fn createErrorEvent(
-    allocator: std.mem.Allocator,
+    _: std.mem.Allocator,
     ctx: runtime.Context,
     message: []const u8,
     filename: []const u8,
@@ -253,7 +253,6 @@ pub fn createErrorEvent(
 
     // Construct the ErrorEvent
     return call_constructor(
-        allocator,
         ctx,
         runtime.DOMString.initInterned("error"),
         .{ .was_passed = true, .value = error_init },

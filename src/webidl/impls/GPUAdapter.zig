@@ -59,7 +59,7 @@ pub fn get_info(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUDeviceDescriptor)) anyerror!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, descriptor: webidl.Opt(dictionaries.GPUDeviceDescriptor)) anyerror!runtime.JSValue {
     _ = instance;
     _ = descriptor;
     return error.NotImplemented;

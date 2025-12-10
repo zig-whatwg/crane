@@ -400,7 +400,7 @@ pub fn set_onnotificationclose(instance: *runtime.Instance, value: typedefs.Even
 }
 
 /// Operation: skipWaiting
-pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_skipWaiting(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

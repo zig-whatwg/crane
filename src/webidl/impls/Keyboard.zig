@@ -60,14 +60,14 @@ pub fn call_unlock(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: lock
-pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(*const anyopaque)) anyerror!*const anyopaque {
+pub fn call_lock(instance: *runtime.Instance, keyCodes: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     _ = instance;
     _ = keyCodes;
     return error.NotImplemented;
 }
 
 /// Operation: getLayoutMap
-pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getLayoutMap(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

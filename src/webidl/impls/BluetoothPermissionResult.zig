@@ -40,13 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for devices
-pub fn get_devices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_devices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Setter for devices
-pub fn set_devices(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_devices(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

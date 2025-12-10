@@ -46,14 +46,14 @@ pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: get
-pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = property;
     return error.NotImplemented;
 }
 
 /// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!*const anyopaque {
+pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = property;
     return error.NotImplemented;

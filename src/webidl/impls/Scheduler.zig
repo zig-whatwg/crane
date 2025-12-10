@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: postTask
-pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: webidl.Opt(dictionaries.SchedulerPostTaskOptions)) anyerror!*const anyopaque {
+pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerPostTaskCallback, options: webidl.Opt(dictionaries.SchedulerPostTaskOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = callback;
     _ = options;
@@ -49,7 +49,7 @@ pub fn call_postTask(instance: *runtime.Instance, callback: callbacks.SchedulerP
 }
 
 /// Operation: yield
-pub fn call_yield(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_yield(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

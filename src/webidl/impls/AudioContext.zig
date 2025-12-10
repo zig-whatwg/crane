@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, contextOptions: webidl.Opt(dictionaries.AudioContextOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, contextOptions: webidl.Opt(dictionaries.AudioContextOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &AudioContext.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AudioContext.vtable, ctx);
     errdefer deinit(instance);
 
     _ = contextOptions;
@@ -66,7 +66,7 @@ pub fn get_outputLatency(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for sinkId
-pub fn get_sinkId(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_sinkId(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,7 +105,7 @@ pub fn call_createMediaStreamSource(instance: *runtime.Instance, mediaStream: *r
 }
 
 /// Operation: suspend
-pub fn call_suspend(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_suspend(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -137,19 +137,19 @@ pub fn call_createMediaElementSource(instance: *runtime.Instance, mediaElement: 
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: resume
-pub fn call_resume(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_resume(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: setSinkId
-pub fn call_setSinkId(instance: *runtime.Instance, sinkId: *const anyopaque) anyerror!*const anyopaque {
+pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.JSValue) anyerror!runtime.JSValue {
     _ = instance;
     _ = sinkId;
     return error.NotImplemented;

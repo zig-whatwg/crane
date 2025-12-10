@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.ExtendableEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ExtendableEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ExtendableEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -55,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: waitUntil
-pub fn call_waitUntil(instance: *runtime.Instance, f: *const anyopaque) anyerror!void {
+pub fn call_waitUntil(instance: *runtime.Instance, f: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = f;
     return error.NotImplemented;

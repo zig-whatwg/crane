@@ -61,10 +61,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The CustomEvent(type, eventInitDict) constructor steps are:
 /// 1. Run the Event constructor steps (inherited)
 /// 2. Set this's detail attribute to eventInitDict["detail"]
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.CustomEventInit)) !*runtime.Instance {
     // Create instance
     _ = @"type"; // Event type handled by parent Event
-    const instance = try init(allocator, State, &CustomEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &CustomEvent.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state

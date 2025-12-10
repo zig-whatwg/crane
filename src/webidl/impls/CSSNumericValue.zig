@@ -114,3 +114,10 @@ pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString
     _ = cssText;
     return error.NotImplemented;
 }
+
+
+pub fn call_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = cssText;
+    return error.NotImplemented;
+}

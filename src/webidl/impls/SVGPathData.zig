@@ -41,14 +41,14 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: setPathData
-pub fn call_setPathData(instance: *runtime.Instance, pathData: *const anyopaque) anyerror!void {
+pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = pathData;
     return error.NotImplemented;
 }
 
 /// Operation: getPathData
-pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!*const anyopaque {
+pub fn call_getPathData(instance: *runtime.Instance, settings: webidl.Opt(dictionaries.SVGPathDataSettings)) anyerror!runtime.JSValue {
     _ = instance;
     _ = settings;
     return error.NotImplemented;

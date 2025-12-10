@@ -53,9 +53,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Add `isolate: ?*v8_engine.ffi.Isolate` to InternalState
 /// 3. Create Global handle in constructor: `v8_engine.createOptionalGlobalHandle(iso, @ptrCast(callback))`
 /// 4. Dispose Global handle in deinit: `v8_engine.disposeOptionalGlobalHandle(&self.callback)`
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, callback: callbacks.PerformanceObserverCallback) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &PerformanceObserver.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &PerformanceObserver.vtable, ctx);
     errdefer deinit(instance);
 
     _ = callback;
@@ -65,7 +65,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Getter for supportedEntryTypes
-pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

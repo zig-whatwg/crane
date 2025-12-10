@@ -3,9 +3,9 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const callbacks = @import("callbacks");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
-const callbacks = @import("callbacks");
 
 pub const JsonLdOptions = struct {
     base: ?runtime.USVString = null,

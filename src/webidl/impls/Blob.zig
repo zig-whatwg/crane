@@ -86,9 +86,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Process blobParts using "process blob parts" algorithm
 /// 3. Normalize type from options
 /// 4. Return new Blob
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blobParts: webidl.Opt(*const anyopaque), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Blob.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Blob.vtable, ctx);
     errdefer deinit(instance);
 
     // Determine if we have blob parts and what endings mode to use
@@ -129,16 +129,16 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, blob
     };
 
     // Create the internal BlobData
-    const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
+    const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
     errdefer blob_data.deinit();
 
     // Create and store internal state
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = .{
         .blob_data = blob_data,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     // Store internal state in the instance
@@ -274,7 +274,7 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise with UTF-8 decode.
-pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
@@ -296,7 +296,7 @@ pub fn call_text(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 /// Operation: stream
@@ -464,7 +464,7 @@ fn blobStreamCancel(controller: *const anyopaque) *const anyopaque {
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise to create Uint8Array from bytes.
-pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
@@ -482,7 +482,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 /// Operation: arrayBuffer
@@ -495,7 +495,7 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!*const anyopaque {
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise to create ArrayBuffer from bytes.
-pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
@@ -513,7 +513,7 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!*const anyopaque {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return @ptrCast(promise);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 // ============================================================================

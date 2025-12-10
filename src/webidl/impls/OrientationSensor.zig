@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for quaternion
-pub fn get_quaternion(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_quaternion(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return null;
 }

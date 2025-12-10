@@ -52,7 +52,7 @@ pub fn get_expiration(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for closed
-pub fn get_closed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -90,33 +90,33 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
 }
 
 /// Operation: update
-pub fn call_update(instance: *runtime.Instance, response: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_update(instance: *runtime.Instance, response: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = response;
     return error.NotImplemented;
 }
 
 /// Operation: remove
-pub fn call_remove(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_remove(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: load
-pub fn call_load(instance: *runtime.Instance, sessionId: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_load(instance: *runtime.Instance, sessionId: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = sessionId;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: generateRequest
-pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.DOMString, initData: typedefs.BufferSource) anyerror!*const anyopaque {
+pub fn call_generateRequest(instance: *runtime.Instance, initDataType: runtime.DOMString, initData: typedefs.BufferSource) anyerror!runtime.JSValue {
     _ = instance;
     _ = initDataType;
     _ = initData;

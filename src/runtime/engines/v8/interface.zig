@@ -828,18 +828,21 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Set up prototype chain
                     v8.v8_FunctionTemplate_Inherit(template, parent_template);
                 }
-            } else if (Meta.BaseType != ?*anyopaque) {
-                // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
-                const BaseTypeInfo = @typeInfo(Meta.BaseType);
-                if (BaseTypeInfo == .pointer) {
-                    const ChildType = BaseTypeInfo.pointer.child;
-                    if (@hasDecl(ChildType, "Meta")) {
-                        // Create parent template
-                        const ParentBinding = V8Interface(ChildType);
-                        const parent_template = ParentBinding.createTemplate(isolate);
+            } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                // BaseType is ?type - check if it's non-null
+                if (comptime Meta.BaseType) |BaseType| {
+                    // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
+                    const BaseTypeInfo = @typeInfo(BaseType);
+                    if (BaseTypeInfo == .pointer) {
+                        const ChildType = BaseTypeInfo.pointer.child;
+                        if (@hasDecl(ChildType, "Meta")) {
+                            // Create parent template
+                            const ParentBinding = V8Interface(ChildType);
+                            const parent_template = ParentBinding.createTemplate(isolate);
 
-                        // Set up prototype chain
-                        v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                            // Set up prototype chain
+                            v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                        }
                     }
                 }
             }
@@ -1692,23 +1695,24 @@ pub fn V8Interface(comptime Interface: type) type {
             const params = fn_info.params;
 
             // Verify first two parameters are allocator and context (our convention)
-            if (params.len < 2) {
-                @compileError("Constructor must have at least allocator and context parameters");
+            if (params.len < 1) {
+                @compileError("Constructor must have at least context parameter");
             }
 
             // Calculate number of WebIDL parameters (excluding allocator and context)
-            const webidl_param_count = params.len - 2;
+            const webidl_param_count = params.len - 1;
 
             // Check argument count from JavaScript
             const js_arg_count = info.length();
 
             // Build arguments tuple at comptime based on constructor signature
+            // Note: Constructors use ctx.allocator internally for consistency with deinit
             if (webidl_param_count == 0) {
                 // No arguments constructor
-                return try Interface.call_constructor(allocator, ctx);
+                return try Interface.call_constructor(ctx);
             } else if (webidl_param_count == 1) {
                 // Single argument constructor
-                const Param1Type = params[2].type.?;
+                const Param1Type = params[1].type.?;
 
                 // Check if this is a ConstructorArgs union (overloaded constructor)
                 const param_info = @typeInfo(Param1Type);
@@ -1722,7 +1726,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                     );
-                    return try Interface.call_constructor(allocator, ctx, args);
+                    return try Interface.call_constructor(ctx, args);
                 }
 
                 // Normal single-parameter constructor
@@ -1741,11 +1745,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
 
-                return try Interface.call_constructor(allocator, ctx, arg1);
+                return try Interface.call_constructor(ctx, arg1);
             } else if (webidl_param_count == 2) {
                 // Two arguments constructor (second may be optional dictionary)
-                const Param1Type = params[2].type.?;
-                const Param2Type = params[3].type.?;
+                const Param1Type = params[1].type.?;
+                const Param2Type = params[2].type.?;
 
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
@@ -1777,12 +1781,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
 
-                return try Interface.call_constructor(allocator, ctx, arg1, arg2);
+                return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
                 // Three arguments constructor (all may be optional)
-                const Param1Type = params[2].type.?;
-                const Param2Type = params[3].type.?;
-                const Param3Type = params[4].type.?;
+                const Param1Type = params[1].type.?;
+                const Param2Type = params[2].type.?;
+                const Param3Type = params[3].type.?;
 
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
@@ -1826,13 +1830,13 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
 
-                return try Interface.call_constructor(allocator, ctx, arg1, arg2, arg3);
+                return try Interface.call_constructor(ctx, arg1, arg2, arg3);
             } else if (webidl_param_count == 4) {
                 // Four arguments constructor (all may be optional)
-                const Param1Type = params[2].type.?;
-                const Param2Type = params[3].type.?;
-                const Param3Type = params[4].type.?;
-                const Param4Type = params[5].type.?;
+                const Param1Type = params[1].type.?;
+                const Param2Type = params[2].type.?;
+                const Param3Type = params[3].type.?;
+                const Param4Type = params[4].type.?;
 
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
@@ -1890,7 +1894,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
 
-                return try Interface.call_constructor(allocator, ctx, arg1, arg2, arg3, arg4);
+                return try Interface.call_constructor(ctx, arg1, arg2, arg3, arg4);
             } else {
                 // TODO: Support more than 4 parameters if needed
                 @compileError("Constructors with more than 4 parameters not yet supported");
@@ -2913,81 +2917,99 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Call interface's call_values() method to get the Zig iterator
-            // The return type is *const anyopaque which is a *ReadableStreamAsyncIterator
+            // The return type is runtime.JSValue which wraps the iterator pointer
             if (@hasDecl(Interface, "call_values")) {
                 // Determine signature of call_values at comptime
                 const call_values_fn = @TypeOf(Interface.call_values);
                 const fn_info = @typeInfo(call_values_fn).@"fn";
+                const return_type_info = @typeInfo(fn_info.return_type.?);
+                const ReturnPayload = return_type_info.error_union.payload;
 
-                // Call call_values() based on argument count
-                const zig_iterator_ptr = blk: {
-                    if (fn_info.params.len == 1) {
-                        // call_values(instance) - no options
-                        break :blk Interface.call_values(instance) catch |err| {
-                            // Throw appropriate error type based on Zig error
-                            switch (err) {
-                                error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
-                                else => {
-                                    const err_name = @errorName(err);
-                                    conv.throwError(isolate, err_name);
-                                },
-                            }
+                // Call call_values() based on argument count and handle return type appropriately
+                if (fn_info.params.len == 1) {
+                    // call_values(instance) - no options
+                    const result = Interface.call_values(instance) catch |err| {
+                        // Throw appropriate error type based on Zig error
+                        switch (err) {
+                            error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
+                            else => {
+                                const err_name = @errorName(err);
+                                conv.throwError(isolate, err_name);
+                            },
+                        }
+                        return;
+                    };
+
+                    // Handle both JSValue and *const anyopaque return types
+                    const raw_ptr: *const anyopaque = if (ReturnPayload == runtime.JSValue)
+                        result.toAnyopaque() orelse {
+                            conv.throwError(isolate, "Failed to get async iterator");
                             return;
-                        };
-                    } else if (fn_info.params.len == 2) {
-                        // call_values(instance, options) - has options
-                        // Parse options from JavaScript argument
-                        const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
-                        var options: OptionsType = .{};
+                        }
+                    else
+                        result;
 
-                        // Check if options argument was passed (arg 0)
-                        const argc = info.length();
-                        if (argc > 0) {
-                            const options_v8 = info.get(0);
-                            // Only parse if it's an object (not undefined/null)
-                            if (!v8.v8_Value_IsNullOrUndefined(options_v8) and v8.v8_Value_IsObject(options_v8)) {
-                                const options_obj: *v8.Object = @ptrCast(options_v8);
-                                const ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                                    conv.throwError(isolate, "No context available");
-                                    return;
-                                };
+                    const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
+                    info.setReturnValue(@ptrCast(v8_object));
+                } else if (fn_info.params.len == 2) {
+                    // call_values(instance, options) - has options
+                    // Parse options from JavaScript argument
+                    const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
+                    var options: OptionsType = .{};
 
-                                // Get preventCancel property
-                                const key = v8.v8_String_NewFromUtf8(isolate, "preventCancel", 13) orelse {
-                                    conv.throwError(isolate, "Failed to create property key");
-                                    return;
-                                };
+                    // Check if options argument was passed (arg 0)
+                    const argc = info.length();
+                    if (argc > 0) {
+                        const options_v8 = info.get(0);
+                        // Only parse if it's an object (not undefined/null)
+                        if (!v8.v8_Value_IsNullOrUndefined(options_v8) and v8.v8_Value_IsObject(options_v8)) {
+                            const options_obj: *v8.Object = @ptrCast(options_v8);
+                            const ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                                conv.throwError(isolate, "No context available");
+                                return;
+                            };
 
-                                if (v8.v8_Object_Get(options_obj, ctx, @ptrCast(key))) |prevent_cancel_val| {
-                                    if (!v8.v8_Value_IsNullOrUndefined(prevent_cancel_val)) {
-                                        options.preventCancel = v8.v8_Value_BooleanValue(prevent_cancel_val, isolate);
-                                    }
+                            // Get preventCancel property
+                            const key = v8.v8_String_NewFromUtf8(isolate, "preventCancel", 13) orelse {
+                                conv.throwError(isolate, "Failed to create property key");
+                                return;
+                            };
+
+                            if (v8.v8_Object_Get(options_obj, ctx, @ptrCast(key))) |prevent_cancel_val| {
+                                if (!v8.v8_Value_IsNullOrUndefined(prevent_cancel_val)) {
+                                    options.preventCancel = v8.v8_Value_BooleanValue(prevent_cancel_val, isolate);
                                 }
                             }
                         }
-
-                        const opt_options = webidl.Opt(OptionsType).passed(options);
-                        break :blk Interface.call_values(instance, opt_options) catch |err| {
-                            // Throw appropriate error type based on Zig error
-                            switch (err) {
-                                error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
-                                else => {
-                                    const err_name = @errorName(err);
-                                    conv.throwError(isolate, err_name);
-                                },
-                            }
-                            return;
-                        };
-                    } else {
-                        @compileError("Unexpected call_values signature");
                     }
-                };
 
-                // The result from call_values() is already a wrapped V8 object
-                // (call_values wraps it using engine.wrapAsyncIterator internally)
-                // So we just need to cast it to a V8 Object and return it
-                const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(zig_iterator_ptr)));
-                info.setReturnValue(@ptrCast(v8_object));
+                    const opt_options = webidl.Opt(OptionsType).passed(options);
+                    const result = Interface.call_values(instance, opt_options) catch |err| {
+                        // Throw appropriate error type based on Zig error
+                        switch (err) {
+                            error.TypeError => conv.throwTypeError(isolate, "Cannot get async iterator on locked stream"),
+                            else => {
+                                const err_name = @errorName(err);
+                                conv.throwError(isolate, err_name);
+                            },
+                        }
+                        return;
+                    };
+
+                    // Handle both JSValue and *const anyopaque return types
+                    const raw_ptr: *const anyopaque = if (ReturnPayload == runtime.JSValue)
+                        result.toAnyopaque() orelse {
+                            conv.throwError(isolate, "Failed to get async iterator");
+                            return;
+                        }
+                    else
+                        result;
+
+                    const v8_object: *v8.Object = @ptrCast(@alignCast(@constCast(raw_ptr)));
+                    info.setReturnValue(@ptrCast(v8_object));
+                } else {
+                    @compileError("Unexpected call_values signature");
+                }
             } else {
                 conv.throwError(isolate, "Interface does not support async iteration");
             }

@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options: webidl.Opt(dictionaries.NotificationOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &Notification.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &Notification.vtable, ctx);
     errdefer deinit(instance);
 
     _ = title;
@@ -145,7 +145,7 @@ pub fn get_badge(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for vibrate
-pub fn get_vibrate(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_vibrate(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -181,7 +181,7 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Getter for actions
-pub fn get_actions(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_actions(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -222,6 +222,13 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: requestPermission
 pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) anyerror!*const anyopaque {
+    _ = instance;
+    _ = deprecatedCallback;
+    return error.NotImplemented;
+}
+
+
+pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) anyerror!runtime.JSValue {
     _ = instance;
     _ = deprecatedCallback;
     return error.NotImplemented;

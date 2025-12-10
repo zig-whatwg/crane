@@ -7,15 +7,29 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765275384719,
-  "time_end": 1765275384804,
+  "time_start": 1765379756129,
+  "time_end": 1765379756252,
   "results": [
     {
-      "test": "encoding/legacy-mb-korean/euc-kr/euckr-decode.html",
+      "test": "dom/events/Event-constructors.any.js",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "", "status": "PASS", "message": null},
+        {"name": " 1", "status": "FAIL", "message": "assert_throws_js: function \"function() {\n    new Event()\n  }\" did not throw"},
+        {"name": " 2", "status": "FAIL", "message": "assert_throws_exactly: function \"function() {\n    new Event({ toString: function() { throw test_error; } })\n  }\" threw object \"TypeError: TypeError\" but we expected it to throw object \"[object Object]\""},
+        {"name": " 3", "status": "PASS", "message": null},
+        {"name": " 4", "status": "PASS", "message": null},
+        {"name": " 5", "status": "PASS", "message": null},
+        {"name": " 6", "status": "PASS", "message": null},
+        {"name": " 7", "status": "PASS", "message": null},
+        {"name": " 8", "status": "PASS", "message": null},
+        {"name": " 9", "status": "PASS", "message": null},
+        {"name": " 10", "status": "PASS", "message": null},
+        {"name": " 11", "status": "PASS", "message": null},
+        {"name": " 12", "status": "PASS", "message": null},
+        {"name": " 13", "status": "FAIL", "message": "assert_equals: expected (number) 54 but got (undefined) undefined"}
       ]
     }
   ]

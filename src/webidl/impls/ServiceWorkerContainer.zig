@@ -47,7 +47,7 @@ pub fn get_controller(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for ready
-pub fn get_ready(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -98,20 +98,20 @@ pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: getRegistrations
-pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getRegistration
-pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!*const anyopaque {
+pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
     _ = instance;
     _ = clientURL;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = scriptURL;
     _ = options;

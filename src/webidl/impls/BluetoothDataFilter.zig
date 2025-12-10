@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothDataFilterInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(dictionaries.BluetoothDataFilterInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &BluetoothDataFilter.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &BluetoothDataFilter.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;
@@ -54,13 +54,13 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init
 }
 
 /// Getter for dataPrefix
-pub fn get_dataPrefix(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_dataPrefix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for mask
-pub fn get_mask(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_mask(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

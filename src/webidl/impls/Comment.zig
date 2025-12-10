@@ -85,8 +85,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// DOM §4.11 - Comment(data)
 /// Creates a new Comment node with the given data
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
-    const instance = try init(allocator, State, &Comment.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &Comment.vtable, ctx);
     errdefer deinit(instance);
 
     // Set the comment data via CharacterData

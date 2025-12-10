@@ -95,13 +95,13 @@ pub fn set_onstatechange(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: open
-pub fn call_open(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_open(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: close
-pub fn call_close(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

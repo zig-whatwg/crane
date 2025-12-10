@@ -46,14 +46,14 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: cropTo
-pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!*const anyopaque {
+pub fn call_cropTo(instance: *runtime.Instance, cropTarget: ?*runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = cropTarget;
     return error.NotImplemented;
 }
 
 /// Operation: restrictTo
-pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: ?*runtime.Instance) anyerror!*const anyopaque {
+pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget: ?*runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = RestrictionTarget;
     return error.NotImplemented;

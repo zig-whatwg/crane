@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PaymentRequestUpdateEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PaymentRequestUpdateEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &PaymentRequestUpdateEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &PaymentRequestUpdateEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -55,7 +55,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"ty
 }
 
 /// Operation: updateWith
-pub fn call_updateWith(instance: *runtime.Instance, detailsPromise: *const anyopaque) anyerror!void {
+pub fn call_updateWith(instance: *runtime.Instance, detailsPromise: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = detailsPromise;
     return error.NotImplemented;

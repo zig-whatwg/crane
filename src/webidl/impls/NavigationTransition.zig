@@ -52,13 +52,13 @@ pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for committed
-pub fn get_committed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_committed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

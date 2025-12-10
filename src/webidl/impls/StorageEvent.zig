@@ -159,8 +159,8 @@ fn sliceToDOMString(slice: ?[]const u8) ?runtime.DOMString {
 
 /// Constructor implementation
 /// Spec: new StorageEvent(type, eventInitDict)
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
-    const instance = try init(allocator, State, &StorageEvent.vtable, ctx);
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);

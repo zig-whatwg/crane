@@ -40,7 +40,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getChildren
-pub fn call_getChildren(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getChildren(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

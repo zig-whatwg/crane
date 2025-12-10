@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: webidl.Opt(dictionaries.MediaMetadataInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(dictionaries.MediaMetadataInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &MediaMetadata.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &MediaMetadata.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;
@@ -72,13 +72,13 @@ pub fn get_album(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for artwork
-pub fn get_artwork(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_artwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for chapterInfo
-pub fn get_chapterInfo(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_chapterInfo(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -105,7 +105,7 @@ pub fn set_album(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for artwork
-pub fn set_artwork(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_artwork(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

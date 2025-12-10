@@ -137,9 +137,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 3. Set this's encoding to encoding.
 /// 4. If options["fatal"] is true, then set this's error mode to "fatal".
 /// 5. Set this's ignore BOM to options["ignoreBOM"].
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), options: webidl.Opt(dictionaries.TextDecoderOptions)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &TextDecoder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &TextDecoder.vtable, ctx);
     errdefer deinit(instance);
 
     const state = instance.getState(State);
@@ -159,8 +159,8 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
     }
 
     // Create InternalState
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
+    const internal = try ctx.allocator.create(InternalState);
+    errdefer ctx.allocator.destroy(internal);
 
     internal.* = InternalState{
         .enc = enc,
@@ -170,7 +170,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, labe
         .pending_bytes = undefined,
         .pending_len = 0,
         .reusable_utf16_buffer = null,
-        .allocator = allocator,
+        .allocator = ctx.allocator,
     };
 
     state.own._internal = internal;

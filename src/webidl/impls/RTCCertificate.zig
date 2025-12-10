@@ -46,7 +46,7 @@ pub fn get_expires(instance: *runtime.Instance) anyerror!typedefs.EpochTimeStamp
 }
 
 /// Operation: getFingerprints
-pub fn call_getFingerprints(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getFingerprints(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

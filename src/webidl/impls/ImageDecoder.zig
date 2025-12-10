@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, init_data: dictionaries.ImageDecoderInit) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.ImageDecoderInit) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &ImageDecoder.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &ImageDecoder.vtable, ctx);
     errdefer deinit(instance);
 
     _ = init_data;
@@ -66,7 +66,7 @@ pub fn get_complete(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for completed
-pub fn get_completed(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_completed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -78,7 +78,7 @@ pub fn get_tracks(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: decode
-pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageDecodeOptions)) anyerror!*const anyopaque {
+pub fn call_decode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ImageDecodeOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;
@@ -100,5 +100,12 @@ pub fn call_static_isTypeSupported(instance: *runtime.Instance, @"type": runtime
 /// Operation: close
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     _ = instance;
+    return error.NotImplemented;
+}
+
+
+pub fn call_isTypeSupported(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = @"type";
     return error.NotImplemented;
 }

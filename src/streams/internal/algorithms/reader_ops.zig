@@ -42,14 +42,13 @@ const impls = @import("impls");
 ///
 /// Returns: ReadableStreamDefaultReader instance
 pub fn acquireReadableStreamDefaultReader(
-    allocator: std.mem.Allocator,
     ctx: runtime.Context,
     stream: *runtime.Instance,
 ) !*runtime.Instance {
     // This delegates to ReadableStreamDefaultReader constructor
     // which performs all the acquisition steps
     // Use interface instead of impl (per Golden Rule #12)
-    return interfaces.ReadableStreamDefaultReader.call_constructor(allocator, ctx, stream);
+    return interfaces.ReadableStreamDefaultReader.call_constructor(ctx, stream);
 }
 
 /// ReadableStreamDefaultReaderRead (callback-based version)
@@ -240,11 +239,16 @@ pub fn readableStreamReaderGenericCancel(
     // This is correct per spec: ReadableStreamReaderGenericCancel calls
     // ReadableStreamCancel directly, not the public cancel() method
     // NOTE: This internal method bypasses lock check - see module-level comment
-    const cancel_promise_ptr = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason);
+    const cancel_promise_js_value = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason);
 
-    // Cast the returned pointer to AsyncPromise(void)
-    // Untag V8 pointer before casting (V8 uses pointer tagging)
-    const untagged = pointer_tag.untagPointer(cancel_promise_ptr);
+    // Cast the returned JSValue to AsyncPromise(void)
+    // Extract the handle pointer from JSValue and untag V8 pointer before casting (V8 uses pointer tagging)
+    const handle_ptr: *anyopaque = switch (cancel_promise_js_value) {
+        .handle => |h| h.ptr,
+        .instance => |ptr| ptr,
+        else => return error.TypeError,
+    };
+    const untagged = pointer_tag.untagPointer(handle_ptr);
     const cancel_promise: *AsyncPromise(void) = @ptrCast(@alignCast(untagged.ptr));
 
     return cancel_promise;

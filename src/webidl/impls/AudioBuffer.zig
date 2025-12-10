@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, options: dictionaries.AudioBufferOptions) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, options: dictionaries.AudioBufferOptions) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &AudioBuffer.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &AudioBuffer.vtable, ctx);
     errdefer deinit(instance);
 
     _ = options;
@@ -78,14 +78,14 @@ pub fn get_numberOfChannels(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: getChannelData
-pub fn call_getChannelData(instance: *runtime.Instance, channel: u32) anyerror!*const anyopaque {
+pub fn call_getChannelData(instance: *runtime.Instance, channel: u32) anyerror!runtime.JSValue {
     _ = instance;
     _ = channel;
     return error.NotImplemented;
 }
 
 /// Operation: copyFromChannel
-pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
+pub fn call_copyFromChannel(instance: *runtime.Instance, destination: runtime.JSValue, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
     _ = instance;
     _ = destination;
     _ = channelNumber;
@@ -94,7 +94,7 @@ pub fn call_copyFromChannel(instance: *runtime.Instance, destination: *const any
 }
 
 /// Operation: copyToChannel
-pub fn call_copyToChannel(instance: *runtime.Instance, source: *const anyopaque, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
+pub fn call_copyToChannel(instance: *runtime.Instance, source: runtime.JSValue, channelNumber: u32, bufferOffset: webidl.Opt(u32)) anyerror!void {
     _ = instance;
     _ = source;
     _ = channelNumber;

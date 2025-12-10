@@ -70,7 +70,7 @@ pub fn get_isFirstPersonObserver(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for projectionMatrix
-pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

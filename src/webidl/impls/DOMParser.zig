@@ -8,7 +8,7 @@
 //! ## Usage
 //!
 //! ```zig
-//! const parser = try DOMParser.call_constructor(allocator, ctx);
+//! const parser = try DOMParser.call_constructor(ctx);
 //! defer DOMParser.deinit(parser);
 //!
 //! const doc = try DOMParser.call_parseFromString(parser, html_string, ._text_html_);
@@ -95,9 +95,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Creates a new DOMParser instance
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-domparser-constructor
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &DOMParser.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &DOMParser.vtable, ctx);
     errdefer deinit(instance);
 
     return instance;
@@ -162,20 +162,18 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
 // =============================================================================
 
 test "DOMParser - constructor creates valid instance" {
-    const allocator = std.testing.allocator;
     const ctx = runtime.Context{};
 
-    const parser = try call_constructor(allocator, ctx);
+    const parser = try call_constructor(ctx);
     defer deinit(parser);
 
     try std.testing.expect(parser != null);
 }
 
 test "DOMParser - parseFromString with HTML" {
-    const allocator = std.testing.allocator;
     const ctx = runtime.Context{};
 
-    const parser = try call_constructor(allocator, ctx);
+    const parser = try call_constructor(ctx);
     defer deinit(parser);
 
     const html = runtime.DOMString.initStatic("<html><body>Hello World</body></html>");

@@ -66,13 +66,13 @@ pub fn set_ondisconnect(instance: *runtime.Instance, value: typedefs.EventHandle
 }
 
 /// Operation: getDevices
-pub fn call_getDevices(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: requestDevice
-pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.USBDeviceRequestOptions) anyerror!*const anyopaque {
+pub fn call_requestDevice(instance: *runtime.Instance, options: dictionaries.USBDeviceRequestOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
     return error.NotImplemented;

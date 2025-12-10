@@ -41,7 +41,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: select
-pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, options: webidl.Opt(dictionaries.ContactsSelectOptions)) anyerror!*const anyopaque {
+pub fn call_select(instance: *runtime.Instance, properties: runtime.JSValue, options: webidl.Opt(dictionaries.ContactsSelectOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = properties;
     _ = options;
@@ -49,7 +49,7 @@ pub fn call_select(instance: *runtime.Instance, properties: *const anyopaque, op
 }
 
 /// Operation: getProperties
-pub fn call_getProperties(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getProperties(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

@@ -359,3 +359,33 @@ fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
         .instance => return error.DataError,
     }
 }
+
+
+pub fn call_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = lower;
+    _ = open;
+    return error.NotImplemented;
+}
+
+pub fn call_upperBound(instance: *runtime.Instance, upper: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = upper;
+    _ = open;
+    return error.NotImplemented;
+}
+
+pub fn call_bound(instance: *runtime.Instance, lower: runtime.JSValue, upper: runtime.JSValue, lowerOpen: webidl.Opt(bool), upperOpen: webidl.Opt(bool)) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = lower;
+    _ = upper;
+    _ = lowerOpen;
+    _ = upperOpen;
+    return error.NotImplemented;
+}
+
+pub fn call_only(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
+}

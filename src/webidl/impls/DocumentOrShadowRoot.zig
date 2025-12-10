@@ -72,7 +72,7 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// adoptedStyleSheets - Returns adopted stylesheets
 /// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
-pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // TODO: Implement adopted stylesheets storage and retrieval
     _ = instance;
     return error.NotImplemented;
@@ -80,7 +80,7 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!*const anyop
 
 /// setAdoptedStyleSheets - Sets adopted stylesheets
 /// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
-pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: *const anyopaque) anyerror!void {
+pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     // TODO: Implement adopted stylesheets storage
     _ = instance;
     _ = value;
@@ -125,7 +125,7 @@ pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime
 
 /// getAnimations - Returns all animations in the document/shadow root
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-documentorshadowroot-getanimations
-pub fn call_getAnimations(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // TODO: Implement animation collection
     _ = instance;
     return error.NotImplemented;

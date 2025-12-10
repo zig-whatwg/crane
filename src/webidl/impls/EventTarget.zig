@@ -168,9 +168,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &EventTarget.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &EventTarget.vtable, ctx);
     errdefer deinit(instance);
 
     // Note: EventTarget.State.own is empty struct, so no _internal field
@@ -361,7 +361,7 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 
 /// Operation: addEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
-pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {
@@ -417,7 +417,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
-pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     const internal = getInternalFromRegistry(instance) orelse return;
 
     // Flatten options

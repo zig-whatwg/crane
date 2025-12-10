@@ -42,9 +42,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PointerEventInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.PointerEventInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &PointerEvent.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &PointerEvent.vtable, ctx);
     errdefer deinit(instance);
 
     _ = @"type";
@@ -133,13 +133,13 @@ pub fn get_persistentDeviceId(instance: *runtime.Instance) anyerror!i32 {
 }
 
 /// Operation: getCoalescedEvents
-pub fn call_getCoalescedEvents(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getCoalescedEvents(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getPredictedEvents
-pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getPredictedEvents(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

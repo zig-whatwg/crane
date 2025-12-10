@@ -102,7 +102,7 @@ pub fn set_onpayerdetailchange(instance: *runtime.Instance, value: typedefs.Even
 }
 
 /// Operation: complete
-pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.PaymentComplete), details: webidl.Opt(dictionaries.PaymentCompleteDetails)) anyerror!*const anyopaque {
+pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.PaymentComplete), details: webidl.Opt(dictionaries.PaymentCompleteDetails)) anyerror!runtime.JSValue {
     _ = instance;
     _ = result;
     _ = details;
@@ -116,7 +116,7 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: retry
-pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(dictionaries.PaymentValidationErrors)) anyerror!*const anyopaque {
+pub fn call_retry(instance: *runtime.Instance, errorFields: webidl.Opt(dictionaries.PaymentValidationErrors)) anyerror!runtime.JSValue {
     _ = instance;
     _ = errorFields;
     return error.NotImplemented;

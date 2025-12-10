@@ -178,7 +178,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 8. Set this's url to urlRecord.
 /// 9. Let client be this's relevant settings object.
 /// 10. Run this step in parallel: Establish a WebSocket connection given urlRecord, protocols...
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(*const anyopaque)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     // Validate URL scheme (ws:// or wss://)
     if (!std.mem.startsWith(u8, url, "ws://") and !std.mem.startsWith(u8, url, "wss://")) {
         return error.SyntaxError;
@@ -190,7 +190,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     }
 
     // Create instance
-    const instance = try init(allocator, State, &WebSocket.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &WebSocket.vtable, ctx);
     errdefer deinit(instance);
 
     // Get state
@@ -199,7 +199,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     // Create internal state
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init(ctx.allocator);
 
     // Store V8 isolate for Global handle management
     internal.isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate);
@@ -207,11 +207,11 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, url:
     state.own._internal = internal;
 
     // Create the WebSocket connection (starts in CONNECTING state)
-    const connection = try WebSocketConnection.init(allocator, url);
+    const connection = try WebSocketConnection.init(ctx.allocator, url);
     internal.connection = connection;
 
     // Store URL (copy for ownership)
-    internal.url_string = try allocator.dupe(u8, url);
+    internal.url_string = try ctx.allocator.dupe(u8, url);
     state.own.url = internal.url_string;
 
     // Initialize state from connection
@@ -484,7 +484,7 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
 ///    then send data using the WebSocket.
 /// 4. Otherwise, discard data.
 /// 5. Increase this's bufferedAmount by the byte length of data.
-pub fn call_send(instance: *runtime.Instance, data: *const anyopaque) anyerror!void {
+pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return;
     const connection = internal.connection orelse return;
 

@@ -41,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getTags
-pub fn call_getTags(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_getTags(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: unregister
-pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!*const anyopaque {
+pub fn call_unregister(instance: *runtime.Instance, tag: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = tag;
     return error.NotImplemented;
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: webidl.Opt(dictionaries.BackgroundSyncOptions)) anyerror!*const anyopaque {
+pub fn call_register(instance: *runtime.Instance, tag: runtime.DOMString, options: webidl.Opt(dictionaries.BackgroundSyncOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = tag;
     _ = options;

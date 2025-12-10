@@ -53,9 +53,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 2. Add `isolate: ?*v8_engine.ffi.Isolate` to InternalState
 /// 3. Create Global handle in constructor: `v8_engine.createOptionalGlobalHandle(iso, @ptrCast(callback))`
 /// 4. Dispose Global handle in deinit: `v8_engine.disposeOptionalGlobalHandle(&self.callback)`
-pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionObserverCallback, options: webidl.Opt(dictionaries.IntersectionObserverInit)) !*runtime.Instance {
     // Create instance through init()
-    const instance = try init(allocator, State, &IntersectionObserver.vtable, ctx);
+    const instance = try init(ctx.allocator, State, &IntersectionObserver.vtable, ctx);
     errdefer deinit(instance);
 
     _ = callback;
@@ -66,7 +66,7 @@ pub fn call_constructor(allocator: std.mem.Allocator, ctx: runtime.Context, call
 }
 
 /// Getter for root
-pub fn get_root(instance: *runtime.Instance) anyerror!?*const anyopaque {
+pub fn get_root(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -84,7 +84,7 @@ pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString 
 }
 
 /// Getter for thresholds
-pub fn get_thresholds(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -122,7 +122,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: takeRecords
-pub fn call_takeRecords(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

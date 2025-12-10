@@ -70,19 +70,19 @@ pub fn get_mapping(instance: *runtime.Instance) anyerror!enums.GamepadMappingTyp
 }
 
 /// Getter for axes
-pub fn get_axes(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_axes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for buttons
-pub fn get_buttons(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_buttons(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Getter for touches
-pub fn get_touches(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_touches(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
@@ -100,7 +100,7 @@ pub fn get_hand(instance: *runtime.Instance) anyerror!enums.GamepadHand {
 }
 
 /// Getter for hapticActuators
-pub fn get_hapticActuators(instance: *runtime.Instance) anyerror!*const anyopaque {
+pub fn get_hapticActuators(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
