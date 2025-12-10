@@ -1172,12 +1172,22 @@ pub fn fromV8Value(
             }
         }
 
-        // Step 2: Create Global handle for functions/objects needing persistence
+        // Step 2: Create WEAK Global handle for functions/objects needing persistence
         // NOTE: Local handles become invalid when HandleScope ends
+        //
+        // MEMORY MANAGEMENT: We use weak Global handles (not strong) because:
+        // - Strong handles require manual disposal → causes memory leaks if forgotten
+        // - Weak handles let V8 GC clean them up when JS no longer references them
+        // - This matches JavaScript semantics: object is kept alive by JS references
+        //
+        // The weak handle with null callback means:
+        // - Handle survives HandleScope (essential for callbacks stored in dictionaries)
+        // - V8 can GC the value when no JS references remain
+        // - No Zig-side cleanup callback needed (we don't track these handles)
         if (v8.v8_Value_IsFunction(value) or v8.v8_Value_IsObject(value)) {
-            if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
-                // TAGGING: .global_handle - V8 Global<Value>*, survives HandleScope
-                // Consumer: untag before V8 FFI, dispose when done
+            if (v8.v8_Value_ToWeakGlobal(isolate, @ptrCast(value), null, null)) |global| {
+                // TAGGING: .global_handle - V8 Global<Value>* (weak), survives HandleScope
+                // Consumer: untag before V8 FFI, V8 GC handles disposal
                 return pointer_tag_mod.tagPointer(global, .global_handle);
             }
             // Global creation failed (OOM), fall through to Local
