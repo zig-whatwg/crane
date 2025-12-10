@@ -186,6 +186,12 @@ pub const ScriptingParseOptions = struct {
     base_url: []const u8 = "",
     /// Script loader for external scripts (null = no external script loading)
     script_loader: ?ScriptLoader = null,
+    /// Existing document to populate (null = create new document)
+    /// When provided, the parser populates this document instead of creating a new one.
+    /// This is critical for WPT runner: the document must be registered in V8 BEFORE
+    /// parsing so that scripts executing during parsing can access DOM elements via
+    /// document.getElementById(), document.querySelector(), etc.
+    existing_document: ?*runtime.Instance = null,
 };
 
 /// Parse an HTML document with scripting support
@@ -219,18 +225,32 @@ pub fn parseHTMLWithScripting(
     html: []const u8,
     options: ScriptingParseOptions,
 ) ParseError!*runtime.Instance {
-    // Step 1: Create DOM Document FIRST (before parsing)
-    // Scripts need access to the document during parsing
-    const document = interfaces.Document.init(
-        allocator,
-        ctx,
-    ) catch return error.OutOfMemory;
-    errdefer interfaces.Document.deinit(document);
-
-    // Set document type to HTML
-    if (DocumentImpl.getInternal(document)) |doc_internal| {
-        doc_internal.doc_type = .html;
-    }
+    // Step 1: Get or create DOM Document
+    // If an existing document is provided, use it (critical for WPT runner where
+    // the document must be registered in V8 before parsing so scripts can access
+    // parsed DOM elements). Otherwise, create a new document.
+    const document = if (options.existing_document) |existing| blk: {
+        // Use the existing document - it's already registered in V8
+        // Clear any existing children to prepare for fresh parsing
+        if (DocumentImpl.getInternal(existing)) |doc_internal| {
+            doc_internal.doc_type = .html;
+            doc_internal.document_element = null;
+        }
+        break :blk existing;
+    } else blk: {
+        // Create new document (original behavior)
+        const new_doc = interfaces.Document.init(
+            allocator,
+            ctx,
+        ) catch return error.OutOfMemory;
+        if (DocumentImpl.getInternal(new_doc)) |doc_internal| {
+            doc_internal.doc_type = .html;
+        }
+        break :blk new_doc;
+    };
+    // Only set up errdefer for newly created documents
+    const owns_document = options.existing_document == null;
+    errdefer if (owns_document) interfaces.Document.deinit(document);
 
     // Step 2: Create tokenizer with input
     var tokenizer = Tokenizer.init(allocator, html);

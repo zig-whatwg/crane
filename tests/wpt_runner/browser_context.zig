@@ -985,8 +985,19 @@ pub const BrowserContext = struct {
             .loadScript = wptScriptLoader,
         };
 
-        // Parse HTML with scripting enabled
-        const new_document = HTMLParser.parseHTMLWithScripting(
+        // CRITICAL FIX: Pass the existing document to the parser!
+        // The document was created and registered in V8 during initialize().
+        // By passing it to the parser, scripts executing DURING parsing can
+        // access DOM elements via document.getElementById(), querySelector(), etc.
+        // Previously, the parser created a NEW document internally, and V8's
+        // document reference was only updated AFTER parsing - too late for scripts!
+        const document = self.document_instance orelse {
+            std.debug.print("ERROR: document_instance is null - initialize() must be called first\n", .{});
+            return error.NotInitialized;
+        };
+
+        // Parse HTML into the existing document (already registered in V8)
+        _ = HTMLParser.parseHTMLWithScripting(
             self.allocator,
             runtime_ctx,
             html_content,
@@ -994,37 +1005,15 @@ pub const BrowserContext = struct {
                 .scripting_enabled = true,
                 .base_url = base_url,
                 .script_loader = script_loader,
+                .existing_document = document,
             },
         ) catch |err| {
             std.debug.print("HTML parse error: {}\n", .{err});
             return error.ParseError;
         };
 
-        // Replace the current document
-        if (self.document_instance) |old_doc| {
-            interfaces.Document.deinit(old_doc);
-        }
-        self.document_instance = new_document;
-
-        // Update the global 'document' reference in V8
-        if (self.isolate) |isolate| {
-            if (self.context) |context| {
-                const global_obj = v8.ffi.v8_Context_Global(context) orelse return;
-
-                const v8_document = v8.template_registry.wrapInstanceAsV8Object(
-                    new_document,
-                    "Document",
-                    isolate,
-                    context,
-                ) catch |err| {
-                    std.debug.print("Failed to wrap new document: {}\n", .{err});
-                    return;
-                };
-
-                const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return;
-                _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(doc_key), @ptrCast(v8_document));
-            }
-        }
+        // Document is already registered in V8 - no need to update the reference!
+        // The existing document_instance has been populated with the parsed DOM.
     }
 
     /// Fire the DOMContentLoaded event on the document
