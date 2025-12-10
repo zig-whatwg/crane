@@ -157,6 +157,7 @@ pub fn writeImports(
                         .enum_type => "enums",
                         .callback => "callbacks",
                         .namespace => "namespaces",
+                        .mixin => "mixins",
                         .primitive => "interfaces", // Shouldn't happen, but fallback
                     };
                 }
@@ -830,7 +831,7 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
             return;
         }
         // Malformed: sequence without parameter - shouldn't happen
-        try writer.writeAll("*const anyopaque /* malformed sequence */");
+        try writer.writeAll("runtime.JSValue /* malformed sequence */");
         return;
     }
 
@@ -844,7 +845,7 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
             return;
         }
         // Malformed: Promise without parameter
-        try writer.writeAll("*const anyopaque /* malformed Promise */");
+        try writer.writeAll("runtime.JSValue /* malformed Promise */");
         return;
     }
 
@@ -858,7 +859,7 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
             return;
         }
         // Malformed: FrozenArray without parameter
-        try writer.writeAll("*const anyopaque /* malformed FrozenArray */");
+        try writer.writeAll("runtime.JSValue /* malformed FrozenArray */");
         return;
     }
 
@@ -872,7 +873,7 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
             return;
         }
         // Malformed: ObservableArray without parameter
-        try writer.writeAll("*const anyopaque /* malformed ObservableArray */");
+        try writer.writeAll("runtime.JSValue /* malformed ObservableArray */");
         return;
     }
 
@@ -905,9 +906,15 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
             try writer.writeAll("DOMString");
             return;
         }
-        // Other union types fall back to anyopaque
-        // (they need variant names and full tagged union syntax)
-        try writer.writeAll("*const anyopaque");
+        // Check for (Node or DOMString) pattern used by DOM mutation methods
+        if (isNodeOrDOMStringUnion(union_types)) {
+            try writer.writeAll("mixins.ParentNode.NodeOrString");
+            return;
+        }
+        // Other union types use runtime.JSValue for type safety
+        // The JSValue tagged union preserves type information at runtime
+        // and allows proper JavaScript value handling
+        try writer.writeAll("runtime.JSValue");
         return;
     }
 
@@ -988,14 +995,14 @@ fn writeZigType(writer: anytype, idl_type_name: []const u8) !void {
                     return;
                 }
 
-                // Malformed record type, fall back to pointer to anyopaque
-                try writer.writeAll("*const anyopaque");
+                // Malformed record type, fall back to runtime.JSValue for type safety
+                try writer.writeAll("runtime.JSValue");
                 return;
             }
         }
 
-        // Unknown or malformed parameterized type
-        try writer.writeAll("*const anyopaque");
+        // Unknown or malformed parameterized type - use runtime.JSValue for type safety
+        try writer.writeAll("runtime.JSValue");
         return;
     }
 
@@ -1823,9 +1830,9 @@ pub fn writeConstructor(
         const is_interface = type_kind != null and type_kind.? == .interface;
         const is_callback_interface = type_kind != null and type_kind.? == .callback_interface;
 
-        // If we got anyopaque (union type or unknown), make it a pointer
+        // If we got anyopaque (union type or unknown), use JSValue for type safety
         if (std.mem.eql(u8, arg_type, "anyopaque")) {
-            arg_type = "*const anyopaque";
+            arg_type = "runtime.JSValue";
         }
 
         // For callback interface types, use ?*runtime.CallbackWrapper
@@ -1950,7 +1957,7 @@ pub fn writeOverloadedConstructor(
             else
                 mapWebIDLType(arg.idlType);
             if (std.mem.eql(u8, base_type, "anyopaque")) {
-                base_type = "*const anyopaque";
+                base_type = "runtime.JSValue";
             }
             try fbs.writer().writeAll(base_type);
 
@@ -2011,7 +2018,7 @@ pub fn writeOverloadedConstructor(
                     else
                         mapWebIDLType(arg.idlType);
                     if (std.mem.eql(u8, base_type, "anyopaque")) {
-                        base_type = "*const anyopaque";
+                        base_type = "runtime.JSValue";
                     }
                     try fbs.writer().writeAll(base_type);
 
@@ -2123,10 +2130,10 @@ fn writeSingleOperation(
     else
         mapWebIDLType(op.idlType);
 
-    // Convert bare anyopaque to pointer (for sequences, promises, union types, etc.)
+    // Convert bare anyopaque to JSValue (for sequences, promises, union types, etc.)
     // These are truly unknown/dynamic types that need runtime handling
     if (std.mem.eql(u8, return_type, "anyopaque")) {
-        return_type = "*const anyopaque";
+        return_type = "runtime.JSValue";
     }
 
     // Check if return type is nullable (WebIDL T? type)
@@ -2196,10 +2203,10 @@ fn writeSingleOperation(
         else
             mapWebIDLType(arg.idlType);
 
-        // Convert bare anyopaque to pointer (for unknown types, sequences, promises, etc.)
+        // Convert bare anyopaque to JSValue (for unknown types, sequences, promises, etc.)
         // These are truly dynamic types that need runtime handling
         if (std.mem.eql(u8, arg_type, "anyopaque")) {
-            arg_type = "*const anyopaque";
+            arg_type = "runtime.JSValue";
         }
 
         // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
@@ -2528,9 +2535,9 @@ pub fn writeDelegateFunctions(
         else
             mapWebIDLType(attr.idlType);
 
-        // Convert bare anyopaque to pointer (for unresolved types)
+        // Convert bare anyopaque to JSValue (for unresolved types)
         if (std.mem.eql(u8, return_type, "anyopaque")) {
-            return_type = "*const anyopaque";
+            return_type = "runtime.JSValue";
         }
 
         // Check if this attribute is nullable (WebIDL T? type)
@@ -2855,9 +2862,9 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
                 .needs_import = false,
             };
         }
-        // Other union types fall back to anyopaque
+        // Other union types fall back to runtime.JSValue for type safety
         return .{
-            .type_name = "anyopaque",
+            .type_name = "runtime.JSValue",
             .needs_import = false,
         };
     }
@@ -2872,6 +2879,7 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
             .enum_type => "enums",
             .callback => "callbacks",
             .namespace => "namespaces",
+            .mixin => "mixins",
             .primitive => null, // Primitives don't need imports
         };
 
@@ -2907,7 +2915,7 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
 /// - boolean -> bool
 /// - numeric types -> i8, u8, i16, u16, i32, u32, i64, u64, f32, f64
 /// - string types -> runtime.DOMString, runtime.ByteString, runtime.USVString
-/// - unknown types -> anyopaque
+/// - unknown types -> runtime.JSValue
 fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
     // Handle union types first
     if (idl_type.unionTypes) |union_types| {
@@ -2916,8 +2924,8 @@ fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
         if (isTrustedTypeOrStringUnion(union_types)) {
             return "DOMString";
         }
-        // Other union types fall back to anyopaque
-        return "anyopaque";
+        // Other union types fall back to runtime.JSValue for type safety
+        return "runtime.JSValue";
     }
 
     // WebIDL "undefined" is the modern replacement for "void"
@@ -2964,7 +2972,7 @@ fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
     else if (std.mem.eql(u8, idl_type.type, "object"))
         "runtime.JSValue"
     else
-        "anyopaque";
+        "runtime.JSValue"; // Unknown types use JSValue for type safety
 
     // For now, ignore nullable - we'll improve this later
     _ = idl_type.nullable;
@@ -3392,8 +3400,8 @@ test "writeDelegateFunctions generates operation delegates" {
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "pub fn call_appendChild(") != null);
-    // Without type registry, unknown types map to *const anyopaque
-    try testing.expect(std.mem.indexOf(u8, output, "node: *const anyopaque") != null);
+    // Without type registry, unknown types map to runtime.JSValue
+    try testing.expect(std.mem.indexOf(u8, output, "node: runtime.JSValue") != null);
 }
 
 test "mapWebIDLType maps primitive types" {
