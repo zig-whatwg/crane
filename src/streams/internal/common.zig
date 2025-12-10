@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const Allocator = std.mem.Allocator;
 
 /// Error type tag for proper exception type preservation
 /// Used by JSValue.error_value to indicate the type of error for V8 conversion
@@ -24,6 +25,10 @@ pub const ErrorValue = struct {
 /// Import runtime for type-safe JSValue
 const runtime = @import("runtime");
 
+/// Import V8Handle for lifecycle-managed V8 values
+const v8_handle = @import("../../runtime/engines/v8/handle.zig");
+pub const V8Handle = v8_handle.V8Handle;
+
 /// Internal JSValue type (simplified from webidl.JSValue)
 /// Used for internal algorithms - bridges to webidl.JSValue at public boundaries
 pub const JSValue = union(enum) {
@@ -37,7 +42,21 @@ pub const JSValue = union(enum) {
     /// V8 value pointer - stores raw V8 Global<Value>* for JavaScript engine integration
     /// Used when chunks come from JavaScript and need to be passed back unchanged
     /// NOTE: This stores a Global handle (not Local) to ensure the value survives HandleScope
+    ///
+    /// DEPRECATED: Prefer v8_handle for proper lifecycle management with reference counting.
+    /// This variant does NOT manage the V8 handle lifecycle - the caller is responsible for
+    /// ensuring the handle remains valid and is properly disposed.
     v8_value: *anyopaque,
+    /// V8 handle with lifecycle management - uses reference-counted V8Handle wrapper
+    /// This variant OWNS the V8 handle and will properly dispose it when deinit is called.
+    ///
+    /// Use this when:
+    /// - Creating JSValue that will be stored long-term
+    /// - Passing V8 values through multiple owners
+    /// - Any case where you want automatic cleanup on last reference
+    ///
+    /// Note: Clone with clone() to share ownership, call deinit() when done.
+    v8_handle: V8Handle,
     /// Close sentinel - unique value for WritableStream close signaling
     /// Spec: § 3.9.17 "The close sentinel is a unique value enqueued into [[queue]]"
     close_sentinel: void,
@@ -85,6 +104,8 @@ pub const JSValue = union(enum) {
             .number => |n| .{ .number = n },
             .string => |s| .{ .string = s },
             .bytes, .object => .{ .undefined = {} }, // Bytes/objects as undefined for now
+            .v8_value => .{ .undefined = {} }, // Raw V8 values need engine-specific conversion
+            .v8_handle => .{ .undefined = {} }, // V8Handle values need engine-specific conversion
             .close_sentinel => .{ .undefined = {} }, // Close sentinel never exposed to web
             .error_value => |e| .{ .string = e.message }, // Convert error to string for now
         };

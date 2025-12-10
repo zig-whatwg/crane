@@ -1115,14 +1115,14 @@ pub fn fromV8Value(
         // ## Tagging Contract
         //
         // **PRODUCER (here in fromV8Value):**
-        // - Tags ALL `*const anyopaque` return values using pointer_tag.tagPointer()
+        // - Tags ALL `*const anyopaque` return values using TaggedPointer.init()
         // - Detection logic:
         //   1. If V8 object with internal fields → extract Instance, tag as .runtime_instance
         //   2. If function/object needing persistence → create Global, tag as .global_handle
         //   3. Otherwise → tag Local handle as .local_value
         //
         // **CONSUMERS (engine.zig, binding.zig, impl code):**
-        // - MUST call pointer_tag.untagPointer() before using the pointer
+        // - MUST use TaggedPointer.fromRaw() or untagPointer() before using the pointer
         // - Check the tag to determine how to handle:
         //   - .runtime_instance: Cast to *runtime.Instance, use directly
         //   - .global_handle/.local_value: Cast to V8 FFI type, call V8 APIs
@@ -1139,7 +1139,7 @@ pub fn fromV8Value(
         //
         // ```zig
         // fn processAnyValue(tagged_ptr: *const anyopaque) void {
-        //     const untagged = pointer_tag.untagPointer(tagged_ptr);
+        //     const tagged = TaggedPointer.fromRaw(@intFromPtr(tagged_ptr));
         //     switch (untagged.tag) {
         //         .runtime_instance => {
         //             const instance: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
@@ -1156,6 +1156,7 @@ pub fn fromV8Value(
         // ============================================================================
 
         const pointer_tag_mod = @import("pointer_tag.zig");
+        const TaggedPointer = pointer_tag_mod.TaggedPointer;
 
         // Step 1: Check if V8 object wraps a Zig instance
         // Detection: Objects with internal fields store Zig instances in field 0
@@ -1166,7 +1167,7 @@ pub fn fromV8Value(
                 if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
                     // TAGGING: .runtime_instance - this is a Zig object, NOT a V8 handle
                     // Consumer MUST NOT pass this to V8 FFI functions!
-                    return pointer_tag_mod.tagPointer(internal_ptr, .runtime_instance);
+                    return TaggedPointer.init(internal_ptr, .runtime_instance).toConstPtr();
                 }
                 // Internal field null - object not fully initialized, fall through
             }
@@ -1188,7 +1189,7 @@ pub fn fromV8Value(
             if (v8.v8_Value_ToWeakGlobal(isolate, @ptrCast(value), null, null)) |global| {
                 // TAGGING: .global_handle - V8 Global<Value>* (weak), survives HandleScope
                 // Consumer: untag before V8 FFI, V8 GC handles disposal
-                return pointer_tag_mod.tagPointer(global, .global_handle);
+                return TaggedPointer.init(global, .global_handle).toConstPtr();
             }
             // Global creation failed (OOM), fall through to Local
         }
@@ -1196,7 +1197,7 @@ pub fn fromV8Value(
         // Step 3: Return Local handle for primitives
         // TAGGING: .local_value - V8 Local<Value>*, temporary handle
         // Consumer: untag before V8 FFI, only valid within current HandleScope
-        return pointer_tag_mod.tagPointer(@ptrCast(@constCast(value)), .local_value);
+        return TaggedPointer.init(@ptrCast(@constCast(value)), .local_value).toConstPtr();
     }
 
     // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
