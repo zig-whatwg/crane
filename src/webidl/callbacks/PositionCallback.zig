@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const PositionCallback = *const fn (position: runtime.JSValue) void;
+pub const PositionCallback = *const fn (position: *runtime.Instance) void;

@@ -1719,34 +1719,37 @@ test "generateInterface includes lifecycle functions" {
     try testing.expect(std.mem.indexOf(u8, content, "TestInterfaceImpl.init(allocator, State, &vtable, ctx)") != null);
 }
 
-/// Check if a type references a callback (by checking if callback file exists)
-fn typeReferencesCallback(allocator: std.mem.Allocator, idl_type: types.IDLType, typedefs_path: []const u8) !bool {
-    // Get the callbacks directory (sibling to typedefs)
-    const parent_dir = std.fs.path.dirname(typedefs_path) orelse ".";
-    const callbacks_dir = try std.fs.path.join(allocator, &.{ parent_dir, "callbacks" });
-    defer allocator.free(callbacks_dir);
+/// Check if an IDL type references a callback (to determine if we need to import callbacks module)
+fn typeReferencesCallback(idl_type: types.IDLType, type_registry: *const ir_mod.TypeRegistry) bool {
+    // Check the main type
+    if (type_registry.lookup(idl_type.type)) |kind| {
+        if (kind == .callback) return true;
+    }
 
-    // Check if the type name exists as a callback file
-    const callback_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{idl_type.type});
-    defer allocator.free(callback_filename);
+    // Check sequence element type (populated by some code paths)
+    if (idl_type.sequence) |elem_type| {
+        if (typeReferencesCallback(elem_type.*, type_registry)) return true;
+    }
 
-    const callback_path = try std.fs.path.join(allocator, &.{ callbacks_dir, callback_filename });
-    defer allocator.free(callback_path);
+    // Check generic field (used by parser for sequence<T> and record<K,V>)
+    if (idl_type.generic) |generic_str| {
+        if (checkGenericStringForType(generic_str, type_registry, .callback)) return true;
+    }
 
-    // If file exists, this is a callback reference
-    std.fs.cwd().access(callback_path, .{}) catch {
-        // Also check union member types
-        if (idl_type.unionTypes) |union_types| {
-            for (union_types) |union_member| {
-                if (try typeReferencesCallback(allocator, union_member, typedefs_path)) {
-                    return true;
-                }
-            }
+    // Check record key and value types
+    if (idl_type.record) |rec| {
+        if (typeReferencesCallback(rec.key.*, type_registry)) return true;
+        if (typeReferencesCallback(rec.value.*, type_registry)) return true;
+    }
+
+    // Check union member types
+    if (idl_type.unionTypes) |union_types| {
+        for (union_types) |union_member| {
+            if (typeReferencesCallback(union_member, type_registry)) return true;
         }
-        return false;
-    };
+    }
 
-    return true;
+    return false;
 }
 
 /// Check if an IDL type references a typedef (to determine if we need to import typedefs module)
@@ -2110,11 +2113,13 @@ fn writeTypeForTypedef(allocator: std.mem.Allocator, w: anytype, idl_type: types
 fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl_type: types.IDLType, typedefs_path: []const u8, type_registry: ?*const ir_mod.TypeRegistry) !void {
     const type_str = idl_type.type;
 
-    // Check if this is a callback reference
-    if (try typeReferencesCallback(allocator, idl_type, typedefs_path)) {
-        // Reference the callback from callbacks module
-        try w.print("callbacks.{s}", .{type_str});
-        return;
+    // Check if this is a callback reference (requires type registry)
+    if (type_registry) |reg| {
+        if (typeReferencesCallback(idl_type, reg)) {
+            // Reference the callback from callbacks module
+            try w.print("callbacks.{s}", .{type_str});
+            return;
+        }
     }
 
     // Handle sequence types: sequence<T> -> []const T
@@ -2199,7 +2204,7 @@ pub fn generateTypedef(
     try w.writeAll("const runtime = @import(\"runtime\");\n");
 
     // Check if typedef references a callback - if so, import callbacks module
-    const needs_callbacks = try typeReferencesCallback(allocator, typedef.idlType, typedefs_path);
+    const needs_callbacks = typeReferencesCallback(typedef.idlType, &ir.type_registry);
     if (needs_callbacks) {
         try w.writeAll("const callbacks = @import(\"callbacks\");\n");
     }
@@ -2388,10 +2393,8 @@ pub fn generateDictionary(
         }
         // Collect dictionary type names instead of just setting a flag
         try collectReferencedDictionaries(member.idlType, &ir.type_registry, dictionary.name, &referenced_dicts);
-        if (!needs_callbacks) {
-            if (typeReferencesCallback(allocator, member.idlType, dictionaries_path) catch false) {
-                needs_callbacks = true;
-            }
+        if (!needs_callbacks and typeReferencesCallback(member.idlType, &ir.type_registry)) {
+            needs_callbacks = true;
         }
     }
 

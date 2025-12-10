@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const CreateMonitorCallback = *const fn (monitor: runtime.JSValue) void;
+pub const CreateMonitorCallback = *const fn (monitor: *runtime.Instance) void;

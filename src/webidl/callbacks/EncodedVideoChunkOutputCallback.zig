@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const EncodedVideoChunkOutputCallback = *const fn (chunk: runtime.JSValue, metadata: webidl.Opt(runtime.JSValue)) void;
+pub const EncodedVideoChunkOutputCallback = *const fn (chunk: *runtime.Instance, metadata: runtime.JSValue) void;

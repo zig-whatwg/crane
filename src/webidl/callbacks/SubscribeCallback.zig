@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const SubscribeCallback = *const fn (subscriber: runtime.JSValue) void;
+pub const SubscribeCallback = *const fn (subscriber: *runtime.Instance) void;

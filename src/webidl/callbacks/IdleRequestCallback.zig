@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const IdleRequestCallback = *const fn (deadline: runtime.JSValue) void;
+pub const IdleRequestCallback = *const fn (deadline: *runtime.Instance) void;

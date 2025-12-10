@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const XRFrameRequestCallback = *const fn (time: runtime.JSValue, frame: runtime.JSValue) void;
+pub const XRFrameRequestCallback = *const fn (time: *runtime.Instance, frame: *runtime.Instance) void;

@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const OnBeforeUnloadEventHandlerNonNull = *const fn (event: runtime.JSValue) runtime.DOMString;
+pub const OnBeforeUnloadEventHandlerNonNull = *const fn (event: *runtime.Instance) runtime.DOMString;

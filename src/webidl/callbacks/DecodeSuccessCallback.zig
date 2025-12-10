@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const DecodeSuccessCallback = *const fn (decodedData: runtime.JSValue) void;
+pub const DecodeSuccessCallback = *const fn (decodedData: *runtime.Instance) void;

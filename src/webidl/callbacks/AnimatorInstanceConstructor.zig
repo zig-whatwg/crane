@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 
-pub const AnimatorInstanceConstructor = *const fn (options: runtime.JSValue, state: webidl.Opt(runtime.JSValue)) runtime.JSValue;
+pub const AnimatorInstanceConstructor = *const fn (options: runtime.JSValue, state: runtime.JSValue) runtime.JSValue;
