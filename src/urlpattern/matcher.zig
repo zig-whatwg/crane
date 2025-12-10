@@ -554,12 +554,17 @@ fn matchComponent(
 
         // Extract named groups
         for (component.group_names) |name| {
-            if (match.getNamedGroup(name)) |value| {
+            // Convert to PCRE2 name format (prefix numeric names with _)
+            const pcre2_name = toPcre2GroupName(name);
+            const lookup_name = pcre2_name.name[0..pcre2_name.len];
+
+            if (match.getNamedGroup(lookup_name)) |value| {
                 // Copy the value since match will be freed
                 const value_copy = try allocator.alloc(u8, value.len);
                 errdefer allocator.free(value_copy);
                 @memcpy(value_copy, value);
                 try result._owned_group_values.append(allocator, value_copy);
+                // Store with original name, not PCRE2 name
                 try result.groups.put(allocator, name, value_copy);
             }
         }
@@ -701,6 +706,33 @@ fn isIdentChar(c: u8) bool {
         (c >= 'A' and c <= 'Z') or
         (c >= '0' and c <= '9') or
         c == '_' or c == '$';
+}
+
+/// Result type for PCRE2 group name conversion
+const Pcre2GroupNameResult = struct {
+    name: [33]u8,
+    len: usize,
+};
+
+/// Convert a URLPattern group name to PCRE2 format.
+/// PCRE2 requires group names to start with a non-digit character.
+/// URLPattern allows numeric names like "0", "1" for unnamed groups.
+/// We prefix such names with "_" to make them valid PCRE2 names.
+fn toPcre2GroupName(name: []const u8) Pcre2GroupNameResult {
+    var result: Pcre2GroupNameResult = .{ .name = undefined, .len = 0 };
+    if (name.len > 0 and name[0] >= '0' and name[0] <= '9') {
+        // Name starts with a digit - prefix with underscore
+        result.name[0] = '_';
+        const copy_len = @min(name.len, 32);
+        @memcpy(result.name[1..][0..copy_len], name[0..copy_len]);
+        result.len = copy_len + 1;
+    } else {
+        // Name is valid as-is
+        const copy_len = @min(name.len, 33);
+        @memcpy(result.name[0..copy_len], name[0..copy_len]);
+        result.len = copy_len;
+    }
+    return result;
 }
 
 /// Check if a scheme is a special scheme (has default port)

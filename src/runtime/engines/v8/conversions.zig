@@ -1449,6 +1449,46 @@ pub fn toV8Value(
     context: *v8.Context,
     value: T,
 ) ConversionError!*v8.Value {
+    // CRITICAL: Handle JSValue types first - they're special union types that need
+    // custom conversion, not generic union handling (which would convert
+    // the StringValue inner struct to an object with "data" and "owned" fields)
+
+    // Handle V8-specific JSValue (from engines/v8/js_value.zig)
+    if (T == JSValue) {
+        return value.toV8(isolate);
+    }
+    if (T == OptionalJSValue) {
+        return switch (value) {
+            .not_passed => toV8Undefined(isolate),
+            .passed => |v| v.toV8(isolate),
+        };
+    }
+
+    // Handle engine-agnostic JSValue (from runtime/js_value.zig)
+    // This is used by WebIDL impls that want to remain engine-agnostic
+    if (T == runtime.JSValue) {
+        return switch (value) {
+            .undefined => toV8Undefined(isolate),
+            .null => toV8Null(isolate),
+            .boolean => |b| @ptrCast(toV8Boolean(isolate, b)),
+            .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
+            .string => |s| blk: {
+                if (s.data.len == 0) {
+                    break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError);
+                }
+                break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.StringError);
+            },
+            .handle => |h| @ptrCast(h.ptr),
+            .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),
+        };
+    }
+    if (T == runtime.OptionalJSValue) {
+        return switch (value) {
+            .not_passed => toV8Undefined(isolate),
+            .passed => |v| try toV8Value(runtime.JSValue, isolate, context, v),
+        };
+    }
+
     // Handle optional types (nullable)
     const type_info = @typeInfo(T);
     if (type_info == .optional) {
@@ -1688,18 +1728,8 @@ pub fn toV8Value(
     // Return undefined instead of blindly casting to prevent crashes
     if (T == runtime.Any) return toV8Undefined(isolate);
 
-    // Handle JSValue (type-safe JavaScript value wrapper)
-    if (T == JSValue) {
-        return value.toV8(isolate);
-    }
-
-    // Handle OptionalJSValue (for optional 'any' parameters)
-    if (T == OptionalJSValue) {
-        return switch (value) {
-            .not_passed => toV8Undefined(isolate),
-            .passed => |v| v.toV8(isolate),
-        };
-    }
+    // NOTE: JSValue and OptionalJSValue are handled at the top of this function
+    // to ensure they're converted correctly before generic union handling runs
 
     // If we get here, it's an unsupported type that wasn't handled by any of the above cases
     // This should be rare - most types are covered by generic handlers (int, float, struct, pointer, etc.)
