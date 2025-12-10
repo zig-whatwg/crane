@@ -1106,11 +1106,10 @@ fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runti
     if (parent_internal.node_type == NodeType.DOCUMENT_NODE and
         node_internal.node_type == NodeType.ELEMENT_NODE)
     {
-        const DocumentImpl = @import("Document.zig");
-        if (DocumentImpl.getInternalState(parent)) |doc_internal| {
-            if (doc_internal.document_element == null) {
-                doc_internal.document_element = node;
-            }
+        const dom = @import("dom");
+        const document_internals = dom.document_internals;
+        if (document_internals.getDocumentElement(parent) == null) {
+            document_internals.setDocumentElement(parent, node);
         }
     }
 }

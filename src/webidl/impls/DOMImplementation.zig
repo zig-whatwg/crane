@@ -18,8 +18,11 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const DOMImplementation = interfaces.DOMImplementation;
 
-// Import related impls for factory methods
-const DocumentImpl = @import("Document.zig");
+// Import DOM internals for document state access (Golden Rule #12 compliant)
+const dom = @import("dom");
+const document_internals = dom.document_internals;
+
+// Import related impls for factory methods (Golden Rule #13 - to be migrated)
 const DocumentTypeImpl = @import("DocumentType.zig");
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
@@ -183,7 +186,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
     errdefer interfaces.Document.deinit(document);
 
     // Set document type to XML
-    try DocumentImpl.setDocumentType(document, .xml);
+    try document_internals.setDocumentType(document, .xml);
 
     // Step 2-3: If qualifiedName is not empty, create element
     const qname_slice = qualifiedName.asSlice();
@@ -216,7 +219,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
 
     // Step 6: Set document's origin from associated document
     if (internal.document) |assoc_doc| {
-        try DocumentImpl.copyOrigin(document, assoc_doc);
+        try document_internals.copyOrigin(document, assoc_doc);
     }
 
     // Step 7: Set content type based on namespace
@@ -231,7 +234,7 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
         }
     } else "application/xml";
 
-    try DocumentImpl.setContentType(document, content_type);
+    try document_internals.setContentType(document, content_type);
 
     // Step 8: Return document
     return document;
@@ -270,10 +273,10 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     errdefer interfaces.Document.deinit(doc);
 
     // Set document type to HTML
-    try DocumentImpl.setDocumentType(doc, .html);
+    try document_internals.setDocumentType(doc, .html);
 
     // Step 2: Set content type to "text/html"
-    try DocumentImpl.setContentType(doc, "text/html");
+    try document_internals.setContentType(doc, "text/html");
 
     // Step 3: Create and append doctype with name "html"
     const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
@@ -323,7 +326,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
 
     // Step 8: Set doc's origin from associated document
     if (internal.document) |assoc_doc| {
-        try DocumentImpl.copyOrigin(doc, assoc_doc);
+        try document_internals.copyOrigin(doc, assoc_doc);
     }
 
     // Step 9: Return doc

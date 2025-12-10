@@ -42,9 +42,9 @@ const runtime = @import("runtime");
 // Import interfaces for DOM operations (this module is allowed to use interfaces)
 const interfaces = @import("interfaces");
 
-// Import impls for internal state access
-const impls = @import("impls");
-const DocumentImpl = impls.Document;
+// Import DOM internals for document state access (Golden Rule #12 compliant)
+const dom = @import("dom");
+const document_internals = dom.document_internals;
 
 // Import html_core for parser types
 const html_core = @import("html_core");
@@ -106,9 +106,7 @@ pub fn parseHTMLWithScripting(
     errdefer interfaces.Document.deinit(document);
 
     // Set document type to HTML
-    if (DocumentImpl.getInternal(document)) |doc_internal| {
-        doc_internal.doc_type = .html;
-    }
+    document_internals.setDocumentType(document, .html) catch {};
 
     // Step 2: Create DOM tree adapter connected to the document
     // The adapter will convert TreeNodes to DOM nodes incrementally during parsing
@@ -139,9 +137,9 @@ pub fn parseHTMLWithScripting(
     // Step 6: Connect InputStreamManager to Document for document.write() support
     // HTML Standard §8.4.2: document.write() inserts content at the insertion point
     // in the input stream during parsing.
-    DocumentImpl.setInputStreamManager(document, &input_stream_manager);
+    document_internals.setInputStreamManager(document, &input_stream_manager);
     // Set insertion point at beginning (will be updated as parsing progresses)
-    DocumentImpl.setInsertionPoint(document, 0);
+    document_internals.setInsertionPoint(document, 0);
 
     // Step 7: Connect adapter to tree builder
     // This registers callbacks so DOM nodes are created incrementally during parsing
@@ -155,11 +153,11 @@ pub fn parseHTMLWithScripting(
 
     // Step 9: Clear insertion point - parsing is complete
     // HTML Standard §8.4.2: After parsing, document.write() implicitly calls document.open()
-    DocumentImpl.clearInsertionPoint(document);
-    DocumentImpl.setInputStreamManager(document, null);
+    document_internals.clearInsertionPoint(document);
+    document_internals.setInputStreamManager(document, null);
 
     // Step 10: Set quirks mode based on parser result
-    if (DocumentImpl.getInternal(document)) |doc_internal| {
+    if (document_internals.getInternal(document)) |doc_internal| {
         switch (tree_builder.quirks_mode) {
             .quirks => {
                 // Set quirks mode (full)

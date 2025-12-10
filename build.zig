@@ -611,6 +611,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
+    dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = b.addModule("quirks", .{
@@ -1447,6 +1448,10 @@ pub fn build(b: *std.Build) void {
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
     impls_mod.addImport("html_core", html_core_mod);
+
+    // Add html_core and csp to dom for document_internals
+    dom_mod.addImport("html_core", html_core_mod);
+    dom_mod.addImport("csp", csp_mod);
 
     // Add html to impls for script execution algorithms
     // Note: This creates html ↔ impls mutual dependency. Zig handles this because

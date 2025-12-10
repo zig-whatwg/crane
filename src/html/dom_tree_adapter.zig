@@ -57,11 +57,14 @@ const DocumentFragment = interfaces.DocumentFragment;
 const Node = interfaces.Node;
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
-// Import impls only for internal state access (Golden Rule #12 exception)
+// Import DOM internals for state access (Golden Rule #12 compliant)
+const dom = @import("dom");
+const document_internals = dom.document_internals;
+
+// Import impls only for internal state access (Golden Rule #12 exception - to be migrated)
 const impls = @import("impls");
 const NodeImpl = impls.Node;
 const ElementImpl = impls.Element;
-const DocumentImpl = impls.Document;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 
@@ -457,7 +460,7 @@ pub const DomTreeAdapter = struct {
         };
 
         // Also set doctype reference on document
-        if (DocumentImpl.getInternal(self.document)) |doc_internal| {
+        if (document_internals.getInternal(self.document)) |doc_internal| {
             doc_internal.doctype = doctype;
         }
 

@@ -25,7 +25,10 @@ const DOMParser = interfaces.DOMParser;
 
 // Import HTML parser
 const HTMLParser = @import("HTMLParser.zig");
-const DocumentImpl = @import("Document.zig");
+
+// Import DOM internals for document state access (Golden Rule #12 compliant)
+const dom = @import("dom");
+const document_internals = dom.document_internals;
 
 pub const State = DOMParser.State;
 
@@ -136,13 +139,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
             };
 
             // Set content type to "text/html"
-            if (DocumentImpl.getInternal(document)) |doc_internal| {
-                doc_internal.content_type.deinit(doc_internal.allocator);
-                doc_internal.content_type = try runtime.DOMString.initDupe(
-                    doc_internal.allocator,
-                    "text/html",
-                );
-            }
+            try document_internals.setContentType(document, "text/html");
 
             return document;
         },
@@ -186,7 +183,7 @@ test "DOMParser - parseFromString with HTML" {
     try std.testing.expect(doc != null);
 
     // Verify content type was set
-    if (DocumentImpl.getInternal(doc)) |doc_internal| {
-        try std.testing.expectEqualStrings("text/html", doc_internal.content_type.asSlice());
+    if (document_internals.getContentType(doc)) |content_type| {
+        try std.testing.expectEqualStrings("text/html", content_type);
     }
 }

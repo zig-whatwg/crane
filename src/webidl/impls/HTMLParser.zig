@@ -39,8 +39,11 @@ const InsertionMode = html_core.parser.InsertionMode;
 const QuirksMode = html_core.parser.QuirksMode;
 const ParserNamespace = html_core.parser.Namespace;
 
-// Import DOM implementation modules for internal algorithm methods
-const DocumentImpl = @import("Document.zig");
+// Import DOM internals for document state access (Golden Rule #12 compliant)
+const dom = @import("dom");
+const document_internals = dom.document_internals;
+
+// Import DOM implementation modules for internal algorithm methods (to be migrated)
 const ElementImpl = @import("Element.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const NodeImpl = @import("Node.zig");
@@ -139,10 +142,10 @@ pub fn parseHTML(
     errdefer interfaces.Document.deinit(document);
 
     // Set document type to HTML
-    if (DocumentImpl.getInternal(document)) |doc_internal| {
-        doc_internal.doc_type = .html;
+    document_internals.setDocumentType(document, .html) catch {};
 
-        // Set quirks mode based on parser result
+    // Set quirks mode based on parser result
+    {
         switch (tree_builder.quirks_mode) {
             .quirks => {
                 // Set quirks mode (full)
@@ -231,10 +234,8 @@ pub fn parseHTMLWithScripting(
     const document = if (options.existing_document) |existing| blk: {
         // Use the existing document - it's already registered in V8
         // Clear any existing children to prepare for fresh parsing
-        if (DocumentImpl.getInternal(existing)) |doc_internal| {
-            doc_internal.doc_type = .html;
-            doc_internal.document_element = null;
-        }
+        document_internals.setDocumentType(existing, .html) catch {};
+        document_internals.setDocumentElement(existing, null);
         break :blk existing;
     } else blk: {
         // Create new document (original behavior)
@@ -242,9 +243,7 @@ pub fn parseHTMLWithScripting(
             allocator,
             ctx,
         ) catch return error.OutOfMemory;
-        if (DocumentImpl.getInternal(new_doc)) |doc_internal| {
-            doc_internal.doc_type = .html;
-        }
+        document_internals.setDocumentType(new_doc, .html) catch {};
         break :blk new_doc;
     };
     // Only set up errdefer for newly created documents
@@ -309,20 +308,18 @@ pub fn parseHTMLWithScripting(
     tree_builder.parse() catch return error.TreeBuilderError;
 
     // Step 8: Set quirks mode based on parser result
-    if (DocumentImpl.getInternal(document)) |doc_internal| {
-        switch (tree_builder.quirks_mode) {
-            .quirks => {},
-            .limited_quirks => {},
-            .no_quirks => {},
-        }
+    switch (tree_builder.quirks_mode) {
+        .quirks => {},
+        .limited_quirks => {},
+        .no_quirks => {},
+    }
 
-        // Update document element reference
-        // The html element should have been added during parsing
-        if (tree_builder.document.first_child) |html_tree_node| {
-            if (html_tree_node.hasTagName("html")) {
-                if (dom_adapter.node_map.get(html_tree_node)) |html_dom| {
-                    doc_internal.document_element = html_dom;
-                }
+    // Update document element reference
+    // The html element should have been added during parsing
+    if (tree_builder.document.first_child) |html_tree_node| {
+        if (html_tree_node.hasTagName("html")) {
+            if (dom_adapter.node_map.get(html_tree_node)) |html_dom| {
+                document_internals.setDocumentElement(document, html_dom);
             }
         }
     }
@@ -365,9 +362,7 @@ fn convertTreeNodeToDomWithScripts(
 
         // For document element, update document's documentElement pointer
         if (tree_child.node_type == .element and tree_child.hasTagName("html")) {
-            if (DocumentImpl.getInternal(owner_document)) |doc_internal| {
-                doc_internal.document_element = dom_node;
-            }
+            document_internals.setDocumentElement(owner_document, dom_node);
         }
 
         // Recursively convert children (with script execution)
@@ -606,9 +601,7 @@ fn convertTreeNodeToDom(
 
         // For document element, update document's documentElement pointer
         if (tree_child.node_type == .element and tree_child.hasTagName("html")) {
-            if (DocumentImpl.getInternal(owner_document)) |doc_internal| {
-                doc_internal.document_element = dom_node;
-            }
+            document_internals.setDocumentElement(owner_document, dom_node);
         }
 
         // Recursively convert children
@@ -828,9 +821,7 @@ fn createDoctypeNode(
         NodeImpl.setOwnerDocument(doctype, doc) catch return error.InvalidStateError;
 
         // Also set doctype reference on document
-        if (DocumentImpl.getInternal(doc)) |doc_internal| {
-            doc_internal.doctype = doctype;
-        }
+        document_internals.setDoctype(doc, doctype);
     }
 
     return doctype;
@@ -885,10 +876,8 @@ test "HTMLParser - parse simple HTML document" {
     try std.testing.expect(doc != null);
 
     // Verify document element exists
-    if (DocumentImpl.getInternal(doc)) |doc_internal| {
-        try std.testing.expect(doc_internal.document_element != null);
-        try std.testing.expect(doc_internal.doc_type == .html);
-    }
+    try std.testing.expect(document_internals.getDocumentElement(doc) != null);
+    try std.testing.expect(document_internals.getDocumentType(doc) == .html);
 }
 
 test "HTMLParser - parse HTML with nested elements" {
