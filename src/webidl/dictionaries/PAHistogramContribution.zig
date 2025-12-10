@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const PAHistogramContribution = struct {
-    bucket: *const anyopaque,
+    bucket: runtime.JSValue,
     value: i32,
-    filteringId: ?*const anyopaque = null,
+    filteringId: ?runtime.JSValue = null,
 };

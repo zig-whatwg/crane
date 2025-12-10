@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const BigInteger = *const anyopaque;
+pub const BigInteger = runtime.JSValue;

@@ -11,5 +11,5 @@ pub const HIDInputReportEventInit = struct {
 
     device: *runtime.Instance,
     reportId: u8,
-    data: *const anyopaque,
+    data: runtime.JSValue,
 };

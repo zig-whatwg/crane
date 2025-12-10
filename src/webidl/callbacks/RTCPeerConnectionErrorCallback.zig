@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const RTCPeerConnectionErrorCallback = *const fn (@"error": *const anyopaque) void;
+pub const RTCPeerConnectionErrorCallback = *const fn (@"error": runtime.JSValue) void;

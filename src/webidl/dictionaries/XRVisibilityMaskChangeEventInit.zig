@@ -13,6 +13,6 @@ pub const XRVisibilityMaskChangeEventInit = struct {
     session: *runtime.Instance,
     eye: enums.XREye,
     index: u32,
-    vertices: *const anyopaque,
-    indices: *const anyopaque,
+    vertices: runtime.JSValue,
+    indices: runtime.JSValue,
 };

@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const ViewTransitionUpdateCallback = *const fn () *const anyopaque;
+pub const ViewTransitionUpdateCallback = *const fn () runtime.JSValue;

@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 const enums = @import("enums");
 
 pub const TaskSignalAnyInit = struct {
-    priority: ?*const anyopaque = null,
+    priority: ?runtime.JSValue = null,
 };

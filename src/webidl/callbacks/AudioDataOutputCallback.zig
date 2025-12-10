@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const AudioDataOutputCallback = *const fn (output: *const anyopaque) void;
+pub const AudioDataOutputCallback = *const fn (output: runtime.JSValue) void;

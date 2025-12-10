@@ -15,5 +15,5 @@ pub const EffectTiming = struct {
     delay: ?f64 = null,
     endDelay: ?f64 = null,
     playbackRate: ?f64 = null,
-    duration: ?*const anyopaque = null,
+    duration: ?runtime.JSValue = null,
 };

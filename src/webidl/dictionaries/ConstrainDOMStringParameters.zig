@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const ConstrainDOMStringParameters = struct {
-    exact: ?*const anyopaque = null,
-    ideal: ?*const anyopaque = null,
+    exact: ?runtime.JSValue = null,
+    ideal: ?runtime.JSValue = null,
 };

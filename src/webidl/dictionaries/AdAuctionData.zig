@@ -7,6 +7,6 @@ const AdAuctionPerSellerData = @import("AdAuctionPerSellerData.zig").AdAuctionPe
 
 pub const AdAuctionData = struct {
     requestId: runtime.USVString,
-    request: ?*const anyopaque = null,
+    request: ?runtime.JSValue = null,
     requests: ?[]const AdAuctionPerSellerData = null,
 };

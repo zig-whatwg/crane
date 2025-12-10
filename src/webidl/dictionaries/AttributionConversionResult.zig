@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const AttributionConversionResult = struct {
-    report: *const anyopaque,
+    report: runtime.JSValue,
 };

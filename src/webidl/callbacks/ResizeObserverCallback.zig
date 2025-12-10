@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const ResizeObserverCallback = *const fn (entries: *const anyopaque, observer: *const anyopaque) void;
+pub const ResizeObserverCallback = *const fn (entries: runtime.JSValue, observer: runtime.JSValue) void;

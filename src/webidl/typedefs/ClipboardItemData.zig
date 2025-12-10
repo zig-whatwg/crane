@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const ClipboardItemData = *const anyopaque;
+pub const ClipboardItemData = runtime.JSValue;

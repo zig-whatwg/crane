@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const TransformerTransformCallback = *const fn (chunk: runtime.JSValue, controller: *const anyopaque) *const anyopaque;
+pub const TransformerTransformCallback = *const fn (chunk: runtime.JSValue, controller: runtime.JSValue) runtime.JSValue;

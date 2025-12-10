@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const EventHandlerNonNull = *const fn (event: *const anyopaque) runtime.JSValue;
+pub const EventHandlerNonNull = *const fn (event: runtime.JSValue) runtime.JSValue;

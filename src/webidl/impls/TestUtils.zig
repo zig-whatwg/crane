@@ -92,7 +92,7 @@ const GCTaskData = struct {
 /// - `PromiseCreationFailed`: Failed to create V8 Promise
 /// - `ThreadSpawnFailed`: Failed to spawn background GC thread
 ///
-pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
+pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
     // Verify we have an engine context configured
     _ = ctx.getEngineContext() orelse return TestUtilsError.NoEngineContext;
 
@@ -159,7 +159,7 @@ pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
     v8.ffi.v8_PromiseResolver_Dispose(resolver);
 
     // 6. Return the Promise (Step 3 of spec)
-    return @ptrCast(promise);
+    return runtime.JSValue.fromHandle(@ptrCast(promise));
 }
 
 // ============================================================================

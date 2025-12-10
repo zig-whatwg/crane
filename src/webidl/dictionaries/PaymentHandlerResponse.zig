@@ -11,6 +11,6 @@ pub const PaymentHandlerResponse = struct {
     payerName: ?runtime.DOMString = null,
     payerEmail: ?runtime.DOMString = null,
     payerPhone: ?runtime.DOMString = null,
-    shippingAddress: ?*const anyopaque = null,
+    shippingAddress: ?runtime.JSValue = null,
     shippingOption: ?runtime.DOMString = null,
 };

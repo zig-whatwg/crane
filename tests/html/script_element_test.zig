@@ -12,6 +12,7 @@ const testing = std.testing;
 
 // Import the modules under test
 const html = @import("html");
+const runtime = @import("runtime");
 
 // =============================================================================
 // Event Utilities Tests
@@ -19,8 +20,10 @@ const html = @import("html");
 // =============================================================================
 
 test "ErrorInfo - extractErrorInfo with all values" {
+    // Create a dummy JSValue handle for testing
+    const dummy_error = runtime.JSValue.fromHandle(@ptrFromInt(0x1234));
     const info = html.extractErrorInfo(
-        @ptrFromInt(0x1234), // dummy error pointer
+        dummy_error,
         "Test error message",
         "test.js",
         42,
@@ -31,23 +34,24 @@ test "ErrorInfo - extractErrorInfo with all values" {
     try testing.expectEqualStrings("test.js", info.filename);
     try testing.expectEqual(@as(u32, 42), info.lineno);
     try testing.expectEqual(@as(u32, 10), info.colno);
-    try testing.expect(info.@"error" != null);
+    // Check that error is not undefined (we passed a handle)
+    try testing.expect(!info.@"error".isUndefined());
 }
 
 test "ErrorInfo - extractErrorInfo with null values uses defaults" {
-    const info = html.extractErrorInfo(null, null, null, null, null);
+    const info = html.extractErrorInfo(runtime.JSValue.jsUndefined, null, null, null, null);
 
     try testing.expectEqualStrings("Script error.", info.message);
     try testing.expectEqualStrings("", info.filename);
     try testing.expectEqual(@as(u32, 0), info.lineno);
     try testing.expectEqual(@as(u32, 0), info.colno);
-    try testing.expect(info.@"error" == null);
+    try testing.expect(info.@"error".isUndefined());
 }
 
 test "ErrorInfo - partial error info" {
     // Test with some values null and some present
     const info = html.extractErrorInfo(
-        null, // no error object
+        runtime.JSValue.jsUndefined, // no error object
         "Custom message",
         null, // no filename
         10,
@@ -58,7 +62,7 @@ test "ErrorInfo - partial error info" {
     try testing.expectEqualStrings("", info.filename);
     try testing.expectEqual(@as(u32, 10), info.lineno);
     try testing.expectEqual(@as(u32, 0), info.colno);
-    try testing.expect(info.@"error" == null);
+    try testing.expect(info.@"error".isUndefined());
 }
 
 // =============================================================================
@@ -80,7 +84,6 @@ test "ScriptRunner - initialization" {
 
 test "ScriptRunner - queue deferred script" {
     const allocator = testing.allocator;
-    const runtime = @import("runtime");
 
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
@@ -95,7 +98,6 @@ test "ScriptRunner - queue deferred script" {
 
 test "ScriptRunner - queue async script" {
     const allocator = testing.allocator;
-    const runtime = @import("runtime");
 
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
@@ -110,7 +112,6 @@ test "ScriptRunner - queue async script" {
 
 test "ScriptRunner - set parser blocking script" {
     const allocator = testing.allocator;
-    const runtime = @import("runtime");
 
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
@@ -129,7 +130,6 @@ test "ScriptRunner - set parser blocking script" {
 
 test "ScriptRunner - multiple deferred scripts in order" {
     const allocator = testing.allocator;
-    const runtime = @import("runtime");
 
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();
@@ -150,7 +150,6 @@ test "ScriptRunner - multiple deferred scripts in order" {
 
 test "ScriptRunner - queue in-order async script" {
     const allocator = testing.allocator;
-    const runtime = @import("runtime");
 
     var runner = html.ScriptRunner.init(allocator, null);
     defer runner.deinit();

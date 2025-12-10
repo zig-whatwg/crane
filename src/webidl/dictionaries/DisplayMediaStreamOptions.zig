@@ -7,8 +7,8 @@ const enums = @import("enums");
 const MediaTrackConstraints = @import("MediaTrackConstraints.zig").MediaTrackConstraints;
 
 pub const DisplayMediaStreamOptions = struct {
-    video: ?*const anyopaque = null,
-    audio: ?*const anyopaque = null,
+    video: ?runtime.JSValue = null,
+    audio: ?runtime.JSValue = null,
     controller: ?*runtime.Instance = null,
     selfBrowserSurface: ?enums.SelfCapturePreferenceEnum = null,
     systemAudio: ?enums.SystemAudioPreferenceEnum = null,

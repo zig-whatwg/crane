@@ -13,6 +13,6 @@ pub const GPUDeviceDescriptor = struct {
     base: GPUObjectDescriptorBase,
 
     requiredFeatures: ?[]const enums.GPUFeatureName = null,
-    requiredLimits: ?[]const struct { key: runtime.DOMString, value: *const anyopaque } = null,
+    requiredLimits: ?[]const struct { key: runtime.DOMString, value: runtime.JSValue } = null,
     defaultQueue: ?GPUQueueDescriptor = null,
 };

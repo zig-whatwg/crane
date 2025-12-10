@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const FrameRequestCallback = *const fn (time: *const anyopaque) void;
+pub const FrameRequestCallback = *const fn (time: runtime.JSValue) void;

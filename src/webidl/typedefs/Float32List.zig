@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("root.zig");
 
 pub const Float32List = union(enum) {
-    float32array: *const anyopaque,
+    float32array: runtime.JSValue,
     glfloat_sequence: []const typedefs.GLfloat,
 };

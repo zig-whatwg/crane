@@ -11,5 +11,5 @@ pub const CollectedClientPaymentData = struct {
     // Inherited from CollectedClientData
     base: CollectedClientData,
 
-    payment: *const anyopaque,
+    payment: runtime.JSValue,
 };

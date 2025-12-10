@@ -7,5 +7,5 @@ const runtime = @import("runtime");
 pub const LoadDocumentOptions = struct {
     extractAllScripts: ?bool = null,
     profile: ?runtime.USVString = null,
-    requestProfile: ?*const anyopaque = null,
+    requestProfile: ?runtime.JSValue = null,
 };

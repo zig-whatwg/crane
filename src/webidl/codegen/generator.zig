@@ -602,8 +602,8 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
             try w.writeAll("runtime.DOMString");
             return;
         }
-        // Fallback for other union types - use anyopaque
-        try w.writeAll("*const anyopaque");
+        // Fallback for other union types - use runtime.JSValue for type safety
+        try w.writeAll("runtime.JSValue");
         return;
     }
 
@@ -679,18 +679,22 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
                         // Qualify with callbacks module
                         try w.print("callbacks.{s}", .{type_str});
                     },
-                    .namespace, .primitive => {
-                        // Shouldn't appear as attribute types, but handle gracefully
-                        try w.writeAll("*const anyopaque");
+                    .namespace => {
+                        // Namespaces shouldn't appear as attribute types
+                        // but if they do, use runtime.JSValue for safety
+                        try w.writeAll("runtime.JSValue");
+                    },
+                    .primitive => {
+                        // Primitives already handled above
                     },
                 }
                 return;
             }
         }
 
-        // For unknown types (no registry or not found), use pointer to anyopaque
-        // This allows passing interface references that aren't fully resolved yet
-        try w.writeAll("*const anyopaque");
+        // For unknown types (no registry or not found), use runtime.JSValue
+        // This provides type safety instead of the unsafe *const anyopaque
+        try w.writeAll("runtime.JSValue");
     }
 }
 

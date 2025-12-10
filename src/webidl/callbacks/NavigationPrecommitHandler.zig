@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const NavigationPrecommitHandler = *const fn (controller: *const anyopaque) *const anyopaque;
+pub const NavigationPrecommitHandler = *const fn (controller: runtime.JSValue) runtime.JSValue;

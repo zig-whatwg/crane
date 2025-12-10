@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const UnderlyingSinkCloseCallback = *const fn () *const anyopaque;
+pub const UnderlyingSinkCloseCallback = *const fn () runtime.JSValue;

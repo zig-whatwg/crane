@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const EncodedAudioChunkOutputCallback = *const fn (output: *const anyopaque, metadata: webidl.Opt(*const anyopaque)) void;
+pub const EncodedAudioChunkOutputCallback = *const fn (output: runtime.JSValue, metadata: webidl.Opt(runtime.JSValue)) void;

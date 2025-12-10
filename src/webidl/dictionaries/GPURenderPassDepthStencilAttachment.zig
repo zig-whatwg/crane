@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPURenderPassDepthStencilAttachment = struct {
-    view: *const anyopaque,
+    view: runtime.JSValue,
     depthClearValue: ?f32 = null,
     depthLoadOp: ?enums.GPULoadOp = null,
     depthStoreOp: ?enums.GPUStoreOp = null,

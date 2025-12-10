@@ -12,7 +12,7 @@ pub const GPURenderPassDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    colorAttachments: []const *const anyopaque,
+    colorAttachments: []const runtime.JSValue,
     depthStencilAttachment: ?GPURenderPassDepthStencilAttachment = null,
     occlusionQuerySet: ?*runtime.Instance = null,
     timestampWrites: ?GPURenderPassTimestampWrites = null,

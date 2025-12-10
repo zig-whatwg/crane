@@ -11,6 +11,6 @@ pub const MLLayerNormalizationOptions = struct {
 
     scale: ?*runtime.Instance = null,
     bias: ?*runtime.Instance = null,
-    axes: ?[]const *const anyopaque = null,
+    axes: ?[]const runtime.JSValue = null,
     epsilon: ?f64 = null,
 };

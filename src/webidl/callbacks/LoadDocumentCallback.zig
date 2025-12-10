@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const LoadDocumentCallback = *const fn (url: runtime.USVString, options: webidl.Opt(?*const anyopaque)) *const anyopaque;
+pub const LoadDocumentCallback = *const fn (url: runtime.USVString, options: webidl.Opt(?runtime.JSValue)) runtime.JSValue;

@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 
 pub const AuthenticationExtensionsLargeBlobOutputs = struct {
     supported: ?bool = null,
-    blob: ?*const anyopaque = null,
+    blob: ?runtime.JSValue = null,
     written: ?bool = null,
 };

@@ -10,5 +10,5 @@ pub const GPUPipelineDescriptorBase = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    layout: *const anyopaque,
+    layout: runtime.JSValue,
 };

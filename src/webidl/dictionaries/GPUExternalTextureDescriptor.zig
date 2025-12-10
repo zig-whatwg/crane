@@ -10,6 +10,6 @@ pub const GPUExternalTextureDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    source: *const anyopaque,
+    source: runtime.JSValue,
     colorSpace: ?enums.PredefinedColorSpace = null,
 };

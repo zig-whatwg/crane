@@ -9,5 +9,5 @@ const enums = @import("enums");
 pub const SmartCardConnectionStatus = struct {
     readerName: runtime.DOMString,
     state: enums.SmartCardConnectionState,
-    answerToReset: ?*const anyopaque = null,
+    answerToReset: ?runtime.JSValue = null,
 };

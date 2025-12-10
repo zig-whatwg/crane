@@ -13,6 +13,6 @@ pub const ExtendableMessageEventInit = struct {
     data: ?runtime.JSValue = null,
     origin: ?runtime.USVString = null,
     lastEventId: ?runtime.DOMString = null,
-    source: ?*const anyopaque = null,
+    source: ?runtime.JSValue = null,
     ports: ?[]const *runtime.Instance = null,
 };

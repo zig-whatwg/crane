@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const TransformerCancelCallback = *const fn (reason: runtime.JSValue) *const anyopaque;
+pub const TransformerCancelCallback = *const fn (reason: runtime.JSValue) runtime.JSValue;

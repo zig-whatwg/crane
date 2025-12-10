@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const AuctionReportBuyersConfig = struct {
-    bucket: *const anyopaque,
+    bucket: runtime.JSValue,
     scale: f64,
 };

@@ -24,7 +24,7 @@ pub const TestUtils = struct {
 
     pub const State = struct {};
 
-    pub fn call_gc(ctx: runtime.Context) anyerror!*const anyopaque {
+    pub fn call_gc(ctx: runtime.Context) anyerror!runtime.JSValue {
         return try TestUtils_impl.call_gc(ctx);
     }
 

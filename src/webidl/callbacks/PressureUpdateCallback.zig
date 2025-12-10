@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const PressureUpdateCallback = *const fn (changes: *const anyopaque, observer: *const anyopaque) void;
+pub const PressureUpdateCallback = *const fn (changes: runtime.JSValue, observer: runtime.JSValue) void;

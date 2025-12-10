@@ -9,5 +9,5 @@ pub const MLSliceOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    strides: ?[]const *const anyopaque = null,
+    strides: ?[]const runtime.JSValue = null,
 };

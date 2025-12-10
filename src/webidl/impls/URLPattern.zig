@@ -399,21 +399,15 @@ fn convertComponentResultArena(
             try a.dupe(u8, entry.key_ptr.*)
         else
             try fallback.dupe(u8, entry.key_ptr.*);
-        // Clone the value and wrap it as a string pointer
+        // Clone the value string
         const value_copy = if (arena) |a|
             try a.dupe(u8, entry.value_ptr.*)
         else
             try fallback.dupe(u8, entry.value_ptr.*);
-        // Store as slice pointer cast to anyopaque
-        const value_slice_ptr = if (arena) |a|
-            try a.create([]const u8)
-        else
-            try fallback.create([]const u8);
-        value_slice_ptr.* = value_copy;
 
         groups_array[idx] = .{
             .key = key_copy,
-            .value = @ptrCast(value_slice_ptr),
+            .value = runtime.JSValue.fromStringRef(value_copy),
         };
         idx += 1;
     }

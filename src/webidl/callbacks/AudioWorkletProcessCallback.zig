@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const AudioWorkletProcessCallback = *const fn (inputs: *const anyopaque, outputs: *const anyopaque, parameters: runtime.JSValue) bool;
+pub const AudioWorkletProcessCallback = *const fn (inputs: runtime.JSValue, outputs: runtime.JSValue, parameters: runtime.JSValue) bool;

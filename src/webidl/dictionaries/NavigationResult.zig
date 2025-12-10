@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const NavigationResult = struct {
-    committed: ?*const anyopaque = null,
-    finished: ?*const anyopaque = null,
+    committed: ?runtime.JSValue = null,
+    finished: ?runtime.JSValue = null,
 };

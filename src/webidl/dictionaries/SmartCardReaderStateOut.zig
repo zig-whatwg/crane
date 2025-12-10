@@ -10,5 +10,5 @@ pub const SmartCardReaderStateOut = struct {
     readerName: runtime.DOMString,
     eventState: SmartCardReaderStateFlagsOut,
     eventCount: u32,
-    answerToReset: ?*const anyopaque = null,
+    answerToReset: ?runtime.JSValue = null,
 };

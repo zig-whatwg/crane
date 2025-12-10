@@ -9,5 +9,5 @@ pub const GPUPipelineLayoutDescriptor = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    bindGroupLayouts: []const *const anyopaque,
+    bindGroupLayouts: []const runtime.JSValue,
 };

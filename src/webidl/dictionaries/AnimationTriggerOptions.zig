@@ -10,8 +10,8 @@ const TimelineRangeOffset = @import("TimelineRangeOffset.zig").TimelineRangeOffs
 pub const AnimationTriggerOptions = struct {
     timeline: ?*runtime.Instance = null,
     behavior: ?enums.AnimationTriggerBehavior = null,
-    rangeStart: ?*const anyopaque = null,
-    rangeEnd: ?*const anyopaque = null,
-    exitRangeStart: ?*const anyopaque = null,
-    exitRangeEnd: ?*const anyopaque = null,
+    rangeStart: ?runtime.JSValue = null,
+    rangeEnd: ?runtime.JSValue = null,
+    exitRangeStart: ?runtime.JSValue = null,
+    exitRangeEnd: ?runtime.JSValue = null,
 };

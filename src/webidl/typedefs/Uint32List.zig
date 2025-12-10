@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("root.zig");
 
 pub const Uint32List = union(enum) {
-    uint32array: *const anyopaque,
+    uint32array: runtime.JSValue,
     gluint_sequence: []const typedefs.GLuint,
 };

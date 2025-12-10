@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const AudioWorkletProcessorConstructor = *const fn (options: runtime.JSValue) *const anyopaque;
+pub const AudioWorkletProcessorConstructor = *const fn (options: runtime.JSValue) runtime.JSValue;

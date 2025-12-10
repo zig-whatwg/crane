@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const FileSystemEntriesCallback = *const fn (entries: *const anyopaque) void;
+pub const FileSystemEntriesCallback = *const fn (entries: runtime.JSValue) void;

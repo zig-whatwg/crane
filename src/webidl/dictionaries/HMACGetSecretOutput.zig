@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const HMACGetSecretOutput = struct {
-    output1: *const anyopaque,
-    output2: ?*const anyopaque = null,
+    output1: runtime.JSValue,
+    output2: ?runtime.JSValue = null,
 };

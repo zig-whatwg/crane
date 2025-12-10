@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const VideoFrameRequestCallback = *const fn (now: *const anyopaque, metadata: *const anyopaque) void;
+pub const VideoFrameRequestCallback = *const fn (now: runtime.JSValue, metadata: runtime.JSValue) void;

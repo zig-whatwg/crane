@@ -7,6 +7,6 @@ const typedefs = @import("typedefs");
 
 pub const AdAuctionPerSellerData = struct {
     seller: runtime.USVString,
-    request: ?*const anyopaque = null,
+    request: ?runtime.JSValue = null,
     @"error": ?runtime.DOMString = null,
 };

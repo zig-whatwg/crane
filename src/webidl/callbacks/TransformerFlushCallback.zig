@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const TransformerFlushCallback = *const fn (controller: *const anyopaque) *const anyopaque;
+pub const TransformerFlushCallback = *const fn (controller: runtime.JSValue) runtime.JSValue;

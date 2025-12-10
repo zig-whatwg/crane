@@ -9,5 +9,5 @@ pub const MLReverseOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    axes: ?[]const *const anyopaque = null,
+    axes: ?[]const runtime.JSValue = null,
 };

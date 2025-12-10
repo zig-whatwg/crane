@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const RTCIceServer = struct {
-    urls: *const anyopaque,
+    urls: runtime.JSValue,
     username: ?runtime.DOMString = null,
     credential: ?runtime.DOMString = null,
 };

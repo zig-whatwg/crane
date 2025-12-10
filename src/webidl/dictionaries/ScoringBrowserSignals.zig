@@ -17,5 +17,5 @@ pub const ScoringBrowserSignals = struct {
     adComponents: ?[]const runtime.USVString = null,
     forDebuggingOnlyInCooldownOrLockout: ?bool = null,
     creativeScanningMetadata: ?runtime.USVString = null,
-    adComponentsCreativeScanningMetadata: ?[]const *const anyopaque = null,
+    adComponentsCreativeScanningMetadata: ?[]const runtime.JSValue = null,
 };

@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const NotificationPermissionCallback = *const fn (permission: *const anyopaque) void;
+pub const NotificationPermissionCallback = *const fn (permission: runtime.JSValue) void;

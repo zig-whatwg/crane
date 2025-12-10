@@ -8,6 +8,6 @@ const typedefs = @import("typedefs");
 pub const AllowedBluetoothDevice = struct {
     deviceId: runtime.DOMString,
     mayUseGATT: bool,
-    allowedServices: *const anyopaque,
+    allowedServices: runtime.JSValue,
     allowedManufacturerData: []const u16,
 };

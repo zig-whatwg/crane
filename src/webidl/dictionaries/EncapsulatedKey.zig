@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const EncapsulatedKey = struct {
     sharedKey: ?*runtime.Instance = null,
-    ciphertext: ?*const anyopaque = null,
+    ciphertext: ?runtime.JSValue = null,
 };

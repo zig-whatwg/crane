@@ -9,5 +9,5 @@ pub const MLTransposeOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    permutation: ?[]const *const anyopaque = null,
+    permutation: ?[]const runtime.JSValue = null,
 };

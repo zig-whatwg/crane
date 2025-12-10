@@ -7,8 +7,8 @@ const typedefs = @import("typedefs");
 const MediaTrackConstraints = @import("MediaTrackConstraints.zig").MediaTrackConstraints;
 
 pub const MediaStreamConstraints = struct {
-    video: ?*const anyopaque = null,
-    audio: ?*const anyopaque = null,
+    video: ?runtime.JSValue = null,
+    audio: ?runtime.JSValue = null,
     preferCurrentTab: ?bool = null,
     peerIdentity: ?runtime.DOMString = null,
 };

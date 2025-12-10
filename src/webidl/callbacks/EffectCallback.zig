@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const EffectCallback = *const fn (progress: ?f64, currentTarget: *const anyopaque, animation: *const anyopaque) void;
+pub const EffectCallback = *const fn (progress: ?f64, currentTarget: runtime.JSValue, animation: runtime.JSValue) void;

@@ -11,9 +11,9 @@ pub const FetchEventInit = struct {
     base: ExtendableEventInit,
 
     request: *runtime.Instance,
-    preloadResponse: ?*const anyopaque = null,
+    preloadResponse: ?runtime.JSValue = null,
     clientId: ?runtime.DOMString = null,
     resultingClientId: ?runtime.DOMString = null,
     replacesClientId: ?runtime.DOMString = null,
-    handled: ?*const anyopaque = null,
+    handled: ?runtime.JSValue = null,
 };

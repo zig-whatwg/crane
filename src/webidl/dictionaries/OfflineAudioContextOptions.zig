@@ -9,5 +9,5 @@ pub const OfflineAudioContextOptions = struct {
     numberOfChannels: ?u32 = null,
     length: u32,
     sampleRate: f32,
-    renderSizeHint: ?*const anyopaque = null,
+    renderSizeHint: ?runtime.JSValue = null,
 };

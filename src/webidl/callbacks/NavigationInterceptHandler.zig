@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const NavigationInterceptHandler = *const fn () *const anyopaque;
+pub const NavigationInterceptHandler = *const fn () runtime.JSValue;

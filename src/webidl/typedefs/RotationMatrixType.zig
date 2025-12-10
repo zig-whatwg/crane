@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const RotationMatrixType = union(enum) {
-    float32array: *const anyopaque,
-    float64array: *const anyopaque,
+    float32array: runtime.JSValue,
+    float64array: runtime.JSValue,
     dommatrix: *runtime.Instance,
 };

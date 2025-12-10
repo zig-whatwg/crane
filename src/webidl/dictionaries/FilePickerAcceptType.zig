@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const FilePickerAcceptType = struct {
     description: ?runtime.USVString = null,
-    accept: ?[]const struct { key: runtime.USVString, value: *const anyopaque } = null,
+    accept: ?[]const struct { key: runtime.USVString, value: runtime.JSValue } = null,
 };

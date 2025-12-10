@@ -11,7 +11,7 @@ pub const GPURenderPassLayout = struct {
     // Inherited from GPUObjectDescriptorBase
     base: GPUObjectDescriptorBase,
 
-    colorFormats: []const *const anyopaque,
+    colorFormats: []const runtime.JSValue,
     depthStencilFormat: ?enums.GPUTextureFormat = null,
     sampleCount: ?typedefs.GPUSize32 = null,
 };

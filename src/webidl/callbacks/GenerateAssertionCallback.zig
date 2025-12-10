@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const GenerateAssertionCallback = *const fn (contents: runtime.DOMString, origin: runtime.DOMString, options: webidl.Opt(*const anyopaque)) *const anyopaque;
+pub const GenerateAssertionCallback = *const fn (contents: runtime.DOMString, origin: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) runtime.JSValue;

@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const EncapsulatedBits = struct {
-    sharedKey: ?*const anyopaque = null,
-    ciphertext: ?*const anyopaque = null,
+    sharedKey: ?runtime.JSValue = null,
+    ciphertext: ?runtime.JSValue = null,
 };

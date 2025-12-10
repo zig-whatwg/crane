@@ -13,5 +13,5 @@ pub const AudioDataInit = struct {
     numberOfChannels: u32,
     timestamp: i64,
     data: typedefs.BufferSource,
-    transfer: ?[]const *const anyopaque = null,
+    transfer: ?[]const runtime.JSValue = null,
 };

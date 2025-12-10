@@ -11,5 +11,5 @@ pub const MediaKeyMessageEventInit = struct {
     base: EventInit,
 
     messageType: enums.MediaKeyMessageType,
-    message: *const anyopaque,
+    message: runtime.JSValue,
 };

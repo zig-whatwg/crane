@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const DecodeSuccessCallback = *const fn (decodedData: *const anyopaque) void;
+pub const DecodeSuccessCallback = *const fn (decodedData: runtime.JSValue) void;

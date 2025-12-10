@@ -11,5 +11,5 @@ pub const MediaEncryptedEventInit = struct {
     base: EventInit,
 
     initDataType: ?runtime.DOMString = null,
-    initData: ?*const anyopaque = null,
+    initData: ?runtime.JSValue = null,
 };

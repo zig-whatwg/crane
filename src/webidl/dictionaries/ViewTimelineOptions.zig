@@ -9,5 +9,5 @@ const enums = @import("enums");
 pub const ViewTimelineOptions = struct {
     subject: ?*runtime.Instance = null,
     axis: ?enums.ScrollAxis = null,
-    inset: ?*const anyopaque = null,
+    inset: ?runtime.JSValue = null,
 };

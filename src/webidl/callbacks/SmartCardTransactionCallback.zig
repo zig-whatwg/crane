@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const SmartCardTransactionCallback = *const fn () *const anyopaque;
+pub const SmartCardTransactionCallback = *const fn () runtime.JSValue;

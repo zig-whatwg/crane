@@ -9,5 +9,5 @@ pub const MIDIMessageEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    data: ?*const anyopaque = null,
+    data: ?runtime.JSValue = null,
 };

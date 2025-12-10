@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const RTCSessionDescriptionCallback = *const fn (description: *const anyopaque) void;
+pub const RTCSessionDescriptionCallback = *const fn (description: runtime.JSValue) void;

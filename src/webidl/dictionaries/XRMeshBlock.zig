@@ -5,7 +5,7 @@
 const runtime = @import("runtime");
 
 pub const XRMeshBlock = struct {
-    vertices: *const anyopaque,
-    indices: *const anyopaque,
-    normals: ?*const anyopaque = null,
+    vertices: runtime.JSValue,
+    indices: runtime.JSValue,
+    normals: ?runtime.JSValue = null,
 };

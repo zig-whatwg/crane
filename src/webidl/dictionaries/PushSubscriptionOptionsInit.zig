@@ -7,5 +7,5 @@ const typedefs = @import("typedefs");
 
 pub const PushSubscriptionOptionsInit = struct {
     userVisibleOnly: ?bool = null,
-    applicationServerKey: ?*const anyopaque = null,
+    applicationServerKey: ?runtime.JSValue = null,
 };

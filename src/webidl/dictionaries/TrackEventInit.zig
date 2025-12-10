@@ -9,5 +9,5 @@ pub const TrackEventInit = struct {
     // Inherited from EventInit
     base: EventInit,
 
-    track: ?*const anyopaque = null,
+    track: ?runtime.JSValue = null,
 };

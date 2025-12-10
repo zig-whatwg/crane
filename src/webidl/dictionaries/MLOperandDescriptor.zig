@@ -7,5 +7,5 @@ const enums = @import("enums");
 
 pub const MLOperandDescriptor = struct {
     dataType: enums.MLOperandDataType,
-    shape: []const *const anyopaque,
+    shape: []const runtime.JSValue,
 };

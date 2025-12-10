@@ -50,7 +50,7 @@ pub const console = struct {
         return try console_impl.call_log(ctx, data);
     }
 
-    pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
+    pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(runtime.JSValue)) anyerror!void {
         return try console_impl.call_table(ctx, tabularData, properties);
     }
 

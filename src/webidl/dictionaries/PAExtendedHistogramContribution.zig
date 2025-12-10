@@ -6,7 +6,7 @@ const runtime = @import("runtime");
 const PASignalValue = @import("PASignalValue.zig").PASignalValue;
 
 pub const PAExtendedHistogramContribution = struct {
-    bucket: *const anyopaque,
-    value: *const anyopaque,
-    filteringId: ?*const anyopaque = null,
+    bucket: runtime.JSValue,
+    value: runtime.JSValue,
+    filteringId: ?runtime.JSValue = null,
 };

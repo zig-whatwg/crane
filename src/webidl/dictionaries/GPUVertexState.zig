@@ -9,5 +9,5 @@ pub const GPUVertexState = struct {
     // Inherited from GPUProgrammableStage
     base: GPUProgrammableStage,
 
-    buffers: ?[]const *const anyopaque = null,
+    buffers: ?[]const runtime.JSValue = null,
 };

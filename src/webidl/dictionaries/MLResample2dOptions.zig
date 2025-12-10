@@ -12,6 +12,6 @@ pub const MLResample2dOptions = struct {
 
     mode: ?enums.MLInterpolationMode = null,
     scales: ?[]const f32 = null,
-    sizes: ?[]const *const anyopaque = null,
-    axes: ?[]const *const anyopaque = null,
+    sizes: ?[]const runtime.JSValue = null,
+    axes: ?[]const runtime.JSValue = null,
 };

@@ -7,5 +7,5 @@ const enums = @import("enums");
 
 pub const GPUShaderModuleCompilationHint = struct {
     entryPoint: runtime.USVString,
-    layout: ?*const anyopaque = null,
+    layout: ?runtime.JSValue = null,
 };

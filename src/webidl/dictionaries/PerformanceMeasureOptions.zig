@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 
 pub const PerformanceMeasureOptions = struct {
     detail: ?runtime.JSValue = null,
-    start: ?*const anyopaque = null,
+    start: ?runtime.JSValue = null,
     duration: ?typedefs.DOMHighResTimeStamp = null,
-    end: ?*const anyopaque = null,
+    end: ?runtime.JSValue = null,
 };

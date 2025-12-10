@@ -8,8 +8,8 @@ const enums = @import("enums");
 const AudioSinkOptions = @import("AudioSinkOptions.zig").AudioSinkOptions;
 
 pub const AudioContextOptions = struct {
-    latencyHint: ?*const anyopaque = null,
+    latencyHint: ?runtime.JSValue = null,
     sampleRate: ?f32 = null,
-    sinkId: ?*const anyopaque = null,
-    renderSizeHint: ?*const anyopaque = null,
+    sinkId: ?runtime.JSValue = null,
+    renderSizeHint: ?runtime.JSValue = null,
 };

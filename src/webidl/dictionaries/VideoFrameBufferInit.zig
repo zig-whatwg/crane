@@ -22,6 +22,6 @@ pub const VideoFrameBufferInit = struct {
     displayWidth: ?u32 = null,
     displayHeight: ?u32 = null,
     colorSpace: ?VideoColorSpaceInit = null,
-    transfer: ?[]const *const anyopaque = null,
+    transfer: ?[]const runtime.JSValue = null,
     metadata: ?VideoFrameMetadata = null,
 };

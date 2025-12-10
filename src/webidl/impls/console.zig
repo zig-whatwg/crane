@@ -301,7 +301,7 @@ pub fn call_clear(ctx: runtime.Context) anyerror!void {
 /// console.table(tabularData, properties)
 ///
 /// WHATWG Console Standard: Display tabular data
-pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(*const anyopaque)) anyerror!void {
+pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = tabularData; // TODO: Format as ASCII table
     _ = properties;
     printIndented(ctx, "(table)", .{});

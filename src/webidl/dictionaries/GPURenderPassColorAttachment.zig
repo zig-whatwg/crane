@@ -7,9 +7,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const GPURenderPassColorAttachment = struct {
-    view: *const anyopaque,
+    view: runtime.JSValue,
     depthSlice: ?typedefs.GPUIntegerCoordinate = null,
-    resolveTarget: ?*const anyopaque = null,
+    resolveTarget: ?runtime.JSValue = null,
     clearValue: ?typedefs.GPUColor = null,
     loadOp: enums.GPULoadOp,
     storeOp: enums.GPUStoreOp,

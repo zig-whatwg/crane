@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const LockGrantedCallback = *const fn (lock: ?*const anyopaque) *const anyopaque;
+pub const LockGrantedCallback = *const fn (lock: ?runtime.JSValue) runtime.JSValue;

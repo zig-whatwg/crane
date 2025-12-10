@@ -9,5 +9,5 @@ pub const GPUFragmentState = struct {
     // Inherited from GPUProgrammableStage
     base: GPUProgrammableStage,
 
-    targets: []const *const anyopaque,
+    targets: []const runtime.JSValue,
 };

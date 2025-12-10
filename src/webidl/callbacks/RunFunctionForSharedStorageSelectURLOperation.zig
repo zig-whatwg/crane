@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const RunFunctionForSharedStorageSelectURLOperation = *const fn (urls: *const anyopaque, data: webidl.Opt(runtime.JSValue)) *const anyopaque;
+pub const RunFunctionForSharedStorageSelectURLOperation = *const fn (urls: runtime.JSValue, data: webidl.Opt(runtime.JSValue)) runtime.JSValue;

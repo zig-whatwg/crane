@@ -6,10 +6,10 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const IntersectionObserverInit = struct {
-    root: ?*const anyopaque = null,
+    root: ?runtime.JSValue = null,
     rootMargin: ?runtime.DOMString = null,
     scrollMargin: ?runtime.DOMString = null,
-    threshold: ?*const anyopaque = null,
+    threshold: ?runtime.JSValue = null,
     delay: ?i32 = null,
     trackVisibility: ?bool = null,
 };

@@ -11,7 +11,7 @@ pub const BluetoothAdvertisingEventInit = struct {
     base: EventInit,
 
     device: *runtime.Instance,
-    uuids: ?[]const *const anyopaque = null,
+    uuids: ?[]const runtime.JSValue = null,
     name: ?runtime.DOMString = null,
     appearance: ?u16 = null,
     txPower: ?i8 = null,

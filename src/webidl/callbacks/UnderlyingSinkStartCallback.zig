@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const UnderlyingSinkStartCallback = *const fn (controller: *const anyopaque) runtime.JSValue;
+pub const UnderlyingSinkStartCallback = *const fn (controller: runtime.JSValue) runtime.JSValue;

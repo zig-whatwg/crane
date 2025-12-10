@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const ReportingObserverCallback = *const fn (reports: *const anyopaque, observer: *const anyopaque) void;
+pub const ReportingObserverCallback = *const fn (reports: runtime.JSValue, observer: runtime.JSValue) void;

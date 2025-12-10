@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const XRFrameRequestCallback = *const fn (time: *const anyopaque, frame: *const anyopaque) void;
+pub const XRFrameRequestCallback = *const fn (time: runtime.JSValue, frame: runtime.JSValue) void;

@@ -9,6 +9,6 @@ pub const MLReduceOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    axes: ?[]const *const anyopaque = null,
+    axes: ?[]const runtime.JSValue = null,
     keepDimensions: ?bool = null,
 };

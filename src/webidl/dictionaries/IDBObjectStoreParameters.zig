@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const IDBObjectStoreParameters = struct {
-    keyPath: ?*const anyopaque = null,
+    keyPath: ?runtime.JSValue = null,
     autoIncrement: ?bool = null,
 };

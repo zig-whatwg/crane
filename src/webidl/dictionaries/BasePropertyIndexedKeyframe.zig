@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 
 pub const BasePropertyIndexedKeyframe = struct {
-    offset: ?*const anyopaque = null,
-    easing: ?*const anyopaque = null,
-    composite: ?*const anyopaque = null,
+    offset: ?runtime.JSValue = null,
+    easing: ?runtime.JSValue = null,
+    composite: ?runtime.JSValue = null,
 };

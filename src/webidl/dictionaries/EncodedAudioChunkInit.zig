@@ -11,5 +11,5 @@ pub const EncodedAudioChunkInit = struct {
     timestamp: i64,
     duration: ?u64 = null,
     data: typedefs.AllowSharedBufferSource,
-    transfer: ?[]const *const anyopaque = null,
+    transfer: ?[]const runtime.JSValue = null,
 };

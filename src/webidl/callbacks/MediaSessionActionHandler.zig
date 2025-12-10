@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const MediaSessionActionHandler = *const fn (details: *const anyopaque) void;
+pub const MediaSessionActionHandler = *const fn (details: runtime.JSValue) void;

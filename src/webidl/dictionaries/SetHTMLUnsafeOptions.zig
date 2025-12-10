@@ -7,5 +7,5 @@ const enums = @import("enums");
 const SanitizerConfig = @import("SanitizerConfig.zig").SanitizerConfig;
 
 pub const SetHTMLUnsafeOptions = struct {
-    sanitizer: ?*const anyopaque = null,
+    sanitizer: ?runtime.JSValue = null,
 };

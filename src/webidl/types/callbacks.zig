@@ -13,6 +13,16 @@
 //! 2. **CallbackFunction(ReturnType, Args)** - Type-safe, generic (for typed APIs)
 //!
 //! The `zig-js-runtime` codegen will provide engine-specific vtable implementations.
+//!
+//! # Handle Lifetime Safety
+//!
+//! GenericCallback uses GlobalHandle (not Local) to ensure the callback survives
+//! beyond the HandleScope where it was created. This prevents use-after-free bugs
+//! when storing callbacks for later invocation.
+//!
+//! When using with runtime.JSValue (in impls), ensure the handle has:
+//! - handle_scope == .global (can be stored)
+//! - NOT handle_scope == .local (use-after-free risk!)
 
 const std = @import("std");
 const primitives = @import("primitives.zig");
@@ -30,6 +40,15 @@ const primitives = @import("primitives.zig");
 ///
 /// Design: Keep webidl library engine-agnostic. Runtime knows engines.
 ///
+/// CRITICAL: The handle MUST be a GlobalHandle (not Local) to ensure it survives
+/// beyond the HandleScope where the callback was created. This prevents
+/// use-after-free when the callback is stored and invoked later.
+///
+/// When using with runtime.JSValue:
+/// - Store handles with handle_scope == .global
+/// - Convert Local handles to Global before storing
+/// - Call deinit() when callback is no longer needed
+///
 /// Example usage:
 /// ```zig
 /// // Extract callback from dictionary
@@ -41,9 +60,14 @@ const primitives = @import("primitives.zig");
 /// ```
 pub const GenericCallback = struct {
     /// Engine-specific function handle (type-erased)
-    /// - V8: v8::Persistent<v8::Function>*
+    /// MUST be a Global/Persistent handle (not Local) to survive HandleScope destruction
+    /// - V8: v8::Persistent<v8::Function>* (NOT v8::Local!)
     /// - JSC: JSObjectRef (retained)
     /// - SpiderMonkey: JS::PersistentRooted<JSObject*>*
+    ///
+    /// When converting from runtime.JSValue, ensure:
+    /// - handle.handle_scope == .global (safe to store)
+    /// - NOT handle.handle_scope == .local (use-after-free!)
     handle: *anyopaque,
 
     /// Engine-specific context (for multi-isolate support)

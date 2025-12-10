@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const PositionErrorCallback = *const fn (positionError: *const anyopaque) void;
+pub const PositionErrorCallback = *const fn (positionError: runtime.JSValue) void;

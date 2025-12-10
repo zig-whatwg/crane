@@ -5,6 +5,6 @@
 const runtime = @import("runtime");
 
 pub const MLNumber = union(enum) {
-    bigint: *const anyopaque,
+    bigint: runtime.JSValue,
     double: f64,
 };

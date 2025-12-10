@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const BrowserBoundSignature = struct {
-    signature: *const anyopaque,
+    signature: runtime.JSValue,
 };

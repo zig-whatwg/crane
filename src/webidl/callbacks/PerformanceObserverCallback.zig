@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const PerformanceObserverCallback = *const fn (entries: *const anyopaque, observer: *const anyopaque, options: webidl.Opt(*const anyopaque)) void;
+pub const PerformanceObserverCallback = *const fn (entries: runtime.JSValue, observer: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) void;

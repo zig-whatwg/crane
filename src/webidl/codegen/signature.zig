@@ -205,11 +205,11 @@ pub fn writeParamType(writer: anytype, arg: types.Argument, config: SignatureCon
             }
             return;
         }
-        // Other union types - use anyopaque pointer
+        // Other union types - use runtime.JSValue for type safety
         if (arg.idlType.nullable and !arg.variadic) {
             try writer.writeAll("?");
         }
-        try writer.writeAll("*const anyopaque");
+        try writer.writeAll("runtime.JSValue");
         if (arg.optional) {
             try writer.writeAll(")");
         }
@@ -242,8 +242,8 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
             try writer.writeAll("runtime.DOMString");
             return;
         }
-        // Fallback for other union types
-        try writer.writeAll("*const anyopaque");
+        // Fallback for other union types - use runtime.JSValue for type safety
+        try writer.writeAll("runtime.JSValue");
         return;
     }
 
@@ -286,11 +286,14 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
     } else if (std.mem.eql(u8, type_str, "ArrayBuffer") or std.mem.eql(u8, type_str, "ArrayBufferView")) {
         try writer.print("runtime.{s}", .{type_str});
     } else if (std.mem.startsWith(u8, type_str, "sequence<") or std.mem.startsWith(u8, type_str, "FrozenArray<")) {
-        try writer.writeAll("*const anyopaque");
+        // Use runtime.JSValue for sequences - the engine will handle array conversion
+        try writer.writeAll("runtime.JSValue");
     } else if (std.mem.startsWith(u8, type_str, "Promise<")) {
-        try writer.writeAll("*const anyopaque");
+        // Use runtime.JSValue for Promises - must be stored as GlobalHandle internally
+        try writer.writeAll("runtime.JSValue");
     } else if (std.mem.startsWith(u8, type_str, "record<")) {
-        try writer.writeAll("*const anyopaque");
+        // Use runtime.JSValue for records - the engine will handle object conversion
+        try writer.writeAll("runtime.JSValue");
     } else {
         // Check type registry for custom types
         if (config.type_registry) |reg| {
@@ -328,8 +331,9 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
             }
         }
 
-        // Unknown type - use anyopaque pointer
-        try writer.writeAll("*const anyopaque");
+        // Unknown type - use runtime.JSValue for type safety
+        // This replaces the unsafe *const anyopaque with a tagged union
+        try writer.writeAll("runtime.JSValue");
     }
 }
 

@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const IdleRequestCallback = *const fn (deadline: *const anyopaque) void;
+pub const IdleRequestCallback = *const fn (deadline: runtime.JSValue) void;

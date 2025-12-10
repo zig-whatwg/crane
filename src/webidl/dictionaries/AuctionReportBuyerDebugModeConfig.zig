@@ -6,5 +6,5 @@ const runtime = @import("runtime");
 
 pub const AuctionReportBuyerDebugModeConfig = struct {
     enabled: ?bool = null,
-    debugKey: ?*const anyopaque = null,
+    debugKey: ?runtime.JSValue = null,
 };

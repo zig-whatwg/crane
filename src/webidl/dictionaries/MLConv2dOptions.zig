@@ -10,9 +10,9 @@ pub const MLConv2dOptions = struct {
     // Inherited from MLOperatorOptions
     base: MLOperatorOptions,
 
-    padding: ?[]const *const anyopaque = null,
-    strides: ?[]const *const anyopaque = null,
-    dilations: ?[]const *const anyopaque = null,
+    padding: ?[]const runtime.JSValue = null,
+    strides: ?[]const runtime.JSValue = null,
+    dilations: ?[]const runtime.JSValue = null,
     groups: ?u32 = null,
     inputLayout: ?enums.MLInputOperandLayout = null,
     filterLayout: ?enums.MLConv2dFilterOperandLayout = null,

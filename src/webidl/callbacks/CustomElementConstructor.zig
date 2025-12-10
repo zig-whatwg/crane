@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const CustomElementConstructor = *const fn () *const anyopaque;
+pub const CustomElementConstructor = *const fn () runtime.JSValue;

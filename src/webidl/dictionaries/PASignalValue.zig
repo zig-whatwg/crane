@@ -8,5 +8,5 @@ const typedefs = @import("typedefs");
 pub const PASignalValue = struct {
     baseValue: runtime.DOMString,
     scale: ?f64 = null,
-    offset: ?*const anyopaque = null,
+    offset: ?runtime.JSValue = null,
 };

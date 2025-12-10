@@ -13,5 +13,5 @@ pub const ImageDecoderInit = struct {
     desiredWidth: ?u32 = null,
     desiredHeight: ?u32 = null,
     preferAnimation: ?bool = null,
-    transfer: ?[]const *const anyopaque = null,
+    transfer: ?[]const runtime.JSValue = null,
 };

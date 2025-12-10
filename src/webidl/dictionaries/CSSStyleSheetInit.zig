@@ -7,6 +7,6 @@ const typedefs = @import("typedefs");
 
 pub const CSSStyleSheetInit = struct {
     baseURL: ?runtime.DOMString = null,
-    media: ?*const anyopaque = null,
+    media: ?runtime.JSValue = null,
     disabled: ?bool = null,
 };

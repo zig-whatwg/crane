@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const UnderlyingSourceStartCallback = *const fn (controller: *const anyopaque) runtime.JSValue;
+pub const UnderlyingSourceStartCallback = *const fn (controller: runtime.JSValue) runtime.JSValue;

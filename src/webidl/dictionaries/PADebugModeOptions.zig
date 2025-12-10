@@ -5,5 +5,5 @@
 const runtime = @import("runtime");
 
 pub const PADebugModeOptions = struct {
-    debugKey: *const anyopaque,
+    debugKey: runtime.JSValue,
 };

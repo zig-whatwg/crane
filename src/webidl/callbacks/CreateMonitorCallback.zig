@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const CreateMonitorCallback = *const fn (monitor: *const anyopaque) void;
+pub const CreateMonitorCallback = *const fn (monitor: runtime.JSValue) void;

@@ -10,5 +10,5 @@ pub const WriteParams = struct {
     @"type": enums.WriteCommandType,
     size: ?u64 = null,
     position: ?u64 = null,
-    data: ?*const anyopaque = null,
+    data: ?runtime.JSValue = null,
 };

@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const UnderlyingSourceCancelCallback = *const fn (reason: webidl.Opt(runtime.JSValue)) *const anyopaque;
+pub const UnderlyingSourceCancelCallback = *const fn (reason: webidl.Opt(runtime.JSValue)) runtime.JSValue;

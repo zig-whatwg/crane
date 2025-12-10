@@ -5,4 +5,4 @@
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 
-pub const SubscribeCallback = *const fn (subscriber: *const anyopaque) void;
+pub const SubscribeCallback = *const fn (subscriber: runtime.JSValue) void;

@@ -13,7 +13,7 @@ pub const KeyframeAnimationOptions = struct {
 
     id: ?runtime.DOMString = null,
     timeline: ?*runtime.Instance = null,
-    rangeStart: ?*const anyopaque = null,
-    rangeEnd: ?*const anyopaque = null,
+    rangeStart: ?runtime.JSValue = null,
+    rangeEnd: ?runtime.JSValue = null,
     trigger: ?*runtime.Instance = null,
 };

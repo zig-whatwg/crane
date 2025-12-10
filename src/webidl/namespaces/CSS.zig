@@ -23,6 +23,6 @@ pub const CSS = struct {
 
     pub const State = struct {};
 
-    pub const animationWorklet: *const anyopaque = undefined;
+    pub const animationWorklet: runtime.JSValue = undefined;
 
 };
