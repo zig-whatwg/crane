@@ -392,3 +392,4 @@ test "generateRegexAndNameList - with prefix" {
     // Should include escaped prefix
     try std.testing.expect(std.mem.indexOf(u8, gen_result.regex, "\\/") != null);
 }
+

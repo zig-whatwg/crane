@@ -406,6 +406,7 @@ pub const Regex = struct {
     threadlocal var static_captures: [16]?[]const u8 = [_]?[]const u8{null} ** 16;
 
     /// Match a pattern with multiple named groups
+    /// Handles optional groups indicated by )? at the end of non-capturing groups
     fn matchMultipleGroups(pattern: []const u8, subject: []const u8, num_groups: usize) ?[]const ?[]const u8 {
         // We'll build up captures as we match through the pattern
         // Use thread-local static buffer for up to 16 captures (should be enough for URLPattern)
@@ -420,19 +421,84 @@ pub const Regex = struct {
             c.* = null;
         }
 
-        var pattern_pos: usize = 0;
-        var subject_pos: usize = 0;
-        var capture_idx: usize = 0;
+        // Use recursive approach to handle optional groups
+        const result = matchPatternRecursive(pattern, subject, 0, 0, 0);
+        if (result.matched) {
+            // Verify we consumed all of subject
+            if (result.subject_pos != subject.len) {
+                return null;
+            }
+            return static_captures[0..result.capture_idx];
+        }
+
+        return null;
+    }
+
+    const MatchState = struct {
+        matched: bool,
+        pattern_pos: usize,
+        subject_pos: usize,
+        capture_idx: usize,
+    };
+
+    /// Recursively match pattern against subject, handling optional groups
+    fn matchPatternRecursive(pattern: []const u8, subject: []const u8, start_pattern_pos: usize, start_subject_pos: usize, start_capture_idx: usize) MatchState {
+        var pattern_pos = start_pattern_pos;
+        var subject_pos = start_subject_pos;
+        var capture_idx = start_capture_idx;
 
         while (pattern_pos < pattern.len) {
-            // Skip non-capturing group wrapper (?:
+            // Check for optional non-capturing group: (?:...)?
             if (pattern_pos + 3 <= pattern.len and std.mem.eql(u8, pattern[pattern_pos..][0..3], "(?:")) {
-                pattern_pos += 3;
+                // Find the matching closing paren
+                var depth: usize = 1;
+                var group_end = pattern_pos + 3;
+                while (group_end < pattern.len and depth > 0) : (group_end += 1) {
+                    if (pattern[group_end] == '(' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth += 1;
+                    if (pattern[group_end] == ')' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth -= 1;
+                }
+
+                // Check if this group is optional (followed by ?)
+                const is_optional = (group_end < pattern.len and pattern[group_end] == '?');
+                const group_content = pattern[pattern_pos + 3 .. group_end - 1];
+                const after_group = if (is_optional) group_end + 1 else group_end;
+
+                // Try to match the group content
+                const group_result = matchPatternRecursive(group_content, subject, 0, subject_pos, capture_idx);
+
+                if (group_result.matched and group_result.pattern_pos == group_content.len) {
+                    // Group matched - continue with rest of pattern
+                    subject_pos = group_result.subject_pos;
+                    capture_idx = group_result.capture_idx;
+                    pattern_pos = after_group;
+                } else if (is_optional) {
+                    // Group didn't match but it's optional - skip it
+                    // For optional groups with named captures, we still need to account for them
+                    // but with null/empty values
+                    const groups_in_optional = countNamedGroups(group_content);
+                    var i: usize = 0;
+                    while (i < groups_in_optional) : (i += 1) {
+                        if (capture_idx < 16) {
+                            static_captures[capture_idx] = ""; // Empty capture for optional group
+                            capture_idx += 1;
+                        }
+                    }
+                    pattern_pos = after_group;
+                } else {
+                    // Group didn't match and it's not optional - fail
+                    return .{ .matched = false, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
+                }
                 continue;
             }
 
-            // Skip closing paren of non-capturing group
+            // Skip closing paren (handled by group matching)
             if (pattern[pattern_pos] == ')') {
+                pattern_pos += 1;
+                continue;
+            }
+
+            // Skip ? modifier (handled by optional group logic above)
+            if (pattern[pattern_pos] == '?') {
                 pattern_pos += 1;
                 continue;
             }
@@ -441,7 +507,8 @@ pub const Regex = struct {
             if (pattern_pos + 4 <= pattern.len and std.mem.eql(u8, pattern[pattern_pos..][0..4], "(?P<")) {
                 // Find group name end
                 const name_start = pattern_pos + 4;
-                const name_end = std.mem.indexOfScalarPos(u8, pattern, name_start, '>') orelse return null;
+                const name_end = std.mem.indexOfScalarPos(u8, pattern, name_start, '>') orelse
+                    return .{ .matched = false, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
                 const after_name = name_end + 1;
 
                 // Find closing paren for this group
@@ -451,6 +518,10 @@ pub const Regex = struct {
                     if (pattern[group_end] == '(' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth += 1;
                     if (pattern[group_end] == ')' and !(group_end > 0 and pattern[group_end - 1] == '\\')) depth -= 1;
                 }
+
+                // Check if this named group is optional (followed by ?)
+                const is_optional = (group_end < pattern.len and pattern[group_end] == '?');
+                const after_group = if (is_optional) group_end + 1 else group_end;
 
                 // Get the group pattern content
                 const group_pattern = pattern[after_name .. group_end - 1];
@@ -469,73 +540,75 @@ pub const Regex = struct {
 
                 // Find the end of this capture in the subject
                 var value_end = subject_pos;
+                var matched_value = true;
+
                 if (delimiter) |delim| {
                     // Find next delimiter or end of string
                     while (value_end < subject.len and subject[value_end] != delim) {
                         value_end += 1;
                     }
-                } else if (std.mem.eql(u8, group_pattern, ".*")) {
-                    // Greedy match - but need to look ahead for suffix
-                    // Check if there's a meaningful suffix after the group
-                    // (not just $ or closing parens from non-capturing groups)
-                    const suffix_start = group_end;
-                    var has_meaningful_suffix = false;
-                    if (suffix_start < pattern.len) {
-                        // Check if suffix has any escaped chars (like \.) or alphanumerics
-                        var check_pos = suffix_start;
-                        while (check_pos < pattern.len) {
-                            const c = pattern[check_pos];
-                            if (c == '\\' and check_pos + 1 < pattern.len) {
-                                // Escaped char - this is meaningful suffix
-                                has_meaningful_suffix = true;
-                                break;
-                            } else if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9')) {
-                                // Alphanumeric - meaningful suffix
-                                has_meaningful_suffix = true;
-                                break;
-                            } else if (c == ')' or c == '$' or c == '?') {
-                                // Skip non-meaningful chars
-                                check_pos += 1;
-                            } else {
-                                check_pos += 1;
-                            }
-                        }
+                    // Check if we got a non-empty value
+                    if (value_end == subject_pos) {
+                        matched_value = false;
                     }
+                } else if (std.mem.eql(u8, group_pattern, ".*") or
+                    std.mem.eql(u8, group_pattern, "(?:.*)?") or
+                    std.mem.eql(u8, group_pattern, "(?:[^\\/]+?)?"))
+                {
+                    // .* group - need to find where suffix starts
+                    // Look at what comes after this group in the pattern
+                    const suffix_pattern = pattern[after_group..];
+
+                    // Check if there's meaningful suffix to match
+                    const has_meaningful_suffix = hasMeaningfulSuffix(suffix_pattern);
 
                     if (has_meaningful_suffix) {
-                        // Extract the suffix pattern (everything after the group)
-                        const suffix_pattern = pattern[suffix_start..];
-                        // Try to find where the suffix would match (backtrack from end)
-                        if (findSuffixMatch(subject, subject_pos, suffix_pattern)) |match_start| {
-                            value_end = match_start;
+                        // Try to find where the suffix matches in the subject
+                        if (findSuffixMatch(subject, subject_pos, suffix_pattern)) |suffix_start| {
+                            value_end = suffix_start;
+                            matched_value = true;
                         } else {
-                            return null; // Suffix doesn't match
+                            // Has suffix but it doesn't match - fail
+                            matched_value = false;
                         }
                     } else {
                         // No meaningful suffix - match to end
                         value_end = subject.len;
+                        matched_value = true;
+                    }
+                } else if (std.mem.startsWith(u8, group_pattern, "(?:")) {
+                    // Nested non-capturing group - recurse
+                    const nested_result = matchPatternRecursive(group_pattern, subject, 0, subject_pos, capture_idx);
+                    if (nested_result.matched) {
+                        value_end = nested_result.subject_pos;
+                        matched_value = true;
+                    } else {
+                        matched_value = false;
                     }
                 } else {
-                    // Unknown pattern - match to end
+                    // Unknown pattern - try to match to end
                     value_end = subject.len;
                 }
 
-                // Ensure we have a value (unless it's .* which can match empty)
-                if (value_end < subject_pos) {
-                    return null; // No match
+                if (matched_value and value_end >= subject_pos) {
+                    // Store the capture
+                    if (capture_idx < 16) {
+                        static_captures[capture_idx] = subject[subject_pos..value_end];
+                        capture_idx += 1;
+                    }
+                    subject_pos = value_end;
+                    pattern_pos = after_group;
+                } else if (is_optional) {
+                    // Named group didn't match but it's optional
+                    if (capture_idx < 16) {
+                        static_captures[capture_idx] = ""; // Empty capture
+                        capture_idx += 1;
+                    }
+                    pattern_pos = after_group;
+                } else {
+                    // Named group didn't match and it's not optional - fail
+                    return .{ .matched = false, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
                 }
-                if (value_end == subject_pos and !std.mem.eql(u8, group_pattern, ".*")) {
-                    return null; // Empty value only allowed for .*
-                }
-
-                // Store the capture
-                if (capture_idx < MAX_CAPTURES) {
-                    static_captures[capture_idx] = subject[subject_pos..value_end];
-                    capture_idx += 1;
-                }
-
-                subject_pos = value_end;
-                pattern_pos = group_end;
                 continue;
             }
 
@@ -543,7 +616,7 @@ pub const Regex = struct {
             if (pattern[pattern_pos] == '\\' and pattern_pos + 1 < pattern.len) {
                 const expected_char = pattern[pattern_pos + 1];
                 if (subject_pos >= subject.len or subject[subject_pos] != expected_char) {
-                    return null;
+                    return .{ .matched = false, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
                 }
                 pattern_pos += 2;
                 subject_pos += 1;
@@ -552,25 +625,47 @@ pub const Regex = struct {
 
             // Handle literal character
             if (subject_pos >= subject.len or pattern[pattern_pos] != subject[subject_pos]) {
-                return null;
+                return .{ .matched = false, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
             }
             pattern_pos += 1;
             subject_pos += 1;
         }
 
-        // Check we consumed all of subject
-        if (subject_pos != subject.len) {
-            return null;
-        }
+        return .{ .matched = true, .pattern_pos = pattern_pos, .subject_pos = subject_pos, .capture_idx = capture_idx };
+    }
 
-        // Check we captured expected number of groups
-        if (capture_idx != num_groups) {
-            return null;
+    /// Count named groups in a pattern
+    fn countNamedGroups(pattern: []const u8) usize {
+        var count: usize = 0;
+        var pos: usize = 0;
+        while (std.mem.indexOfPos(u8, pattern, pos, "(?P<")) |idx| {
+            count += 1;
+            pos = idx + 4;
         }
+        return count;
+    }
 
-        // Return captures (pointer to static data - only valid until next call)
-        // In practice, caller copies the data immediately
-        return static_captures[0..capture_idx];
+    /// Check if a suffix pattern has meaningful content to match
+    fn hasMeaningfulSuffix(suffix_pattern: []const u8) bool {
+        if (suffix_pattern.len == 0) return false;
+
+        var pos: usize = 0;
+        while (pos < suffix_pattern.len) {
+            const c = suffix_pattern[pos];
+            if (c == '\\' and pos + 1 < suffix_pattern.len) {
+                // Escaped char - meaningful suffix
+                return true;
+            } else if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9')) {
+                // Alphanumeric - meaningful suffix
+                return true;
+            } else if (c == ')' or c == '$' or c == '?' or c == '*' or c == '+') {
+                // Skip regex metacharacters that don't add content
+                pos += 1;
+            } else {
+                pos += 1;
+            }
+        }
+        return false;
     }
 
     /// Find where a suffix pattern would match in the subject string.
