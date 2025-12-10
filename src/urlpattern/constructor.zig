@@ -374,6 +374,8 @@ const ComponentType = enum {
 };
 
 /// Check if a scheme is a "special scheme"
+/// For the purpose of defaulting pathname, wildcards are NOT considered special
+/// because we want pathname to also be a wildcard when protocol is unknown.
 fn isSpecialScheme(scheme: []const u8) bool {
     const special_schemes = [_][]const u8{ "http", "https", "ws", "wss", "ftp", "file" };
     for (special_schemes) |s| {
@@ -381,10 +383,8 @@ fn isSpecialScheme(scheme: []const u8) bool {
             return true;
         }
     }
-    // Also check for wildcard which could match special schemes
-    if (std.mem.eql(u8, scheme, "*")) {
-        return true;
-    }
+    // Note: "*" (wildcard) is NOT treated as special here because if protocol
+    // is unknown, pathname should also default to wildcard "*", not "/".
     return false;
 }
 

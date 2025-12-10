@@ -353,6 +353,9 @@ test "generateRegexAndNameList - full wildcard" {
 
     // Should have .* pattern
     try std.testing.expect(std.mem.indexOf(u8, gen_result.regex, ".*") != null);
+    // Should have name "0" in the name list
+    try std.testing.expectEqual(@as(usize, 1), gen_result.name_list.len);
+    try std.testing.expectEqualStrings("0", gen_result.name_list[0]);
 }
 
 test "generateRegexAndNameList - optional modifier" {
