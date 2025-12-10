@@ -7,515 +7,204 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765385598847,
-  "time_end": 1765385603210,
+  "time_start": 1765396918057,
+  "time_end": 1765396918860,
   "results": [
     {
-      "test": "webidl/ecmascript-binding/sequence-conversion.html",
+      "test": "console/idlharness.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "idl_test validation", "status": "PASS", "message": null},
+        {"name": "console namespace: extended attributes", "status": "PASS", "message": null},
+        {"name": "console namespace: property descriptor", "status": "PASS", "message": null},
+        {"name": "console namespace: [[Extensible]] is true", "status": "PASS", "message": null},
+        {"name": "console namespace: [[Prototype]] is Object.prototype", "status": "FAIL", "message": "assert_equals: expected 0 but got 12"},
+        {"name": "console namespace: typeof is \"object\"", "status": "PASS", "message": null},
+        {"name": "console namespace: has no length property", "status": "PASS", "message": null},
+        {"name": "console namespace: has no name property", "status": "PASS", "message": null},
+        {"name": "console namespace: operation assert(optional boolean, any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation clear()", "status": "PASS", "message": null},
+        {"name": "console namespace: operation debug(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation error(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation info(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation log(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation table(optional any, optional sequence<DOMString>)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation trace(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation warn(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation dir(optional any, optional object?)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation dirxml(any...)", "status": "FAIL", "message": "assert_own_property: namespace object missing operation \"dirxml\" expected property \"dirxml\" missing"},
+        {"name": "console namespace: operation count(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation countReset(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation group(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation groupCollapsed(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation groupEnd()", "status": "PASS", "message": null},
+        {"name": "console namespace: operation time(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation timeLog(optional DOMString, any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation timeEnd(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "idl_test setup", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/window-named-properties-object.html",
+      "test": "console/idlharness.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "idl_test validation", "status": "PASS", "message": null},
+        {"name": "console namespace: extended attributes", "status": "PASS", "message": null},
+        {"name": "console namespace: property descriptor", "status": "PASS", "message": null},
+        {"name": "console namespace: [[Extensible]] is true", "status": "PASS", "message": null},
+        {"name": "console namespace: [[Prototype]] is Object.prototype", "status": "FAIL", "message": "assert_equals: expected 0 but got 12"},
+        {"name": "console namespace: typeof is \"object\"", "status": "PASS", "message": null},
+        {"name": "console namespace: has no length property", "status": "PASS", "message": null},
+        {"name": "console namespace: has no name property", "status": "PASS", "message": null},
+        {"name": "console namespace: operation assert(optional boolean, any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation clear()", "status": "PASS", "message": null},
+        {"name": "console namespace: operation debug(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation error(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation info(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation log(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation table(optional any, optional sequence<DOMString>)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation trace(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation warn(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation dir(optional any, optional object?)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation dirxml(any...)", "status": "FAIL", "message": "assert_own_property: namespace object missing operation \"dirxml\" expected property \"dirxml\" missing"},
+        {"name": "console namespace: operation count(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation countReset(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation group(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation groupCollapsed(any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation groupEnd()", "status": "PASS", "message": null},
+        {"name": "console namespace: operation time(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation timeLog(optional DOMString, any...)", "status": "PASS", "message": null},
+        {"name": "console namespace: operation timeEnd(optional DOMString)", "status": "PASS", "message": null},
+        {"name": "idl_test setup", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/class-string-iterator-prototype-object.any.js",
+      "test": "console/console-is-a-namespace.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "@@toStringTag exists with the appropriate descriptor", "status": "FAIL", "message": "assert_own_property: expected property symbol \"Symbol(Symbol.toStringTag)\" missing"},
-        {"name": "Object.prototype.toString", "status": "FAIL", "message": "assert_equals: expected \"[object URLSearchParams Iterator]\" but got \"[object Object]\""},
-        {"name": "Object.prototype.toString applied after modifying @@toStringTag", "status": "FAIL", "message": "assert_own_property: Precondition for this test: @@toStringTag exists expected property symbol \"Symbol(Symbol.toStringTag)\" missing"},
-        {"name": "Object.prototype.toString applied to a null-prototype instance", "status": "FAIL", "message": "assert_equals: expected \"[object URLSearchParams Iterator]\" but got \"[object Array Iterator]\""},
-        {"name": "Object.prototype.toString applied after nulling the prototype", "status": "FAIL", "message": "assert_equals: expected \"[object URLSearchParams Iterator]\" but got \"[object Object]\""}
+        {"name": "console exists on the global object", "status": "PASS", "message": null},
+        {"name": "console has the right property descriptors", "status": "PASS", "message": null},
+        {"name": "Console (uppercase, as if it were an interface) must not exist", "status": "PASS", "message": null},
+        {"name": "The prototype chain must be correct", "status": "FAIL", "message": "assert_equals: The [[Prototype]] must have no properties expected 0 but got 12"}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/interface-prototype-object.html",
+      "test": "console/console-is-a-namespace.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "console exists on the global object", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/replaceable-setter-throws-if-defineownproperty-fails.html",
+      "test": "console/console-tests-historical.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "'timeline' function should not exist on the console object", "status": "PASS", "message": null},
+        {"name": "'timelineEnd' function should not exist on the console object", "status": "PASS", "message": null},
+        {"name": "'markTimeline' function should not exist on the console object", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/legacy-factory-function-builtin-properties.window.js",
+      "test": "console/console-tests-historical.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Legacy factory function property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "FAIL", "message": "Image is not defined"}
+        {"name": "'timeline' function should not exist on the console object", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/global-object-implicit-this-value.any.js",
+      "test": "console/console-log-large-array.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Global object's getter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).self; }\" did not throw"},
-        {"name": "Global object's setter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).origin = origin; }\" threw object \"ReferenceError: origin is not defined\" (\"ReferenceError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
-        {"name": "Global object's operation throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).setInterval(() => {}, 100); }\" did not throw"},
-        {"name": "Global object's getter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
-        {"name": "Global object's setter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
-        {"name": "Global object's operation throws when called on incompatible object (document.all)", "status": "FAIL", "message": "assert_throws_js: function \"() => { focus.call(document.all); }\" threw object \"ReferenceError: focus is not defined\" (\"ReferenceError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
-        {"name": "Global object's getter works when called on null / undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'call')"},
-        {"name": "Global object's setter works when called on null / undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'set')"},
-        {"name": "Global object's operation works when called on null / undefined", "status": "FAIL", "message": "assert_false: expected false got true"}
+        {"name": "Logging large arrays works", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/iterator-prototype-object.html",
+      "test": "console/console-log-large-array.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "Logging large arrays works", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/iterator-invalidation-foreach.html",
+      "test": "console/console-log-symbol.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "Logging a symbol doesn't throw", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/default-toJSON-cross-realm.html",
+      "test": "console/console-log-symbol.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "Logging a symbol doesn't throw", "status": "PASS", "message": null}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/global-mutable-prototype.any.js",
+      "test": "console/console-label-conversion.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Setting to a different prototype", "status": "FAIL", "message": "Immutable prototype object 'Object.prototype' cannot have their prototype set"},
-        {"name": "Setting to the same prototype", "status": "PASS", "message": null}
+        {"name": "console.count()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: count() must call toString() on label when label is an object expected true got false"},
+        {"name": "console.count() throws exceptions generated by erroneous label.toString() conversion", "status": "FAIL", "message": "assert_throws_js: count must re-throw any exceptions thrown by label.toString() conversion function \"() => {\n      console[method]({\n        toString() {\n          throw new Error('conversion error');\n        }\n      });\n    }\" did not throw"},
+        {"name": "console.countReset()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: countReset() must call toString() on label when label is an object expected true got false"},
+        {"name": "console.countReset() throws exceptions generated by erroneous label.toString() conversion", "status": "FAIL", "message": "assert_throws_js: countReset must re-throw any exceptions thrown by label.toString() conversion function \"() => {\n      console[method]({\n        toString() {\n          throw new Error('conversion error');\n        }\n      });\n    }\" did not throw"},
+        {"name": "console.time()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: time() must call toString() on label when label is an object expected true got false"},
+        {"name": "console.time() throws exceptions generated by erroneous label.toString() conversion", "status": "FAIL", "message": "assert_throws_js: time must re-throw any exceptions thrown by label.toString() conversion function \"() => {\n      console[method]({\n        toString() {\n          throw new Error('conversion error');\n        }\n      });\n    }\" did not throw"},
+        {"name": "console.timeLog()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: timeLog() must call toString() on label when label is an object expected true got false"},
+        {"name": "console.timeLog() throws exceptions generated by erroneous label.toString() conversion", "status": "FAIL", "message": "assert_throws_js: timeLog must re-throw any exceptions thrown by label.toString() conversion function \"() => {\n      console[method]({\n        toString() {\n          throw new Error('conversion error');\n        }\n      });\n    }\" did not throw"},
+        {"name": "console.timeEnd()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: timeEnd() must call toString() on label when label is an object expected true got false"},
+        {"name": "console.timeEnd() throws exceptions generated by erroneous label.toString() conversion", "status": "FAIL", "message": "assert_throws_js: timeEnd must re-throw any exceptions thrown by label.toString() conversion function \"() => {\n      console[method]({\n        toString() {\n          throw new Error('conversion error');\n        }\n      });\n    }\" did not throw"}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/observable-array-no-leak-of-internals.window.js",
+      "test": "console/console-label-conversion.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "ObservableArray's internals won't leak", "status": "FAIL", "message": "Cannot convert undefined or null to object"}
+        {"name": "console.count()'s label gets converted to string via label.toString() when label is an object", "status": "FAIL", "message": "assert_true: count() must call toString() on label when label is an object expected true got false"}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/global-immutable-prototype.any.js",
+      "test": "console/console-namespace-object-class-string.any.js [window]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Setting to a different prototype", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n      Object.setPrototypeOf(object, {});\n    }\" did not throw"},
-        {"name": "Setting to the same prototype", "status": "PASS", "message": null}
+        {"name": "@@toStringTag exists on the namespace object with the appropriate descriptor", "status": "FAIL", "message": "assert_own_property: expected property symbol \"Symbol(Symbol.toStringTag)\" missing"},
+        {"name": "Object.prototype.toString applied to the namespace object", "status": "FAIL", "message": "assert_equals: expected \"[object console]\" but got \"[object Object]\""},
+        {"name": "Object.prototype.toString applied after modifying the namespace object's @@toStringTag", "status": "FAIL", "message": "assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol \"Symbol(Symbol.toStringTag)\" missing"},
+        {"name": "Object.prototype.toString applied after deleting @@toStringTag", "status": "FAIL", "message": "assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol \"Symbol(Symbol.toStringTag)\" missing"}
       ]
     },
     {
-      "test": "webidl/ecmascript-binding/attributes-accessors-unique-function-objects.html",
+      "test": "console/console-namespace-object-class-string.any.js [worker]",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/observable-array-ownkeys.window.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "ObservableArray's ownKeys trap", "status": "FAIL", "message": "Cannot convert undefined or null to object"}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/put-forwards.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/interface-prototype-constructor-set-receiver.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/allow-resizable.html",
-      "status": "ERROR",
-      "message": "done() was called without first defining any tests",
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/invalid-this-value-cross-realm.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-custom-bindings.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "Cannot construct without new", "status": "PASS", "message": null},
-        {"name": "inherits from Error: prototype-side", "status": "FAIL", "message": "assert_equals: expected object \"Error\" but got object \"[object Object]\""},
-        {"name": "does not inherit from Error: class-side", "status": "PASS", "message": null},
-        {"name": "message property descriptor", "status": "PASS", "message": null},
-        {"name": "message getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "FAIL", "message": "assert_throws_js: function \"() => getter.apply({})\" did not throw"},
-        {"name": "name property descriptor", "status": "PASS", "message": null},
-        {"name": "name getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "FAIL", "message": "assert_throws_js: function \"() => getter.apply({})\" did not throw"},
-        {"name": "code property descriptor", "status": "PASS", "message": null},
-        {"name": "code getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "FAIL", "message": "assert_throws_js: function \"() => getter.apply({})\" did not throw"},
-        {"name": "code property is not affected by shadowing the name property", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString behavior is like other interfaces", "status": "PASS", "message": null},
-        {"name": "Inherits its toString() from Error.prototype", "status": "PASS", "message": null},
-        {"name": "toString() behavior from Error.prototype applies as expected", "status": "FAIL", "message": "assert_equals: The default Error.prototype.toString() behavior must work on supplied name and message expected \"name: message\" but got \"[object DOMException]\""},
-        {"name": "DOMException.prototype.toString() applied to DOMException.prototype throws because of name/message brand checks", "status": "FAIL", "message": "assert_throws_js: function \"() => DOMException.prototype.toString()\" did not throw"},
-        {"name": "If the implementation has a stack property on normal errors, it also does on DOMExceptions", "status": "FAIL", "message": "assert_equals: The typeof values must match expected \"string\" but got \"undefined\""}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constants.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "Constant INDEX_SIZE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INDEX_SIZE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant DOMSTRING_SIZE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant DOMSTRING_SIZE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant HIERARCHY_REQUEST_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant HIERARCHY_REQUEST_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant WRONG_DOCUMENT_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant WRONG_DOCUMENT_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INVALID_CHARACTER_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INVALID_CHARACTER_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NO_DATA_ALLOWED_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NO_DATA_ALLOWED_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NO_MODIFICATION_ALLOWED_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NO_MODIFICATION_ALLOWED_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NOT_FOUND_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NOT_FOUND_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NOT_SUPPORTED_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NOT_SUPPORTED_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INUSE_ATTRIBUTE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INUSE_ATTRIBUTE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INVALID_STATE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INVALID_STATE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant SYNTAX_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant SYNTAX_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INVALID_MODIFICATION_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INVALID_MODIFICATION_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NAMESPACE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NAMESPACE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INVALID_ACCESS_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INVALID_ACCESS_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant VALIDATION_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant VALIDATION_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant TYPE_MISMATCH_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant TYPE_MISMATCH_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant SECURITY_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant SECURITY_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant NETWORK_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant NETWORK_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant ABORT_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant ABORT_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant URL_MISMATCH_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant URL_MISMATCH_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant QUOTA_EXCEEDED_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant QUOTA_EXCEEDED_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant TIMEOUT_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant TIMEOUT_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant INVALID_NODE_TYPE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant INVALID_NODE_TYPE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "Constant DATA_CLONE_ERR on DOMException constructor object", "status": "PASS", "message": null},
-        {"name": "Constant DATA_CLONE_ERR on DOMException prototype object", "status": "FAIL", "message": "assert_true: enumerable expected true got false"},
-        {"name": "", "status": "PASS", "message": null}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-behavior.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "new DOMException()", "status": "PASS", "message": null},
-        {"name": "new DOMException(): inherited-ness", "status": "PASS", "message": null},
-        {"name": "new DOMException(null)", "status": "FAIL", "message": "assert_equals: Passing null as message should end up with stringified 'null' as the message expected \"null\" but got \"\""},
-        {"name": "new DOMException(undefined)", "status": "PASS", "message": null},
-        {"name": "new DOMException(undefined): inherited-ness", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"foo\")", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"foo\"): inherited-ness", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"bar\", undefined)", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"bar\", \"NotSupportedError\")", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"bar\", \"NotSupportedError\"): inherited-ness", "status": "PASS", "message": null},
-        {"name": "new DOMException(\"bar\", \"foo\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"IndexSizeError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"HierarchyRequestError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"WrongDocumentError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InvalidCharacterError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NoModificationAllowedError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NotFoundError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NotSupportedError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InUseAttributeError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InvalidStateError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"SyntaxError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InvalidModificationError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NamespaceError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InvalidAccessError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"TypeMismatchError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"SecurityError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NetworkError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"AbortError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"URLMismatchError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"QuotaExceededError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"TimeoutError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"InvalidNodeTypeError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"DataCloneError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"DOMStringSizeError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NoDataAllowedError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"ValidationError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"EncodingError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NotReadableError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"UnknownError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"ConstraintError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"DataError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"TransactionInactiveError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"ReadOnlyError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"VersionError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"OperationError\")", "status": "PASS", "message": null},
-        {"name": "new DOMexception(\"msg\", \"NotAllowedError\")", "status": "PASS", "message": null}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "existence and property descriptor of DOMException", "status": "FAIL", "message": "assert_false: enumerable expected false got true"},
-        {"name": "existence and property descriptor of DOMException.prototype", "status": "PASS", "message": null},
-        {"name": "existence and property descriptor of DOMException.prototype.constructor", "status": "PASS", "message": null}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/exceptions.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-is-error.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "", "status": "FAIL", "message": "assert_true: expected true got false"}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/interface-object-set-receiver.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/class-string-interface.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "@@toStringTag exists on the prototype with the appropriate descriptor", "status": "PASS", "message": null},
-        {"name": "@@toStringTag must not exist on the instance", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied to the prototype", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied to an instance", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied after modifying the prototype's @@toStringTag", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied to the instance after modifying the instance's @@toStringTag", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied to a null-prototype instance", "status": "PASS", "message": null},
-        {"name": "Object.prototype.toString applied after deleting @@toStringTag", "status": "PASS", "message": null}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/no-regexp-special-casing.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "Conversion to a dictionary works", "status": "PASS", "message": null},
-        {"name": "Conversion to a sequence works", "status": "FAIL", "message": "TypeError"},
-        {"name": "Can be used as an object implementing a callback interface", "status": "FAIL", "message": "assert_true: expected true got false"},
-        {"name": "Can convert a RegExp to a USVString", "status": "FAIL", "message": "assert_equals: expected (string) \"/(?:)/\" but got (object) object \"[object Object]\""}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/has-instance.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-callback-interface-object.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/global-object-implicit-this-value-cross-realm.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-factor-function-subclass.window.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "[LegacyFactoryFunction] can be subclassed and correctly handles NewTarget", "status": "FAIL", "message": "Image is not defined"}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/constructors.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/setter-argument.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-platform-object/OwnPropertyKeys.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-platform-object/GetOwnProperty.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-platform-object/DefineOwnProperty.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/legacy-platform-object/Set.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/builtin-function-properties.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "Constructor property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "FAIL", "message": "assert_array_equals: expected property 2 to be \"prototype\" but got \"arguments\" (expected array [\"length\", \"name\", \"prototype\"] got [\"length\", \"name\", \"arguments\"])"},
-        {"name": "Method property enumeration order of \"length\" and \"name\"", "status": "PASS", "message": null},
-        {"name": "Getter property enumeration order of \"length\" and \"name\"", "status": "PASS", "message": null}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/class-string-named-properties-object.window.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "@@toStringTag exists with the appropriate descriptor", "status": "FAIL", "message": "assert_equals: value expected \"WindowProperties\" but got \"EventTarget\""},
-        {"name": "Object.prototype.toString", "status": "FAIL", "message": "assert_equals: expected \"[object WindowProperties]\" but got \"[object EventTarget]\""}
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/interface-object.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/ecmascript-binding/default-iterator-object.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-      ]
-    },
-    {
-      "test": "webidl/idlharness.any.js",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
-        {"name": "idl_test setup", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: Failed to open file\""}
-      ]
-    },
-    {
-      "test": "webidl/current-realm.html",
-      "status": "OK",
-      "message": null,
-      "duration": 0,
-      "subtests": [
+        {"name": "@@toStringTag exists on the namespace object with the appropriate descriptor", "status": "FAIL", "message": "assert_own_property: expected property symbol \"Symbol(Symbol.toStringTag)\" missing"}
       ]
     }
   ]
