@@ -153,6 +153,8 @@ pub const SubtestResult = struct {
 pub const TestResult = struct {
     /// Path to test file (relative to WPT root)
     test_path: []const u8,
+    /// Execution context (e.g., "window", "worker"). Null for single-context tests.
+    context: ?[]const u8 = null,
     /// Overall test file status
     status: HarnessStatus,
     /// Individual subtest results
@@ -173,13 +175,35 @@ pub const TestResult = struct {
         };
     }
 
+    /// Initialize with a context (for multi-context tests like .any.js)
+    pub fn initWithContext(allocator: std.mem.Allocator, test_path: []const u8, context: ?[]const u8) !TestResult {
+        return TestResult{
+            .test_path = try allocator.dupe(u8, test_path),
+            .context = if (context) |ctx| try allocator.dupe(u8, ctx) else null,
+            .status = .ok,
+            .subtests = .{},
+            .allocator = allocator,
+        };
+    }
+
     pub fn deinit(self: *TestResult, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
+        if (self.context) |ctx| allocator.free(ctx);
         if (self.message) |msg| allocator.free(msg);
         for (self.subtests.items) |*subtest| {
             subtest.deinit(allocator);
         }
         self.subtests.deinit(allocator);
+    }
+
+    /// Get the display name including context suffix if present.
+    /// For single-context tests: "url/test.any.js"
+    /// For multi-context tests: "url/test.any.js [worker]"
+    pub fn getDisplayName(self: TestResult, allocator: std.mem.Allocator) ![]const u8 {
+        if (self.context) |ctx| {
+            return std.fmt.allocPrint(allocator, "{s} [{s}]", .{ self.test_path, ctx });
+        }
+        return allocator.dupe(u8, self.test_path);
     }
 
     pub fn addSubtest(self: *TestResult, subtest: SubtestResult) !void {
@@ -478,4 +502,56 @@ test "ResultCollector with mixed results" {
     try testing.expectEqual(@as(usize, 1), totals.passed);
     try testing.expectEqual(@as(usize, 1), totals.failed);
     try testing.expectEqual(@as(usize, 1), totals.timeout);
+}
+
+test "TestResult with context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test initWithContext
+    var result = try TestResult.initWithContext(allocator, "url/test.any.js", "worker");
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("url/test.any.js", result.test_path);
+    try testing.expect(result.context != null);
+    try testing.expectEqualStrings("worker", result.context.?);
+
+    // Test getDisplayName with context
+    const display_name = try result.getDisplayName(allocator);
+    defer allocator.free(display_name);
+    try testing.expectEqualStrings("url/test.any.js [worker]", display_name);
+}
+
+test "TestResult without context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test init (no context)
+    var result = try TestResult.init(allocator, "url/test.window.js");
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("url/test.window.js", result.test_path);
+    try testing.expectEqual(@as(?[]const u8, null), result.context);
+
+    // Test getDisplayName without context
+    const display_name = try result.getDisplayName(allocator);
+    defer allocator.free(display_name);
+    try testing.expectEqualStrings("url/test.window.js", display_name);
+}
+
+test "TestResult initWithContext null context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test initWithContext with null context
+    var result = try TestResult.initWithContext(allocator, "url/test.window.js", null);
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("url/test.window.js", result.test_path);
+    try testing.expectEqual(@as(?[]const u8, null), result.context);
+
+    // Test getDisplayName without context
+    const display_name = try result.getDisplayName(allocator);
+    defer allocator.free(display_name);
+    try testing.expectEqualStrings("url/test.window.js", display_name);
 }

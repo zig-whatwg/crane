@@ -159,9 +159,17 @@ pub const WptReport = struct {
     }
 
     /// Add a test result from the harness collector
+    /// For multi-context tests (e.g., .any.js), the context is appended to the test path
+    /// in the format "path/test.any.js [context]" to distinguish different executions.
     pub fn addResult(self: *WptReport, harness_result: test_harness.TestResult) !void {
+        // Build test path with context suffix for multi-context tests
+        const test_path = if (harness_result.context) |ctx|
+            try std.fmt.allocPrint(self.allocator, "{s} [{s}]", .{ harness_result.test_path, ctx })
+        else
+            try self.allocator.dupe(u8, harness_result.test_path);
+
         var result = TestResultJson{
-            .test_path = try self.allocator.dupe(u8, harness_result.test_path),
+            .test_path = test_path,
             .status = harness_result.status.toString(),
             .message = if (harness_result.message) |m| try self.allocator.dupe(u8, m) else null,
             .duration = harness_result.duration_ms,
@@ -438,4 +446,84 @@ test "RunInfo default" {
     // Should have valid OS and processor
     try std.testing.expect(info.os.len > 0);
     try std.testing.expect(info.processor.len > 0);
+}
+
+test "WptReport with context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create a test result with context (multi-context test)
+    var harness_result = try test_harness.TestResult.initWithContext(allocator, "url/test.any.js", "worker");
+    defer harness_result.deinit(allocator);
+
+    harness_result.status = .ok;
+    harness_result.duration_ms = 100;
+
+    const subtest = test_harness.SubtestResult{
+        .name = try allocator.dupe(u8, "basic test"),
+        .status = .pass,
+        .duration_ms = 50,
+    };
+    try harness_result.addSubtest(subtest);
+
+    try report.addResult(harness_result);
+    report.finish();
+
+    try testing.expectEqual(@as(usize, 1), report.results.items.len);
+    // The test path should include the context suffix
+    try testing.expectEqualStrings("url/test.any.js [worker]", report.results.items[0].test_path);
+}
+
+test "WptReport multi-context same test" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create result for window context
+    var window_result = try test_harness.TestResult.initWithContext(allocator, "url/test.any.js", "window");
+    defer window_result.deinit(allocator);
+    window_result.status = .ok;
+    window_result.duration_ms = 100;
+
+    // Create result for worker context
+    var worker_result = try test_harness.TestResult.initWithContext(allocator, "url/test.any.js", "worker");
+    defer worker_result.deinit(allocator);
+    worker_result.status = .ok;
+    worker_result.duration_ms = 150;
+
+    try report.addResult(window_result);
+    try report.addResult(worker_result);
+    report.finish();
+
+    // Should have two distinct entries
+    try testing.expectEqual(@as(usize, 2), report.results.items.len);
+    try testing.expectEqualStrings("url/test.any.js [window]", report.results.items[0].test_path);
+    try testing.expectEqualStrings("url/test.any.js [worker]", report.results.items[1].test_path);
+}
+
+test "WptReport without context" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create a test result without context (single-context test like .window.js)
+    var harness_result = try test_harness.TestResult.init(allocator, "url/test.window.js");
+    defer harness_result.deinit(allocator);
+
+    harness_result.status = .ok;
+    harness_result.duration_ms = 100;
+
+    try report.addResult(harness_result);
+    report.finish();
+
+    try testing.expectEqual(@as(usize, 1), report.results.items.len);
+    // The test path should NOT have a context suffix
+    try testing.expectEqualStrings("url/test.window.js", report.results.items[0].test_path);
 }

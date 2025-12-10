@@ -798,6 +798,21 @@ test "resolveScriptPath" {
     try testing.expectEqualStrings("tests/wpt/url/helper.js", rel);
 }
 
+test "parseAnyJs default globals - no META at all" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test with absolutely no META comments - should default to window+worker
+    const content = "test(() => {});";
+
+    var parsed = try parseAnyJs(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
+}
+
 test "parseAnyJs with default globals" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -816,6 +831,23 @@ test "parseAnyJs with default globals" {
     try testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
     try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
     try testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
+}
+
+test "parseAnyJs explicit globals override default" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Explicit window-only should NOT add default worker
+    const content =
+        \\// META: global=window
+        \\test(() => {});
+    ;
+
+    var parsed = try parseAnyJs(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
 }
 
 test "parseAnyJs with explicit globals" {
@@ -1134,4 +1166,174 @@ test "parseMetaComments - shadowrealm global" {
     try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
     try testing.expectEqual(GlobalType.shadowrealm, metadata.globals.items[1]);
     try testing.expectEqual(GlobalType.shadowrealm_in_window, metadata.globals.items[2]);
+}
+
+// =============================================================================
+// Multi-Context Execution Tests
+// =============================================================================
+
+test "multi-context: parseTestFile extracts multiple globals" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,worker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    try std.testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+    try std.testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
+}
+
+test "multi-context: test runs in each specified context" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,worker
+        \\test(function() {
+        \\  if (self.GLOBAL.isWindow()) {
+        \\    assert_true(true, "window context");
+        \\  } else if (self.GLOBAL.isWorker()) {
+        \\    assert_true(true, "worker context");
+        \\  }
+        \\});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Count how many contexts would execute
+    var executed_contexts: usize = 0;
+    for (parsed.metadata.globals.items) |ctx| {
+        if (ctx.isImplemented()) {
+            executed_contexts += 1;
+        }
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), executed_contexts);
+}
+
+test "multi-context: unimplemented contexts are skipped" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,sharedworker,serviceworker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Should have 3 globals parsed
+    try std.testing.expectEqual(@as(usize, 3), parsed.metadata.globals.items.len);
+
+    // But only 1 implemented (window)
+    var implemented: usize = 0;
+    for (parsed.metadata.globals.items) |ctx| {
+        if (ctx.isImplemented()) {
+            implemented += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), implemented);
+}
+
+test "multi-context: .any.js defaults to window+worker" {
+    const allocator = std.testing.allocator;
+
+    // No META: global specified
+    const content = "test(() => { assert_true(true); });";
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Should default to window + worker
+    try std.testing.expectEqual(@as(usize, 2), parsed.metadata.globals.items.len);
+    try std.testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+    try std.testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[1]);
+}
+
+test "multi-context: .window.js forces single window context" {
+    const allocator = std.testing.allocator;
+
+    // Even if META: global is specified, .window.js should force window only
+    const content =
+        \\// META: global=window,worker,sharedworker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.window.js", content);
+    defer parsed.deinit();
+
+    // .window.js should force window context only
+    try std.testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try std.testing.expectEqual(GlobalType.window, parsed.metadata.globals.items[0]);
+}
+
+test "multi-context: .worker.js forces single worker context" {
+    const allocator = std.testing.allocator;
+
+    // Even if META: global is specified, .worker.js should force worker only
+    const content =
+        \\// META: global=window,worker
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.worker.js", content);
+    defer parsed.deinit();
+
+    // .worker.js should force worker context only
+    try std.testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try std.testing.expectEqual(GlobalType.worker, parsed.metadata.globals.items[0]);
+}
+
+test "multi-context: counting implemented vs unimplemented contexts" {
+    const allocator = std.testing.allocator;
+
+    // Test with many context types including unimplemented ones
+    const content =
+        \\// META: global=window,worker,sharedworker,serviceworker,shadowrealm
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Should have 5 globals parsed
+    try std.testing.expectEqual(@as(usize, 5), parsed.metadata.globals.items.len);
+
+    // Count implemented contexts
+    var implemented: usize = 0;
+    var unimplemented: usize = 0;
+    for (parsed.metadata.globals.items) |ctx| {
+        if (ctx.isImplemented()) {
+            implemented += 1;
+        } else {
+            unimplemented += 1;
+        }
+    }
+
+    // Only window and worker are implemented
+    try std.testing.expectEqual(@as(usize, 2), implemented);
+    try std.testing.expectEqual(@as(usize, 3), unimplemented);
+}
+
+test "multi-context: effective test count with variants and globals" {
+    const allocator = std.testing.allocator;
+
+    const content =
+        \\// META: global=window,worker
+        \\// META: variant=?test=1
+        \\// META: variant=?test=2
+        \\// META: variant=?test=3
+        \\test(() => {});
+    ;
+
+    var parsed = try parseTestFile(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // 2 contexts * 3 variants = 6 effective tests
+    try std.testing.expectEqual(@as(usize, 6), parsed.metadata.getEffectiveTestCount());
 }

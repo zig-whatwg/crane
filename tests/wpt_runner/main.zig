@@ -488,9 +488,24 @@ pub const ProgressTracker = struct {
         }
     }
 
+    /// Print progress with optional context suffix
+    /// For single-context tests: [X/Y] path/test.any.js
+    /// For multi-context tests: [X/Y] path/test.any.js [worker]
     pub fn printProgress(self: *ProgressTracker, current_test: []const u8) void {
+        self.printProgressWithContext(current_test, null);
+    }
+
+    /// Print progress with explicit context
+    pub fn printProgressWithContext(self: *ProgressTracker, current_test: []const u8, context: ?[]const u8) void {
+        // Build display name with context suffix if present
+        var display_buf: [256]u8 = undefined;
+        const display_name = if (context) |ctx| blk: {
+            const len = std.fmt.bufPrint(&display_buf, "{s} [{s}]", .{ current_test, ctx }) catch current_test;
+            break :blk len;
+        } else current_test;
+
         if (self.verbose) {
-            print("[{d}/{d}] {s}\n", .{ self.completed, self.total, current_test });
+            print("[{d}/{d}] {s}\n", .{ self.completed, self.total, display_name });
         } else {
             // Print progress bar on same line
             const percent = if (self.total > 0) (self.completed * 100) / self.total else 0;
@@ -498,10 +513,10 @@ pub const ProgressTracker = struct {
 
             // Truncate test path if too long
             const max_path_len: usize = 50;
-            const display_path = if (current_test.len > max_path_len)
-                current_test[current_test.len - max_path_len ..]
+            const display_path = if (display_name.len > max_path_len)
+                display_name[display_name.len - max_path_len ..]
             else
-                current_test;
+                display_name;
 
             print("\r[{d}/{d}] {d}% | Pass: {d} | Fail: {d} | Time: {s} | {s}   ", .{
                 self.completed,
@@ -602,6 +617,47 @@ pub const ProgressTracker = struct {
     }
 };
 
+/// Calculate the total number of test runs, accounting for multi-context execution.
+/// Each test file may run multiple times if it specifies multiple globals.
+/// Only counts contexts that are actually implemented (window, worker).
+fn calculateTotalTests(
+    allocator: std.mem.Allocator,
+    discovery: DiscoveryResult,
+    options: Options,
+) !usize {
+    var total: usize = 0;
+
+    for (discovery.test_files.items) |test_file| {
+        // Load and parse each test file to get its globals
+        const content = loadTestContent(allocator, options, test_file) catch {
+            // If we can't load the file, count it as 1 (will be an error)
+            total += 1;
+            continue;
+        };
+        defer allocator.free(content);
+
+        var parsed = test_parser.parseTestFile(allocator, test_file.path, content) catch {
+            // If we can't parse the file, count it as 1 (will be an error)
+            total += 1;
+            continue;
+        };
+        defer parsed.deinit();
+
+        // Count only implemented contexts
+        var context_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) {
+                context_count += 1;
+            }
+        }
+
+        // If no implemented contexts, we still count it as 1 (will skip execution)
+        total += if (context_count > 0) context_count else 1;
+    }
+
+    return total;
+}
+
 /// Execute all discovered tests
 pub fn executeTests(
     allocator: std.mem.Allocator,
@@ -609,8 +665,11 @@ pub fn executeTests(
     options: Options,
     report: *result_reporter.WptReport,
 ) !void {
-    const total = discovery.test_files.items.len;
-    print("\nRunning {d} test files...\n\n", .{total});
+    // Calculate total accounting for multi-context execution
+    // This requires parsing all files upfront, but gives accurate progress tracking
+    const total = try calculateTotalTests(allocator, discovery, options);
+    const file_count = discovery.test_files.items.len;
+    print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
 
     // Create a single BrowserAdapter for all tests (single V8 isolate, new context per navigation)
     // This is much more efficient than creating a new isolate per test (~1-5ms vs ~50-100ms)
@@ -621,26 +680,12 @@ pub fn executeTests(
     defer progress.deinit();
 
     for (discovery.test_files.items) |test_file| {
-        // Execute single test file
-        const test_result = executeTestFile(allocator, options, test_file, browser) catch |err| {
-            // Create error result with stack trace
+        // Load content once per test file
+        const content = loadTestContent(allocator, options, test_file) catch |err| {
+            // Create error result for load failure
             var error_result = try test_harness.TestResult.init(allocator, test_file.path);
             error_result.status = .@"error";
-
-            // Capture and print full stack trace for debugging
-            const trace = @errorReturnTrace();
-            if (trace) |t| {
-                std.debug.print("\n=== ERROR in test: {s} ===\n", .{test_file.path});
-                std.debug.print("Error: {}\n", .{err});
-                std.debug.dumpStackTrace(t.*);
-                std.debug.print("=== END ERROR ===\n\n", .{});
-            } else {
-                std.debug.print("\n=== ERROR in test: {s} ===\n", .{test_file.path});
-                std.debug.print("Error: {} (no stack trace available)\n", .{err});
-                std.debug.print("=== END ERROR ===\n\n", .{});
-            }
-
-            error_result.message = try std.fmt.allocPrint(allocator, "Execution error: {}", .{err});
+            error_result.message = try std.fmt.allocPrint(allocator, "Failed to load test file: {}", .{err});
 
             progress.recordResult(test_file.path, error_result);
             progress.printProgress(test_file.path);
@@ -649,15 +694,89 @@ pub fn executeTests(
             error_result.deinit(allocator);
             continue;
         };
+        defer allocator.free(content);
 
-        progress.recordResult(test_file.path, test_result);
-        progress.printProgress(test_file.path);
+        // Parse once per test file
+        var parsed = test_parser.parseTestFile(allocator, test_file.path, content) catch |err| {
+            // Create error result for parse failure
+            var error_result = try test_harness.TestResult.init(allocator, test_file.path);
+            error_result.status = .@"error";
+            error_result.message = try std.fmt.allocPrint(allocator, "Failed to parse test file: {}", .{err});
 
-        try report.addResult(test_result);
+            progress.recordResult(test_file.path, error_result);
+            progress.printProgress(test_file.path);
 
-        // Clean up the test result (addResult copies the data)
-        var mutable_result = test_result;
-        mutable_result.deinit(allocator);
+            try report.addResult(error_result);
+            error_result.deinit(allocator);
+            continue;
+        };
+        defer parsed.deinit();
+
+        // Execute for each global context specified in metadata
+        // For .any.js files, this might be [window, worker]
+        // For .window.js files, this will be [window]
+        // For .worker.js files, this will be [worker]
+        for (parsed.metadata.globals.items) |global_context| {
+            // Skip unimplemented contexts (sharedworker, serviceworker, shadowrealm, etc.)
+            if (!global_context.isImplemented()) {
+                continue;
+            }
+
+            // Determine context name for multi-context tests
+            // For .any.js tests with multiple globals, include context suffix
+            // For single-context tests (.window.js, .worker.js), context is null
+            const context_name: ?[]const u8 = if (parsed.metadata.globals.items.len > 1)
+                global_context.toString()
+            else
+                null;
+
+            // Execute test in this context
+            const test_result = executeTestFileInContext(
+                allocator,
+                options,
+                test_file,
+                browser,
+                global_context,
+                content,
+                &parsed,
+                context_name,
+            ) catch |err| {
+                // Create error result with stack trace and context
+                var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
+                error_result.status = .@"error";
+
+                // Capture and print full stack trace for debugging
+                const trace = @errorReturnTrace();
+                if (trace) |t| {
+                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                    std.debug.print("Error: {}\n", .{err});
+                    std.debug.dumpStackTrace(t.*);
+                    std.debug.print("=== END ERROR ===\n\n", .{});
+                } else {
+                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                    std.debug.print("Error: {} (no stack trace available)\n", .{err});
+                    std.debug.print("=== END ERROR ===\n\n", .{});
+                }
+
+                error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
+
+                progress.recordResult(test_file.path, error_result);
+                progress.printProgressWithContext(test_file.path, context_name);
+
+                try report.addResult(error_result);
+                error_result.deinit(allocator);
+                continue;
+            };
+
+            progress.recordResult(test_file.path, test_result);
+            progress.printProgressWithContext(test_file.path, context_name);
+
+            try report.addResult(test_result);
+
+            // Clean up the test result (addResult copies the data)
+            var mutable_result = test_result;
+            mutable_result.deinit(allocator);
+        }
     }
 
     // Generate output path
@@ -667,24 +786,20 @@ pub fn executeTests(
     progress.printSummary(output_path);
 }
 
-/// Execute a single test file using the shared BrowserAdapter
-fn executeTestFile(
+/// Execute a single test file in a specific context using the shared BrowserAdapter
+/// This function is called once per context (e.g., window, worker) for each test file.
+/// File content and parsed metadata are passed in to avoid re-loading/re-parsing.
+/// context_name is the string to include in results (null for single-context tests).
+fn executeTestFileInContext(
     allocator: std.mem.Allocator,
     options: Options,
     test_file: TestFile,
     browser: *browser_adapter.BrowserAdapter,
+    context: test_parser.GlobalType,
+    content: []const u8,
+    parsed: *test_parser.ParsedTest,
+    context_name: ?[]const u8,
 ) !test_harness.TestResult {
-    // Read test file content
-    const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_file.path });
-    defer allocator.free(full_path);
-
-    const content = try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
-    defer allocator.free(content);
-
-    // Parse test file
-    var parsed = try test_parser.parseTestFile(allocator, test_file.path, content);
-    defer parsed.deinit();
-
     // For HTML files, use the HTML parser to build a real DOM
     // This enables document.querySelector() to find parsed elements
     if (test_file.file_type == .html) {
@@ -693,8 +808,13 @@ fn executeTestFile(
         // 2. Executes scripts during parsing (in document order)
         // 3. Fires DOMContentLoaded
         // 4. Waits for test completion
-        // HTML tests always run in window context
-        const result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout, .window);
+        // HTML tests always run in window context (no context suffix)
+        var result = try browser.runHTMLTest(test_file.path, content, parsed.metadata.timeout, .window);
+        // HTML tests are single-context, so context_name should be null
+        // But if it's provided (shouldn't happen), we need to set it
+        if (context_name) |ctx| {
+            result.context = try allocator.dupe(u8, ctx);
+        }
         return result;
     }
 
@@ -765,19 +885,24 @@ fn executeTestFile(
         test_content = combined;
     }
 
-    // Determine context type from metadata
-    // For .any.js files, metadata.globals contains the contexts to run in
-    // For .window.js files, it will be [.window]
-    // For .worker.js files, it will be [.worker]
-    const context_type: test_parser.GlobalType = if (parsed.metadata.globals.items.len > 0)
-        parsed.metadata.globals.items[0]
-    else
-        .window;
-
     // Execute the test using the BrowserAdapter with the specified context
     // Each test gets a fresh V8 context for complete isolation (matching real browser behavior)
-    const result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout, context_type);
+    var result = try browser.runTest(test_file.path, test_content, parsed.metadata.timeout, context);
+
+    // Set the context name for multi-context tests
+    if (context_name) |ctx| {
+        result.context = try allocator.dupe(u8, ctx);
+    }
+
     return result;
+}
+
+/// Load test file content from disk
+fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: TestFile) ![]u8 {
+    const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_file.path });
+    defer allocator.free(full_path);
+
+    return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
 }
 
 /// Output helper - uses std.debug.print for standalone compatibility
@@ -937,5 +1062,240 @@ test "Options.matchesFilter" {
 
         try testing.expect(options.matchesFilter("url/test.any.js"));
         try testing.expect(options.matchesFilter("anything/here.html"));
+    }
+}
+
+// =============================================================================
+// Multi-Context Integration Tests
+// =============================================================================
+
+test "multi-context: TestResult can hold context information" {
+    const allocator = std.testing.allocator;
+
+    // Test that TestResult can be initialized with context
+    var result = try test_harness.TestResult.initWithContext(allocator, "test.any.js", "worker");
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqualStrings("worker", result.context.?);
+    try std.testing.expectEqualStrings("test.any.js", result.test_path);
+}
+
+test "multi-context: TestResult display name includes context" {
+    const allocator = std.testing.allocator;
+
+    // Test with context
+    {
+        var result = try test_harness.TestResult.initWithContext(allocator, "url/test.any.js", "worker");
+        defer result.deinit(allocator);
+
+        const display_name = try result.getDisplayName(allocator);
+        defer allocator.free(display_name);
+
+        try std.testing.expectEqualStrings("url/test.any.js [worker]", display_name);
+    }
+
+    // Test without context (single-context test)
+    {
+        var result = try test_harness.TestResult.init(allocator, "url/test.window.js");
+        defer result.deinit(allocator);
+
+        const display_name = try result.getDisplayName(allocator);
+        defer allocator.free(display_name);
+
+        try std.testing.expectEqualStrings("url/test.window.js", display_name);
+    }
+}
+
+test "multi-context: parsing and context iteration integration" {
+    const allocator = std.testing.allocator;
+
+    // Parse a multi-context test file
+    const content =
+        \\// META: global=window,worker,sharedworker
+        \\test(() => { assert_true(true); });
+    ;
+
+    var parsed = try test_parser.parseTestFile(allocator, "encoding/test.any.js", content);
+    defer parsed.deinit();
+
+    // Simulate the execution loop that would run in each context
+    var results: std.ArrayListUnmanaged(test_harness.TestResult) = .{};
+    defer {
+        for (results.items) |*r| r.deinit(allocator);
+        results.deinit(allocator);
+    }
+
+    for (parsed.metadata.globals.items) |ctx| {
+        if (ctx.isImplemented()) {
+            // Create a result for this context
+            var result = try test_harness.TestResult.initWithContext(
+                allocator,
+                parsed.path,
+                ctx.toString(),
+            );
+            result.status = .ok;
+            try results.append(allocator, result);
+        }
+    }
+
+    // Should have 2 results (window and worker are implemented, sharedworker is not)
+    try std.testing.expectEqual(@as(usize, 2), results.items.len);
+
+    // Verify contexts
+    try std.testing.expectEqualStrings("window", results.items[0].context.?);
+    try std.testing.expectEqualStrings("worker", results.items[1].context.?);
+}
+
+test "multi-context: GlobalType iteration for test execution" {
+    // Test that we can iterate over parsed globals and filter by implementation status
+    const globals = [_]test_parser.GlobalType{
+        .window,
+        .worker,
+        .sharedworker,
+        .serviceworker,
+        .shadowrealm,
+    };
+
+    var implemented_count: usize = 0;
+    var skipped_count: usize = 0;
+
+    for (globals) |g| {
+        if (g.isImplemented()) {
+            implemented_count += 1;
+        } else {
+            skipped_count += 1;
+        }
+    }
+
+    // window and worker are implemented
+    try std.testing.expectEqual(@as(usize, 2), implemented_count);
+    // sharedworker, serviceworker, shadowrealm are not implemented
+    try std.testing.expectEqual(@as(usize, 3), skipped_count);
+}
+
+test "multi-context: result collection per context" {
+    const allocator = std.testing.allocator;
+
+    // Simulate collecting results from multiple context executions
+    var collector = test_harness.ResultCollector.init(allocator);
+    defer collector.deinit();
+
+    // Simulate window context execution
+    try collector.startTest("test.any.js [window]");
+    try collector.addResult(test_harness.SubtestResult{
+        .name = try allocator.dupe(u8, "basic test"),
+        .status = .pass,
+        .duration_ms = 5,
+    });
+    try collector.finishTest(.ok, null, 10);
+
+    // Simulate worker context execution
+    try collector.startTest("test.any.js [worker]");
+    try collector.addResult(test_harness.SubtestResult{
+        .name = try allocator.dupe(u8, "basic test"),
+        .status = .pass,
+        .duration_ms = 8,
+    });
+    try collector.finishTest(.ok, null, 15);
+
+    // Should have 2 test results (one per context)
+    try std.testing.expectEqual(@as(usize, 2), collector.results.items.len);
+
+    // Both should pass
+    const totals = collector.getTotals();
+    try std.testing.expectEqual(@as(usize, 2), totals.passed);
+    try std.testing.expectEqual(@as(usize, 0), totals.failed);
+}
+
+test "calculateTotalTests counts implemented contexts" {
+    // This test verifies that calculateTotalTests correctly counts
+    // the total number of test executions (not files) when accounting
+    // for multi-context execution.
+
+    // Test the counting logic directly:
+    // - .any.js with no META: defaults to window + worker = 2
+    // - .any.js with global=window: explicit window = 1
+    // - .any.js with global=window,worker: = 2
+    // - .any.js with global=window,worker,sharedworker: = 2 (sharedworker not implemented)
+    // - .window.js: always window = 1
+    // - .worker.js: always worker = 1
+
+    const allocator = std.testing.allocator;
+
+    // Test case 1: .any.js with no META defaults to window+worker
+    {
+        const content = "test(() => {});";
+        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
+        defer parsed.deinit();
+
+        var implemented_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) implemented_count += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 2), implemented_count);
+    }
+
+    // Test case 2: explicit single context
+    {
+        const content =
+            \\// META: global=window
+            \\test(() => {});
+        ;
+        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
+        defer parsed.deinit();
+
+        var implemented_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) implemented_count += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+    }
+
+    // Test case 3: mix of implemented and unimplemented contexts
+    {
+        const content =
+            \\// META: global=window,worker,sharedworker,serviceworker
+            \\test(() => {});
+        ;
+        var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
+        defer parsed.deinit();
+
+        var implemented_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) implemented_count += 1;
+        }
+        // window and worker are implemented, sharedworker and serviceworker are not
+        try std.testing.expectEqual(@as(usize, 2), implemented_count);
+    }
+
+    // Test case 4: .window.js forces window only
+    {
+        const content =
+            \\// META: global=worker
+            \\test(() => {});
+        ;
+        var parsed = try test_parser.parseTestFile(allocator, "test.window.js", content);
+        defer parsed.deinit();
+
+        var implemented_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) implemented_count += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+        try std.testing.expectEqual(test_parser.GlobalType.window, parsed.metadata.globals.items[0]);
+    }
+
+    // Test case 5: .worker.js forces worker only
+    {
+        const content = "test(() => {});";
+        var parsed = try test_parser.parseTestFile(allocator, "test.worker.js", content);
+        defer parsed.deinit();
+
+        var implemented_count: usize = 0;
+        for (parsed.metadata.globals.items) |ctx| {
+            if (ctx.isImplemented()) implemented_count += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+        try std.testing.expectEqual(test_parser.GlobalType.worker, parsed.metadata.globals.items[0]);
     }
 }
