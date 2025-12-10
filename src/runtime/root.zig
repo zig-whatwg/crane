@@ -171,6 +171,15 @@ pub const TimerInterface = timer.TimerInterface;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
 
+// Typed callback wrappers for type-safe callback handling
+// Replaces *anyopaque user data with typed alternatives
+pub const typed_callback = @import("typed_callback.zig");
+pub const TypedCallback = typed_callback.TypedCallback;
+pub const TypedTimerCallback = typed_callback.TypedTimerCallback;
+pub const TypedMicrotaskCallback = typed_callback.TypedMicrotaskCallback;
+pub const TypedGCCallback = typed_callback.TypedGCCallback;
+pub const SelfContainedCallback = typed_callback.SelfContainedCallback;
+
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;
 pub const deinitRuntime = deinitializeRuntime;

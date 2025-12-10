@@ -12,7 +12,7 @@
 //! Each host provides its own implementation. For V8, this is libuv.
 //! Future hosts can use their native timer facilities.
 //!
-//! ## Usage
+//! ## Usage (Legacy anyopaque API)
 //!
 //! ```zig
 //! // Get timer interface from runtime context
@@ -24,6 +24,47 @@
 //! // Cancel if needed
 //! timer.cancel(id);
 //! ```
+//!
+//! ## Usage (Typed Callback API)
+//!
+//! For type-safe callbacks, use the typed wrapper pattern:
+//!
+//! ```zig
+//! const typed_callback = @import("typed_callback.zig");
+//!
+//! const MyContext = struct {
+//!     request_id: u64,
+//!     on_timeout: *const fn (u64) void,
+//! };
+//!
+//! fn handleTimeout(ctx: *MyContext) void {
+//!     ctx.on_timeout(ctx.request_id);
+//! }
+//!
+//! // Create typed wrapper
+//! var ctx = MyContext{ .request_id = 123, .on_timeout = &logTimeout };
+//! const wrapper = try typed_callback.SelfContainedCallback(MyContext, void).create(
+//!     allocator,
+//!     &handleTimeout,
+//!     ctx,
+//! );
+//!
+//! // Use with timer
+//! const id = timer.setTimeoutTyped(
+//!     wrapper.getTrampolineCallback(),
+//!     wrapper.toAnyopaque(),
+//!     1000,
+//! );
+//! ```
+//!
+//! ## Lifetime Contracts
+//!
+//! ### Timer Callbacks
+//! - UserData must remain valid until timer fires OR is cancelled
+//! - After callback invocation, timer system no longer references data
+//! - If timer is cancelled, callback is NOT invoked - caller must clean up data
+//! - For typed callbacks using SelfContainedCallback, remember to call destroy()
+//!   after the timer fires or is cancelled
 
 const std = @import("std");
 

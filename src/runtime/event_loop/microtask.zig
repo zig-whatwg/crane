@@ -19,6 +19,42 @@
 //!    c. (May enqueue more microtasks)
 //! 2. Repeat until queue is empty
 //!
+//! ## Typed Callback Support
+//!
+//! For type-safe microtasks, use runtime.TypedMicrotaskCallback or
+//! runtime.SelfContainedCallback:
+//!
+//! ```zig
+//! const typed_callback = @import("runtime").typed_callback;
+//!
+//! const ReactionCtx = struct {
+//!     value: JSValue,
+//!     handler: *const fn (JSValue) void,
+//! };
+//!
+//! fn executeReaction(ctx: *ReactionCtx) void {
+//!     ctx.handler(ctx.value);
+//! }
+//!
+//! // Non-owning reference (caller manages lifetime)
+//! var ctx = ReactionCtx{ .value = value, .handler = myHandler };
+//! const cb = typed_callback.TypedMicrotaskCallback(ReactionCtx).init(
+//!     &executeReaction,
+//!     &ctx,
+//! );
+//!
+//! // Queue with typed callback
+//! var node = MicrotaskNode.init(cb.toLegacyCallback(), cb.getDataAnyopaque());
+//! queue.enqueue(&node);
+//! ```
+//!
+//! ## Lifetime Contracts
+//!
+//! - UserData must remain valid until microtask checkpoint executes
+//! - Microtasks CANNOT be cancelled once enqueued
+//! - After execution, microtask system no longer references data
+//! - Microtasks may enqueue more microtasks (all execute before returning)
+//!
 //! ## References
 //!
 //! - WHATWG HTML Standard: Microtask queuing

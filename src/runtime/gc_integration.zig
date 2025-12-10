@@ -13,6 +13,49 @@
 //!
 //! Thread safety: Callbacks are called from GC thread
 //! Memory model: Two-phase cleanup (deinit resources, then batch free memory)
+//!
+//! ## Typed GC Callback Support
+//!
+//! For type-safe GC finalizers, use runtime.TypedGCCallback:
+//!
+//! ```zig
+//! const typed_callback = @import("typed_callback.zig");
+//!
+//! const NativeResource = struct {
+//!     file_handle: std.fs.File,
+//!     buffer: []u8,
+//!     allocator: std.mem.Allocator,
+//! };
+//!
+//! fn cleanupResource(resource: *NativeResource) void {
+//!     resource.file_handle.close();
+//!     resource.allocator.free(resource.buffer);
+//! }
+//!
+//! // Create resource on heap (required for GC callbacks)
+//! var resource = try allocator.create(NativeResource);
+//! resource.* = .{ .file_handle = file, .buffer = buf, .allocator = allocator };
+//!
+//! // Create typed callback
+//! var cb = typed_callback.TypedGCCallback(NativeResource).init(
+//!     &cleanupResource,
+//!     resource,
+//!     allocator,
+//! );
+//!
+//! // Register with V8 weak callback API
+//! // The toLegacyCallbackC() provides C-compatible function pointer
+//! v8_set_weak_callback(handle, cb.getDataAnyopaque(), TypedGCCallback(NativeResource).toLegacyCallbackC());
+//! ```
+//!
+//! ## Lifetime Contracts
+//!
+//! ### GC Finalizer Callbacks
+//! - UserData MUST be heap-allocated (stack is invalid during GC)
+//! - GC may call finalizer on ANY thread (must be thread-safe)
+//! - After finalizer returns, object is fully collected
+//! - Do NOT access JavaScript objects from finalizer (may trigger GC recursion)
+//! - Do NOT allocate in finalizer (may cause deadlock)
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;

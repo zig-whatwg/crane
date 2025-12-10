@@ -14,6 +14,36 @@
 //!
 //! The V8EventLoop runs libuv's event loop in UV_RUN_NOWAIT mode during
 //! its runOnce() call, which processes any ready timer callbacks.
+//!
+//! ## Typed Callback Support
+//!
+//! For type-safe callbacks, use the runtime.typed_callback module:
+//!
+//! ```zig
+//! const typed_callback = @import("runtime").typed_callback;
+//!
+//! const MyContext = struct {
+//!     request_id: u64,
+//!     allocator: std.mem.Allocator,
+//! };
+//!
+//! fn handleTimeout(ctx: *MyContext) void {
+//!     std.debug.print("Request {} timed out\n", .{ctx.request_id});
+//! }
+//!
+//! // Create self-contained callback for timer
+//! var wrapper = try typed_callback.SelfContainedCallback(MyContext, void).create(
+//!     allocator,
+//!     &handleTimeout,
+//!     .{ .request_id = 123, .allocator = allocator },
+//! );
+//!
+//! // Schedule with typed callback
+//! const id = manager.setTimeout(1000, wrapper.getTrampolineCallback(), wrapper.toAnyopaque());
+//!
+//! // On timeout, trampoline invokes handleTimeout with type safety
+//! // Remember to destroy wrapper when done (after fire or cancel)
+//! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
