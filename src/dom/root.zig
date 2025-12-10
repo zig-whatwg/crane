@@ -82,6 +82,9 @@ pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 pub const node_base = @import("node_base.zig");
 pub const NodeBase = node_base.NodeBase;
 
+// Opaque handle types for breaking circular imports
+pub const handles = @import("handles.zig");
+
 // Temporary bridge types with NodeBase pattern (until codegen is updated)
 pub const element_with_base = @import("element_with_base.zig");
 pub const ElementWithBase = element_with_base.ElementWithBase;

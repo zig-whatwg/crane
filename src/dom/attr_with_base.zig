@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const node_base = @import("node_base.zig");
+const handles = @import("handles.zig");
 const Allocator = std.mem.Allocator;
 
 pub const NodeBase = node_base.NodeBase;
@@ -41,8 +42,8 @@ pub const AttrWithBase = struct {
     /// The attribute's namespace prefix (null or a non-empty string)
     prefix: ?[]const u8,
 
-    /// The element this attribute belongs to (weak reference)
-    owner_element: ?*anyopaque,
+    /// The element this attribute belongs to (weak reference, typed handle)
+    owner_element: ?*handles.ElementHandle,
 
     /// Initialize a new Attr node
     pub fn init(
@@ -126,5 +127,15 @@ pub const AttrWithBase = struct {
     /// Get the attribute's prefix
     pub fn getPrefix(self: *const AttrWithBase) ?[]const u8 {
         return self.prefix;
+    }
+
+    /// Get the owner element as anyopaque (for legacy interop)
+    pub fn getOwnerElementPtr(self: *const AttrWithBase) ?*anyopaque {
+        return handles.elementToAnyopaque(self.owner_element);
+    }
+
+    /// Set the owner element from an anyopaque pointer
+    pub fn setOwnerElementFromPtr(self: *AttrWithBase, element_ptr: ?*anyopaque) void {
+        self.owner_element = handles.anyopaqueToElement(element_ptr);
     }
 };
