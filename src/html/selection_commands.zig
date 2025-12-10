@@ -18,7 +18,10 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const impls = @import("impls");
+
+// Interface aliases for IDL operations - all IDL calls go through interfaces per Golden Rule #12
+const Document = interfaces.Document;
+const Selection = interfaces.Selection;
 
 /// Result of executing a command (mirrors editing.CommandResult)
 pub const CommandResult = struct {
@@ -54,7 +57,7 @@ pub fn executeSelectAll(allocator: std.mem.Allocator, document: ?DocumentHandle)
     };
 
     // Get document's Selection
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -63,13 +66,13 @@ pub fn executeSelectAll(allocator: std.mem.Allocator, document: ?DocumentHandle)
     };
 
     // Get editing host (document.body)
-    const body_opt = impls.Document.get_body(doc_instance) catch null;
+    const body_opt = Document.get_body(doc_instance) catch null;
     const editing_host = body_opt orelse {
         return .{ .success = false, .error_message = "No body element" };
     };
 
     // Call selection.selectAllChildren(editingHost)
-    impls.Selection.call_selectAllChildren(selection, editing_host) catch {
+    Selection.call_selectAllChildren(selection, editing_host) catch {
         return .{ .success = false, .error_message = "Failed to select all children" };
     };
 
@@ -93,7 +96,7 @@ pub fn executeDelete(allocator: std.mem.Allocator, document: ?DocumentHandle) !C
     };
 
     // Get document's Selection
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -102,11 +105,11 @@ pub fn executeDelete(allocator: std.mem.Allocator, document: ?DocumentHandle) !C
     };
 
     // Check if selection is collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
 
     if (!is_collapsed) {
         // Selection has content - delete it
-        impls.Selection.call_deleteFromDocument(selection) catch {
+        Selection.call_deleteFromDocument(selection) catch {
             return .{ .success = false, .error_message = "Failed to delete selection" };
         };
 
@@ -116,7 +119,7 @@ pub fn executeDelete(allocator: std.mem.Allocator, document: ?DocumentHandle) !C
 
     // Selection is collapsed (caret) - delete character before caret
     // First, extend selection backward by one character
-    impls.Selection.call_modify(
+    Selection.call_modify(
         selection,
         .{ .was_passed = true, .value = runtime.DOMString.initInterned("extend") },
         .{ .was_passed = true, .value = runtime.DOMString.initInterned("backward") },
@@ -127,14 +130,14 @@ pub fn executeDelete(allocator: std.mem.Allocator, document: ?DocumentHandle) !C
     };
 
     // Check if we actually extended (not at boundary)
-    const still_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const still_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (still_collapsed) {
         // Couldn't extend - at start of content
         return .{ .success = true };
     }
 
     // Now delete the extended selection
-    impls.Selection.call_deleteFromDocument(selection) catch {
+    Selection.call_deleteFromDocument(selection) catch {
         return .{ .success = false, .error_message = "Failed to delete character" };
     };
 
@@ -159,7 +162,7 @@ pub fn executeForwardDelete(allocator: std.mem.Allocator, document: ?DocumentHan
     };
 
     // Get document's Selection
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -168,11 +171,11 @@ pub fn executeForwardDelete(allocator: std.mem.Allocator, document: ?DocumentHan
     };
 
     // Check if selection is collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
 
     if (!is_collapsed) {
         // Selection has content - delete it
-        impls.Selection.call_deleteFromDocument(selection) catch {
+        Selection.call_deleteFromDocument(selection) catch {
             return .{ .success = false, .error_message = "Failed to delete selection" };
         };
 
@@ -182,7 +185,7 @@ pub fn executeForwardDelete(allocator: std.mem.Allocator, document: ?DocumentHan
 
     // Selection is collapsed (caret) - delete character after caret
     // First, extend selection forward by one character
-    impls.Selection.call_modify(
+    Selection.call_modify(
         selection,
         .{ .was_passed = true, .value = runtime.DOMString.initInterned("extend") },
         .{ .was_passed = true, .value = runtime.DOMString.initInterned("forward") },
@@ -193,14 +196,14 @@ pub fn executeForwardDelete(allocator: std.mem.Allocator, document: ?DocumentHan
     };
 
     // Check if we actually extended (not at boundary)
-    const still_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const still_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (still_collapsed) {
         // Couldn't extend - at end of content
         return .{ .success = true };
     }
 
     // Now delete the extended selection
-    impls.Selection.call_deleteFromDocument(selection) catch {
+    Selection.call_deleteFromDocument(selection) catch {
         return .{ .success = false, .error_message = "Failed to delete character" };
     };
 

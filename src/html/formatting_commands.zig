@@ -16,7 +16,13 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const impls = @import("impls");
+
+// Interface aliases for IDL operations - all IDL calls go through interfaces per Golden Rule #12
+const Document = interfaces.Document;
+const Selection = interfaces.Selection;
+const Element = interfaces.Element;
+const Node = interfaces.Node;
+const Range = interfaces.Range;
 
 /// Result of executing a command
 pub const CommandResult = struct {
@@ -97,7 +103,7 @@ pub fn executeFontName(
     };
 
     // Get selection
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -106,7 +112,7 @@ pub fn executeFontName(
     };
 
     // Check if collapsed - if so, formatting applies to next typed character
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
 
     if (is_collapsed) {
         // TODO: Set pending formatting state for next input
@@ -114,13 +120,13 @@ pub fn executeFontName(
     }
 
     // Get range count
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
     // Get the first range
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -129,7 +135,7 @@ pub fn executeFontName(
     }
 
     // Create span element with font-family style
-    const span = impls.Document.call_createElement(
+    const span = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("span"),
     ) catch {
@@ -147,7 +153,7 @@ pub fn executeFontName(
     };
 
     // Set style attribute
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
         runtime.DOMString.initFromSlice(allocator, style) catch {
@@ -158,7 +164,7 @@ pub fn executeFontName(
     };
 
     // Surround range contents with span
-    impls.Range.call_surroundContents(range.?, span.?) catch {
+    Range.call_surroundContents(range.?, span.?) catch {
         return .{ .success = false, .error_message = "Failed to surround contents" };
     };
 
@@ -198,7 +204,7 @@ pub fn executeFontSize(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -206,17 +212,17 @@ pub fn executeFontSize(
         return .{ .success = false, .error_message = "No selection available" };
     };
 
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (is_collapsed) {
         return .{ .success = true };
     }
 
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -225,7 +231,7 @@ pub fn executeFontSize(
     }
 
     // Create span with font-size
-    const span = impls.Document.call_createElement(
+    const span = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("span"),
     ) catch {
@@ -241,7 +247,7 @@ pub fn executeFontSize(
         return .{ .success = false, .error_message = "Size value too long" };
     };
 
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
         runtime.DOMString.initFromSlice(allocator, style) catch {
@@ -251,7 +257,7 @@ pub fn executeFontSize(
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
 
-    impls.Range.call_surroundContents(range.?, span.?) catch {
+    Range.call_surroundContents(range.?, span.?) catch {
         return .{ .success = false, .error_message = "Failed to surround contents" };
     };
 
@@ -281,7 +287,7 @@ pub fn executeForeColor(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -289,17 +295,17 @@ pub fn executeForeColor(
         return .{ .success = false, .error_message = "No selection available" };
     };
 
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (is_collapsed) {
         return .{ .success = true };
     }
 
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -307,7 +313,7 @@ pub fn executeForeColor(
         return .{ .success = true };
     }
 
-    const span = impls.Document.call_createElement(
+    const span = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("span"),
     ) catch {
@@ -323,7 +329,7 @@ pub fn executeForeColor(
         return .{ .success = false, .error_message = "Color value too long" };
     };
 
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
         runtime.DOMString.initFromSlice(allocator, style) catch {
@@ -333,7 +339,7 @@ pub fn executeForeColor(
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
 
-    impls.Range.call_surroundContents(range.?, span.?) catch {
+    Range.call_surroundContents(range.?, span.?) catch {
         return .{ .success = false, .error_message = "Failed to surround contents" };
     };
 
@@ -363,7 +369,7 @@ pub fn executeBackColor(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -371,17 +377,17 @@ pub fn executeBackColor(
         return .{ .success = false, .error_message = "No selection available" };
     };
 
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (is_collapsed) {
         return .{ .success = true };
     }
 
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -389,7 +395,7 @@ pub fn executeBackColor(
         return .{ .success = true };
     }
 
-    const span = impls.Document.call_createElement(
+    const span = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("span"),
     ) catch {
@@ -405,7 +411,7 @@ pub fn executeBackColor(
         return .{ .success = false, .error_message = "Color value too long" };
     };
 
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
         runtime.DOMString.initFromSlice(allocator, style) catch {
@@ -415,7 +421,7 @@ pub fn executeBackColor(
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
 
-    impls.Range.call_surroundContents(range.?, span.?) catch {
+    Range.call_surroundContents(range.?, span.?) catch {
         return .{ .success = false, .error_message = "Failed to surround contents" };
     };
 
@@ -451,7 +457,7 @@ pub fn executeJustify(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -460,7 +466,7 @@ pub fn executeJustify(
     };
 
     // Get anchor node (start of selection)
-    const anchor_node = impls.Selection.get_anchorNode(selection) catch null;
+    const anchor_node = Selection.get_anchorNode(selection) catch null;
     if (anchor_node == null) {
         return .{ .success = true };
     }
@@ -471,10 +477,10 @@ pub fn executeJustify(
 
     while (current != null) {
         // Check if this is a block-level element
-        const node_type = impls.Node.get_nodeType(current.?) catch 0;
+        const node_type = Node.get_nodeType(current.?) catch 0;
         if (node_type == 1) { // ELEMENT_NODE
             // Check tag name for block elements
-            const tag_name_opt = impls.Element.get_tagName(current.?) catch null;
+            const tag_name_opt = Element.get_tagName(current.?) catch null;
             if (tag_name_opt) |tag_name| {
                 const tag_str = tag_name.get() catch "";
                 if (isBlockElement(tag_str)) {
@@ -485,12 +491,12 @@ pub fn executeJustify(
         }
 
         // Move to parent
-        current = impls.Node.get_parentNode(current.?) catch null;
+        current = Node.get_parentNode(current.?) catch null;
     }
 
     // If no block element found, try document body
     if (block_element == null) {
-        block_element = impls.Document.get_body(doc_instance) catch null;
+        block_element = Document.get_body(doc_instance) catch null;
     }
 
     if (block_element == null) {
@@ -506,7 +512,7 @@ pub fn executeJustify(
         return .{ .success = false, .error_message = "Style value too long" };
     };
 
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         block_element.?,
         runtime.DOMString.initInterned("style"),
         runtime.DOMString.initFromSlice(std.heap.page_allocator, new_style) catch {
@@ -622,7 +628,7 @@ pub fn executeRemoveFormat(
     };
 
     // Get selection
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -631,19 +637,19 @@ pub fn executeRemoveFormat(
     };
 
     // Check if collapsed - nothing to remove
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (is_collapsed) {
         return .{ .success = true };
     }
 
     // Get range count
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
     // Get the first range
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -652,7 +658,7 @@ pub fn executeRemoveFormat(
     }
 
     // Get common ancestor container
-    const common_ancestor = impls.Range.get_commonAncestorContainer(range.?) catch null;
+    const common_ancestor = Range.get_commonAncestorContainer(range.?) catch null;
     if (common_ancestor == null) {
         return .{ .success = true };
     }
@@ -687,10 +693,10 @@ fn collectFormattingNodes(
     nodes_to_unwrap: *std.ArrayList(*runtime.Instance),
     spans_to_clean: *std.ArrayList(*runtime.Instance),
 ) !void {
-    const node_type = impls.Node.get_nodeType(node) catch 0;
+    const node_type = Node.get_nodeType(node) catch 0;
 
     if (node_type == 1) { // ELEMENT_NODE
-        const tag_name_opt = impls.Element.get_tagName(node) catch null;
+        const tag_name_opt = Element.get_tagName(node) catch null;
         if (tag_name_opt) |tag_name| {
             const tag_str = tag_name.get() catch "";
 
@@ -698,7 +704,7 @@ fn collectFormattingNodes(
                 try nodes_to_unwrap.append(node);
             } else if (std.ascii.eqlIgnoreCase(tag_str, "SPAN")) {
                 // Check if span has formatting styles
-                const style_opt = impls.Element.call_getAttribute(
+                const style_opt = Element.call_getAttribute(
                     node,
                     runtime.DOMString.initInterned("style"),
                 ) catch null;
@@ -711,10 +717,10 @@ fn collectFormattingNodes(
     }
 
     // Recurse to children
-    const first_child = impls.Node.get_firstChild(node) catch null;
+    const first_child = Node.get_firstChild(node) catch null;
     var child = first_child;
     while (child != null) {
-        const next = impls.Node.get_nextSibling(child.?) catch null;
+        const next = Node.get_nextSibling(child.?) catch null;
         try collectFormattingNodes(child.?, nodes_to_unwrap, spans_to_clean);
         child = next;
     }
@@ -722,38 +728,38 @@ fn collectFormattingNodes(
 
 /// Unwrap an element by moving its children to its parent and removing it
 fn unwrapElement(element: *runtime.Instance) !void {
-    const parent = impls.Node.get_parentNode(element) catch null;
+    const parent = Node.get_parentNode(element) catch null;
     if (parent == null) return;
 
     // Move all children before this element
-    var child = impls.Node.get_firstChild(element) catch null;
+    var child = Node.get_firstChild(element) catch null;
     while (child != null) {
-        const next = impls.Node.get_nextSibling(child.?) catch null;
-        _ = impls.Node.call_insertBefore(parent.?, child.?, element) catch null;
+        const next = Node.get_nextSibling(child.?) catch null;
+        _ = Node.call_insertBefore(parent.?, child.?, element) catch null;
         child = next;
     }
 
     // Remove the now-empty element
-    _ = impls.Node.call_removeChild(parent.?, element) catch null;
+    _ = Node.call_removeChild(parent.?, element) catch null;
 }
 
 /// Remove formatting CSS properties from a span
 fn cleanSpanFormatting(span: *runtime.Instance) !void {
     // For now, just remove the style attribute entirely
     // A more sophisticated implementation would parse and filter CSS properties
-    impls.Element.call_removeAttribute(
+    Element.call_removeAttribute(
         span,
         runtime.DOMString.initInterned("style"),
     ) catch return;
 
     // Check if span is now empty (no attributes, no class)
     // If so, unwrap it too
-    const class_opt = impls.Element.call_getAttribute(
+    const class_opt = Element.call_getAttribute(
         span,
         runtime.DOMString.initInterned("class"),
     ) catch null;
 
-    const id_opt = impls.Element.call_getAttribute(
+    const id_opt = Element.call_getAttribute(
         span,
         runtime.DOMString.initInterned("id"),
     ) catch null;

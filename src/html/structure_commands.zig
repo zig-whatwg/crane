@@ -15,7 +15,14 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const impls = @import("impls");
+
+// Interface aliases for IDL operations - all IDL calls go through interfaces per Golden Rule #12
+const Document = interfaces.Document;
+const Selection = interfaces.Selection;
+const Element = interfaces.Element;
+const Node = interfaces.Node;
+const Range = interfaces.Range;
+const HTMLTemplateElement = interfaces.HTMLTemplateElement;
 
 /// Result of executing a command
 pub const CommandResult = struct {
@@ -66,7 +73,7 @@ fn executeInsertList(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -75,7 +82,7 @@ fn executeInsertList(
     };
 
     // Get anchor node to check if already in list
-    const anchor_node = impls.Selection.get_anchorNode(selection) catch null;
+    const anchor_node = Selection.get_anchorNode(selection) catch null;
     if (anchor_node == null) {
         return .{ .success = true };
     }
@@ -86,9 +93,9 @@ fn executeInsertList(
     var existing_list_type: ?[]const u8 = null;
 
     while (current != null) {
-        const node_type = impls.Node.get_nodeType(current.?) catch 0;
+        const node_type = Node.get_nodeType(current.?) catch 0;
         if (node_type == 1) { // ELEMENT_NODE
-            const tag_name_opt = impls.Element.get_tagName(current.?) catch null;
+            const tag_name_opt = Element.get_tagName(current.?) catch null;
             if (tag_name_opt) |tag_name| {
                 const tag_str = tag_name.get() catch "";
                 if (std.ascii.eqlIgnoreCase(tag_str, "OL") or std.ascii.eqlIgnoreCase(tag_str, "UL")) {
@@ -98,7 +105,7 @@ fn executeInsertList(
                 }
             }
         }
-        current = impls.Node.get_parentNode(current.?) catch null;
+        current = Node.get_parentNode(current.?) catch null;
     }
 
     const list_tag = if (ordered) "ol" else "ul";
@@ -120,12 +127,12 @@ fn executeInsertList(
     }
 
     // Not in a list - create new list
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count == 0) {
         return .{ .success = true };
     }
 
-    const range = impls.Selection.call_getRangeAt(selection, 0) catch {
+    const range = Selection.call_getRangeAt(selection, 0) catch {
         return .{ .success = false, .error_message = "Failed to get range" };
     };
 
@@ -134,7 +141,7 @@ fn executeInsertList(
     }
 
     // Create list element
-    const list = impls.Document.call_createElement(
+    const list = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned(list_tag),
     ) catch {
@@ -146,7 +153,7 @@ fn executeInsertList(
     }
 
     // Create list item
-    const li = impls.Document.call_createElement(
+    const li = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("li"),
     ) catch {
@@ -158,24 +165,24 @@ fn executeInsertList(
     }
 
     // Extract selection contents
-    const contents = impls.Range.call_extractContents(range.?) catch {
+    const contents = Range.call_extractContents(range.?) catch {
         return .{ .success = false, .error_message = "Failed to extract contents" };
     };
 
     if (contents != null) {
         // Append contents to li
-        _ = impls.Node.call_appendChild(li.?, contents.?) catch {
+        _ = Node.call_appendChild(li.?, contents.?) catch {
             return .{ .success = false, .error_message = "Failed to append to list item" };
         };
     }
 
     // Append li to list
-    _ = impls.Node.call_appendChild(list.?, li.?) catch {
+    _ = Node.call_appendChild(list.?, li.?) catch {
         return .{ .success = false, .error_message = "Failed to append list item to list" };
     };
 
     // Insert list at range position
-    impls.Range.call_insertNode(range.?, list.?) catch {
+    Range.call_insertNode(range.?, list.?) catch {
         return .{ .success = false, .error_message = "Failed to insert list" };
     };
 
@@ -198,7 +205,7 @@ pub fn executeInsertParagraph(allocator: std.mem.Allocator, document: DocumentHa
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -207,13 +214,13 @@ pub fn executeInsertParagraph(allocator: std.mem.Allocator, document: DocumentHa
     };
 
     // Delete selection if not collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (!is_collapsed) {
-        impls.Selection.call_deleteFromDocument(selection) catch {};
+        Selection.call_deleteFromDocument(selection) catch {};
     }
 
     // Create new paragraph
-    const p = impls.Document.call_createElement(
+    const p = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("p"),
     ) catch {
@@ -225,24 +232,24 @@ pub fn executeInsertParagraph(allocator: std.mem.Allocator, document: DocumentHa
     }
 
     // Add a br to make the paragraph visible/editable
-    const br = impls.Document.call_createElement(
+    const br = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("br"),
     ) catch null;
 
     if (br != null) {
-        _ = impls.Node.call_appendChild(p.?, br.?) catch {};
+        _ = Node.call_appendChild(p.?, br.?) catch {};
     }
 
     // Get range and insert
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count > 0) {
-        if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+        if (Selection.call_getRangeAt(selection, 0)) |range| {
             if (range != null) {
-                impls.Range.call_insertNode(range.?, p.?) catch {};
+                Range.call_insertNode(range.?, p.?) catch {};
                 // Collapse selection to new paragraph
-                impls.Range.call_selectNodeContents(range.?, p.?) catch {};
-                impls.Range.call_collapse(range.?, true) catch {};
+                Range.call_selectNodeContents(range.?, p.?) catch {};
+                Range.call_collapse(range.?, true) catch {};
             }
         } else |_| {}
     }
@@ -262,7 +269,7 @@ pub fn executeInsertLineBreak(allocator: std.mem.Allocator, document: DocumentHa
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -271,13 +278,13 @@ pub fn executeInsertLineBreak(allocator: std.mem.Allocator, document: DocumentHa
     };
 
     // Delete selection if not collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (!is_collapsed) {
-        impls.Selection.call_deleteFromDocument(selection) catch {};
+        Selection.call_deleteFromDocument(selection) catch {};
     }
 
     // Create br element
-    const br = impls.Document.call_createElement(
+    const br = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("br"),
     ) catch {
@@ -289,14 +296,14 @@ pub fn executeInsertLineBreak(allocator: std.mem.Allocator, document: DocumentHa
     }
 
     // Get range and insert
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count > 0) {
-        if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+        if (Selection.call_getRangeAt(selection, 0)) |range| {
             if (range != null) {
-                impls.Range.call_insertNode(range.?, br.?) catch {};
+                Range.call_insertNode(range.?, br.?) catch {};
                 // Move cursor after br
-                impls.Range.call_setStartAfter(range.?, br.?) catch {};
-                impls.Range.call_collapse(range.?, true) catch {};
+                Range.call_setStartAfter(range.?, br.?) catch {};
+                Range.call_collapse(range.?, true) catch {};
             }
         } else |_| {}
     }
@@ -316,7 +323,7 @@ pub fn executeInsertHorizontalRule(allocator: std.mem.Allocator, document: Docum
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -325,13 +332,13 @@ pub fn executeInsertHorizontalRule(allocator: std.mem.Allocator, document: Docum
     };
 
     // Delete selection if not collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (!is_collapsed) {
-        impls.Selection.call_deleteFromDocument(selection) catch {};
+        Selection.call_deleteFromDocument(selection) catch {};
     }
 
     // Create hr element
-    const hr = impls.Document.call_createElement(
+    const hr = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("hr"),
     ) catch {
@@ -343,14 +350,14 @@ pub fn executeInsertHorizontalRule(allocator: std.mem.Allocator, document: Docum
     }
 
     // Get range and insert
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count > 0) {
-        if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+        if (Selection.call_getRangeAt(selection, 0)) |range| {
             if (range != null) {
-                impls.Range.call_insertNode(range.?, hr.?) catch {};
+                Range.call_insertNode(range.?, hr.?) catch {};
                 // Move cursor after hr
-                impls.Range.call_setStartAfter(range.?, hr.?) catch {};
-                impls.Range.call_collapse(range.?, true) catch {};
+                Range.call_setStartAfter(range.?, hr.?) catch {};
+                Range.call_collapse(range.?, true) catch {};
             }
         } else |_| {}
     }
@@ -402,7 +409,7 @@ pub fn executeFormatBlock(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -411,7 +418,7 @@ pub fn executeFormatBlock(
     };
 
     // Find block-level ancestor
-    const anchor_node = impls.Selection.get_anchorNode(selection) catch null;
+    const anchor_node = Selection.get_anchorNode(selection) catch null;
     if (anchor_node == null) {
         return .{ .success = true };
     }
@@ -420,9 +427,9 @@ pub fn executeFormatBlock(
     var block_element: ?*runtime.Instance = null;
 
     while (current != null) {
-        const node_type = impls.Node.get_nodeType(current.?) catch 0;
+        const node_type = Node.get_nodeType(current.?) catch 0;
         if (node_type == 1) { // ELEMENT_NODE
-            const current_tag_opt = impls.Element.get_tagName(current.?) catch null;
+            const current_tag_opt = Element.get_tagName(current.?) catch null;
             if (current_tag_opt) |current_tag| {
                 const current_tag_str = current_tag.get() catch "";
                 if (isBlockElement(current_tag_str)) {
@@ -431,16 +438,16 @@ pub fn executeFormatBlock(
                 }
             }
         }
-        current = impls.Node.get_parentNode(current.?) catch null;
+        current = Node.get_parentNode(current.?) catch null;
     }
 
     if (block_element == null) {
         // No block element found - wrap selection in new block
-        const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+        const range_count = Selection.get_rangeCount(selection) catch 0;
         if (range_count > 0) {
-            if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+            if (Selection.call_getRangeAt(selection, 0)) |range| {
                 if (range != null) {
-                    const new_block = impls.Document.call_createElement(
+                    const new_block = Document.call_createElement(
                         doc_instance,
                         runtime.DOMString.initFromSlice(allocator, tag_name) catch {
                             return .{ .success = false, .error_message = "Failed to create tag name" };
@@ -450,7 +457,7 @@ pub fn executeFormatBlock(
                     };
 
                     if (new_block != null) {
-                        impls.Range.call_surroundContents(range.?, new_block.?) catch {};
+                        Range.call_surroundContents(range.?, new_block.?) catch {};
                     }
                 }
             } else |_| {}
@@ -477,7 +484,7 @@ pub fn executeUnlink(allocator: std.mem.Allocator, document: DocumentHandle) !Co
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -486,7 +493,7 @@ pub fn executeUnlink(allocator: std.mem.Allocator, document: DocumentHandle) !Co
     };
 
     // Find <a> element in/around selection
-    const anchor_node = impls.Selection.get_anchorNode(selection) catch null;
+    const anchor_node = Selection.get_anchorNode(selection) catch null;
     if (anchor_node == null) {
         return .{ .success = true };
     }
@@ -495,9 +502,9 @@ pub fn executeUnlink(allocator: std.mem.Allocator, document: DocumentHandle) !Co
     var link_element: ?*runtime.Instance = null;
 
     while (current != null) {
-        const node_type = impls.Node.get_nodeType(current.?) catch 0;
+        const node_type = Node.get_nodeType(current.?) catch 0;
         if (node_type == 1) { // ELEMENT_NODE
-            const tag_name_opt = impls.Element.get_tagName(current.?) catch null;
+            const tag_name_opt = Element.get_tagName(current.?) catch null;
             if (tag_name_opt) |tag_name| {
                 const tag_str = tag_name.get() catch "";
                 if (std.ascii.eqlIgnoreCase(tag_str, "A")) {
@@ -506,22 +513,22 @@ pub fn executeUnlink(allocator: std.mem.Allocator, document: DocumentHandle) !Co
                 }
             }
         }
-        current = impls.Node.get_parentNode(current.?) catch null;
+        current = Node.get_parentNode(current.?) catch null;
     }
 
     if (link_element != null) {
         // Get parent and unwrap link
-        const parent = impls.Node.get_parentNode(link_element.?) catch null;
+        const parent = Node.get_parentNode(link_element.?) catch null;
         if (parent != null) {
             // Move all children of <a> to parent
-            var child = impls.Node.get_firstChild(link_element.?) catch null;
+            var child = Node.get_firstChild(link_element.?) catch null;
             while (child != null) {
-                const next = impls.Node.get_nextSibling(child.?) catch null;
-                _ = impls.Node.call_insertBefore(parent.?, child.?, link_element) catch {};
+                const next = Node.get_nextSibling(child.?) catch null;
+                _ = Node.call_insertBefore(parent.?, child.?, link_element) catch {};
                 child = next;
             }
             // Remove empty <a>
-            _ = impls.Node.call_removeChild(parent.?, link_element.?) catch {};
+            _ = Node.call_removeChild(parent.?, link_element.?) catch {};
         }
     }
 
@@ -551,7 +558,7 @@ pub fn executeInsertImage(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -560,13 +567,13 @@ pub fn executeInsertImage(
     };
 
     // Delete selection if not collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (!is_collapsed) {
-        impls.Selection.call_deleteFromDocument(selection) catch {};
+        Selection.call_deleteFromDocument(selection) catch {};
     }
 
     // Create img element
-    const img = impls.Document.call_createElement(
+    const img = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("img"),
     ) catch {
@@ -578,7 +585,7 @@ pub fn executeInsertImage(
     }
 
     // Set src attribute
-    impls.Element.call_setAttribute(
+    Element.call_setAttribute(
         img.?,
         runtime.DOMString.initInterned("src"),
         runtime.DOMString.initFromSlice(allocator, src) catch {
@@ -589,11 +596,11 @@ pub fn executeInsertImage(
     };
 
     // Get range and insert
-    const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+    const range_count = Selection.get_rangeCount(selection) catch 0;
     if (range_count > 0) {
-        if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+        if (Selection.call_getRangeAt(selection, 0)) |range| {
             if (range != null) {
-                impls.Range.call_insertNode(range.?, img.?) catch {};
+                Range.call_insertNode(range.?, img.?) catch {};
             }
         } else |_| {}
     }
@@ -624,7 +631,7 @@ pub fn executeInsertHTML(
         return .{ .success = false, .error_message = "Invalid document" };
     };
 
-    const selection_opt = impls.Document.call_getSelection(doc_instance) catch {
+    const selection_opt = Document.call_getSelection(doc_instance) catch {
         return .{ .success = false, .error_message = "Failed to get selection" };
     };
 
@@ -633,13 +640,13 @@ pub fn executeInsertHTML(
     };
 
     // Delete selection if not collapsed
-    const is_collapsed = impls.Selection.get_isCollapsed(selection) catch true;
+    const is_collapsed = Selection.get_isCollapsed(selection) catch true;
     if (!is_collapsed) {
-        impls.Selection.call_deleteFromDocument(selection) catch {};
+        Selection.call_deleteFromDocument(selection) catch {};
     }
 
     // Create a template element to parse HTML
-    const template = impls.Document.call_createElement(
+    const template = Document.call_createElement(
         doc_instance,
         runtime.DOMString.initInterned("template"),
     ) catch {
@@ -651,7 +658,7 @@ pub fn executeInsertHTML(
     }
 
     // Set innerHTML (this parses the HTML)
-    impls.Element.set_innerHTML(
+    Element.set_innerHTML(
         template.?,
         runtime.DOMString.initFromSlice(allocator, html) catch {
             return .{ .success = false, .error_message = "Failed to create HTML string" };
@@ -661,19 +668,19 @@ pub fn executeInsertHTML(
     };
 
     // Get template content (document fragment)
-    const content = impls.HTMLTemplateElement.get_content(template.?) catch null;
+    const content = HTMLTemplateElement.get_content(template.?) catch null;
 
     if (content != null) {
         // Clone content
-        const fragment = impls.Node.call_cloneNode(content.?, true) catch null;
+        const fragment = Node.call_cloneNode(content.?, true) catch null;
 
         if (fragment != null) {
             // Insert fragment at range
-            const range_count = impls.Selection.get_rangeCount(selection) catch 0;
+            const range_count = Selection.get_rangeCount(selection) catch 0;
             if (range_count > 0) {
-                if (impls.Selection.call_getRangeAt(selection, 0)) |range| {
+                if (Selection.call_getRangeAt(selection, 0)) |range| {
                     if (range != null) {
-                        impls.Range.call_insertNode(range.?, fragment.?) catch {};
+                        Range.call_insertNode(range.?, fragment.?) catch {};
                     }
                 } else |_| {}
             }
