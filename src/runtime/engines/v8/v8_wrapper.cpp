@@ -1219,6 +1219,14 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
+    
+    // Safety check: verify object has enough internal fields before access
+    // This prevents crashes when accessing prototype objects or other objects
+    // that don't have internal fields set up
+    if (local_obj->InternalFieldCount() <= index) {
+        return nullptr;
+    }
+    
     return local_obj->GetAlignedPointerFromInternalField(index);
 }
 
@@ -2320,6 +2328,14 @@ int v8_Object_InternalFieldCount_Raw(const void* obj) {
 void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
     // Cast to non-const since V8 API requires it
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+    
+    // Safety check: verify object has enough internal fields before access
+    // This prevents crashes when accessing prototype objects or other objects
+    // that don't have internal fields set up
+    if (object_ptr->InternalFieldCount() <= index) {
+        return nullptr;
+    }
+    
     return object_ptr->GetAlignedPointerFromInternalField(index);
 }
 

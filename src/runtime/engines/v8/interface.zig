@@ -920,7 +920,52 @@ pub fn V8Interface(comptime Interface: type) type {
                             return;
                         }
 
+                        // Safety check: detect use-after-free by checking for poison patterns
+                        // Common allocator poison values: 0xaaaa... (freed), 0xdead... (deleted)
+                        const ptr_as_int = @intFromPtr(instance_ptr);
+                        const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                        const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                        if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                            (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                        {
+                            // Instance was freed - return undefined to prevent crash
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
+
                         const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+                        // Additional safety check: validate instance.ctx is not corrupted
+                        // This catches cases where the Instance struct was freed but V8 still holds a reference
+                        const ctx_as_int = @intFromPtr(instance.ctx);
+                        if (ctx_as_int == poison_pattern_aa or ctx_as_int == poison_pattern_dead or
+                            (ctx_as_int & 0xFFFF000000000000) == 0xaaaa000000000000 or ctx_as_int == 0)
+                        {
+                            // Instance was freed - return undefined to prevent crash
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
+
+                        // Deep validation: check if the allocator inside ContextData is valid
+                        // The ctx pointer may be valid, but the ContextData contents may be freed
+                        const allocator_vtable_int = @intFromPtr(instance.ctx.allocator.vtable);
+                        if (allocator_vtable_int == poison_pattern_aa or allocator_vtable_int == poison_pattern_dead or
+                            (allocator_vtable_int & 0xFFFF000000000000) == 0xaaaa000000000000 or allocator_vtable_int == 0)
+                        {
+                            // ContextData was freed - return undefined to prevent crash
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
+
+                        // Capture allocator BEFORE calling getter and converting to V8
+                        // This prevents use-after-free if V8 operations trigger GC that frees ctx
+                        const cleanup_allocator = instance.ctx.allocator;
 
                         // Determine payload type from return type
                         const return_type_info = @typeInfo(ReturnType);
@@ -942,16 +987,29 @@ pub fn V8Interface(comptime Interface: type) type {
                         // IMPORTANT: Impls MUST use instance.ctx.allocator for returned strings,
                         // not internal.allocator, so this cleanup uses the correct allocator.
                         // Static strings (empty string "") have len=0 and won't be freed.
+                        // NOTE: We use cleanup_allocator captured before the getter call to avoid
+                        // use-after-free if V8 operations during conversion trigger GC.
                         const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
                         defer if (needs_cleanup) {
-                            if (PayloadType == runtime.DOMString) {
-                                var mutable = result;
-                                mutable.deinit(instance.ctx.allocator);
-                            } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
-                                if (result.len > 0) {
-                                    instance.ctx.allocator.free(result);
+                            // Re-validate allocator before cleanup - it could have been invalidated
+                            const cleanup_vtable_int = @intFromPtr(cleanup_allocator.vtable);
+                            const is_poisoned = (cleanup_vtable_int == poison_pattern_aa or
+                                cleanup_vtable_int == poison_pattern_dead or
+                                (cleanup_vtable_int & 0xFFFF000000000000) == 0xaaaa000000000000 or
+                                cleanup_vtable_int == 0);
+                            if (!is_poisoned) {
+                                if (PayloadType == runtime.DOMString) {
+                                    var mutable = result;
+                                    mutable.deinit(cleanup_allocator);
+                                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                                    if (result.len > 0) {
+                                        cleanup_allocator.free(result);
+                                    }
                                 }
                             }
+                            // else: Allocator was freed during V8 operations - skip cleanup
+                            // This leaks memory but prevents crash. The memory will be
+                            // reclaimed when the context/isolate is disposed.
                         };
 
                         // Convert to V8 using comptime type dispatch
@@ -1929,7 +1987,31 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            // Safety check: detect use-after-free by checking for poison patterns
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                if (v8.v8_Undefined(isolate)) |undef| {
+                    info.setReturnValue(undef);
+                }
+                return;
+            }
+
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Additional safety check: validate instance.ctx is not corrupted
+            const ctx_as_int = @intFromPtr(instance.ctx);
+            if (ctx_as_int == poison_pattern_aa or ctx_as_int == poison_pattern_dead or
+                (ctx_as_int & 0xFFFF000000000000) == 0xaaaa000000000000 or ctx_as_int == 0)
+            {
+                if (v8.v8_Undefined(isolate)) |undef| {
+                    info.setReturnValue(undef);
+                }
+                return;
+            }
 
             // Find and call the getter for this lazy property
             inline for (lazy_properties) |lazy_prop| {
@@ -2208,6 +2290,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            // Safety check: detect use-after-free by checking for poison patterns
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return;
+            }
+
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Call the item() method
@@ -2394,6 +2486,15 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
                 const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                 if (instance_ptr) |ptr| {
+                    // Safety check: detect use-after-free by checking for poison patterns
+                    const ptr_as_int = @intFromPtr(ptr);
+                    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                    {
+                        return;
+                    }
                     const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
 
                     if (Interface.getEntriesForIterable(instance)) |entries| {
@@ -2556,6 +2657,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Get the instance from the V8 object's internal field
                 const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target, 0);
                 if (instance_ptr) |ptr| {
+                    // Safety check: detect use-after-free by checking for poison patterns
+                    const ptr_as_int = @intFromPtr(ptr);
+                    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                    {
+                        return entries_array;
+                    }
                     const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
 
                     // Call getEntriesForIterable to get the Zig entries
@@ -2919,6 +3029,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     }
 
+                    // Safety check: detect use-after-free by checking for poison patterns
+                    const ptr_as_int = @intFromPtr(instance_ptr);
+                    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                    {
+                        conv.throwError(isolate_inner, "Cannot set property on freed object");
+                        return;
+                    }
+
                     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
                     // Analyze setter signature
@@ -3198,6 +3319,17 @@ pub fn V8Interface(comptime Interface: type) type {
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
+
+    // Safety check: detect use-after-free by checking for poison patterns
+    const ptr_as_int = @intFromPtr(ptr);
+    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+    {
+        return null;
+    }
+
     return @ptrCast(@alignCast(ptr));
 }
 
@@ -3207,6 +3339,7 @@ pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
 /// Returns null if:
 /// - The object has no internal fields set
 /// - The stored type is not compatible with the expected type
+/// - The instance pointer appears to be freed (poison pattern detected)
 pub fn getInstanceTypeSafe(
     comptime T: type,
     object: *v8.Object,
@@ -3217,6 +3350,16 @@ pub fn getInstanceTypeSafe(
     if (type_info_ptr == null) {
         // No type info stored - fall back to legacy behavior for compatibility
         return getInstance(T, object);
+    }
+
+    // Safety check: detect use-after-free on type info pointer
+    const type_ptr_as_int = @intFromPtr(type_info_ptr);
+    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+    if (type_ptr_as_int == poison_pattern_aa or type_ptr_as_int == poison_pattern_dead or
+        (type_ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+    {
+        return null;
     }
 
     const stored_type_info: *const WrapperTypeInfo = @ptrCast(@alignCast(type_info_ptr));
@@ -3230,6 +3373,15 @@ pub fn getInstanceTypeSafe(
     // Type check passed, get the instance pointer from slot 0
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
+
+    // Safety check: detect use-after-free on instance pointer
+    const ptr_as_int = @intFromPtr(ptr);
+    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+    {
+        return null;
+    }
+
     return @ptrCast(@alignCast(ptr));
 }
 

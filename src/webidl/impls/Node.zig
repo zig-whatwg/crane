@@ -1430,8 +1430,15 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
     var count: u32 = 0;
     var child = internal.first_child;
+    // Safety limit to prevent infinite loops from corrupted DOM trees
+    // A typical DOM tree shouldn't have more than 1M direct children
+    const max_iterations: u32 = 1_000_000;
     while (child) |c| {
         count += 1;
+        if (count >= max_iterations) {
+            // Likely a cycle in the tree - return current count to avoid hang
+            return count;
+        }
         const child_internal = getInternal(c) orelse break;
         child = child_internal.next_sibling;
     }
