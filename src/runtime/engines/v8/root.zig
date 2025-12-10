@@ -169,10 +169,18 @@ pub const OptionalGlobalHandle = global_handles.OptionalGlobalHandle;
 pub const disposeOptionalGlobalHandle = global_handles.disposeOptional;
 pub const createOptionalGlobalHandle = global_handles.createOptional;
 
+/// Reference-Counted V8 Handle for safe sharing
+/// Use V8Handle when multiple owners need to share a V8 value
+pub const handle = @import("handle.zig");
+pub const V8Handle = handle.V8Handle;
+pub const OptionalV8Handle = handle.OptionalV8Handle;
+pub const deinitOptionalV8Handle = handle.deinitOptional;
+
 /// Pointer Tagging for anyopaque type discrimination
 /// Use when anyopaque values could be Global handles, runtime.Instance, or Local values
 pub const pointer_tag = @import("pointer_tag.zig");
 pub const AnyopaqueTag = pointer_tag.AnyopaqueTag;
+pub const TaggedPointer = pointer_tag.TaggedPointer;
 pub const tagPointer = pointer_tag.tagPointer;
 pub const tagConstPointer = pointer_tag.tagConstPointer;
 pub const untagPointer = pointer_tag.untagPointer;

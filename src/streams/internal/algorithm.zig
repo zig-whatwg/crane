@@ -14,9 +14,24 @@
 //! destruction. When the JavaScript constructor returns, its HandleScope ends
 //! and all Local handles become invalid. Global handles persist until explicitly
 //! disposed.
+//!
+//! ## Reference Counting (RefCountedAlgorithm)
+//!
+//! The RefCountedAlgorithm wrapper provides safe sharing of Algorithm instances.
+//! When an algorithm is copied (e.g., shared between stream and controller),
+//! the reference count is incremented. Cleanup only happens when the last
+//! reference is released.
+//!
+//! ```zig
+//! const algo = try RefCountedAlgorithm.init(allocator, underlying_algorithm);
+//! const copy = algo.clone(); // ref_count: 2
+//! copy.deinit(); // ref_count: 1, no cleanup yet
+//! algo.deinit(); // ref_count: 0, underlying algorithm destroyed
+//! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
 const runtime = @import("runtime");
 const callbacks = @import("callbacks");
 const AsyncPromise = @import("async_promise").AsyncPromise;
@@ -92,6 +107,147 @@ pub const Algorithm = struct {
 
     pub fn deinit(self: *Algorithm) void {
         self.vtable.destroy(self.context, self.allocator);
+    }
+};
+
+// ============================================================================
+// RefCountedAlgorithm - Safe sharing of Algorithm instances
+// ============================================================================
+
+/// Reference-counted wrapper for Algorithm instances.
+///
+/// This enables safe sharing of algorithms between streams and controllers
+/// without memory leaks or double-frees. The underlying Algorithm is only
+/// destroyed when the last reference is released.
+///
+/// ## Problem Solved
+///
+/// When an Algorithm is copied (e.g., stored in both stream and controller),
+/// both copies point to the same context. Without reference counting:
+/// - Both might try to call deinit → double-free
+/// - One might not call deinit → memory leak
+/// - Unclear ownership semantics
+///
+/// ## Thread Safety
+///
+/// Uses atomic operations for the reference count, making it safe to use
+/// across threads (though V8 contexts are typically single-threaded).
+///
+/// ## Usage
+///
+/// ```zig
+/// // Create a ref-counted algorithm
+/// const algo = try RefCountedAlgorithm.init(allocator, try jsCallbackAlgorithmGlobal(...));
+///
+/// // Share with controller (increments ref count)
+/// controller.algorithm = algo.clone();
+///
+/// // When stream is destroyed
+/// stream.algorithm.deinit(); // ref_count decremented
+///
+/// // When controller is destroyed
+/// controller.algorithm.deinit(); // ref_count hits 0, cleanup runs
+/// ```
+pub const RefCountedAlgorithm = struct {
+    inner: *Inner,
+
+    const Inner = struct {
+        /// Reference count (atomic for thread safety)
+        ref_count: std.atomic.Value(u32),
+
+        /// The underlying Algorithm
+        algorithm: *Algorithm,
+
+        /// Allocator for freeing Inner struct
+        allocator: Allocator,
+
+        /// Increment reference count
+        pub fn ref(self: *Inner) void {
+            _ = self.ref_count.fetchAdd(1, .monotonic);
+        }
+
+        /// Decrement reference count, cleanup if zero
+        pub fn unref(self: *Inner) void {
+            // fetchSub returns the OLD value, so check if it was 1
+            if (self.ref_count.fetchSub(1, .release) == 1) {
+                // Ensure all writes are visible before cleanup
+                std.atomic.fence(.acquire);
+
+                // Destroy the underlying algorithm
+                self.algorithm.deinit();
+                self.allocator.destroy(self.algorithm);
+
+                // Destroy Inner struct itself
+                self.allocator.destroy(self);
+            }
+        }
+    };
+
+    /// Create a new reference-counted algorithm wrapper.
+    ///
+    /// Takes ownership of the provided Algorithm pointer.
+    /// The Algorithm will be destroyed when the last RefCountedAlgorithm is deinit'd.
+    pub fn init(allocator: Allocator, algorithm: *Algorithm) !RefCountedAlgorithm {
+        const inner = try allocator.create(Inner);
+        inner.* = .{
+            .ref_count = std.atomic.Value(u32).init(1),
+            .algorithm = algorithm,
+            .allocator = allocator,
+        };
+        return .{ .inner = inner };
+    }
+
+    /// Clone the reference (increment ref count).
+    ///
+    /// Returns a new RefCountedAlgorithm that shares the same underlying Algorithm.
+    /// Both the original and clone must be deinit'd.
+    pub fn clone(self: RefCountedAlgorithm) RefCountedAlgorithm {
+        self.inner.ref();
+        return self;
+    }
+
+    /// Release this reference.
+    ///
+    /// Decrements the reference count. When the count reaches zero,
+    /// the underlying Algorithm is destroyed.
+    pub fn deinit(self: RefCountedAlgorithm) void {
+        self.inner.unref();
+    }
+
+    /// Get the reference count (for debugging/testing).
+    pub fn getRefCount(self: RefCountedAlgorithm) u32 {
+        return self.inner.ref_count.load(.monotonic);
+    }
+
+    /// Invoke the algorithm (delegates to inner Algorithm).
+    pub fn invoke(self: RefCountedAlgorithm, controller: *runtime.Instance) !*AsyncPromise(void) {
+        return self.inner.algorithm.invoke(controller);
+    }
+
+    /// Invoke the algorithm with an argument.
+    pub fn invokeWithArg(
+        self: RefCountedAlgorithm,
+        controller: *runtime.Instance,
+        arg: *const anyopaque,
+    ) !*AsyncPromise(void) {
+        return self.inner.algorithm.invokeWithArg(controller, arg);
+    }
+
+    /// Invoke with optional argument.
+    pub fn invokeWithOptArg(
+        self: RefCountedAlgorithm,
+        controller: *runtime.Instance,
+        arg: ?*anyopaque,
+    ) !*AsyncPromise(void) {
+        return self.inner.algorithm.invokeWithOptArg(controller, arg);
+    }
+
+    /// Get the underlying Algorithm pointer (use with care).
+    ///
+    /// WARNING: Do not call deinit() on the returned Algorithm directly.
+    /// Use RefCountedAlgorithm.deinit() instead.
+    pub fn getAlgorithm(self: RefCountedAlgorithm) *Algorithm {
+        return self.inner.algorithm;
     }
 };
 
@@ -889,4 +1045,124 @@ fn zigCallbackDestroy(context: ?*anyopaque, allocator: Allocator) void {
         const zig_ctx: *ZigCallbackContext = @ptrCast(@alignCast(ctx));
         allocator.destroy(zig_ctx);
     }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "RefCountedAlgorithm: basic lifecycle" {
+    const allocator = std.testing.allocator;
+
+    // Create a noop algorithm for testing
+    const algo = try noopAlgorithm(allocator);
+
+    // Wrap in RefCountedAlgorithm
+    const rc_algo = try RefCountedAlgorithm.init(allocator, algo);
+    try std.testing.expectEqual(@as(u32, 1), rc_algo.getRefCount());
+
+    // Deinit should clean up
+    rc_algo.deinit();
+    // No leak should be detected by testing allocator
+}
+
+test "RefCountedAlgorithm: clone increments ref count" {
+    const allocator = std.testing.allocator;
+
+    const algo = try noopAlgorithm(allocator);
+    const rc_algo = try RefCountedAlgorithm.init(allocator, algo);
+
+    try std.testing.expectEqual(@as(u32, 1), rc_algo.getRefCount());
+
+    // Clone
+    const clone1 = rc_algo.clone();
+    try std.testing.expectEqual(@as(u32, 2), rc_algo.getRefCount());
+    try std.testing.expectEqual(@as(u32, 2), clone1.getRefCount());
+
+    // Clone again
+    const clone2 = rc_algo.clone();
+    try std.testing.expectEqual(@as(u32, 3), rc_algo.getRefCount());
+
+    // Deinit clones
+    clone1.deinit();
+    try std.testing.expectEqual(@as(u32, 2), rc_algo.getRefCount());
+
+    clone2.deinit();
+    try std.testing.expectEqual(@as(u32, 1), rc_algo.getRefCount());
+
+    // Deinit original - should cleanup
+    rc_algo.deinit();
+}
+
+test "RefCountedAlgorithm: cleanup only on last unref" {
+    const allocator = std.testing.allocator;
+
+    // Use a tracking variable to verify cleanup
+    var cleanup_count: u32 = 0;
+
+    // Create a custom algorithm that tracks cleanup
+    const TrackingContext = struct {
+        count_ptr: *u32,
+    };
+
+    const tracking_ctx = try allocator.create(TrackingContext);
+    tracking_ctx.* = .{ .count_ptr = &cleanup_count };
+
+    const tracking_vtable = Algorithm.VTable{
+        .invoke = struct {
+            fn invoke(_: *runtime.Instance, _: ?*anyopaque) !*AsyncPromise(void) {
+                unreachable; // Not called in this test
+            }
+        }.invoke,
+        .invoke_with_arg = struct {
+            fn invoke(_: *runtime.Instance, _: ?*anyopaque, _: *const anyopaque) !*AsyncPromise(void) {
+                unreachable;
+            }
+        }.invoke,
+        .destroy = struct {
+            fn destroy(ctx: ?*anyopaque, alloc: Allocator) void {
+                if (ctx) |c| {
+                    const tc: *TrackingContext = @ptrCast(@alignCast(c));
+                    tc.count_ptr.* += 1;
+                    alloc.destroy(tc);
+                }
+            }
+        }.destroy,
+    };
+
+    const algo = try allocator.create(Algorithm);
+    algo.* = .{
+        .context = tracking_ctx,
+        .vtable = &tracking_vtable,
+        .allocator = allocator,
+    };
+
+    const rc_algo = try RefCountedAlgorithm.init(allocator, algo);
+
+    // Create clones
+    const clone1 = rc_algo.clone();
+    const clone2 = rc_algo.clone();
+
+    // Verify no cleanup yet
+    try std.testing.expectEqual(@as(u32, 0), cleanup_count);
+
+    clone1.deinit();
+    try std.testing.expectEqual(@as(u32, 0), cleanup_count); // Still 2 refs
+
+    clone2.deinit();
+    try std.testing.expectEqual(@as(u32, 0), cleanup_count); // Still 1 ref
+
+    rc_algo.deinit();
+    try std.testing.expectEqual(@as(u32, 1), cleanup_count); // Now cleanup ran!
+}
+
+test "RefCountedAlgorithm: getAlgorithm returns correct pointer" {
+    const allocator = std.testing.allocator;
+
+    const algo = try noopAlgorithm(allocator);
+    const rc_algo = try RefCountedAlgorithm.init(allocator, algo);
+    defer rc_algo.deinit();
+
+    // getAlgorithm should return the same pointer
+    try std.testing.expectEqual(algo, rc_algo.getAlgorithm());
 }

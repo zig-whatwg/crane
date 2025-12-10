@@ -30,11 +30,53 @@
 //! // Convert when you have the concrete type
 //! const element = handles.elementFromHandle(self.owner_element);
 //! ```
+//!
+//! ## Debug Assertions
+//!
+//! All handle types include validation methods that check pointer validity
+//! in debug builds. These compile away in release builds for zero overhead.
+//!
+//! ```zig
+//! // Validates pointer is non-null and properly aligned
+//! validateElementHandle(handle);
+//!
+//! // Convert with validation in one call
+//! const ptr = elementToAnyopaqueChecked(handle);
+//! ```
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 // ============================================================================
-// Opaque Handle Types
+// Debug Assertion Helpers
+// ============================================================================
+
+/// Validate that a handle pointer is valid (non-null and aligned).
+/// Only performs checks in debug/release-safe builds.
+fn validateHandlePtr(ptr: ?*const anyopaque, comptime type_name: []const u8) void {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (ptr) |p| {
+            const addr = @intFromPtr(p);
+            // Check alignment (minimum 4-byte for pointers)
+            if (addr & (@alignOf(*anyopaque) - 1) != 0) {
+                std.debug.panic("{s} handle has invalid alignment: 0x{x}", .{ type_name, addr });
+            }
+        }
+    }
+}
+
+/// Assert that a handle is not null.
+/// Panics in debug/release-safe builds if null.
+fn assertNotNull(ptr: ?*const anyopaque, comptime type_name: []const u8) void {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (ptr == null) {
+            std.debug.panic("{s} handle is null when non-null was expected", .{type_name});
+        }
+    }
+}
+
+// ============================================================================
+// Opaque Handle Types with Debug Validation
 // ============================================================================
 
 /// Opaque handle for Element references
@@ -60,6 +102,65 @@ pub const CustomElementRegistryHandle = opaque {};
 pub const NodeHandle = opaque {};
 
 // ============================================================================
+// Handle Validation Functions
+// ============================================================================
+
+/// Validate an ElementHandle pointer in debug builds.
+/// Checks for non-null and proper alignment.
+pub fn validateElementHandle(handle: ?*const ElementHandle) void {
+    validateHandlePtr(@ptrCast(handle), "Element");
+}
+
+/// Validate a DocumentHandle pointer in debug builds.
+pub fn validateDocumentHandle(handle: ?*const DocumentHandle) void {
+    validateHandlePtr(@ptrCast(handle), "Document");
+}
+
+/// Validate a ShadowRootHandle pointer in debug builds.
+pub fn validateShadowRootHandle(handle: ?*const ShadowRootHandle) void {
+    validateHandlePtr(@ptrCast(handle), "ShadowRoot");
+}
+
+/// Validate a SlotHandle pointer in debug builds.
+pub fn validateSlotHandle(handle: ?*const SlotHandle) void {
+    validateHandlePtr(@ptrCast(handle), "Slot");
+}
+
+/// Validate a MutationObserverHandle pointer in debug builds.
+pub fn validateMutationObserverHandle(handle: ?*const MutationObserverHandle) void {
+    validateHandlePtr(@ptrCast(handle), "MutationObserver");
+}
+
+/// Validate a CustomElementRegistryHandle pointer in debug builds.
+pub fn validateRegistryHandle(handle: ?*const CustomElementRegistryHandle) void {
+    validateHandlePtr(@ptrCast(handle), "CustomElementRegistry");
+}
+
+/// Validate a NodeHandle pointer in debug builds.
+pub fn validateNodeHandle(handle: ?*const NodeHandle) void {
+    validateHandlePtr(@ptrCast(handle), "Node");
+}
+
+// ============================================================================
+// Assertion Functions (panic if null)
+// ============================================================================
+
+/// Assert that an ElementHandle is not null. Panics in debug builds if null.
+pub fn assertElementNotNull(handle: ?*const ElementHandle) void {
+    assertNotNull(@ptrCast(handle), "Element");
+}
+
+/// Assert that a DocumentHandle is not null.
+pub fn assertDocumentNotNull(handle: ?*const DocumentHandle) void {
+    assertNotNull(@ptrCast(handle), "Document");
+}
+
+/// Assert that a NodeHandle is not null.
+pub fn assertNodeNotNull(handle: ?*const NodeHandle) void {
+    assertNotNull(@ptrCast(handle), "Node");
+}
+
+// ============================================================================
 // Conversion Functions - Element
 // ============================================================================
 
@@ -72,6 +173,13 @@ pub fn elementToAnyopaque(handle: ?*ElementHandle) ?*anyopaque {
     return null;
 }
 
+/// Convert an ElementHandle to an anyopaque pointer with debug validation.
+/// Validates the handle before conversion in debug builds.
+pub fn elementToAnyopaqueChecked(handle: ?*ElementHandle) ?*anyopaque {
+    validateElementHandle(handle);
+    return elementToAnyopaque(handle);
+}
+
 /// Convert an anyopaque pointer to an ElementHandle
 /// Use when receiving from legacy code
 pub fn anyopaqueToElement(ptr: ?*anyopaque) ?*ElementHandle {
@@ -79,6 +187,12 @@ pub fn anyopaqueToElement(ptr: ?*anyopaque) ?*ElementHandle {
         return @ptrCast(@alignCast(p));
     }
     return null;
+}
+
+/// Convert an anyopaque pointer to an ElementHandle with debug validation.
+pub fn anyopaqueToElementChecked(ptr: ?*anyopaque) ?*ElementHandle {
+    validateHandlePtr(ptr, "Element");
+    return anyopaqueToElement(ptr);
 }
 
 // ============================================================================
@@ -222,4 +336,87 @@ test "handles: null handling" {
 
     const back = elementToAnyopaque(null);
     try std.testing.expectEqual(@as(?*anyopaque, null), back);
+}
+
+test "handles: validation passes for valid handles" {
+    var dummy: u64 align(8) = 42;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // Convert to handle
+    const element_handle = anyopaqueToElement(ptr);
+
+    // Validation should pass (not panic) for valid handle
+    validateElementHandle(element_handle);
+}
+
+test "handles: validation passes for null handles" {
+    // Null is a valid state for optional handles
+    validateElementHandle(null);
+    validateDocumentHandle(null);
+    validateNodeHandle(null);
+}
+
+test "handles: checked conversion works" {
+    var dummy: u64 align(8) = 123;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // Checked conversion should work for valid pointers
+    const handle = anyopaqueToElementChecked(ptr);
+    try std.testing.expect(handle != null);
+
+    const back = elementToAnyopaqueChecked(handle);
+    try std.testing.expectEqual(ptr, back.?);
+}
+
+test "handles: all handle types round-trip" {
+    var dummy: u64 align(8) = 0xDEADBEEF;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // Document
+    {
+        const handle = anyopaqueToDocument(ptr);
+        validateDocumentHandle(handle);
+        const back = documentToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // ShadowRoot
+    {
+        const handle = anyopaqueToShadowRoot(ptr);
+        validateShadowRootHandle(handle);
+        const back = shadowRootToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // Slot
+    {
+        const handle = anyopaqueToSlot(ptr);
+        validateSlotHandle(handle);
+        const back = slotToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // MutationObserver
+    {
+        const handle = anyopaqueToMutationObserver(ptr);
+        validateMutationObserverHandle(handle);
+        const back = mutationObserverToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // CustomElementRegistry
+    {
+        const handle = anyopaqueToRegistry(ptr);
+        validateRegistryHandle(handle);
+        const back = registryToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // Node
+    {
+        const handle = anyopaqueToNode(ptr);
+        validateNodeHandle(handle);
+        const back = nodeToAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
 }

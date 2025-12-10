@@ -119,6 +119,155 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+// ============================================================================
+// TaggedPointer - Type-safe wrapper for tagged pointers
+// ============================================================================
+
+/// Type-safe wrapper for tagged pointers at V8 FFI boundaries.
+///
+/// This struct encapsulates a tagged pointer, providing a clear type that
+/// indicates the pointer contains type information in its low 2 bits.
+/// It cannot be accidentally used as a raw pointer without explicit conversion.
+///
+/// ## Benefits over raw `*anyopaque`
+///
+/// 1. **Type safety**: Can't accidentally use raw pointer as tagged or vice versa
+/// 2. **Clear intent**: Type name documents the pointer is tagged
+/// 3. **Debug assertions**: Built-in validation in debug builds
+/// 4. **Method chaining**: Cleaner API (`ptr.untagAs(V8Value)`)
+///
+/// ## Usage
+///
+/// ```zig
+/// // Create a tagged pointer
+/// const tagged = TaggedPointer.init(raw_ptr, .global_handle);
+///
+/// // Check the tag
+/// if (tagged.is(.global_handle)) {
+///     const v8_ptr = tagged.untagAs(*v8.Value);
+///     // Use v8_ptr...
+/// }
+///
+/// // Get tag without untagging
+/// const tag = tagged.getTag();
+///
+/// // Convert to raw for FFI (with debug assertion)
+/// const raw = tagged.toRaw(); // asserts untagged in debug
+/// ```
+pub const TaggedPointer = struct {
+    /// The raw tagged address (pointer + tag in low 2 bits)
+    raw: usize,
+
+    /// Tag type - same as AnyopaqueTag for compatibility
+    pub const Tag = AnyopaqueTag;
+
+    /// Create a tagged pointer from a raw pointer and tag.
+    ///
+    /// The pointer MUST be at least 4-byte aligned (standard for all allocations).
+    /// In debug builds, asserts alignment.
+    pub fn init(ptr: *anyopaque, tag: Tag) TaggedPointer {
+        const addr = @intFromPtr(ptr);
+
+        // Safety check: pointer must be aligned (low bits should be 0)
+        if (std.debug.runtime_safety) {
+            std.debug.assert(addr & 0x3 == 0);
+        }
+
+        return .{ .raw = addr | @intFromEnum(tag) };
+    }
+
+    /// Create a tagged pointer from a const pointer and tag.
+    pub fn initConst(ptr: *const anyopaque, tag: Tag) TaggedPointer {
+        const addr = @intFromPtr(ptr);
+
+        if (std.debug.runtime_safety) {
+            std.debug.assert(addr & 0x3 == 0);
+        }
+
+        return .{ .raw = addr | @intFromEnum(tag) };
+    }
+
+    /// Create from a raw usize value (for interop with existing code)
+    pub fn fromRaw(raw_addr: usize) TaggedPointer {
+        return .{ .raw = raw_addr };
+    }
+
+    /// Get the tag without untagging
+    pub fn getTag(self: TaggedPointer) Tag {
+        return @enumFromInt(self.raw & 0x3);
+    }
+
+    /// Untag and return the pointer as *anyopaque
+    pub fn untag(self: TaggedPointer) *anyopaque {
+        return @ptrFromInt(self.raw & ~@as(usize, 0x3));
+    }
+
+    /// Untag and cast to a specific pointer type
+    pub fn untagAs(self: TaggedPointer, comptime T: type) T {
+        const ptr = self.untag();
+        return @ptrCast(@alignCast(ptr));
+    }
+
+    /// Check if this pointer has a specific tag
+    pub fn is(self: TaggedPointer, tag: Tag) bool {
+        return self.getTag() == tag;
+    }
+
+    /// Check if the pointer is tagged (has non-zero low bits)
+    pub fn isTagged(self: TaggedPointer) bool {
+        return (self.raw & 0x3) != 0;
+    }
+
+    /// Convert to *const anyopaque (preserves tag bits)
+    /// Use this when you need to pass the tagged pointer to existing code.
+    pub fn toConstPtr(self: TaggedPointer) *const anyopaque {
+        return @ptrFromInt(self.raw);
+    }
+
+    /// Convert to *anyopaque (preserves tag bits)
+    /// WARNING: This returns the tagged pointer, not the untagged one!
+    pub fn toPtr(self: TaggedPointer) *anyopaque {
+        return @ptrFromInt(self.raw);
+    }
+
+    /// Get the raw usize value
+    pub fn toRawUsize(self: TaggedPointer) usize {
+        return self.raw;
+    }
+
+    /// Debug assertion: panic if tag doesn't match expected
+    pub fn assertTag(self: TaggedPointer, expected: Tag) void {
+        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+            if (self.getTag() != expected) {
+                std.debug.panic(
+                    "TaggedPointer tag mismatch: expected {}, got {}",
+                    .{ expected, self.getTag() },
+                );
+            }
+        }
+    }
+
+    /// Debug assertion: panic if pointer is tagged when untagged expected
+    pub fn assertUntagged(self: TaggedPointer) void {
+        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+            if (self.isTagged()) {
+                std.debug.panic(
+                    "Expected untagged pointer, got tag: {}",
+                    .{self.getTag()},
+                );
+            }
+        }
+    }
+
+    /// Extract both pointer and tag in one operation
+    pub fn extract(self: TaggedPointer) struct { ptr: *anyopaque, tag: Tag } {
+        return .{
+            .ptr = self.untag(),
+            .tag = self.getTag(),
+        };
+    }
+};
+
 /// Type tag for anyopaque pointers
 ///
 /// Encoded in the low 2 bits of the pointer address.
@@ -583,4 +732,129 @@ test "multiple pointers maintain independence" {
     // Values should be unchanged
     try std.testing.expectEqual(@as(u64, 0x1111111111111111), value1);
     try std.testing.expectEqual(@as(u64, 0x2222222222222222), value2);
+}
+
+// ============================================================================
+// TaggedPointer Struct Tests
+// ============================================================================
+
+test "TaggedPointer: init and untag roundtrip" {
+    var dummy: u64 align(8) = 0xDEADBEEF;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // Test all tag values
+    const tags = [_]TaggedPointer.Tag{ .untagged, .global_handle, .runtime_instance, .local_value };
+
+    for (tags) |tag| {
+        const tagged = TaggedPointer.init(ptr, tag);
+        const untagged = tagged.untag();
+
+        try std.testing.expectEqual(ptr, untagged);
+        try std.testing.expectEqual(tag, tagged.getTag());
+    }
+}
+
+test "TaggedPointer: initConst roundtrip" {
+    var dummy: u64 align(8) = 0xCAFEBABE;
+    const ptr: *const anyopaque = @ptrCast(&dummy);
+
+    const tags = [_]TaggedPointer.Tag{ .untagged, .global_handle, .runtime_instance, .local_value };
+
+    for (tags) |tag| {
+        const tagged = TaggedPointer.initConst(ptr, tag);
+        try std.testing.expectEqual(@intFromPtr(ptr), @intFromPtr(tagged.untag()));
+        try std.testing.expectEqual(tag, tagged.getTag());
+    }
+}
+
+test "TaggedPointer: is() tag checking" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = TaggedPointer.init(ptr, .runtime_instance);
+
+    try std.testing.expect(tagged.is(.runtime_instance));
+    try std.testing.expect(!tagged.is(.global_handle));
+    try std.testing.expect(!tagged.is(.local_value));
+    try std.testing.expect(!tagged.is(.untagged));
+}
+
+test "TaggedPointer: isTagged()" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // .untagged (0) should return false
+    try std.testing.expect(!TaggedPointer.init(ptr, .untagged).isTagged());
+
+    // All other tags should return true
+    try std.testing.expect(TaggedPointer.init(ptr, .global_handle).isTagged());
+    try std.testing.expect(TaggedPointer.init(ptr, .runtime_instance).isTagged());
+    try std.testing.expect(TaggedPointer.init(ptr, .local_value).isTagged());
+}
+
+test "TaggedPointer: untagAs specific type" {
+    var value: u64 align(8) = 0x12345678;
+    const ptr: *anyopaque = @ptrCast(&value);
+
+    const tagged = TaggedPointer.init(ptr, .local_value);
+    const typed_ptr: *u64 = tagged.untagAs(*u64);
+
+    try std.testing.expectEqual(&value, typed_ptr);
+    try std.testing.expectEqual(@as(u64, 0x12345678), typed_ptr.*);
+}
+
+test "TaggedPointer: extract() returns both ptr and tag" {
+    var dummy: u64 align(8) = 0xABCD;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = TaggedPointer.init(ptr, .global_handle);
+    const result = tagged.extract();
+
+    try std.testing.expectEqual(ptr, result.ptr);
+    try std.testing.expectEqual(TaggedPointer.Tag.global_handle, result.tag);
+}
+
+test "TaggedPointer: fromRaw interop" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+    const base_addr = @intFromPtr(ptr);
+
+    // Create tagged using init
+    const tagged1 = TaggedPointer.init(ptr, .runtime_instance);
+
+    // Create using fromRaw with same value
+    const tagged2 = TaggedPointer.fromRaw(base_addr | 2); // .runtime_instance = 2
+
+    try std.testing.expectEqual(tagged1.raw, tagged2.raw);
+    try std.testing.expectEqual(tagged1.getTag(), tagged2.getTag());
+}
+
+test "TaggedPointer: toConstPtr preserves tag" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = TaggedPointer.init(ptr, .local_value);
+    const const_ptr = tagged.toConstPtr();
+
+    // The const ptr should still have tag bits set
+    try std.testing.expectEqual(tagged.raw, @intFromPtr(const_ptr));
+}
+
+test "TaggedPointer: assertUntagged does not panic for untagged" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = TaggedPointer.init(ptr, .untagged);
+    tagged.assertUntagged(); // Should not panic
+
+    // Also test assertTag
+    tagged.assertTag(.untagged); // Should not panic
+}
+
+test "TaggedPointer: assertTag does not panic for matching tag" {
+    var dummy: u64 align(8) = 0;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    const tagged = TaggedPointer.init(ptr, .global_handle);
+    tagged.assertTag(.global_handle); // Should not panic
 }
