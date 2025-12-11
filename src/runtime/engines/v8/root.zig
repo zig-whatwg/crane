@@ -99,6 +99,9 @@ pub const streams_callbacks = @import("streams_callbacks.zig");
 /// Zig to V8 Callback Wrappers (Phase 5: Streams Integration)
 pub const zig_callbacks = @import("zig_callbacks.zig");
 
+/// V8 Type Conversion Helpers - Safe type checking before pointer casts
+pub const helpers = @import("helpers.zig");
+
 /// WrapperTypeInfo for type-safe V8 object unwrapping
 pub const wrapper_type_info_mod = @import("wrapper_type_info.zig");
 pub const WrapperTypeInfo = wrapper_type_info_mod.WrapperTypeInfo;
