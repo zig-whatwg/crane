@@ -25,6 +25,11 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const ReadIntoRequestWithPromise = @import("streams_read_into_request_promise").ReadIntoRequestWithPromise;
 const ReadIntoResult = @import("streams_read_into_request_promise").ReadIntoResult;
 
+// V8 promise utilities for Zig-to-V8 promise conversion
+const v8_engine = @import("v8");
+const v8 = v8_engine.ffi;
+const promise_utils = v8_engine.promise;
+
 pub const State = ReadableStreamBYOBReader.State;
 
 pub const ImplError = error{
@@ -36,6 +41,15 @@ pub const ImplError = error{
     NullValue,
     BufferDetached, // From ReadableByteStreamController.pullInto
     NoEventLoop,
+    // V8 promise-related errors (from ReadableStream async operations)
+    NoIsolate,
+    NoContext,
+    NullContext,
+    GlobalHandleCreationFailed,
+    PromiseCreationFailed,
+    PromiseRejectFailed,
+    PromiseResolveFailed,
+    StringError,
 };
 
 /// Type alias for read-into requests list
@@ -132,12 +146,24 @@ pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runti
 /// Getter for closed
 ///
 /// Spec: § 4.5.2 "The closed getter steps are:"
+/// Returns: V8 Promise bridged from AsyncPromise(void)
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Step 1: Return this.[[closedPromise]]
-    return runtime.JSValue.fromAnyopaque(@ptrCast(internal.closed_promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    // Convert the Zig AsyncPromise to a V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        internal.closed_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: read
@@ -448,7 +474,7 @@ fn readableStreamBYOBReaderErrorReadIntoRequests(internal: *InternalState) void 
 /// ReadableStreamReaderGenericCancel(reader, reason)
 ///
 /// Spec: § 4.5.4 "Cancel with reason"
-fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const anyopaque) ImplError!runtime.JSValue {
+fn readableStreamReaderGenericCancel(internal: *InternalState, reason: *const anyopaque) anyerror!runtime.JSValue {
     // Step 1: Let stream be reader.[[stream]]
     const stream = internal.stream orelse return error.InvalidState;
 

@@ -51,6 +51,15 @@ pub const ImplError = error{
     NullValue, // Workaround: interface generator doesn't handle nullable return types yet
     BufferDetached, // From ArrayBuffer.transfer()
     NoEventLoop,
+    // V8 promise-related errors (from ReadableStream async operations)
+    NoIsolate,
+    NoContext,
+    NullContext,
+    GlobalHandleCreationFailed,
+    PromiseCreationFailed,
+    PromiseRejectFailed,
+    PromiseResolveFailed,
+    StringError,
 };
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2

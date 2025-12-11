@@ -22,6 +22,8 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 // V8 FFI for Promise bridging
 const v8 = @import("v8").ffi;
 const V8Promise = @import("v8").Promise;
+const v8_engine = @import("v8");
+const promise_utils = v8_engine.promise;
 
 pub const State = ReadableStreamDefaultReader.State;
 
@@ -264,14 +266,25 @@ pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runti
 /// From ReadableStreamGenericReader mixin.
 /// Returns a promise that fulfills when the stream closes.
 ///
-/// Returns: Pointer to AsyncPromise(void)
+/// Returns: V8 Promise bridged from AsyncPromise(void)
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
-    // Return the closed promise
-    // Note: The promise is owned by the reader and should not be deinitialized by caller
-    return runtime.JSValue.fromAnyopaque(@ptrCast(internal.closed_promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    // Convert the Zig AsyncPromise to a V8 Promise
+    // The bridge will resolve/reject the V8 promise when the Zig promise settles
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        internal.closed_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: read
@@ -305,7 +318,7 @@ pub fn call_read(instance: *runtime.Instance) anyerror!runtime.JSValue {
         promise.*.reject(exception);
         // Convert to V8 Promise before returning
         const v8_promise = try convertReadResultPromiseToV8(promise);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(v8_promise));
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Create promise
@@ -368,7 +381,7 @@ pub fn call_read(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 5: Convert AsyncPromise to V8 Promise and return
     // This creates a bridge that will resolve the V8 Promise when the AsyncPromise settles
     const v8_promise = try convertReadResultPromiseToV8(promise);
-    return runtime.JSValue.fromAnyopaque(@ptrCast(v8_promise));
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: releaseLock
@@ -451,21 +464,19 @@ pub fn call_releaseLock(instance: *runtime.Instance) anyerror!void {
 /// 2. Assert: stream is not undefined
 /// 3. Return ! ReadableStreamCancel(stream, reason)
 ///
-/// Returns: Pointer to AsyncPromise(void) - caller owns and must deinit
+/// Returns: V8 Promise
 pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.TypeError;
 
     // Step 1: Check if reader has been released
     if (internal.stream == null) {
-        // Return rejected promise with TypeError
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        // Return rejected promise with TypeError using V8 Promise directly
+        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Reader has been released");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: ReadableStreamReaderGenericCancel
