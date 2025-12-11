@@ -130,6 +130,7 @@ pub const EngineError = @import("engine_interface.zig").EngineError;
 pub const MainThreadCallback = @import("engine_interface.zig").MainThreadCallback;
 pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfillCallback;
 pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
+pub const ForEachCallback = @import("engine_interface.zig").ForEachCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers

@@ -55,6 +55,25 @@ pub const PromiseFulfillCallback = *const fn (context: ?*anyopaque, value: ?*any
 ///   - reason: The rejection reason (engine-specific), or null for undefined
 pub const PromiseRejectCallback = *const fn (context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void;
 
+/// Callback type for forEach-style iteration over collections
+///
+/// Called for each element in a JS collection (Array, Set, Map, NodeList, etc.).
+/// The callback receives the element value, its index, and user data.
+///
+/// Arguments:
+///   - value: Opaque pointer to the element value
+///   - index: Zero-based index of the element (for arrays), or iteration count (for Sets/Maps)
+///   - user_data: Context pointer passed to invokeForEach
+///
+/// Returns:
+///   - true to continue iteration
+///   - false to break early (short-circuit)
+pub const ForEachCallback = *const fn (
+    value: *anyopaque,
+    index: u32,
+    user_data: *anyopaque,
+) bool;
+
 /// Error set for engine operations
 pub const EngineError = error{
     /// No engine is configured in the context
@@ -697,6 +716,70 @@ pub const EngineInterface = struct {
         context_handle: *anyopaque,
     ) bool,
 
+    // ========================================================================
+    // ForEach Callback Support (Collection Iteration)
+    // ========================================================================
+
+    /// Invoke a forEach-style callback for each element in a JS collection
+    ///
+    /// Used for iterating arrays, Sets, Maps, NodeLists, and other collections
+    /// with a callback function. The callback receives each element and its index.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - collection: Opaque pointer to JS collection (Array, Set, Map, NodeList, etc.)
+    ///   - callback: Zig callback function to invoke for each element
+    ///   - user_data: Context pointer passed to callback
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError on failure
+    ///
+    /// Callback Signature:
+    ///   fn(value: *anyopaque, index: u32, user_data: *anyopaque) bool
+    ///   Returns true to continue iteration, false to break early.
+    invokeForEach: ?*const fn (
+        engine_ctx: *anyopaque,
+        collection: *anyopaque,
+        callback: ForEachCallback,
+        user_data: *anyopaque,
+    ) EngineError!void,
+
+    /// Get the length/size of a JS collection
+    ///
+    /// Works with arrays (length), Sets/Maps (size), NodeLists, etc.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - collection: Opaque pointer to JS collection
+    ///
+    /// Returns:
+    ///   - Length/size of the collection
+    ///   - 0 if collection is empty or not a valid collection
+    getCollectionLength: ?*const fn (
+        engine_ctx: *anyopaque,
+        collection: *anyopaque,
+    ) u32,
+
+    /// Get an element from a JS collection by index
+    ///
+    /// For arrays and array-like objects, returns the element at the index.
+    /// For Maps, the index is meaningless (use iteration instead).
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context
+    ///   - collection: Opaque pointer to JS collection
+    ///   - index: Zero-based index
+    ///
+    /// Returns:
+    ///   - Opaque pointer to the element value
+    ///   - null if index out of bounds or collection doesn't support indexing
+    getCollectionElement: ?*const fn (
+        engine_ctx: *anyopaque,
+        collection: *anyopaque,
+        index: u32,
+    ) ?*anyopaque,
+
     /// Engine name for debugging/logging
     name: []const u8,
 
@@ -743,6 +826,9 @@ pub const stub_engine: EngineInterface = .{
     .freeze = stubFreeze,
     .thaw = stubThaw,
     .isFrozen = stubIsFrozen,
+    .invokeForEach = stubInvokeForEach,
+    .getCollectionLength = stubGetCollectionLength,
+    .getCollectionElement = stubGetCollectionElement,
     .name = "stub",
     .version = "0.0.0",
 };
@@ -898,6 +984,33 @@ fn stubIsFrozen(
 ) bool {
     // Stub: Never frozen
     return false;
+}
+
+fn stubInvokeForEach(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: ForEachCallback,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No JS engine available for forEach iteration
+    return EngineError.NoEngine;
+}
+
+fn stubGetCollectionLength(
+    _: *anyopaque,
+    _: *anyopaque,
+) u32 {
+    // Stub: No collection access without engine
+    return 0;
+}
+
+fn stubGetCollectionElement(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: u32,
+) ?*anyopaque {
+    // Stub: No collection access without engine
+    return null;
 }
 
 // ============================================================================

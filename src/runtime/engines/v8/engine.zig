@@ -114,6 +114,9 @@ pub const v8_engine_interface: EngineInterface = .{
     .freeze = v8Freeze,
     .thaw = v8Thaw,
     .isFrozen = v8IsFrozen,
+    .invokeForEach = v8InvokeForEach,
+    .getCollectionLength = v8GetCollectionLength,
+    .getCollectionElement = v8GetCollectionElement,
     .name = "V8",
     .version = "12.x", // TODO: Get actual version from V8
 };
@@ -1332,6 +1335,122 @@ fn v8IsFrozen(
     }
 
     return false;
+}
+
+// ============================================================================
+// ForEach Callback Support (Collection Iteration)
+// ============================================================================
+
+/// Invoke a forEach-style callback for each element in a V8 collection
+///
+/// Iterates over arrays, Sets, Maps, or array-like objects and calls the
+/// provided callback for each element.
+///
+/// TODO: Full implementation requires V8 FFI for Array.forEach, Map.forEach, etc.
+/// For now, this is a stub that returns NoEngine to indicate the feature
+/// is not yet fully implemented.
+fn v8InvokeForEach(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: runtime.ForEachCallback,
+    _: *anyopaque,
+) EngineError!void {
+    // TODO: Implement V8 forEach iteration
+    // This requires:
+    // 1. Check if collection is Array, Set, Map, or array-like
+    // 2. Get iterator or use indexed access
+    // 3. For each element, convert to opaque pointer and call callback
+    // 4. Handle callback return value for early termination
+    log.warn("v8InvokeForEach not yet implemented", .{});
+    return EngineError.OperationFailed;
+}
+
+/// Get the length/size of a V8 collection
+///
+/// Returns the length property for arrays and array-likes, or size for Set/Map.
+fn v8GetCollectionLength(
+    engine_ctx: *anyopaque,
+    collection: *anyopaque,
+) u32 {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const value: *ffi.Value = @ptrCast(@alignCast(collection));
+
+    // Check if it's an array - use fast path
+    if (ffi.v8_Value_IsArray(value)) {
+        const array: *ffi.Array = @ptrCast(value);
+        return ffi.v8_Array_Length(array);
+    }
+
+    // For other collection types (Set, Map, NodeList), try to get .length or .size property
+    if (ffi.v8_Value_IsObject(value)) {
+        const object: *ffi.Object = @ptrCast(value);
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return 0;
+
+        // Try "length" property first (arrays, NodeList, etc.)
+        const length_key = ffi.v8_String_NewFromUtf8(isolate, "length", 6);
+        if (length_key) |key| {
+            defer ffi.v8_String_Dispose(key);
+            if (ffi.v8_Object_Get(object, context, @ptrCast(key))) |length_value| {
+                if (ffi.v8_Value_IsNumber(length_value)) {
+                    const int_val = ffi.v8_Value_NumberValue(length_value, context);
+                    if (int_val >= 0 and int_val <= @as(f64, @floatFromInt(std.math.maxInt(u32)))) {
+                        return @intFromFloat(int_val);
+                    }
+                }
+            }
+        }
+
+        // Try "size" property (Set, Map)
+        const size_key = ffi.v8_String_NewFromUtf8(isolate, "size", 4);
+        if (size_key) |key| {
+            defer ffi.v8_String_Dispose(key);
+            if (ffi.v8_Object_Get(object, context, @ptrCast(key))) |size_value| {
+                if (ffi.v8_Value_IsNumber(size_value)) {
+                    const int_val = ffi.v8_Value_NumberValue(size_value, context);
+                    if (int_val >= 0 and int_val <= @as(f64, @floatFromInt(std.math.maxInt(u32)))) {
+                        return @intFromFloat(int_val);
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+/// Get an element from a V8 collection by index
+///
+/// For arrays and array-like objects, returns the element at the given index.
+fn v8GetCollectionElement(
+    engine_ctx: *anyopaque,
+    collection: *anyopaque,
+    index: u32,
+) ?*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const value: *ffi.Value = @ptrCast(@alignCast(collection));
+
+    // Check if it's an array - use fast path
+    if (ffi.v8_Value_IsArray(value)) {
+        const array: *ffi.Array = @ptrCast(value);
+        if (ffi.v8_Array_Get(context, array, index)) |element| {
+            return @ptrCast(element);
+        }
+        return null;
+    }
+
+    // For objects with numeric index access (NodeList, etc.), use Integer key
+    if (ffi.v8_Value_IsObject(value)) {
+        const object: *ffi.Object = @ptrCast(value);
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
+
+        // Create integer key for index access
+        const index_key: *ffi.Value = @ptrCast(ffi.v8_Integer_New(isolate, @intCast(index)));
+        if (ffi.v8_Object_Get(object, context, index_key)) |element| {
+            return @ptrCast(element);
+        }
+    }
+
+    return null;
 }
 
 // ============================================================================
