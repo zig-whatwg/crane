@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const record = @import("interfaces").record;
 const sequence = @import("interfaces").sequence;
 const USVString = @import("interfaces").USVString;
-const DOMString = @import("typedefs").DOMString;
+const DOMString = @import("interfaces").DOMString;
 
 pub const URLSearchParams = struct {
     pub const Meta = struct {
@@ -23,15 +23,15 @@ pub const URLSearchParams = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "*" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in_all_contexts = true;
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "size", "get_size", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "append", "call_append", 2 },
@@ -43,8 +43,9 @@ pub const URLSearchParams = struct {
             .{ "sort", "call_sort", 0 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
+            .{ "toString", "serialize", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
@@ -55,23 +56,22 @@ pub const URLSearchParams = struct {
             "set",
             "sort",
             "forEach",
+            "toString",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{
-        };
-        
+        pub const inherited_methods = .{};
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "size", "get_size", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
             .value_type = "runtime.USVString",
@@ -89,7 +89,6 @@ pub const URLSearchParams = struct {
     );
 
     const delegates = .{
-
         .get_size = &get_size,
 
         .call_append = &call_append,
@@ -139,32 +138,26 @@ pub const URLSearchParams = struct {
     }
 
     pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!void {
-        
         return try URLSearchParamsImpl.call_delete(instance, name, value);
     }
 
     pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?runtime.USVString {
-        
         return try URLSearchParamsImpl.call_get(instance, name);
     }
 
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
-        
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
-        
         return try URLSearchParamsImpl.call_has(instance, name, value);
     }
 
-    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
-        
+    pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror![]const []const u8 {
         return try URLSearchParamsImpl.call_getAll(instance, name);
     }
 
     pub fn call_set(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
-        
         return try URLSearchParamsImpl.call_set(instance, name, value);
     }
 
@@ -173,8 +166,13 @@ pub const URLSearchParams = struct {
     }
 
     pub fn call_append(instance: *runtime.Instance, name: runtime.USVString, value: runtime.USVString) anyerror!void {
-        
         return try URLSearchParamsImpl.call_append(instance, name, value);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try URLSearchParamsImpl.serialize(instance);
     }
 
     /// Get entries for pair iterable support (used by V8 for iteration)
@@ -182,5 +180,4 @@ pub const URLSearchParams = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const URLSearchParamsImpl.IterableEntry {
         return URLSearchParamsImpl.getEntriesInternal(instance);
     }
-
 };
