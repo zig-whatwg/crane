@@ -14,6 +14,14 @@
 //! internal algorithms (pullSteps, readableStreamCancelFromReaderWithOptReason) are
 //! NOT exposed through interfaces because they bypass public API checks (e.g., lock
 //! validation). These internal calls legitimately require direct impl access.
+//!
+//! ## Type Safety
+//!
+//! This module uses typed callback interfaces from common.zig:
+//! - `TypedReadCallbacks(Context)` for compile-time type safety
+//! - `ErasedReadCallbacks` for runtime polymorphism
+//!
+//! Callbacks receive `common.JSValue` for chunk/error values instead of raw `*anyopaque`.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -23,10 +31,16 @@ const AsyncPromise = @import("async_promise").AsyncPromise;
 const event_loop_mod = @import("event_loop");
 const v8_mod = @import("v8");
 const pointer_tag = v8_mod.pointer_tag;
+const common = @import("common");
 
 // Internal impl access for algorithms that bypass public API checks
 // (e.g., pullSteps, internal cancel without lock check)
 const impls = @import("impls");
+
+// Re-export typed callback types for convenience
+pub const TypedReadCallbacks = common.TypedReadCallbacks;
+pub const ErasedReadCallbacks = common.ErasedReadCallbacks;
+pub const JSValue = common.JSValue;
 
 /// AcquireReadableStreamDefaultReader
 ///
@@ -67,12 +81,28 @@ pub fn acquireReadableStreamDefaultReader(
 ///
 /// This is a callback-based version used by async iterator.
 /// For promise-based version, use ReadableStreamDefaultReader.call_read()
+///
+/// ## Type Safety
+///
+/// Uses `ErasedReadCallbacks` which provides typed callbacks:
+/// - `chunk_steps(ctx, JSValue)` - receives chunk as typed JSValue
+/// - `close_steps(ctx)` - called when stream closes
+/// - `error_steps(ctx, JSValue)` - receives error as typed JSValue
+///
+/// For compile-time type safety, create callbacks using `TypedReadCallbacks(Context)`
+/// and convert with `.erase()`:
+/// ```zig
+/// const typed = TypedReadCallbacks(MyContext){
+///     .context = &my_ctx,
+///     .chunk_steps = MyContext.onChunk,
+///     .close_steps = MyContext.onClose,
+///     .error_steps = MyContext.onError,
+/// };
+/// try readableStreamDefaultReaderRead(reader, typed.erase());
+/// ```
 pub fn readableStreamDefaultReaderRead(
     reader: *runtime.Instance,
-    context: *anyopaque,
-    chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
-    close_steps: *const fn (ctx: *anyopaque) void,
-    error_steps: *const fn (ctx: *anyopaque) void,
+    callbacks: ErasedReadCallbacks,
 ) !void {
     const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
     const reader_internal = reader_state.own._internal orelse return error.TypeError;
@@ -89,13 +119,18 @@ pub fn readableStreamDefaultReaderRead(
 
     // Step 4: If stream.[[state]] is "closed", perform close steps
     if (stream_internal.state == .closed) {
-        close_steps(context);
+        callbacks.executeCloseSteps();
         return;
     }
 
     // Step 5: If stream.[[state]] is "errored", perform error steps
     if (stream_internal.state == .errored) {
-        error_steps(context);
+        // Pass the stored error as a JSValue
+        const error_value = if (stream_internal.stored_error) |e|
+            JSValue.createError(e)
+        else
+            JSValue.createTypeError("Stream errored");
+        callbacks.executeErrorSteps(error_value);
         return;
     }
 
@@ -112,21 +147,10 @@ pub fn readableStreamDefaultReaderRead(
         reader_internal.event_loop,
     );
 
-    // Create context that holds both the original context and callbacks
-    const CallbackContext = struct {
-        user_context: *anyopaque,
-        chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
-        close_steps: *const fn (ctx: *anyopaque) void,
-        error_steps: *const fn (ctx: *anyopaque) void,
-        allocator: std.mem.Allocator,
-    };
-
-    const callback_ctx = try reader_internal.allocator.create(CallbackContext);
+    // Create context that holds both the original callbacks
+    const callback_ctx = try reader_internal.allocator.create(ReadCallbackContext);
     callback_ctx.* = .{
-        .user_context = context,
-        .chunk_steps = chunk_steps,
-        .close_steps = close_steps,
-        .error_steps = error_steps,
+        .callbacks = callbacks,
         .allocator = reader_internal.allocator,
     };
 
@@ -141,12 +165,11 @@ pub fn readableStreamDefaultReaderRead(
     try impls.ReadableStreamDefaultController.pullSteps(controller, promise);
 }
 
-/// Context for callback-based read
+/// Context for callback-based read using typed callbacks
 const ReadCallbackContext = struct {
-    user_context: *anyopaque,
-    chunk_steps: *const fn (ctx: *anyopaque, chunk: *anyopaque) void,
-    close_steps: *const fn (ctx: *anyopaque) void,
-    error_steps: *const fn (ctx: *anyopaque) void,
+    /// Type-erased callbacks for runtime polymorphism
+    callbacks: ErasedReadCallbacks,
+    /// Allocator for cleanup
     allocator: std.mem.Allocator,
 };
 
@@ -157,30 +180,69 @@ fn onReadFulfilled(ctx_ptr: *anyopaque, result: @import("impls").ReadableStreamD
 
     if (result.done) {
         // Stream closed - call close steps
-        ctx.close_steps(ctx.user_context);
+        ctx.callbacks.executeCloseSteps();
     } else if (result.value) |chunk_value| {
-        // Got a chunk - call chunk steps
-        // Convert runtime.JSValue to *anyopaque for the callback
-        // The callback expects the engine handle pointer
-        const chunk_ptr: *anyopaque = chunk_value.asEngineHandle() orelse {
-            // If no engine handle (primitive value), treat as close
-            ctx.close_steps(ctx.user_context);
+        // Got a chunk - call chunk steps with typed JSValue
+        // Convert runtime.JSValue to common.JSValue for the callback
+        const chunk_js_value = runtimeJSValueToCommonJSValue(chunk_value, ctx.allocator) catch {
+            // If conversion fails, treat as close
+            ctx.callbacks.executeCloseSteps();
             return;
         };
-        ctx.chunk_steps(ctx.user_context, chunk_ptr);
+        ctx.callbacks.executeChunkSteps(chunk_js_value);
     } else {
         // No value but not done - shouldn't happen per spec
-        ctx.close_steps(ctx.user_context);
+        ctx.callbacks.executeCloseSteps();
     }
 }
 
 /// Handler for read promise rejection
-fn onReadRejected(ctx_ptr: *anyopaque, _: webidl.errors.Exception) anyerror!void {
+fn onReadRejected(ctx_ptr: *anyopaque, exception: webidl.errors.Exception) anyerror!void {
     const ctx: *ReadCallbackContext = @ptrCast(@alignCast(ctx_ptr));
     defer ctx.allocator.destroy(ctx);
 
-    // Call error steps
-    ctx.error_steps(ctx.user_context);
+    // Convert exception to JSValue and call error steps
+    const error_value = exceptionToJSValue(exception);
+    ctx.callbacks.executeErrorSteps(error_value);
+}
+
+/// Convert runtime.JSValue to common.JSValue
+///
+/// Bridges the runtime module's JSValue type to the streams internal JSValue type.
+/// This preserves type information through the conversion.
+fn runtimeJSValueToCommonJSValue(value: runtime.JSValue, allocator: std.mem.Allocator) !JSValue {
+    return switch (value) {
+        .undefined => JSValue.undefined_value(),
+        .null => JSValue.null_value(),
+        .boolean => |b| JSValue.fromBool(b),
+        .number => |n| JSValue.fromNumber(n),
+        .string => |s| JSValue.fromString(s),
+        .handle => |h| try JSValue.fromEnginePtr(allocator, h.ptr),
+        .instance => |ptr| try JSValue.fromEnginePtr(allocator, ptr),
+    };
+}
+
+/// Convert webidl.errors.Exception to JSValue
+///
+/// Creates a typed error JSValue from a WebIDL exception.
+fn exceptionToJSValue(exception: webidl.errors.Exception) JSValue {
+    const message = switch (exception) {
+        .simple => |s| s.message,
+        .dom => |d| d.message,
+    };
+
+    // Determine error type from exception
+    const error_type = switch (exception) {
+        .simple => |s| switch (s.type) {
+            .TypeError => common.ErrorType.type_error,
+            .RangeError => common.ErrorType.range_error,
+            .SyntaxError => common.ErrorType.syntax_error,
+            else => common.ErrorType.generic,
+        },
+        .dom => common.ErrorType.generic,
+    };
+
+    return .{ .error_value = .{ .error_type = error_type, .message = message } };
 }
 
 /// ReadableStreamDefaultReaderRelease
@@ -221,10 +283,15 @@ pub fn readableStreamDefaultReaderRelease(reader: *runtime.Instance) !void {
 /// would fail because the reader holds the lock. The internal algorithm
 /// bypasses this check as intended by the spec.
 ///
+/// ## Type Safety
+///
+/// Takes an optional `runtime.JSValue` for the cancellation reason instead of
+/// raw `*anyopaque`. This preserves type information through the call chain.
+///
 /// Returns: Promise<void> that fulfills when cancellation completes
 pub fn readableStreamReaderGenericCancel(
     reader: *runtime.Instance,
-    reason: ?*anyopaque,
+    reason: ?runtime.JSValue,
 ) !*AsyncPromise(void) {
     const reader_state = reader.getState(interfaces.ReadableStreamDefaultReader.State);
     const reader_internal = reader_state.own._internal orelse return error.TypeError;
@@ -239,7 +306,11 @@ pub fn readableStreamReaderGenericCancel(
     // This is correct per spec: ReadableStreamReaderGenericCancel calls
     // ReadableStreamCancel directly, not the public cancel() method
     // NOTE: This internal method bypasses lock check - see module-level comment
-    const cancel_promise_js_value = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason);
+    //
+    // Convert runtime.JSValue to ?*anyopaque for the impl function
+    // The impl still uses anyopaque internally but we provide type safety at this boundary
+    const reason_ptr: ?*anyopaque = if (reason) |r| r.asEngineHandle() else null;
+    const cancel_promise_js_value = try impls.ReadableStream.readableStreamCancelFromReaderWithOptReason(stream, reason_ptr);
 
     // Cast the returned JSValue to AsyncPromise(void)
     // Extract the handle pointer from JSValue and untag V8 pointer before casting (V8 uses pointer tagging)

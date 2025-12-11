@@ -253,11 +253,10 @@ pub fn returnEarly(
     // Step 4: If preventCancel is false, cancel the stream
     if (!iterator.prevent_cancel) {
         // Step 4a: Cancel the stream
-        // Convert JSValue to anyopaque for the cancel operation
-        const reason_ptr: ?*anyopaque = if (reason) |r| r.asEngineHandle() else null;
+        // Pass the typed runtime.JSValue directly (type-safe)
         const cancel_promise = try reader_ops.readableStreamReaderGenericCancel(
             reader,
-            reason_ptr,
+            reason,
         );
 
         // Step 4b: Release reader
