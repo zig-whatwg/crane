@@ -20,7 +20,7 @@ const Context = @import("context.zig").Context;
 /// instances and dispatch methods correctly through their vtables.
 pub const Instance = struct {
     vtable: *const VTable,
-    state: *anyopaque,
+    state: *anyopaque, // KEEP: Polymorphic state - use getState(T) for type safety
     ctx: Context,
 
     /// Get the state as a typed pointer (unsafe - caller must ensure correct type)
@@ -132,7 +132,7 @@ pub const VTable = struct {
     /// Type-erased pointer to the delegates struct
     /// The actual type is known at compile time by each interface
     /// Access methods using getMethod() with the delegates type
-    methods_ptr: *const anyopaque,
+    methods_ptr: *const anyopaque, // KEEP: Polymorphic method table - type known at interface level
 
     /// Get a method function pointer by name using compile-time reflection
     /// Usage: vtable.getMethod(DelegatesType, "methodName")

@@ -4,6 +4,11 @@
 //! All VTables are extern structs with C-compatible function pointers
 //! for cross-language FFI.
 //!
+//! **TYPE SAFETY NOTE**: All `anyopaque` usage in this file is LEGITIMATE and should
+//! NOT be refactored. VTable patterns require type erasure for polymorphic dispatch.
+//! The `user_context: ?*anyopaque` parameter enables different backend implementations.
+//! See docs/type-safety.md for details.
+//!
 //! ## Design Principles
 //!
 //! 1. **Extern Compatible**: All structs use extern layout

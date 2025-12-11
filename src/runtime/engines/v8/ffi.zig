@@ -3,6 +3,10 @@
 //! This module provides Zig bindings to the V8 C++ API for JavaScript execution.
 //! All types and functions here map directly to V8's public API.
 //!
+//! **TYPE SAFETY NOTE**: All `anyopaque` usage in this file is LEGITIMATE and should
+//! NOT be refactored. This is an FFI boundary where C interop requires opaque pointers.
+//! See docs/type-safety.md for details.
+//!
 //! Reference: https://v8.github.io/api/head/
 
 const std = @import("std");
