@@ -459,8 +459,15 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
     if (internal.controller) |controller| {
         const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
 
-        // Get the abort reason (or use a default)
-        const reason: *const anyopaque = abort_request.reason orelse @ptrCast(&stored_exception);
+        // Get the abort reason as a type-safe JSValue
+        // Convert the anyopaque abort reason to streams_common.JSValue
+        const reason: streams_common.JSValue = if (abort_request.reason) |reason_ptr|
+            streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(reason_ptr)) catch
+                streams_common.JSValue{ .undefined = {} }
+        else
+            // Use stored exception as default reason
+            streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(@as(*const anyopaque, @ptrCast(&stored_exception)))) catch
+                streams_common.JSValue{ .undefined = {} };
 
         // Call abortSteps which properly invokes the V8 abort callback
         const abort_promise = WritableStreamDefaultControllerImpl.abortSteps(controller, reason) catch {

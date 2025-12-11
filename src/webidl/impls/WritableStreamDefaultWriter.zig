@@ -15,6 +15,7 @@ const webidl = @import("webidl");
 const WritableStreamDefaultWriter = interfaces.WritableStreamDefaultWriter;
 
 // Import streams infrastructure
+const streams_common = @import("streams_common");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 
 pub const State = WritableStreamDefaultWriter.State;
@@ -526,7 +527,14 @@ fn writableStreamDefaultWriterWrite(
 
     // 11. Let promise be WritableStreamDefaultControllerWrite(controller, chunk, chunkSize)
     const WritableStreamDefaultController = @import("WritableStreamDefaultController.zig");
-    const write_promise = try WritableStreamDefaultController.write(controller, chunk, chunk_size);
+
+    // Convert the anyopaque chunk to type-safe streams_common.JSValue
+    const typed_chunk: streams_common.JSValue = streams_common.JSValue.fromEnginePtr(
+        stream_internal.allocator,
+        @constCast(chunk),
+    ) catch streams_common.JSValue{ .undefined = {} };
+
+    const write_promise = try WritableStreamDefaultController.write(controller, typed_chunk, chunk_size);
 
     // 12. Return promise
     return runtime.JSValue.fromAnyopaque(@ptrCast(write_promise));

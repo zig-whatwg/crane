@@ -17,6 +17,7 @@ const WritableStreamDefaultController = interfaces.WritableStreamDefaultControll
 
 // Import streams infrastructure
 const queue_with_sizes = @import("streams_queue");
+const streams_common = @import("streams_common");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 
 pub const State = WritableStreamDefaultController.State;
@@ -31,10 +32,17 @@ pub const ImplError = error{
 /// Queue value type - can be a chunk or the close sentinel
 ///
 /// Spec: § 9.2.1 "Value container" - stores value with its calculated size
+///
+/// ## Type Safety
+///
+/// The chunk value is stored as `streams_common.JSValue` which provides:
+/// - Type-safe variants (undefined, null, boolean, number, string, managed_handle, etc.)
+/// - Proper lifecycle management for engine values via ManagedHandle
+/// - No raw anyopaque pointers that lose type information
 pub const QueueValue = union(enum) {
     /// A chunk with its calculated size (from strategy.size algorithm)
     chunk: struct {
-        value: *anyopaque,
+        value: streams_common.JSValue,
         size: f64,
     },
     close_sentinel: void,
@@ -255,28 +263,36 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) a
     }
 
     // 3. Perform WritableStreamDefaultControllerError(this, e)
-    // Unwrap the Opt - use a default error value if not passed
-    const default_error: u8 = 0;
-    const error_ptr: *const anyopaque = if (e.was_passed)
-        e.value.toAnyopaque() orelse @ptrCast(&default_error)
-    else
-        @ptrCast(&default_error);
-    writableStreamDefaultControllerError(instance, error_ptr);
+    // Convert runtime.JSValue to streams_common.JSValue for type-safe error handling
+    const error_value: streams_common.JSValue = if (e.was_passed) blk: {
+        // Convert the passed error to an internal JSValue
+        // Use managed_handle with non-owning reference for V8 values
+        if (e.value.toAnyopaque()) |ptr| {
+            break :blk streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(ptr)) catch
+                streams_common.JSValue.createTypeError("Error");
+        }
+        break :blk streams_common.JSValue.createTypeError("Error");
+    } else blk: {
+        // No error passed - create a default TypeError
+        break :blk streams_common.JSValue.createTypeError("Error");
+    };
+
+    writableStreamDefaultControllerErrorWithValue(instance, error_value);
 }
 
 // ============================================================================
 // Abstract Operations
 // ============================================================================
 
-/// WritableStreamDefaultControllerError
+/// WritableStreamDefaultControllerErrorWithValue - Type-safe version using streams_common.JSValue
 ///
 /// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-error
-/// Arguments:
-///   controller: WritableStreamDefaultController instance
-///   error_value: Error to error the stream with
+///
+/// This is the preferred version that uses the typed JSValue union instead of raw anyopaque.
+/// Use this when the error type is known at the call site.
 ///
 /// Steps per spec - simplified for now
-fn writableStreamDefaultControllerError(controller: *runtime.Instance, error_value: *const anyopaque) void {
+fn writableStreamDefaultControllerErrorWithValue(controller: *runtime.Instance, error_value: streams_common.JSValue) void {
     const state = controller.getState(State);
     const internal = state.own._internal orelse return;
 
@@ -288,7 +304,28 @@ fn writableStreamDefaultControllerError(controller: *runtime.Instance, error_val
     const stream_state = stream.getState(interfaces.WritableStream.State);
     if (stream_state.own._internal) |stream_internal| {
         stream_internal.state = .errored;
-        stream_internal.stored_error.storeRawPtr(@constCast(error_value));
+        // Use type-safe StoredError methods
+        switch (error_value) {
+            .error_value => |e| stream_internal.stored_error.storeMessage(e.message),
+            .managed_handle => |h| stream_internal.stored_error.storeRawPtr(h.get()),
+            .string => |s| stream_internal.stored_error.storeMessage(s),
+            else => stream_internal.stored_error.storeMessage("Stream error"),
+        }
+    }
+}
+
+/// WritableStreamDefaultControllerError - Convenience wrapper for stream instance errors
+///
+/// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-error
+///
+/// This overload takes only the controller and stream instances and creates
+/// a default error. Used internally when the write algorithm fails.
+fn writableStreamDefaultControllerError(controller: *runtime.Instance, stream: *runtime.Instance) void {
+    _ = controller;
+    const stream_state = stream.getState(interfaces.WritableStream.State);
+    if (stream_state.own._internal) |stream_internal| {
+        stream_internal.state = .errored;
+        stream_internal.stored_error.storeMessage("Write algorithm error");
     }
 }
 
@@ -312,7 +349,7 @@ fn resetQueue(controller: *runtime.Instance) void {
 /// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-write
 /// Arguments:
 ///   controller: WritableStreamDefaultController instance
-///   chunk: The chunk to write
+///   chunk: The chunk to write (type-safe JSValue)
 ///   chunk_size: Size of the chunk
 /// Returns: Promise that resolves when write completes
 ///
@@ -324,14 +361,20 @@ fn resetQueue(controller: *runtime.Instance) void {
 /// 5. If WritableStreamCloseQueuedOrInFlight(stream) is false and stream.[[state]] is "writable",
 ///    perform WritableStreamDefaultControllerAdvanceQueueIfNeeded(this)
 /// 6. Return writeRecord's promise
-pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_param: f64) !*AsyncPromise(void) {
+///
+/// ## Type Safety
+///
+/// The chunk parameter uses `streams_common.JSValue` instead of `*anyopaque` to:
+/// - Preserve type information through the write pipeline
+/// - Enable proper lifecycle management for managed handles
+/// - Avoid unsafe pointer casts
+pub fn write(controller: *runtime.Instance, chunk: streams_common.JSValue, chunk_size_param: f64) !*AsyncPromise(void) {
     const state = controller.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
 
     // Import modules
     const write_request = @import("streams_write_request");
-    const common = @import("streams_common");
 
     // 1. Get stream to access event loop
     const stream = internal.stream orelse return error.InvalidState;
@@ -353,12 +396,12 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
 
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
 
-            // Convert chunk to V8 Value
-            const chunk_v8 = v8_engine.conversions.chunkToV8Value(
-                chunk,
-                isolate,
-                v8_context,
-            ) catch break :blk chunk_size_param;
+            // Convert typed JSValue chunk to V8 Value
+            // For managed_handle, get the engine pointer; otherwise use undefined
+            const chunk_v8: *v8_engine.ffi.Value = if (chunk.getEnginePtr()) |ptr|
+                @ptrCast(@alignCast(ptr))
+            else
+                v8_engine.ffi.v8_Undefined(isolate) orelse break :blk chunk_size_param;
 
             // Invoke size_algorithm(chunk) → number
             const size_result = v8_engine.streams_callbacks.invokeSizeAlgorithm(
@@ -374,8 +417,9 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
         }
     } else chunk_size_param; // No size algorithm - use provided size
 
-    // 3. Wrap chunk in JSValue (simplified - treat as opaque object for now)
-    const js_chunk = common.JSValue{ .object = {} };
+    // 3. Clone the chunk JSValue for write request (sharing ownership)
+    // The chunk parameter is already a type-safe JSValue
+    const js_chunk = chunk.clone();
 
     // 4. Create write request with chunk and promise
     const request = try write_request.WriteRequest.init(
@@ -387,8 +431,9 @@ pub fn write(controller: *runtime.Instance, chunk: *const anyopaque, chunk_size_
 
     // 5. Enqueue to controller's queue (using QueueValue wrapper from this module)
     // Store both the chunk and its calculated size per spec § 9.2.1
+    // Clone chunk again for queue storage (write request and queue both need ownership)
     const value = QueueValue{ .chunk = .{
-        .value = @constCast(chunk),
+        .value = chunk.clone(),
         .size = chunk_size,
     } };
     try internal.queue.append(allocator, value);
@@ -485,7 +530,7 @@ fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Inst
 /// Spec: https://streams.spec.whatwg.org/#writable-stream-default-controller-process-write
 /// Arguments:
 ///   controller: WritableStreamDefaultController instance
-///   chunk: The chunk to write
+///   chunk: The chunk to write (type-safe JSValue)
 ///
 /// Steps:
 /// 1. Let stream be controller.[[stream]]
@@ -498,7 +543,7 @@ fn writableStreamDefaultControllerAdvanceQueueIfNeeded(controller: *runtime.Inst
 ///    - Set stream.[[inFlightWriteRequest]] to undefined
 ///    - Update backpressure and advance queue
 /// 7. Upon rejection: handle error
-fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, chunk: *const anyopaque) void {
+fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, chunk: streams_common.JSValue) void {
     const state = controller.getState(State);
     const internal = state.own._internal orelse return;
 
@@ -548,15 +593,15 @@ fn writableStreamDefaultControllerProcessWrite(controller: *runtime.Instance, ch
             const write_function: *v8_engine.ffi.Function = @ptrCast(write_value);
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
 
-            // Convert chunk to V8 Value
-            const chunk_v8 = v8_engine.conversions.chunkToV8Value(
-                chunk,
-                isolate,
-                v8_context,
-            ) catch {
-                writableStreamDefaultControllerError(controller, stream);
-                return;
-            };
+            // Convert typed JSValue chunk to V8 Value
+            // For managed_handle, get the engine pointer; otherwise use undefined
+            const chunk_v8: *v8_engine.ffi.Value = if (chunk.getEnginePtr()) |ptr|
+                @ptrCast(@alignCast(ptr))
+            else
+                v8_engine.ffi.v8_Undefined(isolate) orelse {
+                    writableStreamDefaultControllerError(controller, stream);
+                    return;
+                };
 
             // Convert controller to V8 Object
             const controller_v8 = v8_engine.conversions.instanceToV8Object(
@@ -879,14 +924,19 @@ fn writableStreamDefaultControllerUpdateBackpressure(controller: *runtime.Instan
 /// Spec: https://streams.spec.whatwg.org/#ws-default-controller-internal-abort
 /// Arguments:
 ///   controller: WritableStreamDefaultController instance
-///   reason: Abort reason
+///   reason: Abort reason (type-safe JSValue)
 /// Returns: Promise<undefined> from abort algorithm
 ///
 /// Steps:
 /// 1. Let result = perform this.[[abortAlgorithm]], passing reason
 /// 2. Perform WritableStreamDefaultControllerClearAlgorithms(this)
 /// 3. Return result
-pub fn abortSteps(controller: *runtime.Instance, reason: *const anyopaque) !*AsyncPromise(void) {
+///
+/// ## Type Safety
+///
+/// The reason parameter uses `streams_common.JSValue` to preserve type information
+/// through the abort pipeline.
+pub fn abortSteps(controller: *runtime.Instance, reason: streams_common.JSValue) !*AsyncPromise(void) {
     const state = controller.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
@@ -922,21 +972,18 @@ pub fn abortSteps(controller: *runtime.Instance, reason: *const anyopaque) !*Asy
             const abort_function: *v8_engine.ffi.Function = @ptrCast(abort_value);
             const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(internal.v8_context.?));
 
-            // Convert reason to V8 Value - untag the pointer first
-            const pointer_tag = @import("v8").pointer_tag;
-            const untagged_reason = pointer_tag.untagPointer(reason);
-
-            // If it's a runtime instance, we can't use it directly as a V8 value
-            // In this case, we should convert it or error
-            if (untagged_reason.tag == .runtime_instance) {
-                const promise = try AsyncPromise(void).init(allocator, event_loop);
-                const exception = try webidl.errors.Exception.typeError(allocator, "Invalid abort reason: expected V8 value");
-                promise.reject(exception);
-                writableStreamDefaultControllerClearAlgorithms(controller);
-                return promise;
-            }
-
-            const reason_v8: *v8_engine.ffi.Value = @ptrCast(untagged_reason.ptr);
+            // Convert typed JSValue reason to V8 Value
+            // For managed_handle, get the engine pointer; otherwise use undefined
+            const reason_v8: *v8_engine.ffi.Value = if (reason.getEnginePtr()) |ptr|
+                @ptrCast(@alignCast(ptr))
+            else
+                v8_engine.ffi.v8_Undefined(isolate) orelse {
+                    const promise = try AsyncPromise(void).init(allocator, event_loop);
+                    const exception = try webidl.errors.Exception.typeError(allocator, "Failed to create undefined reason");
+                    promise.reject(exception);
+                    writableStreamDefaultControllerClearAlgorithms(controller);
+                    return promise;
+                };
 
             // Invoke abort_algorithm(reason) → Promise<void>
             var abort_promise = v8_engine.streams_callbacks.invokeAbortAlgorithm(
