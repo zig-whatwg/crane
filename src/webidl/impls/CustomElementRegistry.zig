@@ -422,8 +422,8 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
 
     // Step 1: If definition set contains an item with name, return that item's constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Return the constructor as a JSValue
-        return runtime.JSValue.fromAnyopaque(@ptrCast(def.constructor));
+        // Return the constructor - it's stored as a V8 handle
+        return runtime.JSValue.fromHandleNonOwning(@constCast(def.constructor));
     }
 
     // Step 2: Return undefined - represented as error since return type is non-nullable
@@ -508,8 +508,8 @@ pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) an
 
     // Step 2: If already defined, return resolved promise with constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Return the constructor as a JSValue
-        return runtime.JSValue.fromAnyopaque(@ptrCast(def.constructor));
+        // Return the constructor - it's stored as a V8 handle
+        return runtime.JSValue.fromHandleNonOwning(@constCast(def.constructor));
     }
 
     // Step 3: Create/return pending promise

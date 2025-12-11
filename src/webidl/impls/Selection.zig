@@ -956,8 +956,8 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(d
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: If this is empty, return empty array
     if (internal.anchor_node == null or internal.focus_node == null) {
-        // Return pointer to static empty array wrapped in JSValue
-        return runtime.JSValue.fromAnyopaque(@ptrCast(&empty_array_sentinel));
+        // TODO: Return proper empty V8 Array - need V8 array creation utility
+        return runtime.JSValue.jsUndefined;
     }
 
     // Get allowed shadow roots from options
@@ -1008,9 +1008,9 @@ pub fn call_getComposedRanges(instance: *runtime.Instance, options: webidl.Opt(d
     try StaticRangeImpl.setStart(static_range, adjusted_start.node, adjusted_start.offset);
     try StaticRangeImpl.setEnd(static_range, adjusted_end.node, adjusted_end.offset);
 
-    // Return pointer to the StaticRange wrapped in JSValue
-    // Note: In a full implementation, this would be a proper sequence/array
-    return runtime.JSValue.fromAnyopaque(@ptrCast(static_range));
+    // TODO: Return proper V8 Array containing the StaticRange instance
+    // For now return the single instance - V8 layer should wrap in array
+    return runtime.JSValue.fromInstance(static_range);
 }
 
 /// Adjust a boundary point for shadow boundaries

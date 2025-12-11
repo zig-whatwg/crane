@@ -1006,6 +1006,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // 3. Return promise.getPromise() cast to *const anyopaque
     // 4. When fetch completes, resolve promise with Response
     //
-    // For now, we return the Response synchronously
-    return runtime.JSValue.fromAnyopaque(@ptrCast(response));
+    // TODO: Return proper WebIDL Response interface instance
+    // response is a Zig Response struct that needs to be wrapped as a WebIDL interface
+    // For now return undefined as placeholder
+    _ = response;
+    return runtime.JSValue.jsUndefined;
 }

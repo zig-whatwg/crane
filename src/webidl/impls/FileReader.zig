@@ -143,8 +143,16 @@ pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
     return switch (internal.reader_data.result) {
-        .array_buffer => |buf| runtime.JSValue.fromAnyopaque(@ptrCast(buf.ptr)),
-        .string => |str| runtime.JSValue.fromAnyopaque(@ptrCast(str.ptr)),
+        // TODO: Return proper V8 ArrayBuffer - need typed array creation utility
+        .array_buffer => |buf| blk: {
+            _ = buf;
+            break :blk runtime.JSValue.jsUndefined;
+        },
+        // TODO: Return proper V8 String from bytes
+        .string => |str| blk: {
+            _ = str;
+            break :blk runtime.JSValue.jsUndefined;
+        },
         .none => null,
     };
 }

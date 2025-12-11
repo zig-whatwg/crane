@@ -270,8 +270,9 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // (Already emptied by toOwnedSlice)
 
     // Step 3: Return records as JSValue
-    // TODO: Return proper sequence<MutationRecord>
-    return runtime.JSValue.fromAnyopaque(@ptrCast(records.ptr));
+    // TODO: Return proper V8 Array of MutationRecord - need V8 array creation utility
+    _ = records;
+    return runtime.JSValue.jsUndefined;
 }
 
 // ============================================================================

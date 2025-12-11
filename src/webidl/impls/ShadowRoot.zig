@@ -345,11 +345,13 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
-        return runtime.JSValue.fromAnyopaque(sheets);
+        // TODO: Return proper V8 Array of CSSStyleSheet instances
+        // sheets is a stored pointer that should be converted to V8 Array
+        _ = sheets;
+        return runtime.JSValue.jsUndefined;
     }
-    // Return empty pointer for null wrapped in JSValue
-    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return runtime.JSValue.fromAnyopaque(@ptrCast(empty.ptr));
+    // TODO: Return empty V8 Array - need V8 array creation utility
+    return runtime.JSValue.jsUndefined;
 }
 
 /// DocumentOrShadowRoot.adoptedStyleSheets setter
@@ -389,11 +391,9 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) 
 
 /// getAnimations() - Get all animations in shadow tree
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // TODO: Implement animation collection
+    // TODO: Implement animation collection - return proper V8 Array
     _ = instance;
-    // Return empty array as opaque pointer wrapped in JSValue
-    const empty: []const *runtime.Instance = &[_]*runtime.Instance{};
-    return runtime.JSValue.fromAnyopaque(@ptrCast(empty.ptr));
+    return runtime.JSValue.jsUndefined;
 }
 
 // ============================================================================

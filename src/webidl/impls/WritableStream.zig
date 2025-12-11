@@ -893,8 +893,8 @@ fn writableStreamAbort(
         if (controller_state.own._internal) |controller_internal_ptr| {
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
-                // Signal abort on the AbortController
-                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(reason))) catch {};
+                // Signal abort on the AbortController - reason is a V8 handle from JS
+                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromHandleNonOwning(@constCast(reason)))) catch {};
             }
         }
     }

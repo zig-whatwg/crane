@@ -388,8 +388,9 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Step 3: If path is empty, then return composedPath
     if (path.len == 0) {
-        // Return pointer to the list as a JSValue
-        return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
+        // TODO: Return proper V8 Array - need V8 array creation utility
+        // For now return empty array placeholder
+        return runtime.JSValue.jsUndefined;
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
@@ -398,7 +399,8 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
         // Path is not empty but currentTarget is null - shouldn't happen during dispatch
-        return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
+        // TODO: Return proper V8 Array - need V8 array creation utility
+        return runtime.JSValue.jsUndefined;
     }
 
     // Step 6: Append currentTarget to composedPath
@@ -510,8 +512,11 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     }
 
     // Step 17: Return composedPath
-    // Note: Returning as opaque pointer wrapped in JSValue
-    return runtime.JSValue.fromAnyopaque(@ptrCast(&composed_path));
+    // TODO: Return proper V8 Array of EventTarget instances
+    // The composedPath ArrayList is built correctly above, but we need
+    // a V8 array creation utility to convert []const *runtime.Instance to V8 Array
+    composed_path.deinit(); // Clean up until V8 array creation is implemented
+    return runtime.JSValue.jsUndefined;
 }
 
 // ============================================================================

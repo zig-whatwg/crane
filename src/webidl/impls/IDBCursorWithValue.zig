@@ -73,9 +73,9 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
     const cursor_with_value = internal.cursor_with_value orelse return error.InvalidState;
 
-    // Get the value from the cursor
+    // Get the value from the cursor - value.ptr is a stored V8 handle
     if (cursor_with_value.getValue()) |value| {
-        return runtime.JSValue.fromAnyopaque(value.ptr);
+        return runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(value.ptr)));
     }
 
     return runtime.JSValue.jsUndefined;

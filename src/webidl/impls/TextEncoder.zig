@@ -321,12 +321,11 @@ const Uint8ArrayDescriptor = extern struct {
 /// Create a Uint8Array descriptor for V8 bindings
 /// The descriptor is allocated and the pointer is returned as runtime.JSValue
 fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !runtime.JSValue {
-    const desc = try allocator.create(Uint8ArrayDescriptor);
-    desc.* = .{
-        .data = data.ptr,
-        .len = data.len,
-    };
-    return runtime.JSValue.fromAnyopaque(@ptrCast(desc));
+    // TODO: Return proper V8 Uint8Array - need typed array creation utility
+    // For now, just allocate and discard since V8 typed array creation isn't available
+    _ = allocator;
+    _ = data;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Extract the byte buffer from a Uint8Array opaque pointer (tagged V8 Value)

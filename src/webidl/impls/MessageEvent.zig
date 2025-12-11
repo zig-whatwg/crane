@@ -193,9 +193,10 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// For WebSocket, this is always an empty frozen array.
 /// This is used by postMessage for transferring MessagePorts.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    // Return the ports array (empty for WebSocket) wrapped in JSValue
-    return runtime.JSValue.fromAnyopaque(@ptrCast(&state.own.ports));
+    _ = instance;
+    // TODO: Return proper frozen array when V8 array creation is available
+    // For now, return undefined - spec requires a frozen array of MessagePort
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: initMessageEvent (legacy)

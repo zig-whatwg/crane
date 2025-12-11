@@ -122,8 +122,10 @@ pub fn call_readAsArrayBuffer(instance: *runtime.Instance, blob: *runtime.Instan
         null,
     ) catch return error.OutOfMemory;
 
-    // Return the array_buffer bytes wrapped in JSValue (V8 layer wraps in ArrayBuffer)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(result.array_buffer.ptr));
+    // TODO: Return proper V8 ArrayBuffer - need typed array creation utility
+    // result.array_buffer contains the raw bytes that should be wrapped
+    _ = result;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: readAsBinaryString

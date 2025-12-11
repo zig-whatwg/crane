@@ -243,26 +243,10 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValu
 /// Returns a Promise that resolves with the current list of subscriptions.
 pub fn call_getSubscriptions(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    const allocator = internal.allocator;
-
-    // Create result array
-    const result = try allocator.create(std.ArrayListUnmanaged(dictionaries.CookieStoreGetOptions));
-    result.* = .{};
-    errdefer {
-        result.deinit(allocator);
-        allocator.destroy(result);
-    }
-
-    // Copy subscriptions to result
-    for (internal.subscriptions.items) |sub| {
-        const options = dictionaries.CookieStoreGetOptions{
-            .name = sub.name,
-            .url = sub.url,
-        };
-        try result.append(allocator, options);
-    }
-
-    return runtime.JSValue.fromAnyopaque(@ptrCast(result));
+    // TODO: Return proper V8 Array of CookieStoreGetOptions dictionaries
+    // internal.subscriptions contains the subscription data
+    _ = internal;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: unsubscribe(subscriptions)

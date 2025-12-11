@@ -592,7 +592,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         };
 
         var event_state = message_event.getState(MessageEvent.State);
-        event_state.own.data = runtime.JSValue.fromAnyopaque(@ptrCast(deserialized));
+        // deserialized is a V8 handle from message channel deserialization
+        event_state.own.data = runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(deserialized)));
 
         // Wrap and dispatch
         const v8_event = template_registry.wrapInstanceAsV8Object(

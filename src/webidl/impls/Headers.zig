@@ -235,8 +235,9 @@ pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!runtime.JSValue {
         };
     };
 
-    // Return as JSValue (V8 will handle conversion)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(values.ptr));
+    // TODO: Return proper V8 Array of strings - need V8 array creation utility
+    _ = values;
+    return runtime.JSValue.jsUndefined;
 }
 
 /// has(name) -> boolean

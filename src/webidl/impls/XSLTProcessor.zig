@@ -175,8 +175,9 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     const local_str = localName.asSlice();
 
     if (internal.parameters.get(local_str)) |param| {
-        // Convert stored anyopaque pointer back to JSValue
-        return runtime.JSValue.fromAnyopaque(param.value);
+        // Convert stored V8 handle back to JSValue
+        // param.value is a stored V8 handle from setParameter
+        return runtime.JSValue.fromHandleNonOwning(@constCast(param.value));
     }
 
     // Return undefined if parameter not found

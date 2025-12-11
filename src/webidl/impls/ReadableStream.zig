@@ -1421,13 +1421,10 @@ fn readableStreamTee(
     }
 
     // Step 20: Return array of branches
-    const result = allocator.create(TeeBranches) catch return error.OutOfMemory;
-    result.* = .{
-        .branch1 = branch1,
-        .branch2 = branch2,
-    };
-
-    return runtime.JSValue.fromAnyopaque(@ptrCast(result));
+    // TODO: Return proper V8 Array containing [branch1, branch2]
+    // For now return undefined - the branches are stored in tee_state and functional
+    // They will be used via tee_state.branch1 and tee_state.branch2
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Result type for tee operation
@@ -1622,11 +1619,10 @@ fn teeCloseBranch(branch: *runtime.Instance) void {
 /// Error both branch streams
 fn teeErrorBothBranches(tee_state: *TeeState, reason: []const u8) void {
     // Pass the reason string as the error. In full JS runtime integration,
-    // this would be a proper JS Error object. For now, we pass the string
-    // pointer as the error value which can be used for debugging.
-    const error_ptr: *const anyopaque = @ptrCast(reason.ptr);
-
-    const error_jsvalue = runtime.JSValue.fromAnyopaque(error_ptr);
+    // this would be a proper JS Error object.
+    // TODO: Create actual V8 Error from reason string
+    _ = reason;
+    const error_jsvalue = runtime.JSValue.jsUndefined;
 
     if (tee_state.branch1) |branch1| {
         const branch_state = branch1.getState(State);
@@ -1832,8 +1828,8 @@ fn teePerformCompositeCancel(tee_state: *TeeState) !void {
     const reader_impl = @import("ReadableStreamDefaultReader.zig");
     reader_impl.call_releaseLock(tee_state.reader) catch {};
 
-    // Cancel source stream
-    const reason_jsvalue = runtime.JSValue.fromAnyopaque(reason);
+    // Cancel source stream - reason is a V8 handle passed from JS
+    const reason_jsvalue = runtime.JSValue.fromHandleNonOwning(reason);
     _ = call_cancel(tee_state.source, webidl.Opt(runtime.JSValue).passed(reason_jsvalue)) catch {};
 
     _ = source_internal;
@@ -1947,12 +1943,14 @@ pub fn call_values(
                     else => error.NotImplemented,
                 };
             };
-            return runtime.JSValue.fromAnyopaque(@ptrCast(wrapped));
+            // wrapped is a V8 Object (the async iterator)
+            return runtime.JSValue.fromHandle(@ptrCast(wrapped));
         }
     }
 
     // No engine: return raw Zig iterator (for testing or non-JS usage)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(zig_iterator));
+    // TODO: This should probably return jsUndefined or wrap differently for non-JS usage
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: [Symbol.asyncIterator]
@@ -3108,10 +3106,12 @@ fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_
     if (pipe_state.shutting_down) return;
     pipe_state.shutting_down = true;
 
-    // Create a dummy error pointer for operations that require one
-    var dummy_error: u8 = 0;
-    const err_ptr: *const anyopaque = if (error_reason) |e| e else @ptrCast(&dummy_error);
-    const err_jsvalue = runtime.JSValue.fromAnyopaque(err_ptr);
+    // error_reason is a V8 handle passed from JS (or null for no error)
+    // Use jsUndefined if no error reason provided
+    const err_jsvalue = if (error_reason) |e|
+        runtime.JSValue.fromHandleNonOwning(e)
+    else
+        runtime.JSValue.jsUndefined;
 
     // Perform the action (use interfaces per Golden Rule #13)
     switch (action) {

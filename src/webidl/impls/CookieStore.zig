@@ -150,10 +150,9 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!r
 
     // Return first item or null
     if (items.items.len > 0) {
-        // Clone the first item to return
-        const result = try allocator.create(CookieListItem);
-        result.* = try items.items[0].clone(allocator);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(result));
+        // TODO: Return proper CookieListItem dictionary as V8 object
+        // For now return undefined as placeholder
+        return runtime.JSValue.jsUndefined;
     }
 
     // Return undefined for "no cookie found"
@@ -178,13 +177,11 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         if (name.len > 0) name else null,
     );
 
-    // Create a result array on the heap
-    const result = try allocator.create(std.ArrayListUnmanaged(CookieListItem));
-    result.* = items;
-    // Prevent items from being cleaned up since we transferred ownership
-    items = .{};
-
-    return runtime.JSValue.fromAnyopaque(@ptrCast(result));
+    // TODO: Return proper V8 Array of CookieListItem dictionaries
+    // For now clean up and return undefined as placeholder
+    for (items.items) |*item| item.deinit();
+    items.deinit(allocator);
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: set(name, value)
