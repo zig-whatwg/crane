@@ -82,6 +82,10 @@ pub const DedicatedWorker = struct {
     /// This is set by the WebIDL layer to dispatch MessageEvents
     on_inside_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
 
+    /// User data for callbacks (e.g., reference to WebIDL Worker instance)
+    /// This allows callbacks to access the higher-level Worker object.
+    user_data: ?*anyopaque = null,
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
@@ -473,6 +477,19 @@ pub const DedicatedWorker = struct {
     /// This is called when the worker sends a message via postMessage().
     pub fn setOnMessage(self: *DedicatedWorker, handler: ?*const fn (*DedicatedWorker, *QueuedMessage) void) void {
         self.on_message = handler;
+    }
+
+    /// Set user data for callbacks.
+    ///
+    /// This allows storing a reference to the WebIDL Worker instance
+    /// so that callbacks can access it.
+    pub fn setUserData(self: *DedicatedWorker, data: ?*anyopaque) void {
+        self.user_data = data;
+    }
+
+    /// Get user data for callbacks.
+    pub fn getUserData(self: *DedicatedWorker) ?*anyopaque {
+        return self.user_data;
     }
 
     /// Enable message dispatch on the outside port.

@@ -5,6 +5,21 @@
 //!
 //! This implementation bridges the WebIDL Worker interface to the underlying
 //! DedicatedWorker implementation in src/html/workers/.
+//!
+//! ## Message Passing Architecture
+//!
+//! When `worker.postMessage(data)` is called from JS:
+//! 1. call_postMessage serializes `data` using structured clone
+//! 2. Message is queued to DedicatedWorker's outside_port
+//! 3. outside_port delivers to entangled inside_port (worker side)
+//! 4. Worker's V8 context receives MessageEvent
+//!
+//! When worker calls `self.postMessage(data)`:
+//! 1. Worker serializes `data` using structured clone
+//! 2. Message is queued to inside_port
+//! 3. inside_port delivers to entangled outside_port (main thread)
+//! 4. handleMessageFromWorker creates MessageEvent
+//! 5. onmessage handler is invoked with MessageEvent
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -15,6 +30,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Worker = interfaces.Worker;
+const MessageEvent = interfaces.MessageEvent;
 
 // Import workers infrastructure
 const html_core = @import("html_core");
@@ -23,6 +39,12 @@ const DedicatedWorker = workers.DedicatedWorker;
 const WorkerOptions = workers.WorkerOptions;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
+const QueuedMessage = workers.message_channel.QueuedMessage;
+const WorkerContext = workers.WorkerContext;
+
+// Import html module for WorkerV8Context (has interface access, unlike html_core)
+const html_full = @import("html");
+const WorkerV8Context = html_full.WorkerV8Context;
 
 // Import structured clone for message passing
 const structured_clone = html_core.structured_clone;
@@ -70,6 +92,12 @@ pub const InternalState = struct {
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
+
+    /// Reference to the Worker instance (for message handling)
+    worker_instance: ?*runtime.Instance = null,
+
+    /// Runtime context for creating MessageEvent
+    ctx: ?runtime.Context = null,
 
     pub fn deinit(self: *InternalState) void {
         if (self.dedicated_worker) |worker| {
@@ -159,6 +187,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         .worker_type = worker_type,
         .credentials = credentials,
         .allocator = ctx.allocator,
+        .worker_instance = instance,
+        .ctx = ctx,
     };
 
     // Store internal state in instance
@@ -183,6 +213,19 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             return instance;
         };
         internal_state.dedicated_worker = dedicated_worker;
+
+        // Store reference to Worker instance for message callbacks
+        // This allows handleMessageFromWorkerCallback to find the Worker
+        dedicated_worker.setUserData(instance);
+
+        // Set up message handler on outside port to receive messages from worker
+        // When the worker calls postMessage(), the message arrives at outside_port
+        // and we dispatch to the onmessage handler.
+        dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
+
+        // Enable message dispatch on outside port
+        // Messages are queued until start() is called
+        dedicated_worker.startMessageQueue();
 
         // TODO: Start the worker (fetch script, create V8 context, execute)
         // This requires additional infrastructure - see whatwg-snp7x epic
@@ -237,6 +280,75 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onmessageerror = value;
+}
+
+/// Callback for messages received from the worker via the outside port
+///
+/// Spec: HTML Standard § 10.2.3
+/// "When a message is received on the outside port..."
+/// 1. Deserialize the message data
+/// 2. Create a MessageEvent with the data
+/// 3. Dispatch the event (invoke onmessage handler)
+///
+/// This is called by DedicatedWorker when a message arrives from the worker
+/// on the outside_port (worker → main thread direction).
+fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
+    // Get the Worker instance from user_data stored in DedicatedWorker
+    const user_data = dedicated_worker.getUserData() orelse {
+        std.log.warn("Worker.handleMessageFromWorkerCallback: no user_data set", .{});
+        return;
+    };
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
+
+    // Dispatch the message event to onmessage handler
+    dispatchMessageEvent(instance, msg);
+}
+
+/// Dispatch a MessageEvent to the Worker's onmessage handler
+///
+/// This creates a MessageEvent with the deserialized data and invokes
+/// the onmessage EventHandler if one is set.
+fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
+    const state = instance.getState(State);
+
+    // Get the onmessage handler
+    const onmessage = state.own.onmessage orelse return;
+
+    // Get context for creating MessageEvent
+    const internal = state.own._internal orelse return;
+    const ctx = internal.ctx orelse return;
+
+    // Deserialize the message data to a JSValue
+    // The msg.data is a SerializedValue from the structured clone algorithm
+    const deserialized = workers.message_channel.deserializeFromPostMessage(
+        ctx.allocator,
+        msg.data,
+    ) catch |err| {
+        std.log.warn("Failed to deserialize worker message: {}", .{err});
+        return;
+    };
+
+    // Create a MessageEvent with the deserialized data
+    // For now, we create a minimal MessageEvent with just the data property
+    const message_event = MessageEvent.call_constructor(
+        ctx,
+        runtime.DOMString.initInterned("message"),
+        webidl.Opt(dictionaries.MessageEventInit).notPassed(),
+    ) catch |err| {
+        std.log.warn("Failed to create MessageEvent: {}", .{err});
+        // Clean up deserialized value
+        workers.message_channel.freeJSValue(ctx.allocator, @constCast(deserialized));
+        return;
+    };
+
+    // Set the data property on the MessageEvent
+    // The data is the deserialized JSValue
+    var event_state = message_event.getState(MessageEvent.State);
+    event_state.own.data = runtime.JSValue.fromAnyopaque(@ptrCast(deserialized));
+
+    // Invoke the onmessage handler with the MessageEvent
+    // EventHandler is a function pointer: fn (event: *runtime.Instance) runtime.JSValue
+    _ = onmessage(message_event);
 }
 
 /// Operation: terminate
