@@ -56,6 +56,10 @@ const InternalMessagePort = message_port_internal.MessagePort;
 // Import platform for TimerBackend (used to create DedicatedWorker)
 const platform = @import("platform");
 
+// Import V8 engine for callback invocation
+const v8_engine = @import("v8");
+const template_registry = v8_engine.template_registry;
+
 pub const State = Worker.State;
 
 pub const ImplError = error{
@@ -102,7 +106,21 @@ pub const InternalState = struct {
     /// Runtime context for creating MessageEvent
     ctx: ?runtime.Context = null,
 
+    /// V8 isolate for callback invocation
+    isolate: ?*v8_engine.ffi.Isolate = null,
+
+    /// Event handler GlobalHandles (stored as V8 Global handles for proper lifecycle)
+    /// These are extracted from tagged pointers when set via the WebIDL setters.
+    onmessage_handle: v8_engine.OptionalGlobalHandle = null,
+    onerror_handle: v8_engine.OptionalGlobalHandle = null,
+    onmessageerror_handle: v8_engine.OptionalGlobalHandle = null,
+
     pub fn deinit(self: *InternalState) void {
+        // Dispose V8 Global handles to prevent memory leaks
+        v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
+        v8_engine.disposeOptionalGlobalHandle(&self.onerror_handle);
+        v8_engine.disposeOptionalGlobalHandle(&self.onmessageerror_handle);
+
         // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
         if (self.v8_context) |v8_ctx| {
             v8_ctx.deinit();
@@ -196,6 +214,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         .allocator = ctx.allocator,
         .worker_instance = instance,
         .ctx = ctx,
+        .isolate = ctx.getEngineContextAs(v8_engine.ffi.Isolate),
     };
 
     // Store internal state in instance
@@ -289,22 +308,61 @@ pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
     return state.own.onmessageerror;
 }
 
+/// Extract GlobalHandle from a tagged callback pointer (from V8 conversion).
+/// The V8 conversions layer creates Global handles and tags the pointers.
+fn extractEventHandler(handler: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
+    if (handler) |ptr| {
+        const untagged = v8_engine.pointer_tag.untagPointer(ptr);
+        if (untagged.tag == .global_handle or untagged.tag == .untagged) {
+            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+        }
+    }
+    return null;
+}
+
+/// Get internal state from instance
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.getState(State);
+    return if (state.own._internal) |internal| @constCast(internal) else null;
+}
+
 /// Setter for onerror
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onerror = value;
+
+    // Also store as GlobalHandle in internal state for proper V8 invocation
+    if (getInternal(instance)) |internal| {
+        v8_engine.disposeOptionalGlobalHandle(&internal.onerror_handle);
+        internal.onerror_handle = extractEventHandler(@ptrCast(value));
+    }
 }
 
 /// Setter for onmessage
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onmessage = value;
+
+    // Also store as GlobalHandle in internal state for proper V8 invocation
+    if (getInternal(instance)) |internal| {
+        v8_engine.disposeOptionalGlobalHandle(&internal.onmessage_handle);
+        internal.onmessage_handle = extractEventHandler(@ptrCast(value));
+    }
 }
 
 /// Setter for onmessageerror
+/// Extracts GlobalHandle from the tagged pointer passed from V8.
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
     var state = instance.getState(State);
     state.own.onmessageerror = value;
+
+    // Also store as GlobalHandle in internal state for proper V8 invocation
+    if (getInternal(instance)) |internal| {
+        v8_engine.disposeOptionalGlobalHandle(&internal.onmessageerror_handle);
+        internal.onmessageerror_handle = extractEventHandler(@ptrCast(value));
+    }
 }
 
 /// Callback for messages received from the worker via the outside port
@@ -332,16 +390,42 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
 /// Dispatch a MessageEvent to the Worker's onmessage handler
 ///
 /// This creates a MessageEvent with the deserialized data and invokes
-/// the onmessage EventHandler if one is set.
+/// the onmessage EventHandler via V8 FFI.
+///
+/// ## V8 Callback Invocation
+///
+/// The EventHandler is NOT a real Zig function pointer - it's a tagged pointer
+/// to a V8 GlobalHandle. We must:
+/// 1. Get the GlobalHandle from internal state
+/// 2. Retrieve the Local handle via global.get(isolate)
+/// 3. Wrap the MessageEvent as a V8 Object
+/// 4. Call the V8 function via v8_Function_Call
 fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     const state = instance.getState(State);
 
-    // Get the onmessage handler
-    const onmessage = state.own.onmessage orelse return;
+    // Get internal state with GlobalHandle and isolate
+    const internal = getInternal(instance) orelse return;
 
-    // Get context for creating MessageEvent
-    const internal = state.own._internal orelse return;
+    // Check if onmessage handler is set
+    const onmessage_global = internal.onmessage_handle orelse return;
+
+    // Get isolate and V8 context
+    const isolate = internal.isolate orelse return;
     const ctx = internal.ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
+
+    // Retrieve Local handle from Global handle
+    const local_value = onmessage_global.get(isolate) orelse {
+        std.log.warn("Worker.dispatchMessageEvent: Failed to get Local from GlobalHandle", .{});
+        return;
+    };
+
+    // Verify it's a function
+    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        std.log.warn("Worker.dispatchMessageEvent: onmessage is not a function", .{});
+        return;
+    }
+    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
     // Deserialize the message data to a JSValue
     // The msg.data is a SerializedValue from the structured clone algorithm
@@ -371,9 +455,26 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     var event_state = message_event.getState(MessageEvent.State);
     event_state.own.data = runtime.JSValue.fromAnyopaque(@ptrCast(deserialized));
 
-    // Invoke the onmessage handler with the MessageEvent
-    // EventHandler is a function pointer: fn (event: *runtime.Instance) runtime.JSValue
-    _ = onmessage(message_event);
+    // Wrap the MessageEvent instance as a V8 Object
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        message_event,
+        "MessageEvent",
+        isolate,
+        v8_context,
+    ) catch |err| {
+        std.log.warn("Failed to wrap MessageEvent as V8 object: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Call the V8 function with the MessageEvent as argument
+    // Use undefined as the receiver (this) since DOM event handlers use undefined/global
+    const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+
+    // Log success for debugging
+    std.log.info("Worker.dispatchMessageEvent: Successfully invoked onmessage handler", .{});
+    _ = state;
 }
 
 /// Operation: terminate
