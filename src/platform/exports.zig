@@ -3,6 +3,13 @@
 //! This module provides C-compatible functions for initializing and managing
 //! the WHATWG platform backend from foreign languages (Swift, Kotlin, C#, etc.).
 //!
+//! **TYPE SAFETY NOTE**: All `anyopaque` usage in this file is LEGITIMATE and should
+//! NOT be refactored. This is a C ABI export module where:
+//! - `?*anyopaque` is required for C-compatible user context pointers
+//! - All exported functions use `callconv(.c)` for foreign language interop
+//! - VTable pointers use opaque handles for cross-language compatibility
+//! See docs/type-safety.md for details.
+//!
 //! ## Memory Ownership
 //!
 //! - `whatwg_platform_create()` allocates a PlatformBackend - caller must call `whatwg_platform_destroy()`

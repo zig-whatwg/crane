@@ -4,6 +4,14 @@
 //! capabilities. It provides the operations needed to create JavaScript
 //! bindings from WebIDL interface descriptors.
 //!
+//! **TYPE SAFETY NOTE**: All `anyopaque` usage in this file is LEGITIMATE and should
+//! NOT be refactored. This is an FFI boundary module where:
+//! - `*anyopaque` is used for C ABI compatible callback signatures
+//! - VTable function pointers use `*anyopaque` for runtime polymorphism
+//! - Native callback types (NativeConstructorFn, NativeMethodFn, etc.) require
+//!   opaque pointers for engine-agnostic interoperability
+//! See docs/type-safety.md for details.
+//!
 //! ## Design Principles
 //!
 //! 1. **Extends EngineInterface**: All EngineInterface operations are available
