@@ -1410,24 +1410,142 @@ pub fn loadIframeDocument(
     _ = interfaces.EventTarget.call_dispatchEvent(iframe_element, event) catch return error.DispatchError;
 }
 
-// Thread-local storage for result collector (accessible from V8 callbacks)
+// ============================================================================
+// V8CallbackContext - Consolidated Thread-Local State
+// ============================================================================
+//
 // V8 callbacks are C functions that can't easily capture context,
-// so we use thread-local storage to pass the result collector.
+// so we use thread-local storage to pass state to callbacks.
+//
+// This struct consolidates all thread-local state for better organization
+// and to prevent forgetting to set/clear individual fields.
+
+/// Consolidated context for V8 callbacks in WPT tests.
+///
+/// This struct groups all thread-local state needed by V8 callbacks.
+/// Use `enter()` and `leave()` for scope-based management, or access
+/// individual fields through the accessor functions below.
+///
+/// ## Usage
+/// ```zig
+/// var ctx = V8CallbackContext.init(allocator);
+/// defer ctx.deinit();
+///
+/// ctx.result_collector = &collector;
+/// ctx.timer_interface = timer;
+/// ctx.wpt_root = wpt_root;
+/// ctx.test_path = test_path;
+///
+/// ctx.enter();
+/// defer ctx.leave();
+///
+/// // V8 callbacks can now access the context via V8CallbackContext.get()
+/// ```
+pub const V8CallbackContext = struct {
+    /// Result collector for test assertions
+    result_collector: ?*test_harness.ResultCollector = null,
+    /// Timer interface for setTimeout/setInterval
+    timer_interface: ?TimerInterface = null,
+    /// Allocator for timer callback contexts
+    allocator: ?std.mem.Allocator = null,
+    /// WPT root directory for URL resolution
+    wpt_root: ?[]const u8 = null,
+    /// Current test path for URL resolution
+    test_path: ?[]const u8 = null,
+    /// Base URL for Worker constructor
+    base_url: ?[]const u8 = null,
+    /// Timer contexts for cleanup tracking
+    timer_contexts: std.AutoHashMap(TimerId, *V8TimerContext),
+    /// Whether this context is currently active
+    is_active: bool = false,
+
+    /// Thread-local pointer to current context
+    threadlocal var current: ?*V8CallbackContext = null;
+
+    /// Initialize a new callback context.
+    ///
+    /// The allocator is used for the timer_contexts map and must remain valid
+    /// for the lifetime of the context.
+    pub fn init(alloc: std.mem.Allocator) V8CallbackContext {
+        return .{
+            .timer_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(alloc),
+            .allocator = alloc,
+        };
+    }
+
+    /// Enter this context (make it current).
+    ///
+    /// Asserts that no other context is active to catch nesting bugs.
+    /// Use with defer: `ctx.enter(); defer ctx.leave();`
+    pub fn enter(self: *V8CallbackContext) void {
+        std.debug.assert(current == null); // Prevent nesting bugs
+        current = self;
+        self.is_active = true;
+
+        // Also set individual thread-locals for backward compatibility
+        current_result_collector = self.result_collector;
+        current_timer_interface = self.timer_interface;
+        current_allocator = self.allocator;
+        current_wpt_root = self.wpt_root;
+        current_test_path = self.test_path;
+        current_base_url = self.base_url;
+        timer_contexts = self.timer_contexts;
+    }
+
+    /// Leave this context (clear current).
+    ///
+    /// Asserts that this is the active context.
+    pub fn leave(self: *V8CallbackContext) void {
+        std.debug.assert(current == self);
+
+        // Sync timer_contexts back (it may have been modified)
+        self.timer_contexts = timer_contexts orelse self.timer_contexts;
+
+        current = null;
+        self.is_active = false;
+
+        // Clear individual thread-locals
+        current_result_collector = null;
+        current_timer_interface = null;
+        current_allocator = null;
+        current_wpt_root = null;
+        current_test_path = null;
+        current_base_url = null;
+        timer_contexts = null;
+    }
+
+    /// Get the current active context, if any.
+    pub fn get() ?*V8CallbackContext {
+        return current;
+    }
+
+    /// Clean up resources (timer contexts map and pending timers).
+    pub fn deinit(self: *V8CallbackContext) void {
+        // Clean up any remaining timer contexts
+        var iter = self.timer_contexts.iterator();
+        while (iter.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+            // Cancel the timer if we have a timer interface
+            if (self.timer_interface) |timer| {
+                timer.clearTimeout(ctx.current_timer_id);
+            }
+            ctx.destroy();
+        }
+        self.timer_contexts.deinit();
+    }
+};
+
+// ============================================================================
+// Legacy Thread-Local Variables (for backward compatibility)
+// ============================================================================
+// These are kept for compatibility with existing code that accesses them directly.
+// New code should use V8CallbackContext instead.
+
 threadlocal var current_result_collector: ?*test_harness.ResultCollector = null;
-
-// Thread-local storage for timer interface (accessible from V8 callbacks)
 threadlocal var current_timer_interface: ?TimerInterface = null;
-
-// Thread-local storage for allocator (needed for timer callback contexts)
 threadlocal var current_allocator: ?std.mem.Allocator = null;
-
-// Thread-local storage for WPT root directory (needed for relative URL resolution in fetch)
 threadlocal var current_wpt_root: ?[]const u8 = null;
-
-// Thread-local storage for current test path (needed for relative URL resolution in fetch)
 threadlocal var current_test_path: ?[]const u8 = null;
-
-// Thread-local storage for current base URL (needed for relative URL resolution in Worker constructor)
 threadlocal var current_base_url: ?[]const u8 = null;
 
 /// Set the WPT root for fetch callback URL resolution
