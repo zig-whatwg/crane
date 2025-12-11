@@ -240,7 +240,8 @@ pub const PushMessageData = struct {
 /// This uses a vtable pattern to allow different implementations
 /// (real push service, mock push) to be swapped at runtime.
 pub const PushBackend = struct {
-    /// Implementation pointer
+    /// Implementation pointer.
+    /// KEEP: VTable polymorphism - type erasure for pluggable backend implementations
     ptr: *anyopaque,
 
     /// Virtual function table

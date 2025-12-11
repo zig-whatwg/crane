@@ -99,6 +99,7 @@ pub const ClipboardResult = enum {
 /// (real OS clipboard, mock clipboard) to be swapped at runtime.
 pub const ClipboardBackend = struct {
     /// Implementation pointer.
+    /// KEEP: VTable polymorphism - type erasure for pluggable backend implementations
     ptr: *anyopaque,
 
     /// Virtual function table.

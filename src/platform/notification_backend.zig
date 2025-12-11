@@ -277,6 +277,7 @@ pub const NotificationEventCallback = *const fn (notification: *Notification, ev
 /// (real OS notifications, mock notifications) to be swapped at runtime.
 pub const NotificationBackend = struct {
     /// Implementation pointer.
+    /// KEEP: VTable polymorphism - type erasure for pluggable backend implementations
     ptr: *anyopaque,
 
     /// Virtual function table.

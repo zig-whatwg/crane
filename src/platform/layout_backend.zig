@@ -117,6 +117,7 @@ pub const DOMRectList = struct {
 /// (real layout engines, stub/mock backends) to be swapped at runtime.
 pub const LayoutBackend = struct {
     /// Implementation pointer.
+    /// KEEP: VTable polymorphism - type erasure for pluggable backend implementations
     ptr: *anyopaque,
 
     /// Virtual function table.

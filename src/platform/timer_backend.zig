@@ -17,6 +17,7 @@ const std = @import("std");
 /// (real timers, mock timers) to be swapped at runtime.
 pub const TimerBackend = struct {
     /// Implementation pointer.
+    /// KEEP: VTable polymorphism - type erasure for pluggable backend implementations
     ptr: *anyopaque,
 
     /// Virtual function table.
