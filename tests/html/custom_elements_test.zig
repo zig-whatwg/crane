@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const html = @import("html");
+const runtime = @import("runtime");
 const custom_elements = html.custom_elements;
 const upgrade = html.upgrade;
 const ReactionQueue = custom_elements.ReactionQueue;
@@ -21,6 +22,39 @@ const Reaction = custom_elements.Reaction;
 const ReactionType = custom_elements.ReactionType;
 const CallbackType = custom_elements.CallbackType;
 const CustomElementState = upgrade.CustomElementState;
+
+// ============================================================================
+// Test Helpers - Mock Instance Creation
+// ============================================================================
+
+/// Mock state type for testing (minimal)
+const MockState = struct {
+    id: u32 = 0,
+};
+
+/// Mock VTable for testing
+const mock_vtable = runtime.VTable{
+    .deinit = null,
+    .methods_ptr = &.{},
+};
+
+/// Create a mock Instance for testing
+/// Caller must ensure allocators are initialized before calling
+fn createMockInstance(allocator: std.mem.Allocator) !*runtime.Instance {
+    return try runtime.Instance.init(allocator, MockState, &mock_vtable, undefined);
+}
+
+/// Initialize allocators needed for Instance creation
+fn initTestAllocators(allocator: std.mem.Allocator) void {
+    runtime.SlabAllocator.init(allocator);
+    runtime.ArenaAllocator.init(allocator);
+}
+
+/// Deinitialize test allocators
+fn deinitTestAllocators() void {
+    runtime.ArenaAllocator.deinit();
+    runtime.SlabAllocator.deinit();
+}
 
 // ============================================================================
 // Reaction Queue Tests
@@ -187,16 +221,20 @@ test "Reaction - callback with attribute changed args" {
 }
 
 test "Reaction - callback with adopted args" {
-    var old_doc: u8 = 1;
-    var new_doc: u8 = 2;
+    const allocator = std.testing.allocator;
+    initTestAllocators(allocator);
+    defer deinitTestAllocators();
+
+    const old_doc = try createMockInstance(allocator);
+    const new_doc = try createMockInstance(allocator);
 
     const reaction = Reaction{
         .reaction_type = .callback,
         .callback_type = .adopted,
         .callback_args = .{
             .adopted = .{
-                .old_document = &old_doc,
-                .new_document = &new_doc,
+                .old_document = old_doc,
+                .new_document = new_doc,
             },
         },
     };
@@ -228,10 +266,11 @@ test "Reaction - callback without args (connected/disconnected)" {
 
 test "element reaction queue - get or create" {
     const allocator = std.testing.allocator;
+    initTestAllocators(allocator);
+    defer deinitTestAllocators();
     defer custom_elements.deinitThreadLocalState(); // Clean up thread-local state
 
-    var mock_element: u8 = 0;
-    const element_ptr: *anyopaque = &mock_element;
+    const element_ptr = try createMockInstance(allocator);
 
     // Get or create should create a new empty queue
     const queue1 = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
@@ -250,10 +289,11 @@ test "element reaction queue - get or create" {
 
 test "element reaction queue - removal" {
     const allocator = std.testing.allocator;
+    initTestAllocators(allocator);
+    defer deinitTestAllocators();
     defer custom_elements.deinitThreadLocalState(); // Clean up thread-local state
 
-    var mock_element: u8 = 0;
-    const element_ptr: *anyopaque = &mock_element;
+    const element_ptr = try createMockInstance(allocator);
 
     // Create and populate queue
     const queue = try custom_elements.getOrCreateReactionQueue(allocator, element_ptr);
@@ -373,13 +413,17 @@ test "CallbackArgs - attribute_changed variant" {
 }
 
 test "CallbackArgs - adopted variant" {
-    var old_doc: u8 = 0;
-    var new_doc: u8 = 1;
+    const allocator = std.testing.allocator;
+    initTestAllocators(allocator);
+    defer deinitTestAllocators();
+
+    const old_doc = try createMockInstance(allocator);
+    const new_doc = try createMockInstance(allocator);
 
     const args = Reaction.CallbackArgs{
         .adopted = .{
-            .old_document = &old_doc,
-            .new_document = &new_doc,
+            .old_document = old_doc,
+            .new_document = new_doc,
         },
     };
 
