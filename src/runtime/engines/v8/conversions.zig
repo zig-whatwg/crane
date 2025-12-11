@@ -974,6 +974,13 @@ pub fn fromV8Value(
     // See: src/runtime/engines/v8/global_handles.zig for GlobalHandle documentation
     // See: src/runtime/engines/v8/pointer_tag.zig for pointer tagging documentation
     // See: whatwg-9bmsj for the bug report this fixes
+    // Note: Direct function pointer conversion is problematic because V8 functions
+    // can't be directly converted to Zig function pointers. For proper callback handling,
+    // use CallbackWrapper types instead.
+    //
+    // For backward compatibility with code that expects function pointers (like EventHandler),
+    // we create a GlobalHandle and return a tagged pointer. The consumer MUST untag it
+    // and use it through the GlobalHandle API, NOT call it directly as a function pointer.
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
@@ -997,9 +1004,25 @@ pub fn fromV8Value(
             // 2. Check for .global_handle tag
             // 3. Wrap in GlobalHandle{ .ptr = @ptrCast(untagged.ptr) } for proper disposal
             //
-            // Note: The tagged pointer has low bits set (for the tag), so we must use
-            // @alignCast to tell Zig we know what we're doing with alignment.
-            return @ptrCast(@alignCast(pointer_tag.tagPointer(@ptrCast(global_handle.ptr), .global_handle)));
+            // IMPORTANT: Tagged pointers are intentionally misaligned (low bits used for tag).
+            // We can't use normal pointer casts because Zig checks alignment for function pointers.
+            // Instead, we use a union type-pun to bypass alignment checks entirely.
+            // The pointer MUST be untagged before any alignment-sensitive operations.
+            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(global_handle.ptr), .global_handle);
+
+            // Bypass Zig's alignment checking for function pointers.
+            // This is safe because:
+            // 1. The tagged pointer is never dereferenced directly
+            // 2. Consumers must untag before using
+            // 3. The underlying GlobalHandle maintains proper alignment
+            //
+            // We use a packed struct to bypass Zig's alignment checks completely.
+            // This is necessary because tagged pointers have intentionally misaligned
+            // addresses (low bits used for the tag).
+            const tagged_addr: usize = @intFromPtr(tagged_ptr);
+            const PackedPtr = packed struct { ptr: T };
+            const packed_val: PackedPtr = @bitCast(tagged_addr);
+            return packed_val.ptr;
         }
     }
 
