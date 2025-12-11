@@ -33,14 +33,16 @@ pub const InternalState = struct {
     /// [[aborted]]: Whether the signal is aborted
     aborted: bool,
 
-    /// [[reason]]: The abort reason (null if not aborted or no reason provided)
-    reason: ?*anyopaque,
+    /// [[reason]]: The abort reason (undefined if not aborted or no reason provided)
+    /// Per DOM spec, `reason` is typed as `any` which maps to runtime.JSValue
+    reason: runtime.JSValue,
 
     /// [[onabort]]: Event handler for abort event (stub for now)
     onabort: ?typedefs.EventHandler,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // reason is borrowed, not owned
+        // reason JSValue disposal - if it's an owned handle, it needs disposal
+        // For now, the engine manages the JSValue lifecycle
         allocator.destroy(self);
     }
 };
@@ -62,7 +64,7 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.aborted = false;
-    internal.reason = null;
+    internal.reason = runtime.JSValue.jsUndefined;
     internal.onabort = null;
 
     return instance;
@@ -94,13 +96,7 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    // Convert stored reason (V8 handle) to JSValue, or return undefined if not set
-    // Note: reason is a stored V8 handle from signalAbort - use fromHandleNonOwning
-    // since the handle is managed by the InternalState lifecycle
-    if (internal.reason) |reason| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(reason));
-    }
-    return runtime.JSValue.jsUndefined;
+    return internal.reason;
 }
 
 /// Getter for onabort
@@ -172,7 +168,8 @@ pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
 /// Signal abort - called by AbortController.abort()
 ///
 /// Spec: § 3.3 "To signal abort on an AbortSignal signal, given an optional reason"
-pub fn signalAbort(instance: *runtime.Instance, reason: ?*anyopaque) ImplError!void {
+/// Per DOM spec, reason is typed as `any` which maps to runtime.JSValue
+pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -184,8 +181,15 @@ pub fn signalAbort(instance: *runtime.Instance, reason: ?*anyopaque) ImplError!v
     // Set aborted to true
     internal.aborted = true;
 
-    // Set reason (or default to AbortError if not provided)
-    internal.reason = reason;
+    // Set reason (or default to AbortError DOMException if not provided)
+    // Per spec: "If reason is not given, then set reason to a new 'AbortError' DOMException."
+    if (reason.isUndefined()) {
+        // TODO: Create an AbortError DOMException when DOMException is implemented
+        // For now, just use undefined as a placeholder
+        internal.reason = runtime.JSValue.jsUndefined;
+    } else {
+        internal.reason = reason;
+    }
 
     // Fire abort event (requires DOM event infrastructure)
     // For now, just set the flag - event firing would happen here
