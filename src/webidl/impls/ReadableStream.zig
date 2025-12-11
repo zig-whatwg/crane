@@ -3181,8 +3181,71 @@ fn pipeFinalize(pipe_state: *PipeState, error_reason: runtime.JSValue) void {
 // Internal API for Zig-only streams (e.g., Blob.stream())
 // ============================================================================
 
-/// Configuration for creating a ReadableStream from Zig callbacks
-/// This bypasses the V8/JSValue path entirely for internal use.
+/// Generic underlying source for type-safe Zig-native stream implementations.
+///
+/// This provides compile-time type safety for the context pointer, avoiding
+/// the need for @ptrCast/@alignCast at runtime. Use this for new code.
+///
+/// ## Example
+/// ```zig
+/// const BlobSource = ZigUnderlyingSourceTyped(BlobStreamSource);
+///
+/// fn pull(controller: *runtime.Instance, source: *BlobStreamSource) anyerror!void {
+///     // Direct typed access - no @ptrCast needed
+///     const data = source.blob_data.bytes[source.position..];
+///     // ...
+/// }
+///
+/// const source = BlobSource{
+///     .pull = &pull,
+///     .context = source_state,  // *BlobStreamSource
+///     .is_byte_stream = true,
+/// };
+/// const stream = try createFromZigSourceTyped(allocator, ctx, source);
+/// ```
+pub fn ZigUnderlyingSourceTyped(comptime Context: type) type {
+    return struct {
+        const Self = @This();
+
+        /// Pull callback - called when the stream needs more data.
+        /// Receives typed context pointer directly.
+        pull: ?*const fn (*runtime.Instance, *Context) anyerror!void = null,
+
+        /// Cancel callback - called when the stream is cancelled.
+        /// reason: The cancellation reason (opaque to Zig code)
+        /// context: Typed context pointer
+        cancel: ?*const fn (?*const anyopaque, *Context) anyerror!void = null,
+
+        /// Typed context pointer (NOT optional - use a wrapper struct if needed)
+        context: *Context,
+
+        /// Stream type - set to true for byte streams
+        is_byte_stream: bool = false,
+
+        /// Auto-allocate chunk size for byte streams
+        auto_allocate_chunk_size: ?u64 = null,
+
+        /// Convert to type-erased ZigUnderlyingSource for internal use.
+        ///
+        /// This allows using the typed source with the existing createFromZigSource function.
+        pub fn toErased(self: Self) ZigUnderlyingSource {
+            return .{
+                .pull = if (self.pull) |p| @ptrCast(p) else null,
+                .cancel = if (self.cancel) |c| @ptrCast(c) else null,
+                .context = @ptrCast(self.context),
+                .is_byte_stream = self.is_byte_stream,
+                .auto_allocate_chunk_size = self.auto_allocate_chunk_size,
+            };
+        }
+    };
+}
+
+/// Configuration for creating a ReadableStream from Zig callbacks (type-erased).
+///
+/// This is the type-erased version that accepts `?*anyopaque` context.
+/// For type-safe code, use `ZigUnderlyingSourceTyped(Context)` instead.
+///
+/// This type is kept for backward compatibility with existing code.
 pub const ZigUnderlyingSource = struct {
     /// Pull callback - called when the stream needs more data
     /// Signature: fn(controller: *runtime.Instance, context: ?*anyopaque) anyerror!void
@@ -3192,7 +3255,7 @@ pub const ZigUnderlyingSource = struct {
     /// Signature: fn(reason: ?*const anyopaque, context: ?*anyopaque) anyerror!void
     cancel: ?*const fn (?*const anyopaque, ?*anyopaque) anyerror!void = null,
 
-    /// User context passed to callbacks
+    /// User context passed to callbacks (type-erased)
     context: ?*anyopaque = null,
 
     /// Stream type - set to true for byte streams
