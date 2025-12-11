@@ -58,7 +58,8 @@ pub const InternalState = struct {
     host: ?*runtime.Instance,
 
     /// Event handler for slotchange event
-    onslotchange: ?*anyopaque,
+    /// Stored as runtime.JSValue with global handle scope for persistence
+    onslotchange: ?runtime.JSValue = null,
 
     /// Custom element registry (from DocumentOrShadowRoot mixin)
     custom_element_registry: ?*runtime.Instance,
@@ -79,8 +80,9 @@ pub const InternalState = struct {
     style_sheets: ?*runtime.Instance,
 
     /// Adopted style sheets (from DocumentOrShadowRoot mixin)
+    /// Stored as runtime.JSValue with global handle scope for persistence
     /// TODO: Proper FrozenArray<CSSStyleSheet> support
-    adopted_style_sheets: ?*anyopaque,
+    adopted_style_sheets: ?runtime.JSValue = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -106,8 +108,16 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // No cleanup needed - we don't own the referenced elements
-        _ = self;
+        // Dispose JSValue handles that may contain global handles
+        if (self.onslotchange) |*handler| {
+            handler.deinit(self.allocator);
+        }
+        self.onslotchange = null;
+
+        if (self.adopted_style_sheets) |*sheets| {
+            sheets.deinit(self.allocator);
+        }
+        self.adopted_style_sheets = null;
     }
 };
 
@@ -345,11 +355,10 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
-        // TODO: Return proper V8 Array of CSSStyleSheet instances
-        // sheets is a stored pointer that should be converted to V8 Array
-        _ = sheets;
-        return runtime.JSValue.jsUndefined;
+        // Return the stored JSValue directly
+        return sheets;
     }
+    // Return undefined if not set
     // TODO: Return empty V8 Array - need V8 array creation utility
     return runtime.JSValue.jsUndefined;
 }
@@ -357,9 +366,22 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
 /// DocumentOrShadowRoot.adoptedStyleSheets setter
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance);
-    // TODO: Proper FrozenArray<CSSStyleSheet> handling
-    // Extract the anyopaque pointer from JSValue for storage
-    internal.adopted_style_sheets = @constCast(value.toAnyopaque());
+
+    // Dispose old value if present
+    if (internal.adopted_style_sheets) |*old| {
+        old.deinit(internal.allocator);
+    }
+
+    // Store the new value directly as JSValue
+    // The caller should ensure the handle is global-scoped for persistence
+    // If the value is a handle, verify it's safe to store
+    switch (value) {
+        .handle => |h| {
+            h.assertGlobalForStorage();
+        },
+        else => {},
+    }
+    internal.adopted_style_sheets = value;
 }
 
 /// DocumentOrShadowRoot.activeElement getter
