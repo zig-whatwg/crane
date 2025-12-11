@@ -223,8 +223,9 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return the state as JSValue, or undefined
+    // state is a stored V8 handle - use fromHandleNonOwning
     if (internal.state) |state_ptr| {
-        return runtime.JSValue.fromAnyopaque(state_ptr);
+        return runtime.JSValue.fromHandleNonOwning(@constCast(state_ptr));
     }
     return runtime.JSValue.jsUndefined;
 }

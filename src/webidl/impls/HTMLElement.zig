@@ -259,17 +259,14 @@ pub fn get_hidden(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     if (getContentAttribute(instance, "hidden")) |value| {
         const s = value.asSlice();
         if (std.mem.eql(u8, s, "until-found")) {
-            // Return pointer to static string "until-found" wrapped in JSValue
-            return runtime.JSValue.fromAnyopaque(@ptrCast(&until_found_str));
+            // Return the string "until-found"
+            return runtime.JSValue.fromStringRef("until-found");
         }
         // Any other value (including empty) means hidden=true
-        return runtime.JSValue.fromAnyopaque(@ptrCast(&hidden_true));
+        return runtime.JSValue.fromBoolean(true);
     }
     return null; // Not hidden
 }
-
-const until_found_str: [11]u8 = "until-found".*;
-const hidden_true: bool = true;
 
 /// Getter for inert
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
@@ -1905,4 +1902,3 @@ pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Insta
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

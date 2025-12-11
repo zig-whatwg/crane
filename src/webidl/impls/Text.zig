@@ -256,12 +256,13 @@ pub fn call_splitText(instance: *runtime.Instance, offset: u32) anyerror!*runtim
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-geometryutils-getboxquads
 ///
 /// Returns a sequence of DOMQuads representing the CSS boxes for this element.
-/// Note: Returns sentinel for empty array - requires CSSOM/layout integration
+/// Note: Returns empty array stub - requires CSSOM/layout integration
 pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(dictionaries.BoxQuadOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;
-    // Return sentinel for empty array - layout engine required for actual box computation
-    return runtime.JSValue.fromAnyopaque(&undefined_sentinel);
+    // Return undefined for now - layout engine required for actual box computation
+    // TODO: Return proper empty array when V8 array creation is available
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: convertQuadFromNode (from GeometryUtils mixin)
@@ -310,4 +311,3 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

@@ -94,9 +94,11 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    // Convert anyopaque to JSValue, or return undefined if not set
+    // Convert stored reason (V8 handle) to JSValue, or return undefined if not set
+    // Note: reason is a stored V8 handle from signalAbort - use fromHandleNonOwning
+    // since the handle is managed by the InternalState lifecycle
     if (internal.reason) |reason| {
-        return runtime.JSValue.fromAnyopaque(reason);
+        return runtime.JSValue.fromHandleNonOwning(@constCast(reason));
     }
     return runtime.JSValue.jsUndefined;
 }

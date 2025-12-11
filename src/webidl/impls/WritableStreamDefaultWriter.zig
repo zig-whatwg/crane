@@ -14,6 +14,11 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WritableStreamDefaultWriter = interfaces.WritableStreamDefaultWriter;
 
+// Import V8 for promise bridging
+const v8_engine = @import("v8");
+const v8 = v8_engine.ffi;
+const promise_utils = v8_engine.promise;
+
 // Import streams infrastructure
 const streams_common = @import("streams_common");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
@@ -100,11 +105,21 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    if (internal.closed_promise) |promise| {
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
-    }
+    const zig_promise = internal.closed_promise orelse return error.InvalidState;
 
-    return error.InvalidState;
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        zig_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Getter for desiredSize
@@ -138,11 +153,21 @@ pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    if (internal.ready_promise) |promise| {
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
-    }
+    const zig_promise = internal.ready_promise orelse return error.InvalidState;
 
-    return error.InvalidState;
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        zig_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: releaseLock
@@ -347,11 +372,21 @@ fn writableStreamDefaultWriterClose(writer: *runtime.Instance) !runtime.JSValue 
 
     // Future: Implement full WritableStreamClose algorithm
     // For now, just return the closed promise
-    if (internal.closed_promise) |promise| {
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
-    }
+    const zig_promise = internal.closed_promise orelse return error.InvalidState;
 
-    return error.InvalidState;
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        zig_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// WritableStreamDefaultWriterGetDesiredSize
@@ -450,11 +485,21 @@ fn writableStreamDefaultWriterAbort(
     _ = reason;
 
     // For now, return closed promise as placeholder
-    if (writer_internal.closed_promise) |promise| {
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
-    }
+    const zig_promise = writer_internal.closed_promise orelse return error.InvalidState;
 
-    return error.InvalidState;
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        zig_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// WritableStreamDefaultWriterWrite
@@ -536,6 +581,17 @@ fn writableStreamDefaultWriterWrite(
 
     const write_promise = try WritableStreamDefaultController.write(controller, typed_chunk, chunk_size);
 
-    // 12. Return promise
-    return runtime.JSValue.fromAnyopaque(@ptrCast(write_promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // 12. Return promise - convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        void,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        write_promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }

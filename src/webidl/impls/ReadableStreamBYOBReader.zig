@@ -271,13 +271,25 @@ fn readInternal(
             internal.allocator,
             internal.loop_instance,
         );
-        // Reject with stored error (as opaque pointer for now)
-        // In full JS runtime integration, this would preserve the original error
+        // Reject with stored error
         const exception = webidl.errors.Exception{
             .simple = .{ .type = .TypeError, .message = "Stream is in errored state" },
         };
         promise.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+
+        // Get V8 context for promise conversion
+        const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        // Convert Zig AsyncPromise to V8 Promise
+        const v8_promise = try promise_utils.asyncPromiseToV8(
+            ReadIntoResult,
+            std.heap.c_allocator,
+            isolate,
+            context,
+            promise,
+        );
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 5: Return ! ReadableByteStreamControllerPullInto(stream.[[controller]], view, min, readIntoRequest)
@@ -313,8 +325,19 @@ fn readInternal(
     const ReadableByteStreamControllerImpl = @import("ReadableByteStreamController.zig");
     try ReadableByteStreamControllerImpl.pullInto(controller, view, min, readIntoRequest);
 
-    // Return the promise (caller will wait for it to fulfill)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    // Convert Zig AsyncPromise to V8 Promise (caller will wait for it to fulfill)
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        ReadIntoResult,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// SetUpReadableStreamBYOBReader(reader, stream)

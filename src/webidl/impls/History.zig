@@ -169,9 +169,9 @@ pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Get current entry's state
     if (internal.currentEntry()) |entry| {
         if (entry.state) |state| {
-            // Return pointer to the state data
+            // Return pointer to the state data - stored V8 handle
             // Note: This should be deserialized via structured clone
-            return runtime.JSValue.fromAnyopaque(state.ptr);
+            return runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(state.ptr)));
         }
     }
 

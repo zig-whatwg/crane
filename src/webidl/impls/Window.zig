@@ -493,9 +493,10 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return runtime.JSValue.jsNull;
     }
 
-    // Return opener if set
+    // Return opener if set - opener is a stored Window instance pointer
+    // Use fromInstanceAnyopaque for legacy anyopaque instance pointers
     if (internal.opener_any) |opener| {
-        return runtime.JSValue.fromAnyopaque(opener);
+        return runtime.JSValue.fromInstanceAnyopaque(@constCast(opener));
     }
 
     // Return null for no opener

@@ -283,8 +283,9 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 /// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
 pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // info is a stored V8 handle from navigation API - use fromHandleNonOwning
     if (internal.info) |info_ptr| {
-        return runtime.JSValue.fromAnyopaque(info_ptr);
+        return runtime.JSValue.fromHandleNonOwning(@constCast(info_ptr));
     }
     return runtime.JSValue.jsUndefined;
 }

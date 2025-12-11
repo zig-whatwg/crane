@@ -219,8 +219,10 @@ pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return undefined
         return runtime.JSValue.jsUndefined;
     };
+    // error is a stored V8 handle - use fromHandleNonOwning since lifecycle
+    // is managed by ErrorEvent's InternalState
     if (internal.@"error") |err| {
-        return runtime.JSValue.fromAnyopaque(err);
+        return runtime.JSValue.fromHandleNonOwning(@constCast(err));
     }
     return runtime.JSValue.jsUndefined;
 }
@@ -258,7 +260,8 @@ pub fn createErrorEvent(
         .filename = filename, // USVString is []const u8
         .lineno = lineno,
         .colno = colno,
-        .@"error" = if (err) |e| runtime.JSValue.fromAnyopaque(e) else null,
+        // error is a V8 handle passed in - use fromHandleNonOwning since caller retains ownership
+        .@"error" = if (err) |e| runtime.JSValue.fromHandleNonOwning(@constCast(e)) else null,
     };
 
     // Construct the ErrorEvent

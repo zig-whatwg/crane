@@ -219,8 +219,8 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return runtime.JSValue.jsUndefined;
     }
 
-    // Return the state data as JSValue
-    return runtime.JSValue.fromAnyopaque(state.data.ptr);
+    // Return the state data as JSValue - stored V8 handle
+    return runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(state.data.ptr)));
 }
 
 // ============================================================================

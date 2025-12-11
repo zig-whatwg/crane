@@ -449,10 +449,9 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// The V8 binding layer should convert this to a JS array.
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
-    // Return pointer to static "en-US" string as a minimal implementation
-    // The interface/binding layer needs to handle conversion to array
-    const static_lang: []const u8 = "en-US";
-    return runtime.JSValue.fromAnyopaque(@ptrCast(&static_lang));
+    // TODO: Return proper frozen array of strings when V8 array creation is available
+    // For now, return undefined - the spec requires returning a frozen array of strings
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Getter for onLine

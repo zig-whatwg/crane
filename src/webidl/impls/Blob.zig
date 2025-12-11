@@ -22,6 +22,11 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const webidl = @import("webidl");
 const webidl_errors = webidl.errors;
 
+// Import V8 for promise bridging
+const v8_engine = @import("v8");
+const v8 = v8_engine.ffi;
+const promise_utils = v8_engine.promise;
+
 // Import ReadableStream impl for internal API (Zig-only stream creation)
 const ReadableStreamImpl = @import("ReadableStream.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
@@ -296,7 +301,19 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        []const u8,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: stream
@@ -482,7 +499,19 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        []const u8,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Operation: arrayBuffer
@@ -513,7 +542,19 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Fulfill immediately since blob bytes are already in memory
     promise.fulfill(bytes);
 
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Get V8 context for promise conversion
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+
+    // Convert Zig AsyncPromise to V8 Promise
+    const v8_promise = try promise_utils.asyncPromiseToV8(
+        []const u8,
+        std.heap.c_allocator,
+        isolate,
+        context,
+        promise,
+    );
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 // ============================================================================

@@ -312,9 +312,10 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// "Must return a frozen array of valid BCP 47 language tags."
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // Return as JSValue wrapping pointer to slice
-        return runtime.JSValue.fromAnyopaque(@ptrCast(internal.internal_navigator.getLanguages().ptr));
+    if (state.own._internal) |_| {
+        // TODO: Return proper frozen array of strings when V8 array creation is available
+        // For now, return undefined - the spec requires returning a frozen array of strings
+        return runtime.JSValue.jsUndefined;
     }
     return error.NotImplemented;
 }
