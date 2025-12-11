@@ -233,9 +233,11 @@ pub fn parseHTMLWithScripting(
     // parsed DOM elements). Otherwise, create a new document.
     const document = if (options.existing_document) |existing| blk: {
         // Use the existing document - it's already registered in V8
-        // Clear any existing children to prepare for fresh parsing
+        // CRITICAL: Clear and deinitialize any existing children to prevent memory leaks.
+        // The document may have been used in a previous test run, so we need to
+        // properly clean up the old DOM tree before building a new one.
+        document_internals.clearChildren(existing);
         document_internals.setDocumentType(existing, .html) catch {};
-        document_internals.setDocumentElement(existing, null);
         break :blk existing;
     } else blk: {
         // Create new document (original behavior)
@@ -275,6 +277,9 @@ pub fn parseHTMLWithScripting(
         &tree_builder,
         options.scripting_enabled,
     );
+
+    // Set base URL for resolving relative script URLs
+    script_context.setBaseUrl(options.base_url);
 
     // Set script loader if provided
     if (options.script_loader) |loader| {

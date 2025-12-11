@@ -25,6 +25,9 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const infra = @import("infra");
 
+// HTTP fetch for external scripts
+const fetch = @import("fetch");
+
 // HTML parser types
 const html_core = @import("html_core");
 const TreeBuilder = html_core.parser.TreeBuilder;
@@ -67,6 +70,9 @@ pub const ParserScriptContext = struct {
     /// Whether scripting is enabled for this document.
     scripting_enabled: bool,
 
+    /// Base URL for resolving relative script URLs.
+    base_url: []const u8 = "",
+
     /// Optional script loader for external scripts.
     script_loader_fn: ?ScriptLoaderFn = null,
     script_loader_ctx: ?*anyopaque = null,
@@ -90,6 +96,11 @@ pub const ParserScriptContext = struct {
         };
     }
 
+    /// Set the base URL for resolving relative script URLs.
+    pub fn setBaseUrl(self: *ParserScriptContext, base_url: []const u8) void {
+        self.base_url = base_url;
+    }
+
     /// Set the script loader for external scripts.
     pub fn setScriptLoader(self: *ParserScriptContext, loader_fn: ScriptLoaderFn, loader_ctx: ?*anyopaque) void {
         self.script_loader_fn = loader_fn;
@@ -97,12 +108,31 @@ pub const ParserScriptContext = struct {
     }
 
     /// Load an external script by URL.
-    /// Returns null if no script loader is set or if loading fails.
-    pub fn loadExternalScript(self: *const ParserScriptContext, url: []const u8) ?[]const u8 {
+    ///
+    /// If a custom script loader is set, tries that first. If the loader returns null,
+    /// falls back to HTTP fetch like a real browser would.
+    ///
+    /// Relative URLs are resolved against the base URL.
+    ///
+    /// Returns null if loading fails.
+    pub fn loadExternalScript(self: *ParserScriptContext, url: []const u8) ?[]const u8 {
+        // Try custom loader first if provided
         if (self.script_loader_fn) |loader_fn| {
-            return loader_fn(self.script_loader_ctx, url);
+            if (loader_fn(self.script_loader_ctx, url)) |content| {
+                return content;
+            }
+            // Custom loader returned null - fall through to HTTP fetch
         }
-        return null;
+
+        // Resolve relative URLs against base URL
+        const resolved_url = resolveScriptUrl(self.allocator, url, self.base_url) orelse {
+            std.debug.print("Failed to resolve script URL: {s}\n", .{url});
+            return null;
+        };
+        defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
+
+        // Default: HTTP fetch like a real browser
+        return fetchScriptViaHttp(self.allocator, resolved_url);
     }
 
     /// Get the DOM element for a TreeNode (if it has been converted).
@@ -144,6 +174,7 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
     // Step 3: Check for src attribute (external script)
     const src_attr = getScriptSrcAttribute(script_tree_node);
+
     if (src_attr) |src_url| {
         // External script - try to load via script loader
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
@@ -169,7 +200,9 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
             defer clearInsertionPointAfterScript(ctx);
 
             // Execute via the standard preparation path
-            _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {};
+            _ = script_execution.prepareScriptElement(ctx.allocator, script_element) catch {
+                // Script preparation failed - continue anyway
+            };
             return;
         } else {
             // Script loader not available or failed to load
@@ -251,6 +284,90 @@ fn setInsertionPointForScript(ctx: *ParserScriptContext) void {
 /// Clear the insertion point after script execution.
 fn clearInsertionPointAfterScript(ctx: *ParserScriptContext) void {
     _ = ctx;
+}
+
+// =============================================================================
+// URL Resolution for Scripts
+// =============================================================================
+
+/// Resolve a script URL against a base URL.
+///
+/// If the URL is already absolute (starts with http:// or https://), returns it as-is.
+/// If the URL is relative (starts with /), resolves it against the base URL's origin.
+/// Otherwise, resolves it relative to the base URL's path.
+fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8) ?[]const u8 {
+    // Already absolute URL
+    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
+        return url;
+    }
+
+    // No base URL - can't resolve
+    if (base_url.len == 0) {
+        return null;
+    }
+
+    // Extract origin from base URL (scheme + host + optional port)
+    // e.g., "http://localhost:8000/path/to/doc.html" -> "http://localhost:8000"
+    const origin_end = blk: {
+        // Find end of scheme
+        const scheme_end = std.mem.indexOf(u8, base_url, "://") orelse return null;
+        const after_scheme = base_url[scheme_end + 3 ..];
+
+        // Find end of authority (host:port)
+        if (std.mem.indexOf(u8, after_scheme, "/")) |slash_pos| {
+            break :blk scheme_end + 3 + slash_pos;
+        } else {
+            break :blk base_url.len;
+        }
+    };
+
+    const origin = base_url[0..origin_end];
+
+    // URL starts with / - resolve against origin
+    if (std.mem.startsWith(u8, url, "/")) {
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ origin, url }) catch null;
+    }
+
+    // Relative URL - resolve against base path
+    // e.g., base="http://localhost/path/to/doc.html", url="script.js" -> "http://localhost/path/to/script.js"
+    const base_path = base_url[origin_end..];
+    const last_slash = std.mem.lastIndexOf(u8, base_path, "/") orelse 0;
+    const dir_path = base_path[0 .. last_slash + 1];
+
+    return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ origin, dir_path, url }) catch null;
+}
+
+// =============================================================================
+// HTTP Script Fetching (Default Browser Behavior)
+// =============================================================================
+
+/// Fetch an external script via HTTP, like a real browser.
+///
+/// This is the default behavior when no custom script loader is provided.
+/// It uses the Fetch API to retrieve scripts from URLs.
+fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
+
+    // Use the fetch module to retrieve the script
+    const response = fetch.fetchSimple(allocator, url) catch |err| {
+        std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
+        return null;
+    };
+    defer response.deinit();
+
+    // Check for successful response (2xx status)
+    if (response.status < 200 or response.status >= 300) {
+        std.debug.print("HTTP {d} fetching script {s}\n", .{ response.status, url });
+        return null;
+    }
+
+    // Extract body content
+    if (response.body) |resp_body| {
+        if (resp_body.data.items.len > 0) {
+            return allocator.dupe(u8, resp_body.data.items) catch null;
+        }
+    } else {}
+
+    return null;
 }
 
 // =============================================================================
