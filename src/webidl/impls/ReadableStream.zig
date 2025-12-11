@@ -31,6 +31,9 @@ const Algorithm = algorithm_mod.Algorithm;
 const IteratorRecord = @import("streams_iterator_record").IteratorRecord;
 const from_iterable = @import("streams_from_iterable_algorithm");
 
+// Promise utilities for bridging Zig AsyncPromise to V8 Promise
+const promise_utils = v8_engine.promise;
+
 pub const State = ReadableStream.State;
 
 /// Returns a pointer representing "undefined" for any type fields
@@ -48,6 +51,15 @@ pub const ImplError = error{
     NoEventLoop,
     NullValue,
     BufferDetached,
+    // V8 promise bridge errors
+    NoIsolate,
+    NoContext,
+    PromiseCreationFailed,
+    PromiseResolveFailed,
+    PromiseRejectFailed,
+    StringError,
+    NullContext,
+    GlobalHandleCreationFailed,
 };
 
 /// Stream state enumeration per WHATWG spec
@@ -851,13 +863,12 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
     // IsReadableStreamLocked(stream): return stream.[[reader]] !== undefined
     if (internal.reader != .none) {
         // Stream is locked - return rejected promise with TypeError
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot cancel a locked stream");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Perform ReadableStreamCancel(this, reason)
@@ -883,20 +894,18 @@ fn readableStreamCancel(
 
     // Step 2: If stream.[[state]] is "closed", return resolved promise
     if (internal.state == .closed) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
-        promise.*.fulfill({});
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 3: If stream.[[state]] is "errored", return rejected promise
     if (internal.state == .errored) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         // Reject with stream.[[storedError]]
         // Use type-safe StoredError API to check for error presence
         // Future: Use StoredError.toV8() for proper error propagation
@@ -904,8 +913,8 @@ fn readableStreamCancel(
             try webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)")
         else
             try webidl.errors.Exception.typeError(internal.allocator, "Stream is errored");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 4: Perform ReadableStreamClose(stream)
@@ -935,14 +944,18 @@ fn readableStreamCancel(
     const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
     const cancel_promise = try ReadableStreamDefaultControllerImpl.cancelSteps(internal.controller, reason);
 
-    // Step 8: Return the cancel promise (already handles fulfillment)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(cancel_promise));
+    // Step 8: Return the cancel promise (bridge to V8)
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    const v8_promise = try promise_utils.asyncPromiseToV8(void, std.heap.c_allocator, isolate, context, cancel_promise);
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// ReadableStreamCancel called from a reader
 /// This is used by ReadableStreamDefaultReader and ReadableStreamBYOBReader
 /// to cancel the stream while bypassing the lock check (since they hold the lock)
-pub fn readableStreamCancelFromReader(stream: *runtime.Instance, reason: *const anyopaque) ImplError!runtime.JSValue {
+pub fn readableStreamCancelFromReader(stream: *runtime.Instance, reason: *const anyopaque) anyerror!runtime.JSValue {
     const state = stream.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     return readableStreamCancel(stream, internal, reason);
@@ -950,7 +963,7 @@ pub fn readableStreamCancelFromReader(stream: *runtime.Instance, reason: *const 
 
 /// ReadableStreamCancel called from a reader with optional reason
 /// This version handles the case where reason may be null (undefined in JS)
-pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, reason: ?*anyopaque) ImplError!runtime.JSValue {
+pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, reason: ?*anyopaque) anyerror!runtime.JSValue {
     const state = stream.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -959,27 +972,25 @@ pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, re
 
     // Step 2: If stream.[[state]] is "closed", return resolved promise
     if (internal.state == .closed) {
-        const promise = AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        ) catch return error.OutOfMemory;
-        promise.*.fulfill({});
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = promise_utils.createResolvedV8Promise(void, isolate, context, {}) catch return error.OutOfMemory;
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 3: If stream.[[state]] is "errored", return rejected promise
     if (internal.state == .errored) {
-        const promise = AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        ) catch return error.OutOfMemory;
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         // Use type-safe StoredError API
         const exception = if (internal.stored_error.hasError())
             webidl.errors.Exception.typeError(internal.allocator, "Stream errored (stored error)") catch return error.OutOfMemory
         else
             webidl.errors.Exception.typeError(internal.allocator, "Stream is errored") catch return error.OutOfMemory;
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = promise_utils.createRejectedV8Promise(isolate, context, exception) catch return error.OutOfMemory;
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 4: Perform ReadableStreamClose(stream)
@@ -1006,8 +1017,12 @@ pub fn readableStreamCancelFromReaderWithOptReason(stream: *runtime.Instance, re
     const ReadableStreamDefaultControllerImpl = @import("ReadableStreamDefaultController.zig");
     const cancel_promise = ReadableStreamDefaultControllerImpl.cancelStepsWithOptReason(internal.controller, reason) catch return error.OutOfMemory;
 
-    // Step 8: Return the cancel promise
-    return runtime.JSValue.fromAnyopaque(@ptrCast(cancel_promise));
+    // Step 8: Return the cancel promise (bridge to V8)
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    const v8_promise = promise_utils.asyncPromiseToV8(void, std.heap.c_allocator, isolate, context, cancel_promise) catch return error.OutOfMemory;
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// ReadableStreamClose algorithm
@@ -1113,10 +1128,12 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
 
     // Step 1: Check if source is locked
     if (internal.reader != .none) {
-        const promise = try AsyncPromise(void).init(allocator, internal.event_loop);
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(allocator, "Cannot pipe a locked stream");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Check if destination is locked
@@ -1125,10 +1142,12 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     const dest_internal: *WritableStreamImpl.InternalState = dest_state.own._internal orelse return error.InvalidState;
 
     if (dest_internal.writer != .none) {
-        const promise = try AsyncPromise(void).init(allocator, internal.event_loop);
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(allocator, "Cannot pipe to a locked stream");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 3: Extract options
@@ -1263,7 +1282,7 @@ fn readableStreamTee(
     source: *runtime.Instance,
     source_internal: *InternalState,
     clone_for_branch2: bool,
-) ImplError!runtime.JSValue {
+) anyerror!runtime.JSValue {
     const allocator = source_internal.allocator;
     const ctx = source.ctx;
     const loop = source_internal.event_loop;
@@ -1859,7 +1878,7 @@ fn createTeeBranchStream(
 pub fn call_values(
     instance: *runtime.Instance,
     options: webidl.Opt(dictionaries.ReadableStreamIteratorOptions),
-) ImplError!runtime.JSValue {
+) anyerror!runtime.JSValue {
     const allocator = instance.ctx.getAllocator();
     const ctx = instance.ctx;
 
@@ -1912,7 +1931,7 @@ pub fn call_values(
 pub fn call_getAsyncIterator(
     instance: *runtime.Instance,
     options: webidl.Opt(dictionaries.ReadableStreamIteratorOptions),
-) ImplError!runtime.JSValue {
+) anyerror!runtime.JSValue {
     // Per WebIDL async iterable spec, @@asyncIterator returns the same as values()
     return call_values(instance, options);
 }
@@ -2966,7 +2985,12 @@ fn readableStreamPipeTo(
     // For now, we perform a simplified synchronous check and schedule async work.
     pipeLoop(pipe_state);
 
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Bridge the Zig AsyncPromise to V8 Promise
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    const v8_promise = try promise_utils.asyncPromiseToV8(void, std.heap.c_allocator, isolate, context, promise);
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// Main pipe loop - reads from source and writes to destination

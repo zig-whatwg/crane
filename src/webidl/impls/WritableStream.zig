@@ -25,6 +25,9 @@ const event_loop = @import("streams_event_loop");
 const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const WriteRequest = @import("streams_write_request").WriteRequest;
 
+// Promise utilities for bridging Zig AsyncPromise to V8 Promise
+const promise_utils = v8_engine.promise;
+
 pub const State = WritableStream.State;
 
 pub const ImplError = error{
@@ -33,6 +36,15 @@ pub const ImplError = error{
     RangeError,
     InvalidState,
     OutOfMemory,
+    // V8 promise bridge errors
+    NoIsolate,
+    NoContext,
+    PromiseCreationFailed,
+    PromiseResolveFailed,
+    PromiseRejectFailed,
+    StringError,
+    NullContext,
+    GlobalHandleCreationFailed,
 };
 
 /// Stream state enumeration per WHATWG spec
@@ -299,13 +311,13 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
 
     // Step 1: Check if locked
     if (internal.writer != .none) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot abort a locked stream");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Return WritableStreamAbort(this, reason)
@@ -600,24 +612,24 @@ pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Step 1: Check if locked
     if (internal.writer != .none) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Cannot close a locked stream");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Check if close already queued or in flight
     if (writableStreamCloseQueuedOrInFlight(internal)) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is already closing");
-        promise.*.reject(exception);
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 3: WritableStreamClose
@@ -858,12 +870,12 @@ fn writableStreamAbort(
 ) !runtime.JSValue {
     // Step 1: If stream.[[state]] is "closed" or "errored", return resolved promise
     if (internal.state == .closed or internal.state == .errored) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
-        promise.*.fulfill({});
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
@@ -882,28 +894,33 @@ fn writableStreamAbort(
 
     // Step 3-4: Re-check state (may have changed during abort signal - runs user code)
     if (internal.state == .closed or internal.state == .errored) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
-        promise.*.fulfill({});
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 5: If stream.[[pendingAbortRequest]] is not undefined, return its promise
+    // Bridge the existing AsyncPromise to a V8 Promise
     if (internal.pending_abort_request) |existing_abort| {
-        return runtime.JSValue.fromAnyopaque(@ptrCast(existing_abort.promise));
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = try promise_utils.asyncPromiseToV8(void, std.heap.c_allocator, isolate, context, existing_abort.promise);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 6: Assert: state is "writable" or "erroring"
     // (Gracefully handle instead of asserting)
     if (internal.state != .writable and internal.state != .erroring) {
-        const promise = try AsyncPromise(void).init(
-            internal.allocator,
-            internal.event_loop,
-        );
-        promise.*.fulfill({});
-        return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+        // Get V8 isolate and context for creating a proper V8 Promise
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+        const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
 
     // Step 7: Let wasAlreadyErroring = false
@@ -936,8 +953,12 @@ fn writableStreamAbort(
         writableStreamStartErroring(instance, abort_reason orelse reason);
     }
 
-    // Step 12: Return promise
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
+    // Step 12: Return promise (bridge Zig AsyncPromise to V8 Promise)
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    const v8_promise = try promise_utils.asyncPromiseToV8(void, std.heap.c_allocator, isolate, context, promise);
+    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
 /// WritableStreamClose(stream)
@@ -951,22 +972,21 @@ fn writableStreamClose(
 ) !runtime.JSValue {
     _ = instance;
 
-    const promise = try AsyncPromise(void).init(
-        internal.allocator,
-        internal.event_loop,
-    );
+    // Get V8 isolate and context for creating a proper V8 Promise
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
 
     // Simplified: Check state
     if (internal.state != .writable) {
         const exception = try webidl.errors.Exception.typeError(internal.allocator, "Stream is not writable");
-        promise.*.reject(exception);
+        const v8_promise = try promise_utils.createRejectedV8Promise(isolate, context, exception);
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     } else {
         // Future: Implement full close algorithm with controller
         // For now, just fulfill
-        promise.*.fulfill({});
+        const v8_promise = try promise_utils.createResolvedV8Promise(void, isolate, context, {});
+        return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
     }
-
-    return runtime.JSValue.fromAnyopaque(@ptrCast(promise));
 }
 
 // ============================================================================
