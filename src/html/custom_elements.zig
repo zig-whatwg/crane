@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const runtime = @import("runtime");
 const dom = @import("dom");
 const Node = dom.node.Node;
 
@@ -79,8 +80,10 @@ pub const Reaction = struct {
     };
 
     pub const AdoptedArgs = struct {
-        old_document: *anyopaque,
-        new_document: *anyopaque,
+        /// Document the element was adopted from
+        old_document: *runtime.Instance,
+        /// Document the element was adopted into
+        new_document: *runtime.Instance,
     };
 };
 
@@ -122,7 +125,8 @@ pub const ReactionQueue = struct {
 
 /// Element queue for the custom element reactions stack
 /// Uses ArrayListUnmanaged since these queues are stored inside another collection
-pub const ElementQueue = std.ArrayListUnmanaged(*anyopaque); // *Element opaque pointers
+/// Elements are WebIDL interface instances (Element or subclass)
+pub const ElementQueue = std.ArrayListUnmanaged(*runtime.Instance);
 
 /// Stack of element queues - also uses ArrayListUnmanaged
 pub const ElementQueueStack = std.ArrayListUnmanaged(ElementQueue);
@@ -175,8 +179,8 @@ pub const ReactionsStack = struct {
 threadlocal var reactions_stack: ?ReactionsStack = null;
 
 // Thread-local element reaction queues
-// Maps element pointers to their reaction queues
-threadlocal var element_reaction_queues: ?std.AutoHashMap(*anyopaque, ReactionQueue) = null;
+// Maps element instances (runtime.Instance) to their reaction queues
+threadlocal var element_reaction_queues: ?std.AutoHashMap(*runtime.Instance, ReactionQueue) = null;
 
 /// Get or initialize the reactions stack for the current agent
 pub fn getReactionsStack(allocator: Allocator) *ReactionsStack {
@@ -187,16 +191,16 @@ pub fn getReactionsStack(allocator: Allocator) *ReactionsStack {
 }
 
 /// Get or initialize the element reaction queues map
-fn getElementReactionQueues(allocator: Allocator) *std.AutoHashMap(*anyopaque, ReactionQueue) {
+fn getElementReactionQueues(allocator: Allocator) *std.AutoHashMap(*runtime.Instance, ReactionQueue) {
     if (element_reaction_queues == null) {
-        element_reaction_queues = std.AutoHashMap(*anyopaque, ReactionQueue).init(allocator);
+        element_reaction_queues = std.AutoHashMap(*runtime.Instance, ReactionQueue).init(allocator);
     }
     return &element_reaction_queues.?;
 }
 
 /// Get or create reaction queue for an element
 /// Spec: custom element reaction queue per element
-pub fn getOrCreateReactionQueue(allocator: Allocator, element: *anyopaque) !*ReactionQueue {
+pub fn getOrCreateReactionQueue(allocator: Allocator, element: *runtime.Instance) !*ReactionQueue {
     const queues = getElementReactionQueues(allocator);
     const result = try queues.getOrPut(element);
     if (!result.found_existing) {
@@ -206,7 +210,7 @@ pub fn getOrCreateReactionQueue(allocator: Allocator, element: *anyopaque) !*Rea
 }
 
 /// Clean up reaction queue for an element (call when element is destroyed)
-pub fn removeReactionQueue(allocator: Allocator, element: *anyopaque) void {
+pub fn removeReactionQueue(allocator: Allocator, element: *runtime.Instance) void {
     const queues = getElementReactionQueues(allocator);
     if (queues.fetchRemove(element)) |kv| {
         var queue = kv.value;
@@ -237,7 +241,7 @@ pub fn deinitThreadLocalState() void {
 
 /// Enqueue an element on the appropriate element queue
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#enqueue-an-element-on-the-appropriate-element-queue
-pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *anyopaque) !void {
+pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *runtime.Instance) !void {
     const stack = getReactionsStack(allocator);
 
     // Step 2: If stack is empty, use backup queue
@@ -267,7 +271,7 @@ pub fn enqueueElementOnAppropriateQueue(allocator: Allocator, element: *anyopaqu
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#enqueue-a-custom-element-callback-reaction
 pub fn enqueueCustomElementCallbackReaction(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
     callback_type: CallbackType,
     args: ?Reaction.CallbackArgs,
@@ -323,7 +327,7 @@ pub fn enqueueCustomElementCallbackReaction(
 
 /// Enqueue a custom element upgrade reaction
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#enqueue-a-custom-element-upgrade-reaction
-pub fn enqueueCustomElementUpgradeReaction(allocator: Allocator, element: *anyopaque, definition: *CustomElementDefinition) !void {
+pub fn enqueueCustomElementUpgradeReaction(allocator: Allocator, element: *runtime.Instance, definition: *CustomElementDefinition) !void {
     // Step 1: Add upgrade reaction to element's reaction queue
     const queue = try getOrCreateReactionQueue(allocator, element);
     try queue.enqueue(.{
@@ -369,7 +373,7 @@ pub fn invokeCustomElementReactions(allocator: Allocator, queue: *ElementQueue) 
 
 /// Upgrade an element to its custom element definition
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#concept-upgrade-an-element
-fn upgradeElement(allocator: Allocator, element: *anyopaque, definition: *CustomElementDefinition) void {
+fn upgradeElement(allocator: Allocator, element: *runtime.Instance, definition: *CustomElementDefinition) void {
     _ = allocator;
     _ = element;
     _ = definition;
@@ -386,7 +390,7 @@ fn upgradeElement(allocator: Allocator, element: *anyopaque, definition: *Custom
 
 /// Invoke a lifecycle callback on an element
 fn invokeCallback(
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
     callback_type: ?CallbackType,
     args: ?Reaction.CallbackArgs,
@@ -437,9 +441,9 @@ fn invokeCallback(
 /// Called when a node is adopted to a new document
 pub fn runCustomElementAdoptionSteps(
     allocator: Allocator,
-    element: *anyopaque,
-    old_document: *anyopaque,
-    new_document: *anyopaque,
+    element: *runtime.Instance,
+    old_document: *runtime.Instance,
+    new_document: *runtime.Instance,
     definition: ?*CustomElementDefinition,
 ) !void {
     // Step 1: If element has a custom element state of "custom", enqueue adoptedCallback
@@ -454,10 +458,10 @@ pub fn runCustomElementAdoptionSteps(
 /// Spec: https://html.spec.whatwg.org/#concept-custom-element-adopted-callback
 pub fn enqueueAdoptedCallback(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
-    old_document: *anyopaque,
-    new_document: *anyopaque,
+    old_document: *runtime.Instance,
+    new_document: *runtime.Instance,
 ) !void {
     try enqueueCustomElementCallbackReaction(
         allocator,
@@ -477,7 +481,7 @@ pub fn enqueueAdoptedCallback(
 /// Called when a custom element is inserted into a connected document
 pub fn enqueueConnectedCallback(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
 ) !void {
     try enqueueCustomElementCallbackReaction(
@@ -495,7 +499,7 @@ pub fn enqueueConnectedCallback(
 /// Called when a custom element is removed from a connected document
 pub fn enqueueDisconnectedCallback(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
 ) !void {
     try enqueueCustomElementCallbackReaction(
@@ -513,7 +517,7 @@ pub fn enqueueDisconnectedCallback(
 /// Called when a custom element is moved within the tree and remains connected
 pub fn enqueueConnectedMoveCallback(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
 ) !void {
     try enqueueCustomElementCallbackReaction(
@@ -531,7 +535,7 @@ pub fn enqueueConnectedMoveCallback(
 /// Called when an observed attribute is added, changed, or removed
 pub fn enqueueAttributeChangedCallback(
     allocator: Allocator,
-    element: *anyopaque,
+    element: *runtime.Instance,
     definition: *CustomElementDefinition,
     local_name: []const u8,
     old_value: ?[]const u8,
@@ -625,9 +629,20 @@ test "element reaction queue management" {
     const allocator = std.testing.allocator;
     defer deinitThreadLocalState(); // Clean up thread-local state
 
-    // Create a mock element pointer
-    var mock_element: u8 = 0;
-    const element_ptr: *anyopaque = &mock_element;
+    // Create a mock element Instance
+    // Note: In real code, Instance is created via runtime.Instance.init()
+    // For testing, we create a minimal struct that can be used as a key
+    var mock_state: u8 = 0;
+    const mock_vtable = runtime.VTable{
+        .deinit = null,
+        .methods_ptr = &.{},
+    };
+    var mock_instance = runtime.Instance{
+        .vtable = &mock_vtable,
+        .state = @ptrCast(&mock_state),
+        .ctx = undefined,
+    };
+    const element_ptr: *runtime.Instance = &mock_instance;
 
     // Get or create queue for element
     const queue = try getOrCreateReactionQueue(allocator, element_ptr);
