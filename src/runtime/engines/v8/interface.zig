@@ -1621,8 +1621,9 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Get or create runtime context from context manager
+            // Pass isolate to ensure timer/event loop interfaces are available
             const ctx_mgr = @import("context_manager.zig");
-            const ctx = ctx_mgr.getOrCreate(v8_context, allocator) catch {
+            const ctx = ctx_mgr.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
                 conv.throwError(isolate, "Failed to get runtime context");
                 return;
             };
@@ -2129,6 +2130,33 @@ pub fn V8Interface(comptime Interface: type) type {
                     v8_context,
                 ) catch return null;
                 return @ptrCast(v8_obj);
+            } else if (PayloadType == runtime.JSValue) {
+                // Engine-agnostic JSValue - convert based on variant
+                return switch (result) {
+                    .undefined => v8.v8_Undefined(isolate),
+                    .null => v8.v8_Null(isolate),
+                    .boolean => |b| @ptrCast(v8.v8_Boolean_New(isolate, b)),
+                    .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
+                    .string => |s| blk: {
+                        if (s.data.len == 0) {
+                            break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return null);
+                        }
+                        break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return null);
+                    },
+                    .handle => |h| @ptrCast(h.ptr), // Return V8 handle directly
+                    .instance => |i| blk: {
+                        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk null;
+                        const inst: *runtime.Instance = @ptrCast(@alignCast(i));
+                        const iface_name = template_registry.getInstanceInterfaceName(inst);
+                        const v8_obj = template_registry.wrapInstanceAsV8Object(
+                            inst,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch break :blk null;
+                        break :blk @ptrCast(v8_obj);
+                    },
+                };
             } else {
                 // Unknown type - return undefined
                 return v8.v8_Undefined(isolate);

@@ -507,6 +507,39 @@ pub const DedicatedWorker = struct {
         self.port_pair.inside_port.start();
     }
 
+    /// Process queued messages on the outside port (worker → main thread).
+    ///
+    /// This should be called from the main thread context after the worker
+    /// has finished executing scripts. Messages are queued during worker
+    /// execution but cannot be dispatched immediately because the worker
+    /// and main thread use different V8 isolates. Dispatching must happen
+    /// on the main isolate.
+    ///
+    /// Spec: HTML Standard § 10.2.3
+    /// "When a message is received on the outside port, the user agent must
+    /// queue a global task..."
+    pub fn processQueuedMessages(self: *DedicatedWorker) void {
+        // Dispatch all messages queued on the outside port
+        // The outside port's on_message handler will invoke the Worker's onmessage
+        const outside_port = self.port_pair.outside_port;
+
+        std.log.debug("processQueuedMessages: checking queue, {d} messages", .{outside_port.message_queue.items.len});
+
+        while (outside_port.message_queue.items.len > 0) {
+            const msg = outside_port.message_queue.orderedRemove(0);
+            std.log.debug("processQueuedMessages: processing message", .{});
+
+            if (outside_port.on_message) |handler| {
+                std.log.debug("processQueuedMessages: calling handler", .{});
+                handler(outside_port, msg, outside_port.on_message_context);
+            } else {
+                std.log.debug("processQueuedMessages: no handler set", .{});
+            }
+            // Clean up message after handler returns
+            msg.deinit();
+        }
+    }
+
     /// Close the worker from inside.
     ///
     /// Spec: HTML Standard § 10.2.4.1

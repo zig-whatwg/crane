@@ -4317,4 +4317,224 @@ Global<Function>* v8_Global_ToFunction(Global<Value>* global) {
     return reinterpret_cast<Global<Function>*>(global);
 }
 
+// ============================================================================
+// JSON Serialization for Cross-Isolate Message Passing
+// ============================================================================
+//
+// These functions enable serializing V8 values to JSON strings and back,
+// which is useful for passing messages between worker isolates and the main
+// thread when full structured clone is not available.
+
+/// Serialize a V8 value to JSON string and copy to buffer
+///
+/// This function uses V8's JSON.stringify to convert a value to its JSON
+/// representation, then copies the UTF-8 string to the provided buffer.
+///
+/// The function operates in two modes:
+/// 1. If buffer_len is 0, returns the required buffer size
+/// 2. If buffer_len > 0, writes JSON to buffer and returns bytes written
+///
+/// IMPORTANT: This function uses the CURRENT context from the current isolate.
+/// It does NOT enter a new context - the caller must ensure the correct context
+/// is already active. The context_raw parameter is used only for JSON::Stringify.
+///
+/// @param context_raw - Raw V8 Context pointer (passed to JSON::Stringify)
+/// @param value_raw - Raw V8 Value pointer
+/// @param buffer - Output buffer for UTF-8 JSON string
+/// @param buffer_len - Size of output buffer (0 to query size)
+/// @return Number of bytes written, -1 on error, or required size if buffer_len is 0
+int v8_JSON_Stringify_ToBuffer(
+    Context* context_raw,
+    Value* value_raw,
+    char* buffer,
+    int buffer_len
+) {
+    // Get current isolate
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return -1;
+    
+    // Create HandleScope for local handles
+    HandleScope handle_scope(isolate);
+    
+    // Get the CURRENT context from the isolate (not the passed context!)
+    // This avoids context mismatch issues when called from within script execution
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) {
+        return -1;  // No active context
+    }
+    
+    // Convert value_raw to Local handle
+    // value_raw is actually a Global<Value>* from v8_FunctionCallbackInfo_GetArgument
+    // We need to dereference it and get the local handle
+    Global<Value>* global_handle = reinterpret_cast<Global<Value>*>(value_raw);
+    Local<Value> value = global_handle->Get(isolate);
+    
+    // Use V8's JSON.stringify with the current context
+    // Do NOT enter a new context - we're already in one during script execution
+    MaybeLocal<String> maybe_json = JSON::Stringify(context, value);
+    if (maybe_json.IsEmpty()) {
+        return -1;  // Stringify failed (e.g., circular reference, BigInt)
+    }
+    
+    Local<String> json_str = maybe_json.ToLocalChecked();
+    
+    // Get the UTF-8 length
+    int utf8_length = json_str->Utf8Length(isolate);
+    
+    // If buffer_len is 0, just return the required size
+    if (buffer_len == 0) {
+        return utf8_length;
+    }
+    
+    // Check if buffer is large enough
+    if (buffer_len < utf8_length) {
+        // Return required size so caller can allocate larger buffer
+        return utf8_length;
+    }
+    
+    // Write UTF-8 to buffer
+    int written = json_str->WriteUtf8(
+        isolate,
+        buffer,
+        buffer_len,
+        nullptr,  // nchars_ref
+        String::NO_NULL_TERMINATION
+    );
+    
+    return written;
+}
+
+/// Parse JSON string from buffer and return V8 value
+///
+/// This function uses V8's JSON.parse to convert a JSON string to a V8 value.
+/// The returned value is "escaped" from this function's HandleScope using
+/// EscapableHandleScope, so it remains valid in the caller's HandleScope.
+///
+/// IMPORTANT: This function uses the CURRENT context from the current isolate.
+/// The caller must ensure the correct isolate is entered and the correct
+/// context is active before calling this function. The caller must also have
+/// an active HandleScope.
+///
+/// @param context_raw - Raw V8 Context pointer (currently unused - uses current context)
+/// @param json_str - UTF-8 JSON string
+/// @param json_len - Length of JSON string
+/// @return Local Value pointer (valid in caller's HandleScope) or nullptr on error
+Value* v8_JSON_Parse_FromBuffer(
+    Context* context_raw,
+    const char* json_str,
+    int json_len
+) {
+    (void)context_raw;  // Unused - we use current context
+    
+    // Get current isolate
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    
+    // Use EscapableHandleScope so we can return the handle to the caller's scope
+    EscapableHandleScope handle_scope(isolate);
+    
+    // Get the CURRENT context from the isolate (not the passed context!)
+    // This avoids context mismatch issues when called after isolate enter/exit
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) {
+        return nullptr;  // No active context
+    }
+    
+    // Create V8 string from JSON buffer
+    MaybeLocal<String> maybe_str = String::NewFromUtf8(
+        isolate,
+        json_str,
+        NewStringType::kNormal,
+        json_len
+    );
+    
+    if (maybe_str.IsEmpty()) {
+        return nullptr;  // Failed to create string
+    }
+    
+    Local<String> v8_json_str = maybe_str.ToLocalChecked();
+    
+    // Use V8's JSON.parse with the current context
+    // Do NOT enter a new context - we should already be in the correct one
+    MaybeLocal<Value> maybe_value = JSON::Parse(context, v8_json_str);
+    
+    if (maybe_value.IsEmpty()) {
+        return nullptr;  // Parse failed (invalid JSON)
+    }
+    
+    Local<Value> parsed_value = maybe_value.ToLocalChecked();
+    
+    // Escape the handle so it survives the destruction of our HandleScope
+    // and remains valid in the caller's HandleScope
+    Local<Value> escaped = handle_scope.Escape(parsed_value);
+    
+    // Return the internal pointer - valid in caller's HandleScope
+    return *reinterpret_cast<Value**>(&escaped);
+}
+
+// ============================================================================
+// HandleScope API for Zig Timer Callbacks
+// ============================================================================
+//
+// V8 requires a HandleScope to be active when creating Local handles.
+// When Zig timer callbacks fire from libuv, there's no active HandleScope.
+// These functions allow Zig code to create and dispose HandleScopes.
+//
+// V8's HandleScope has private new/delete operators - it's designed for
+// stack allocation only. We work around this by:
+// 1. Using a derived class with public new/delete operators
+// 2. Using the protected default constructor + Initialize() method
+//
+// Usage pattern in Zig:
+//   const scope = v8_HandleScope_New(isolate);
+//   defer v8_HandleScope_Dispose(scope);
+//   // ... V8 operations that create Local handles ...
+
+/// Derived HandleScope that can be heap-allocated
+/// Uses the protected default constructor + Initialize() pattern
+/// Provides public new/delete to override base class's private ones
+class HeapHandleScope : public HandleScope {
+ public:
+    HeapHandleScope(Isolate* isolate) : HandleScope() {
+        Initialize(isolate);
+    }
+    
+    // Override base class's private new/delete with public versions
+    // This is valid C++ - derived class can expose hidden base class members
+    static void* operator new(size_t size) {
+        return ::operator new(size);
+    }
+    
+    static void operator delete(void* ptr) {
+        ::operator delete(ptr);
+    }
+};
+
+/// Create a new HandleScope for the given isolate
+///
+/// This must be called before any V8 operation that creates Local handles
+/// when called from a non-V8 context (e.g., libuv timer callbacks).
+///
+/// @param isolate - The V8 isolate
+/// @return Opaque pointer to HandleScope, or nullptr on failure
+void* v8_HandleScope_New(Isolate* isolate) {
+    if (!isolate) return nullptr;
+    
+    // Create heap-allocatable HandleScope via derived class
+    return new HeapHandleScope(isolate);
+}
+
+/// Dispose a HandleScope created by v8_HandleScope_New
+///
+/// This must be called when done with V8 operations to properly clean up.
+/// Typically used with defer in Zig.
+///
+/// @param scope_ptr - Pointer from v8_HandleScope_New
+void v8_HandleScope_Dispose(void* scope_ptr) {
+    if (!scope_ptr) return;
+    
+    HeapHandleScope* scope = static_cast<HeapHandleScope*>(scope_ptr);
+    delete scope;
+}
+
 } // extern "C"

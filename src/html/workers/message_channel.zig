@@ -391,7 +391,11 @@ pub const QueuedMessage = struct {
     }
 
     pub fn deinit(self: *QueuedMessage) void {
-        // Note: data is owned by caller, not freed here
+        // Free the serialized data
+        self.data.deinit();
+        self.allocator.destroy(self.data);
+
+        // Free this message
         self.allocator.destroy(self);
     }
 };

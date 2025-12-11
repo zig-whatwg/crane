@@ -1721,3 +1721,75 @@ pub extern fn v8_Unlocker_New(isolate: *Isolate) ?*Unlocker;
 ///
 /// @param unlocker - Unlocker pointer from v8_Unlocker_New
 pub extern fn v8_Unlocker_Dispose(unlocker: ?*Unlocker) void;
+
+// ============================================================================
+// JSON Serialization for Cross-Isolate Message Passing
+// ============================================================================
+//
+// These functions enable serializing V8 values to JSON strings and back,
+// which is useful for passing messages between worker isolates and the main
+// thread when full structured clone is not available.
+
+/// Serialize a V8 value to JSON string and copy to buffer
+///
+/// This function uses V8's JSON.stringify to convert a value to its JSON
+/// representation, then copies the UTF-8 string to the provided buffer.
+///
+/// @param context - Raw V8 Context pointer
+/// @param value - Raw V8 Value pointer (from callback)
+/// @param buffer - Output buffer for UTF-8 JSON string
+/// @param buffer_len - Size of output buffer
+/// @return Number of bytes written, or -1 on error, or required size if buffer too small
+pub extern fn v8_JSON_Stringify_ToBuffer(
+    context: *Context,
+    value: *Value,
+    buffer: [*]u8,
+    buffer_len: c_int,
+) c_int;
+
+/// Parse JSON string from buffer and return V8 value
+///
+/// This function uses V8's JSON.parse to convert a JSON string to a V8 value.
+///
+/// @param context - Raw V8 Context pointer
+/// @param json_str - UTF-8 JSON string
+/// @param json_len - Length of JSON string
+/// @return New Global<Value>* with parsed value or nullptr on error
+pub extern fn v8_JSON_Parse_FromBuffer(
+    context: *Context,
+    json_str: [*]const u8,
+    json_len: c_int,
+) ?*Value;
+
+// ============================================================================
+// HandleScope API for Zig Timer Callbacks
+// ============================================================================
+//
+// V8 requires a HandleScope to be active when creating Local handles.
+// When Zig timer callbacks fire from libuv, there's no active HandleScope.
+// These functions allow Zig code to create and dispose HandleScopes.
+//
+// Usage pattern:
+//   const scope = v8_HandleScope_New(isolate);
+//   defer v8_HandleScope_Dispose(scope);
+//   // ... V8 operations that create Local handles ...
+
+/// Opaque HandleScope wrapper
+pub const HandleScope = opaque {};
+
+/// Create a new HandleScope for the given isolate
+///
+/// This must be called before any V8 operation that creates Local handles
+/// when called from a non-V8 context (e.g., libuv timer callbacks).
+///
+/// @param isolate - The V8 isolate
+/// @return Opaque pointer to HandleScope wrapper, or null on failure
+pub extern fn v8_HandleScope_New(isolate: *Isolate) ?*HandleScope;
+
+/// Dispose a HandleScope created by v8_HandleScope_New
+///
+/// This must be called when done with V8 operations to properly clean up.
+/// Typically used with defer in Zig.
+///
+/// @param scope - Pointer from v8_HandleScope_New
+pub extern fn v8_HandleScope_Dispose(scope: ?*HandleScope) void;

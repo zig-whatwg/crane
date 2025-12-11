@@ -158,26 +158,50 @@ pub const CallbackWrapper = struct {
     }
 
     /// Invoke the callback with multiple arguments
+    ///
+    /// NOTE: The v8_Function_Call FFI expects Global<T>* handles, not Local<T> values.
+    /// We pass the raw GlobalHandle.ptr which IS the Global<T>* from the C++ side.
+    /// The arguments are also expected to be Global handles, but since they come from
+    /// the active HandleScope context (e.g., wrapping a MessageEvent), we need to
+    /// convert them to Global handles first.
     pub fn callN(self: *CallbackWrapper, context: *v8.Context, args: []const *v8.Value) ?*v8.Value {
         if (self.is_function) {
-            // Direct function call - get Local from Global handle
-            const func = self.getCallbackFunction() orelse return null;
+            // Direct function call - use Global handle directly (not .get() which gives Local)
+            const func_global = self.callback_function_global orelse return null;
             const global_obj = v8.v8_Context_Global(context);
-            // FFI expects [*]*Value which can't be null - use empty args case specially
-            if (args.len > 0) {
+
+            // Convert args to Global handles for the FFI call
+            // The args are Local values that need to be converted
+            var global_args: [16]*v8.Value = undefined; // Max 16 args
+            const arg_count = @min(args.len, 16);
+            for (0..arg_count) |i| {
+                // Convert Local to Global for the FFI call
+                const global_arg = v8.v8_Value_ToGlobal(self.isolate, @ptrCast(args[i]));
+                if (global_arg == null) return null;
+                global_args[i] = global_arg.?;
+            }
+            defer {
+                // Dispose temporary Global handles after the call
+                for (0..arg_count) |i| {
+                    v8.v8_Global_Dispose(global_args[i]);
+                }
+            }
+
+            // Pass Global handles: func_global.ptr is the Global<Function>*
+            if (arg_count > 0) {
                 return v8.v8_Function_Call(
-                    func,
-                    context,
-                    @ptrCast(global_obj), // 'this' is global
-                    @intCast(args.len),
-                    @ptrCast(@constCast(args.ptr)),
+                    @ptrCast(func_global.ptr), // Global<Function>*
+                    context, // Global<Context>*
+                    @ptrCast(global_obj), // Global<Object>* - 'this' is global
+                    @intCast(arg_count),
+                    @ptrCast(&global_args),
                 );
             } else {
                 // No args - use call0 pattern with undefined as placeholder
                 // The FFI requires a valid pointer even with argc=0
                 var empty_args: [1]*v8.Value = undefined;
                 return v8.v8_Function_Call(
-                    func,
+                    @ptrCast(func_global.ptr),
                     context,
                     @ptrCast(global_obj),
                     0,
@@ -185,7 +209,7 @@ pub const CallbackWrapper = struct {
                 );
             }
         } else {
-            // Object method call - get Local from Global handle
+            // Object method call - get Local from Global handle for property access
             const obj = self.getCallbackObject() orelse return null;
             const method_name_str = self.method_name orelse return null;
 
@@ -202,22 +226,41 @@ pub const CallbackWrapper = struct {
                 return null;
             }
 
-            const method_func: *v8.Function = @ptrCast(method_value);
-            // FFI expects [*]*Value which can't be null - use empty args case specially
-            if (args.len > 0) {
+            // Convert method to Global handle for FFI call
+            const method_global = v8.v8_Value_ToGlobal(self.isolate, method_value) orelse return null;
+            defer v8.v8_Global_Dispose(method_global);
+
+            // Convert object to Global for 'this' parameter
+            const obj_global = self.callback_object_global orelse return null;
+
+            // Convert args to Global handles
+            var global_args: [16]*v8.Value = undefined;
+            const arg_count = @min(args.len, 16);
+            for (0..arg_count) |i| {
+                const global_arg = v8.v8_Value_ToGlobal(self.isolate, @ptrCast(args[i]));
+                if (global_arg == null) return null;
+                global_args[i] = global_arg.?;
+            }
+            defer {
+                for (0..arg_count) |i| {
+                    v8.v8_Global_Dispose(global_args[i]);
+                }
+            }
+
+            if (arg_count > 0) {
                 return v8.v8_Function_Call(
-                    method_func,
-                    context,
-                    @ptrCast(obj), // 'this' is the callback object
-                    @intCast(args.len),
-                    @ptrCast(@constCast(args.ptr)),
+                    @ptrCast(method_global), // Global<Function>*
+                    context, // Global<Context>*
+                    @ptrCast(obj_global.ptr), // Global<Object>* - 'this' is callback object
+                    @intCast(arg_count),
+                    @ptrCast(&global_args),
                 );
             } else {
                 var empty_args: [1]*v8.Value = undefined;
                 return v8.v8_Function_Call(
-                    method_func,
+                    @ptrCast(method_global),
                     context,
-                    @ptrCast(obj),
+                    @ptrCast(obj_global.ptr),
                     0,
                     &empty_args,
                 );

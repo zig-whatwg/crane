@@ -230,7 +230,12 @@ pub const BrowserContext = struct {
         };
 
         // Register context with context manager for wrapper caching
-        _ = context_manager.getOrCreateWithIsolate(context, isolate, self.allocator) catch |err| {
+        // IMPORTANT: Pass our timer and event loop interfaces so all runtime contexts
+        // share the same libuv loop. This ensures setTimeout/setInterval timers from
+        // Worker constructors use the same loop we poll in runEventLoop().
+        const timer_iface = if (self.v8_event_loop) |ev| ev.timerInterface() else null;
+        const event_loop_iface = if (self.v8_event_loop) |ev| ev.eventLoop() else null;
+        _ = context_manager.getOrCreateWithExternalEventLoop(context, timer_iface, event_loop_iface, self.allocator) catch |err| {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
         };
 

@@ -159,6 +159,71 @@ pub fn getOrCreate(v8_ctx: *v8.Context, allocator: std.mem.Allocator) !runtime.C
     return getOrCreateWithIsolate(v8_ctx, null, allocator);
 }
 
+/// Get or create a runtime context with an external timer/event loop
+///
+/// Use this when you already have a V8EventLoop (e.g., in BrowserContext) and want
+/// to share it with all runtime contexts. This ensures all timers use the same
+/// libuv loop and are polled together.
+///
+/// Arguments:
+/// - v8_ctx: V8 context pointer
+/// - timer: External timer interface to use (optional)
+/// - event_loop: External event loop interface to use (optional)
+/// - allocator: Allocator for the runtime context
+///
+/// Returns: Runtime context pointer (borrowed, do not free)
+pub fn getOrCreateWithExternalEventLoop(
+    v8_ctx: *v8.Context,
+    timer: ?runtime.TimerInterface,
+    event_loop: ?@import("event_loop").EventLoop,
+    allocator: std.mem.Allocator,
+) !runtime.Context {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    // Use the raw V8 internal address as the key
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
+    const key = @intFromPtr(raw_addr);
+
+    // Check if context already exists
+    if (state.contexts.getPtr(key)) |entry| {
+        return &entry.runtime_ctx;
+    }
+
+    // Create new runtime context with external timer/event loop
+    var ctx_data = try runtime.ContextData.init(allocator, .{
+        .colored = false,
+        .show_timestamp = false,
+        .show_labels = false,
+        .engine = &v8_engine.v8_engine_interface,
+        .engine_ctx = @ptrCast(v8_ctx),
+        .timer = timer,
+        .event_loop = event_loop,
+    });
+    errdefer ctx_data.deinit();
+
+    // Initialize V8 wrapper cache for this context
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache_ptr = try allocator.create(WrapperCache);
+    errdefer allocator.destroy(cache_ptr);
+
+    cache_ptr.* = try WrapperCache.init(allocator, v8_ctx);
+    errdefer cache_ptr.deinit();
+
+    // Store cache in runtime context
+    ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+
+    // Store in map (no event loop owned)
+    try state.contexts.put(key, ContextEntry{
+        .v8_ctx = v8_ctx,
+        .runtime_ctx = ctx_data,
+        .owns_context = true,
+        .event_loop = null, // We don't own the external event loop
+    });
+
+    const entry = state.contexts.getPtr(key).?;
+    return &entry.runtime_ctx;
+}
+
 /// Get or create a runtime context for the given V8 context with full timer support
 ///
 /// If a runtime context already exists for this V8 context, returns it.
