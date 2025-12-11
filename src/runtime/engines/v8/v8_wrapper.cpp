@@ -2140,13 +2140,37 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
     
+    // Sanity checks for corrupted pointers (same as SetReturnValue)
+    uintptr_t ptr_val = reinterpret_cast<uintptr_t>(global_ptr);
+    
+    // Check 1: Pointer should be in a reasonable address range
+    if (ptr_val < 0x1000 || ptr_val > 0x0000FFFFFFFFFFFF) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with suspicious pointer: %p (out of range)\n", global_ptr);
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Check 2: V8's Global handles should be aligned to at least 8 bytes on 64-bit
+    if ((ptr_val & 0x7) != 0) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with misaligned pointer: %p (alignment=%lu)\n", global_ptr, ptr_val & 0x7);
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     
     // Cast to Global<Value>* and get the Local from it
     Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
-    Local<Value> local = global->Get(isolate);
     
+    // Check if the Global handle is empty
+    if (global->IsEmpty()) {
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with empty Global handle\n");
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    Local<Value> local = global->Get(isolate);
     info->GetReturnValue().Set(local);
 }
 
