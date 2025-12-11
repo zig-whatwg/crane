@@ -1794,8 +1794,11 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
                 info.setReturnValue(@ptrCast(result));
                 return;
             };
-            delay_ms = @intFromFloat(v8.ffi.v8_Value_NumberValue(delay_value, context));
-            if (delay_ms < 0) delay_ms = 0;
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
+            // Safety check for NaN/Inf/negative values
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
         }
     }
 
@@ -1882,6 +1885,17 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
     };
 
     const timer_id_f64 = v8.ffi.v8_Value_NumberValue(id_value, context);
+
+    // Safety check: ensure the float is a valid positive integer that fits in TimerId
+    if (std.math.isNan(timer_id_f64) or std.math.isInf(timer_id_f64) or
+        timer_id_f64 < 0 or timer_id_f64 > @as(f64, @floatFromInt(std.math.maxInt(TimerId))))
+    {
+        // Invalid timer ID - just return without doing anything
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
     const timer_id: TimerId = @intFromFloat(timer_id_f64);
 
     // Get timer interface and cancel the timer
@@ -1926,8 +1940,11 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
                 info.setReturnValue(@ptrCast(result));
                 return;
             };
-            delay_ms = @intFromFloat(v8.ffi.v8_Value_NumberValue(delay_value, context));
-            if (delay_ms < 0) delay_ms = 0;
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
+            // Safety check for NaN/Inf/negative values
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
         }
     }
 
