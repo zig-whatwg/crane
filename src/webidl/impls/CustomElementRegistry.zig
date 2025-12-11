@@ -77,16 +77,29 @@ pub const CustomElementDefinition = struct {
     };
 
     /// Lifecycle callback names and values
+    /// Each callback is stored as runtime.JSValue with global handle scope for persistence
     pub const LifecycleCallbacks = struct {
-        connectedCallback: ?*anyopaque = null,
-        disconnectedCallback: ?*anyopaque = null,
-        adoptedCallback: ?*anyopaque = null,
-        connectedMoveCallback: ?*anyopaque = null,
-        attributeChangedCallback: ?*anyopaque = null,
-        formAssociatedCallback: ?*anyopaque = null,
-        formResetCallback: ?*anyopaque = null,
-        formDisabledCallback: ?*anyopaque = null,
-        formStateRestoreCallback: ?*anyopaque = null,
+        connectedCallback: ?runtime.JSValue = null,
+        disconnectedCallback: ?runtime.JSValue = null,
+        adoptedCallback: ?runtime.JSValue = null,
+        connectedMoveCallback: ?runtime.JSValue = null,
+        attributeChangedCallback: ?runtime.JSValue = null,
+        formAssociatedCallback: ?runtime.JSValue = null,
+        formResetCallback: ?runtime.JSValue = null,
+        formDisabledCallback: ?runtime.JSValue = null,
+        formStateRestoreCallback: ?runtime.JSValue = null,
+
+        /// Dispose all stored callback handles
+        pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
+            inline for (std.meta.fields(LifecycleCallbacks)) |field| {
+                if (@TypeOf(@field(self, field.name)) == ?runtime.JSValue) {
+                    if (@field(self, field.name)) |*cb| {
+                        cb.deinit(allocator);
+                    }
+                    @field(self, field.name) = null;
+                }
+            }
+        }
     };
 
     pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: callbacks.CustomElementConstructor) !*CustomElementDefinition {
@@ -118,6 +131,8 @@ pub const CustomElementDefinition = struct {
             self.allocator.free(self.observed_attributes);
         }
         self.construction_stack.deinit(self.allocator);
+        // Dispose lifecycle callback handles
+        self.lifecycle_callbacks.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 };
