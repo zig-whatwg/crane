@@ -1333,6 +1333,9 @@ threadlocal var current_wpt_root: ?[]const u8 = null;
 // Thread-local storage for current test path (needed for relative URL resolution in fetch)
 threadlocal var current_test_path: ?[]const u8 = null;
 
+// Thread-local storage for current base URL (needed for relative URL resolution in Worker constructor)
+threadlocal var current_base_url: ?[]const u8 = null;
+
 /// Set the WPT root for fetch callback URL resolution
 pub fn setWptRoot(wpt_root: []const u8) void {
     current_wpt_root = wpt_root;
@@ -1351,6 +1354,28 @@ pub fn getWptRoot() ?[]const u8 {
 /// Get the current test path (for V8 callbacks)
 pub fn getCurrentTestPath() ?[]const u8 {
     return current_test_path;
+}
+
+/// Set the current base URL for relative URL resolution (e.g., Worker constructor)
+pub fn setCurrentBaseUrl(base_url: []const u8) void {
+    current_base_url = base_url;
+
+    // Also set the document origin in html_core's workers module
+    // This is needed for Worker constructor to resolve relative script URLs
+    // Extract origin from URL (scheme://host:port)
+    if (std.mem.startsWith(u8, base_url, "http://") or std.mem.startsWith(u8, base_url, "https://")) {
+        // Find the end of the origin (after scheme://host:port, before path)
+        const scheme_end = std.mem.indexOf(u8, base_url, "://") orelse return;
+        const after_scheme = base_url[scheme_end + 3 ..];
+        const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+        const origin = base_url[0 .. scheme_end + 3 + path_start];
+        html_full.workers.setDocumentOrigin(origin);
+    }
+}
+
+/// Get the current base URL (for Worker constructor)
+pub fn getCurrentBaseUrl() ?[]const u8 {
+    return current_base_url;
 }
 
 // Thread-local storage for ALL timer contexts (for cleanup on clearTimeout/clearInterval and deinit)

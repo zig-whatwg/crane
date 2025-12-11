@@ -30,6 +30,31 @@ const WorkerOptions = types.WorkerOptions;
 const fetch = @import("fetch");
 
 // ============================================================================
+// Thread-Local Origin for URL Resolution
+// ============================================================================
+
+/// Thread-local storage for document origin (needed for resolving relative URLs)
+/// Set by the test runner or browser context before Worker construction.
+threadlocal var current_document_origin: ?[]const u8 = null;
+
+/// Set the document origin for resolving relative worker script URLs.
+/// This should be called by the browser context before executing scripts
+/// that might construct Workers.
+pub fn setDocumentOrigin(origin: []const u8) void {
+    current_document_origin = origin;
+}
+
+/// Get the current document origin.
+pub fn getDocumentOrigin() ?[]const u8 {
+    return current_document_origin;
+}
+
+/// Clear the document origin (for cleanup after test runs).
+pub fn clearDocumentOrigin() void {
+    current_document_origin = null;
+}
+
+// ============================================================================
 // Worker Script Fetch Errors
 // ============================================================================
 
@@ -157,7 +182,20 @@ pub fn fetchWorkerScript(
         return fetchHttpWorkerScript(allocator, url, options);
     }
 
-    // Step 4: Check for import scripts mode (stricter)
+    // Step 4: Handle path-relative URLs (starting with /)
+    // If origin is provided, resolve against it; otherwise try thread-local document origin
+    if (url[0] == '/') {
+        const origin = options.origin orelse current_document_origin;
+        if (origin != null) {
+            const full_url = std.mem.concat(allocator, u8, &.{ origin.?, url }) catch {
+                return WorkerScriptError.OutOfMemory;
+            };
+            defer allocator.free(full_url);
+            return fetchHttpWorkerScript(allocator, full_url, options);
+        }
+    }
+
+    // Step 5: Check for import scripts mode (stricter)
     if (options.is_import_scripts) {
         // importScripts() only works with classic scripts
         if (options.worker_type == .module) {
@@ -165,7 +203,7 @@ pub fn fetchWorkerScript(
         }
     }
 
-    // Step 5: For other URLs (file:, etc.), return error
+    // Step 6: For other URLs (file:, etc.), return error
     return WorkerScriptError.InvalidUrl;
 }
 

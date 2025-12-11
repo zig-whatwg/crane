@@ -192,9 +192,10 @@ pub const BrowserAdapter = struct {
         browser_context.setResultCollector(&ctx.result_collector);
         defer browser_context.clearResultCollector();
 
-        // Set WPT root and test path for URL resolution
+        // Set WPT root, test path, and base URL for URL resolution
         browser_context.setWptRoot(self.wpt_root);
         browser_context.setCurrentTestPath(test_path);
+        browser_context.setCurrentBaseUrl(test_path);
 
         // Parse HTML and build DOM - scripts execute during parsing
         // DOMContentLoaded is fired by the parser after deferred scripts execute
@@ -222,16 +223,102 @@ pub const BrowserAdapter = struct {
         return result;
     }
 
+    /// Run an HTML WPT test with an explicit base URL
+    ///
+    /// This variant allows specifying the base URL for resolving relative script URLs.
+    /// Used when tests are fetched from HTTP and we need proper URL resolution.
+    pub fn runHTMLTestWithBaseUrl(
+        self: *BrowserAdapter,
+        test_path: []const u8,
+        html_content: []const u8,
+        timeout: config.Timeout,
+        context_type: test_parser.GlobalType,
+        base_url: []const u8,
+    ) !test_harness.TestResult {
+        // Map GlobalType (from test_parser) to ContextType (from browser_context)
+        // HTML tests typically run in window context, but we support the parameter for consistency
+        const ctx_type: browser_context.ContextType = switch (context_type) {
+            .window => .window,
+            .worker => .worker,
+            .sharedworker => .shared_worker,
+            .serviceworker => .service_worker,
+            // ShadowRealm variants map to window for now (not implemented)
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => .window,
+        };
+
+        // Create fresh browser context for this test with the specified context type
+        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
+        defer ctx.deinit();
+
+        // Initialize V8 isolate and context
+        try ctx.initialize();
+
+        // NOTE: We do NOT pre-load testharness.js here.
+        // The HTML test file will load it via <script src="/resources/testharness.js">.
+        // Our script loader intercepts /resources/testharnessreport.js and returns
+        // our custom version that registers the result callbacks.
+        // This ensures callbacks are registered with the correct testharness.js instance.
+
+        // Start tracking results for this test file
+        try ctx.result_collector.startTest(test_path);
+
+        // Set result collector for V8 callbacks
+        browser_context.setResultCollector(&ctx.result_collector);
+        defer browser_context.clearResultCollector();
+
+        // Set WPT root, test path, and base URL for URL resolution
+        browser_context.setWptRoot(self.wpt_root);
+        browser_context.setCurrentTestPath(test_path);
+        browser_context.setCurrentBaseUrl(base_url);
+
+        // Parse HTML and build DOM - scripts execute during parsing
+        // DOMContentLoaded is fired by the parser after deferred scripts execute
+        // (per HTML Standard §13.2.7 "The end")
+        ctx.loadHTMLDocument(html_content, base_url) catch |err| {
+            std.debug.print("HTML parse error for {s}: {}\n", .{ test_path, err });
+            // Return a failed result
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = "HTML parsing failed";
+            return result;
+        };
+
+        // Trigger testharness.js completion
+        try ctx.triggerTestHarnessCompletion();
+
+        // Run event loop until completion or timeout
+        const timeout_ms = timeout.toMillis();
+        try ctx.runEventLoop(timeout_ms);
+
+        // Collect and return results
+        const result = ctx.result_collector.finalize(self.allocator, test_path);
+
+        self.tests_run += 1;
+        return result;
+    }
+
     /// Run a WPT test by fetching it from an HTTP URL
     ///
     /// This method:
     /// 1. Fetches the test HTML from the WPT server via HTTP
-    /// 2. Creates a fresh V8 context
+    /// 2. Creates a fresh V8 context (always window context for HTML parsing)
     /// 3. Parses and executes the fetched HTML
     /// 4. Waits for test completion
     ///
-    /// For .any.js tests, the WPT server generates HTML wrappers
-    /// (e.g., test.any.html) that we can fetch directly.
+    /// For .any.js tests, the WPT server generates HTML wrappers:
+    /// - test.any.html - runs test directly in window
+    /// - test.any.worker.html - creates a Worker that runs the test
+    ///
+    /// In both cases, we parse HTML in window context. The worker variant
+    /// works by the HTML spawning a Worker object, not by us running
+    /// in worker context directly.
     pub fn runTestFromUrl(
         self: *BrowserAdapter,
         test_url: []const u8,
@@ -239,6 +326,8 @@ pub const BrowserAdapter = struct {
         timeout: config.Timeout,
         context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
+        _ = context_type; // URL already encodes the context (e.g., .any.worker.html)
+
         // Fetch the test HTML from the WPT server
         var fetch_result = navigation.fetchUrl(self.allocator, test_url, .{}) catch |err| {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
@@ -256,7 +345,9 @@ pub const BrowserAdapter = struct {
             return result;
         }
 
-        // Run the HTML test with fetched content
-        return self.runHTMLTest(test_path, fetch_result.body, timeout, context_type);
+        // Always parse HTML in window context - the URL determines the actual test context
+        // (e.g., .any.worker.html will spawn a Worker internally)
+        // Pass the full URL as base_url so relative script URLs can be resolved
+        return self.runHTMLTestWithBaseUrl(test_path, fetch_result.body, timeout, .window, test_url);
     }
 };

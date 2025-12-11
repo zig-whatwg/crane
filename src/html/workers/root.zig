@@ -129,6 +129,11 @@ pub const WorkerScriptError = script_fetch.WorkerScriptError;
 pub const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 pub const isValidWorkerScriptType = script_fetch.isValidWorkerScriptType;
 
+// Document Origin (for resolving relative Worker script URLs)
+pub const setDocumentOrigin = script_fetch.setDocumentOrigin;
+pub const getDocumentOrigin = script_fetch.getDocumentOrigin;
+pub const clearDocumentOrigin = script_fetch.clearDocumentOrigin;
+
 // Message Channel (postMessage/MessageEvent)
 pub const message_channel = @import("message_channel.zig");
 pub const WorkerPortPair = message_channel.WorkerPortPair;
