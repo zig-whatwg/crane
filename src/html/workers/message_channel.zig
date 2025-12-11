@@ -255,10 +255,17 @@ pub const WorkerPort = struct {
             return WorkerMessageError.OutOfMemory;
         };
 
-        // If target queue is enabled, dispatch immediately
-        if (target.queue_enabled) {
-            target.dispatchMessages();
-        }
+        // NOTE: Per HTML spec, message dispatch should be queued as a task on the
+        // receiving port's event loop. Immediate dispatch causes crashes when the
+        // sender and receiver are in different V8 contexts (e.g., worker → main).
+        //
+        // TODO: Queue a task on the event loop instead of immediate dispatch.
+        // For now, messages will be dispatched when the receiver explicitly
+        // processes their event loop or calls dispatchMessages().
+        //
+        // if (target.queue_enabled) {
+        //     target.dispatchMessages();
+        // }
     }
 
     /// Post a JavaScript value to the entangled port (high-level, handles serialization)
