@@ -35,6 +35,7 @@
 //! - The two are compatible via `asEngineHandle()` and engine conversion functions
 
 const std = @import("std");
+const Instance = @import("instance.zig").Instance;
 
 /// Engine-agnostic JavaScript value representation.
 ///
@@ -69,7 +70,7 @@ pub const JSValue = union(enum) {
     /// Zig runtime.Instance pointer
     /// This is NOT a JavaScript value - it's a Zig object that may be
     /// wrapped by the engine when returned to JavaScript
-    instance: *anyopaque,
+    instance: *Instance,
 
     // ========================================================================
     // Nested Types
@@ -210,9 +211,20 @@ pub const JSValue = union(enum) {
         return .{ .handle = .{ .ptr = promise_ptr, .needs_disposal = false, .handle_scope = .global } };
     }
 
-    /// Create a JSValue from a Zig runtime instance
-    pub fn fromInstance(inst: *anyopaque) JSValue {
+    /// Create a JSValue from a Zig runtime Instance
+    ///
+    /// Use this when returning a WebIDL interface instance to JavaScript.
+    /// The engine will wrap it appropriately when converting to JS.
+    pub fn fromInstance(inst: *Instance) JSValue {
         return .{ .instance = inst };
+    }
+
+    /// Create a JSValue from an anyopaque pointer that is actually an Instance
+    ///
+    /// This is for legacy code that passes Instance pointers as *anyopaque.
+    /// Prefer using `fromInstance(*Instance)` for new code.
+    pub fn fromInstanceAnyopaque(inst: *anyopaque) JSValue {
+        return .{ .instance = @ptrCast(@alignCast(inst)) };
     }
 
     /// Create from legacy anyopaque pointer
@@ -306,10 +318,40 @@ pub const JSValue = union(enum) {
         };
     }
 
-    /// Get instance pointer, or null if not an instance
-    pub fn asInstance(self: JSValue) ?*anyopaque {
+    /// Get the Instance pointer, or null if not an instance
+    ///
+    /// Returns the typed Instance pointer for direct use with runtime APIs.
+    pub fn toInstance(self: JSValue) ?*Instance {
         return switch (self) {
             .instance => |i| i,
+            else => null,
+        };
+    }
+
+    /// Extract typed state from an Instance JSValue
+    ///
+    /// Combines toInstance() with Instance.getState() for convenience.
+    /// Returns null if this is not an instance JSValue.
+    ///
+    /// Example:
+    /// ```zig
+    /// if (js_value.toTypedInstance(BlobState)) |blob_state| {
+    ///     // Use blob_state
+    /// }
+    /// ```
+    pub fn toTypedInstance(self: JSValue, comptime StateType: type) ?*StateType {
+        if (self.toInstance()) |inst| {
+            return inst.getState(StateType);
+        }
+        return null;
+    }
+
+    /// Get instance pointer as anyopaque, or null if not an instance
+    ///
+    /// This is for legacy code compatibility. Prefer using toInstance().
+    pub fn asInstance(self: JSValue) ?*anyopaque {
+        return switch (self) {
+            .instance => |i| @ptrCast(i),
             else => null,
         };
     }
@@ -453,7 +495,9 @@ pub const LocalValue = struct {
     /// Check if this contains a valid (non-null) pointer
     pub fn isValid(self: LocalValue) bool {
         // In V8, null pointers indicate empty handles
-        return self.ptr != @as(*anyopaque, @ptrFromInt(0));
+        // Since ptr is non-optional, it's always valid
+        _ = self;
+        return true;
     }
 };
 
@@ -692,4 +736,129 @@ test "Promise empty" {
     const promise = PromiseVoid.empty();
     try std.testing.expect(!promise.isValid());
     try std.testing.expect(promise.getHandle() == null);
+}
+
+// ============================================================================
+// Instance-related Tests
+// ============================================================================
+
+test "JSValue instance - fromInstance and toInstance roundtrip" {
+    const VTable = @import("instance.zig").VTable;
+
+    // Create a dummy vtable for testing
+    const delegates = .{};
+    const vtable = VTable{
+        .deinit = null,
+        .methods_ptr = &delegates,
+    };
+
+    // Create a dummy Instance on the stack for testing
+    // Note: In real code, Instance is heap-allocated via SlabAllocator
+    var dummy_state: u32 = 42;
+    var instance = Instance{
+        .vtable = &vtable,
+        .state = @ptrCast(&dummy_state),
+        .ctx = undefined,
+    };
+
+    // Test fromInstance and toInstance
+    const value = JSValue.fromInstance(&instance);
+    try std.testing.expect(value.isInstance());
+    try std.testing.expect(!value.isUndefined());
+    try std.testing.expect(!value.isHandle());
+
+    const recovered = value.toInstance();
+    try std.testing.expect(recovered != null);
+    try std.testing.expect(recovered.? == &instance);
+}
+
+test "JSValue instance - toTypedInstance extracts state" {
+    const VTable = @import("instance.zig").VTable;
+
+    const TestState = struct {
+        value: u32,
+        name: []const u8,
+    };
+
+    var state = TestState{ .value = 123, .name = "test" };
+
+    const delegates = .{};
+    const vtable = VTable{
+        .deinit = null,
+        .methods_ptr = &delegates,
+    };
+
+    var instance = Instance{
+        .vtable = &vtable,
+        .state = @ptrCast(&state),
+        .ctx = undefined,
+    };
+
+    const value = JSValue.fromInstance(&instance);
+
+    // Extract typed state
+    const typed_state = value.toTypedInstance(TestState);
+    try std.testing.expect(typed_state != null);
+    try std.testing.expectEqual(@as(u32, 123), typed_state.?.value);
+    try std.testing.expectEqualStrings("test", typed_state.?.name);
+}
+
+test "JSValue instance - toInstance returns null for non-instance" {
+    const undef = JSValue.jsUndefined;
+    try std.testing.expect(undef.toInstance() == null);
+
+    const number = JSValue.fromNumber(42);
+    try std.testing.expect(number.toInstance() == null);
+
+    var dummy: u8 = 0;
+    const handle = JSValue.fromHandle(&dummy);
+    try std.testing.expect(handle.toInstance() == null);
+}
+
+test "JSValue instance - asInstance returns anyopaque for compatibility" {
+    const VTable = @import("instance.zig").VTable;
+
+    const delegates = .{};
+    const vtable = VTable{
+        .deinit = null,
+        .methods_ptr = &delegates,
+    };
+
+    var dummy_state: u32 = 0;
+    var instance = Instance{
+        .vtable = &vtable,
+        .state = @ptrCast(&dummy_state),
+        .ctx = undefined,
+    };
+
+    const value = JSValue.fromInstance(&instance);
+
+    // asInstance returns ?*anyopaque for compatibility
+    const anyopaque_ptr = value.asInstance();
+    try std.testing.expect(anyopaque_ptr != null);
+    try std.testing.expect(anyopaque_ptr.? == @as(*anyopaque, &instance));
+}
+
+test "JSValue instance - fromInstanceAnyopaque for legacy code" {
+    const VTable = @import("instance.zig").VTable;
+
+    const delegates = .{};
+    const vtable = VTable{
+        .deinit = null,
+        .methods_ptr = &delegates,
+    };
+
+    var dummy_state: u32 = 0;
+    var instance = Instance{
+        .vtable = &vtable,
+        .state = @ptrCast(&dummy_state),
+        .ctx = undefined,
+    };
+
+    // Simulate legacy code passing Instance as *anyopaque
+    const legacy_ptr: *anyopaque = @ptrCast(&instance);
+    const value = JSValue.fromInstanceAnyopaque(legacy_ptr);
+
+    try std.testing.expect(value.isInstance());
+    try std.testing.expect(value.toInstance().? == &instance);
 }
