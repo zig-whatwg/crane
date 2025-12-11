@@ -25,6 +25,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Document = interfaces.Document;
 
+// Use shared InstanceRegistry utility for internal state management
+const utils = webidl.utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
@@ -479,9 +483,8 @@ pub const InternalState = struct {
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser, DOMParser, and other modules that need
 /// access to document internals for DOM construction.
-/// Now uses centralized runtime.internal_state registry
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return runtime.internal_state.getInternal(InternalState, instance);
+    return Registry.get(instance);
 }
 
 /// Get the Node internal state from a Document instance
@@ -508,11 +511,11 @@ pub fn init(
     // Set node type to DOCUMENT_NODE
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_NODE);
 
-    // Initialize Document's own internal state using centralized registry
+    // Initialize Document's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try runtime.internal_state.setInternal(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
@@ -520,16 +523,16 @@ pub fn init(
 /// Get Document's internal state from the registry
 /// Alias for getInternal for backward compatibility
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return runtime.internal_state.getInternal(InternalState, instance);
+    return Registry.get(instance);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up internal state using centralized registry
-    if (runtime.internal_state.getInternal(InternalState, instance)) |internal| {
+    // Clean up internal state from registry
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
-    runtime.internal_state.removeInternal(instance);
+    Registry.remove(instance);
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);
 }
@@ -5293,3 +5296,9 @@ pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString
     _ = html;
     return error.NotImplemented;
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

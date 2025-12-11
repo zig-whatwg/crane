@@ -301,3 +301,9 @@ pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMSt
     // Delegate to NonElementParentNode mixin
     return NonElementParentNode.getElementById(instance, element_id);
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

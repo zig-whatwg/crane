@@ -238,3 +238,9 @@ pub fn createDocumentType(
 
     return instance;
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

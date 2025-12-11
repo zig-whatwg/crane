@@ -123,6 +123,23 @@ pub fn InstanceRegistry(comptime T: type) type {
                 map = null;
             }
         }
+
+        /// Deinit ALL internal states in the registry and clear it.
+        /// This is used during final cleanup to free any resources owned by
+        /// internal states (e.g., strings allocated by Node, Element, etc.)
+        /// that were not cleaned up by normal tree traversal (orphaned nodes).
+        pub fn deinitAllAndClear() void {
+            if (map) |*m| {
+                var iter = m.valueIterator();
+                while (iter.next()) |internal| {
+                    // internal is *T, need to dereference to call deinit
+                    if (@hasDecl(T, "deinit")) {
+                        internal.*.deinit();
+                    }
+                }
+                m.clearRetainingCapacity();
+            }
+        }
     };
 }
 

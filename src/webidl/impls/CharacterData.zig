@@ -466,3 +466,9 @@ pub fn deleteDataRange(instance: *runtime.Instance, offset: u32, count: u32) !vo
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try replaceDataInternal(instance, internal, offset, count, "");
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

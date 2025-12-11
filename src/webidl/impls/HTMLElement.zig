@@ -1900,3 +1900,9 @@ pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Insta
     // For now, this is not fully implemented
     return error.NotImplemented;
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

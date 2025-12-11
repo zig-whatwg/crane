@@ -1436,3 +1436,9 @@ pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime.Instance {
     return call_appendChild(parent, node);
 }
+
+/// Clean up ALL remaining Node internal states.
+/// This is called during final context cleanup to catch any leaked nodes.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}

@@ -1242,3 +1242,4 @@ pub const GPUTextureUsage = @import("GPUTextureUsage.zig");
 pub const TestUtils = @import("TestUtils.zig");
 pub const WebAssembly = @import("WebAssembly.zig");
 pub const console = @import("console.zig");
+pub const cleanup = @import("cleanup.zig");

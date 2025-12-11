@@ -305,3 +305,9 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
     // Return null - coordinate transforms require layout engine
     return error.NotImplemented;
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

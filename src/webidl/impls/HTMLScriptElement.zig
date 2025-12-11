@@ -14,11 +14,16 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
 // Parent class implementation
 const HTMLElementImpl = @import("HTMLElement.zig");
 const NodeImpl = @import("Node.zig");
+
+// Use shared InstanceRegistry utility for internal state management
+const utils = webidl.utils;
+const Registry = utils.InstanceRegistry(InternalState);
 
 pub const State = HTMLScriptElement.State;
 
@@ -201,9 +206,8 @@ pub const InternalState = struct {
 
 /// Get the internal state from an instance
 /// Made public for use by script execution module
-/// Now uses centralized runtime.internal_state registry
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return runtime.internal_state.getInternal(InternalState, instance);
+    return Registry.get(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -222,22 +226,22 @@ pub fn init(
     // Set local name to "script"
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
 
-    // Initialize HTMLScriptElement's internal state using centralized registry
+    // Initialize HTMLScriptElement's internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
-    try runtime.internal_state.setInternal(instance, internal);
+    try Registry.set(instance, internal);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up internal state using centralized registry
-    if (runtime.internal_state.getInternal(InternalState, instance)) |internal| {
+    // Clean up internal state from registry
+    if (Registry.get(instance)) |internal| {
         internal.deinit();
     }
-    runtime.internal_state.removeInternal(instance);
+    Registry.remove(instance);
 
     // Chain to parent deinit
     HTMLElementImpl.deinit(instance);
@@ -785,9 +789,14 @@ pub const ScriptExecutionError = error{
     OutOfMemory,
 };
 
-
 pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
+
+/// Clean up ALL remaining internal states.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+

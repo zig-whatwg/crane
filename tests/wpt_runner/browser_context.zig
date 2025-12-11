@@ -116,6 +116,9 @@ pub const BrowserContext = struct {
         //
         // Document.deinit() chains to Node.deinit() which recursively cleans up
         // all child nodes (Elements, Text nodes, etc.), freeing their CharacterData.
+        //
+        // NOTE: The deinit functions are idempotent - they check their registries
+        // before cleaning up, so double-calls from wrapper cache are safe.
         if (self.document_instance) |doc| {
             interfaces.Document.deinit(doc);
             self.document_instance = null;
@@ -177,6 +180,12 @@ pub const BrowserContext = struct {
             v8.ffi.v8_Isolate_Exit(isolate);
             v8.ffi.v8_Isolate_Dispose(isolate);
         }
+
+        // Clean up any orphaned DOM nodes that were removed from the tree during
+        // test execution but not properly deinited. This catches nodes that were
+        // created during parsing but then removed by testharness.js or the test code.
+        // Must be called BEFORE deinitializeRuntime() since it frees owned strings.
+        impls.cleanup.cleanupAllDomRegistries();
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
@@ -1021,7 +1030,8 @@ pub const BrowserContext = struct {
         // Use HTMLParser from impls module
         const HTMLParser = impls.HTMLParser;
 
-        // Create script loader that uses WPT file system
+        // Create script loader that intercepts testharnessreport.js
+        // but falls back to HTTP fetch for everything else (default behavior)
         const script_loader = HTMLParser.ScriptLoader{
             .context = self,
             .loadScript = wptScriptLoader,
@@ -1093,7 +1103,10 @@ pub const BrowserContext = struct {
     }
 };
 
-/// WPT script loader callback - loads scripts from WPT file system
+/// WPT script loader callback
+///
+/// Intercepts testharnessreport.js to return our custom version with result callbacks.
+/// For all other scripts, returns null to trigger the default HTTP fetch behavior.
 fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
     const self: *BrowserContext = @ptrCast(@alignCast(ctx_ptr orelse return null));
 
@@ -1106,35 +1119,9 @@ fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
         return self.allocator.dupe(u8, test_harness.testharnessreport_js) catch return null;
     }
 
-    // Resolve URL against WPT root
-    var path: []u8 = undefined;
-    if (std.mem.startsWith(u8, url, "/")) {
-        // Absolute path from WPT root (e.g., "/resources/testharness.js")
-        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url[1..] }) catch return null;
-    } else {
-        // Relative path - resolve relative to current test directory
-        const test_path = getCurrentTestPath() orelse {
-            // Fallback to WPT root if no test path set
-            path = std.fs.path.join(self.allocator, &.{ self.wpt_root, url }) catch return null;
-            return blk: {
-                defer self.allocator.free(path);
-                const file = std.fs.cwd().openFile(path, .{}) catch return null;
-                defer file.close();
-                break :blk file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch return null;
-            };
-        };
-        // Get directory of current test file
-        const test_dir = std.fs.path.dirname(test_path) orelse "";
-        path = std.fs.path.join(self.allocator, &.{ self.wpt_root, test_dir, url }) catch return null;
-    }
-    defer self.allocator.free(path);
-
-    // Read the file
-    const file = std.fs.cwd().openFile(path, .{}) catch return null;
-    defer file.close();
-
-    const content = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch return null;
-    return content;
+    // For all other scripts, return null to use default HTTP fetch behavior
+    // This ensures proper browser-like loading via wpt serve
+    return null;
 }
 
 // =============================================================================

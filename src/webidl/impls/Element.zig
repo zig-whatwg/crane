@@ -459,6 +459,15 @@ pub fn deinit(instance: *runtime.Instance) void {
     NodeImpl.deinit(instance);
 }
 
+/// Clean up ALL remaining Element internal states.
+/// This is called during final context cleanup to catch any leaked elements
+/// that were removed from the DOM tree but not properly deinited.
+/// This handles the case where DOM manipulation (e.g., removeChild) creates
+/// orphaned elements that aren't cleaned up by the normal tree traversal.
+pub fn cleanupAllRemainingInternal() void {
+    Registry.deinitAllAndClear();
+}
+
 // =============================================================================
 // Setters for internal state (used by Document factory methods)
 // =============================================================================
