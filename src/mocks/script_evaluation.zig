@@ -1,8 +1,17 @@
+//! ⚠️ TEST UTILITY ONLY - Not for production use
+//!
+//! ScriptEvaluator is a test utility for simulating script evaluation
+//! with configurable failures. It is NOT a real implementation.
+//!
+//! For production script evaluation, use the V8 engine integration
+//! in src/runtime/engines/v8/.
+//!
+//! Original description:
 //! Mock Script Evaluation for Service Workers
 //!
 //! TODO(html-spec): Replace this mock with real HTML script evaluation
 //! when the HTML specification scripting section is implemented.
-//! See: https://html.spec.whatwg.org/multipage/webappapis.html#hostimportmoduledynamically
+//! Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostimportmoduledynamically
 //!
 //! Script evaluation is how worker scripts are executed. This mock
 //! records script evaluations for testing without actual JS execution.

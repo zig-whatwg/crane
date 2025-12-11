@@ -1,3 +1,9 @@
+//! ⚠️ DEPRECATED: Partial mock - prefer src/url/origin.zig
+//!
+//! Some functions here (isSameSite, getRegistrableDomain) are not
+//! yet in the real implementation. This mock will be removed when
+//! those are added to src/url/origin.zig.
+//!
 //! Origin Utilities for HTML/Fetch Integration
 //!
 //! TODO(html-spec): This extends src/url/origin.zig with HTML-specific

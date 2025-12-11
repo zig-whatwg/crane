@@ -1,67 +1,52 @@
-//! Mocks Module
+//! ⚠️ MOCKS MODULE - DEPRECATED
 //!
-//! This module provides temporary mock implementations for WHATWG/W3C specs
-//! that are not yet implemented. These mocks allow dependent specs (like
-//! Storage, IndexedDB, and Service Workers) to be developed without waiting
-//! for full implementations.
+//! This module contains temporary mocks for specs not yet fully implemented.
+//! Most mocks now have real implementations - prefer using:
 //!
-//! ## Mocked Specs
+//! - src/webidl/interfaces/ - WebIDL interface implementations
+//! - src/webidl/impls/ - WebIDL implementation files
+//! - src/html/ - HTML spec implementations
+//! - src/fs/ - File System API
+//! - src/html/structured_clone/ - Structured Clone algorithm
 //!
-//! - **Cache API** (Service Workers): For Storage spec storage endpoints
-//! - **File System API**: For Storage spec storage endpoints
-//! - **Structured Clone**: For IndexedDB value serialization
-//! - **Worker Infrastructure** (HTML): For Service Worker implementation
-//!   - WorkerGlobalScope: Base interface for worker global scopes
-//!   - WorkerLocation: URL information for workers
-//!   - WorkerNavigator: Navigator interface for workers
-//!   - Worker Event Loop: Task queuing and microtasks
-//!   - Script Evaluation: Worker script execution
-//!   - MessagePort: Inter-context messaging
+//! ## Remaining Items
 //!
-//! ## Usage
+//! - **environment.zig** - EnvironmentSettingsObject (no full impl yet)
+//! - **script_evaluation.zig** - Test utility for simulating script failures
+//! - **origin_utils.zig** - Some origin functions not yet in src/url/origin.zig
 //!
-//! ```zig
-//! const mocks = @import("mocks");
+//! ## Migration Guide
 //!
-//! // Use structured clone mock for testing
-//! const cloned = try mocks.structured_clone.clone(allocator, value);
-//!
-//! // Create a worker global scope for service worker testing
-//! const scope = try mocks.WorkerGlobalScope.init(allocator, "https://example.com/sw.js", .module);
-//! defer scope.deinit();
-//! ```
-//!
-//! ## TODO
-//!
-//! All mocks in this module should eventually be replaced with full
-//! implementations of their respective specifications:
-//!
-//! - Cache API: https://w3c.github.io/ServiceWorker/#cache-interface
-//! - File System: https://fs.spec.whatwg.org/
-//! - Structured Clone: https://html.spec.whatwg.org/multipage/structured-data.html
-//! - Workers: https://html.spec.whatwg.org/multipage/workers.html
+//! | Old Mock | New Implementation |
+//! |----------|-------------------|
+//! | WorkerGlobalScope | src/webidl/interfaces/WorkerGlobalScope.zig |
+//! | WorkerLocation | src/webidl/interfaces/WorkerLocation.zig |
+//! | WorkerNavigator | src/webidl/interfaces/WorkerNavigator.zig |
+//! | MessagePort | src/webidl/interfaces/MessagePort.zig |
+//! | FormData | src/webidl/impls/FormData.zig |
+//! | CacheStorage | src/webidl/impls/CacheStorage.zig |
+//! | structured_clone | src/html/structured_clone/ |
+//! | file_system | src/fs/ |
 //!
 
 const std = @import("std");
 
-// === Existing Mocks ===
-pub const cache_api = @import("cache_api.zig");
-pub const file_system = @import("file_system.zig");
-pub const structured_clone = @import("structured_clone.zig");
+// === Remaining Mocks ===
+
+/// Environment settings object mock
+/// TODO: Implement real EnvironmentSettingsObject per HTML spec
+/// Spec: https://html.spec.whatwg.org/#environment-settings-object
 pub const environment = @import("environment.zig");
+
+/// Origin utility functions not yet in src/url/origin.zig
+/// TODO: Move remaining functions to src/url/origin.zig
 pub const origin_utils = @import("origin_utils.zig");
-pub const service_worker = @import("service_worker.zig");
-pub const form_data = @import("form_data.zig");
 
-// === Worker Infrastructure Mocks (for Service Workers) ===
-pub const worker_global_scope = @import("worker_global_scope.zig");
-pub const worker_location = @import("worker_location.zig");
-pub const worker_navigator = @import("worker_navigator.zig");
-pub const worker_event_loop = @import("worker_event_loop.zig");
+/// Test utility for simulating script evaluation failures
+/// Note: This is intentionally a mock for test configurability
 pub const script_evaluation = @import("script_evaluation.zig");
-pub const message_port = @import("message_port.zig");
 
-// Environment exports for convenience.
+// Environment exports for convenience
 pub const EnvironmentSettingsObject = environment.EnvironmentSettingsObject;
 pub const PolicyContainer = environment.PolicyContainer;
 pub const ReferrerPolicy = environment.ReferrerPolicy;
@@ -76,26 +61,10 @@ pub const isSameSite = origin_utils.isSameSite;
 pub const isSchemelesslySameSite = origin_utils.isSchemelesslySameSite;
 pub const getRegistrableDomain = origin_utils.getRegistrableDomain;
 
-// Service worker exports
-pub const ServiceWorkerController = service_worker.ServiceWorkerController;
-pub const ServiceWorkersMode = service_worker.ServiceWorkersMode;
-
-// FormData exports
-pub const FormData = form_data.FormData;
-pub const encodeMultipart = form_data.encodeMultipart;
-pub const parseUrlEncoded = form_data.parseUrlEncoded;
-
-// Worker infrastructure exports (for Service Workers)
-pub const WorkerGlobalScope = worker_global_scope.WorkerGlobalScope;
-pub const WorkerLocation = worker_location.WorkerLocation;
-pub const WorkerNavigator = worker_navigator.WorkerNavigator;
-pub const WorkerEventLoop = worker_event_loop.WorkerEventLoop;
-pub const TaskSource = worker_event_loop.TaskSource;
+// Script evaluation exports (test utility)
 pub const ScriptEvaluator = script_evaluation.ScriptEvaluator;
 pub const ScriptType = script_evaluation.ScriptType;
 pub const EvaluationResult = script_evaluation.EvaluationResult;
-pub const MessagePort = message_port.MessagePort;
-pub const MessageChannel = message_port.MessageChannel;
 
 /// Common error type for mock implementations
 pub const MockError = error{

@@ -1,8 +1,13 @@
+//! ⚠️ DEPRECATED: Temporary mock - will be removed when real impl exists
+//!
 //! Mock HTML Environment Settings Object for Fetch
+//!
+//! This mock will be removed when the real EnvironmentSettingsObject
+//! is implemented. Do not add new dependencies on this mock.
 //!
 //! TODO(html-spec): Replace this mock with real HTML environment settings object
 //! when the HTML specification is implemented.
-//! See: https://html.spec.whatwg.org/#environment-settings-object
+//! Spec: https://html.spec.whatwg.org/#environment-settings-object
 //!
 //! This mock provides the minimum interface needed by the Fetch specification:
 //! - Origin (for CORS, same-origin checks)
