@@ -1282,6 +1282,13 @@ pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm
 //
 // These helpers create type-erased algorithms from typed contexts,
 // providing compile-time type safety while maintaining runtime polymorphism.
+//
+// The key insight is that we use comptime to generate wrapper functions that:
+// 1. Accept *anyopaque as required by the vtable
+// 2. Cast to the typed context pointer at runtime
+// 3. Call the user-provided typed callback
+//
+// This preserves type safety at the call site while satisfying the vtable interface.
 
 /// Create a TransformAlgorithm from a typed context and callback.
 ///
@@ -1307,14 +1314,26 @@ pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm
 pub fn createTypedTransformAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context, JSValue) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context, JSValue) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) TransformAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque, chunk: JSValue) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx, chunk);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1325,14 +1344,26 @@ pub fn createTypedTransformAlgorithm(
 pub fn createTypedFlushAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) FlushAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1343,14 +1374,26 @@ pub fn createTypedFlushAlgorithm(
 pub fn createTypedCancelAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context, ?JSValue) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context, ?JSValue) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) CancelAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque, reason: ?JSValue) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx, reason);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1359,14 +1402,26 @@ pub fn createTypedCancelAlgorithm(
 pub fn createTypedPullAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) PullAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1375,14 +1430,26 @@ pub fn createTypedPullAlgorithm(
 pub fn createTypedWriteAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context, JSValue) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context, JSValue) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) WriteAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque, chunk: JSValue) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx, chunk);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1391,14 +1458,26 @@ pub fn createTypedWriteAlgorithm(
 pub fn createTypedCloseAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) CloseAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1407,14 +1486,26 @@ pub fn createTypedCloseAlgorithm(
 pub fn createTypedAbortAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context, ?JSValue) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context, ?JSValue) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) AbortAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque, reason: ?JSValue) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx, reason);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1423,14 +1514,26 @@ pub fn createTypedAbortAlgorithm(
 pub fn createTypedStartAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context) Promise(void),
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context) Promise(void),
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) StartAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque) Promise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
@@ -1439,14 +1542,26 @@ pub fn createTypedStartAlgorithm(
 pub fn createTypedSizeAlgorithm(
     comptime Context: type,
     context: *Context,
-    call_fn: *const fn (*Context, JSValue) f64,
-    deinit_fn: ?*const fn (*Context) void,
+    comptime call_fn: *const fn (*Context, JSValue) f64,
+    comptime deinit_fn: ?*const fn (*Context) void,
 ) SizeAlgorithm {
+    const wrapper = struct {
+        fn call(ctx: *anyopaque, chunk: JSValue) f64 {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+            return call_fn(typed_ctx, chunk);
+        }
+        fn deinitWrapper(ctx: *anyopaque) void {
+            if (deinit_fn) |f| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(ctx));
+                f(typed_ctx);
+            }
+        }
+    };
     return .{
-        .ptr = @ptrCast(context),
+        .ptr = context,
         .vtable = &.{
-            .call = @ptrCast(call_fn),
-            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+            .call = wrapper.call,
+            .deinit = if (deinit_fn != null) wrapper.deinitWrapper else null,
         },
     };
 }
