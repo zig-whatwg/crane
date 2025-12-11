@@ -31,6 +31,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Worker = interfaces.Worker;
 const MessageEvent = interfaces.MessageEvent;
+const EventTarget = interfaces.EventTarget;
+
+// Import parent class implementation for proper initialization chain
+const EventTargetImpl = @import("EventTarget.zig");
 
 // Import workers infrastructure
 const html_core = @import("html_core");
@@ -136,24 +140,30 @@ pub const InternalState = struct {
 };
 
 /// Initialize instance (creates the instance)
+/// IMPORTANT: Worker extends EventTarget, so we must chain to EventTarget.init()
+/// to properly set up the event listener infrastructure needed for addEventListener.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // Chain to parent class (EventTarget) to set up event listener state
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     return instance;
 }
 
 /// Deinitialize instance
+/// IMPORTANT: Must chain to EventTarget.deinit() through interface (not impl directly)
+/// to clean up event listener state.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    // Chain to parent class through interface for proper deinit
+    EventTarget.deinit(instance);
 }
 
 /// Constructor implementation
@@ -164,6 +174,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
 pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+    std.log.debug("Worker.call_constructor: scriptURL={s}", .{scriptURL.asSlice()});
+
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
     errdefer deinit(instance);
@@ -226,7 +238,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
 
     // Try to create the DedicatedWorker using the global timer backend
     // The timer backend is portable (uses std.time) and works on all platforms
+    std.log.debug("Worker.call_constructor: getting timer backend", .{});
     if (platform.getDefaultTimerBackend(ctx.allocator)) |timer_backend| {
+        std.log.debug("Worker.call_constructor: creating DedicatedWorker", .{});
         const dedicated_worker = DedicatedWorker.init(
             ctx.allocator,
             timer_backend,
@@ -241,6 +255,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             std.log.warn("Failed to create DedicatedWorker: {}", .{err});
             return instance;
         };
+        std.log.debug("Worker.call_constructor: DedicatedWorker created", .{});
         internal_state.dedicated_worker = dedicated_worker;
 
         // Store reference to Worker instance for message callbacks
@@ -559,8 +574,10 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
 
     // Verify we have a valid context, enter if needed
     const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
+    std.log.debug("dispatchMessageEvent: worker v8_context={*}, current_context={?*}", .{ v8_context, current_context });
     const need_enter_context = (current_context == null) or (current_context != v8_context);
     if (need_enter_context) {
+        std.log.debug("dispatchMessageEvent: entering context", .{});
         v8_engine.ffi.v8_Context_Enter(v8_context);
     }
     defer if (need_enter_context) {
@@ -654,9 +671,24 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     };
 
     // Set the data property on the MessageEvent
-    // For JSON-parsed values, we store the V8 Value pointer
+    // v8_JSON_Parse_FromBuffer returns a Local handle that's only valid in the current HandleScope.
+    // When the callback executes (via v8_Function_Call), it may create its own HandleScope.
+    // The callback then accesses message.data, which triggers our getter.
+    // At that point, the original Local handle might not be valid.
+    //
+    // Solution: Convert the Local to a Global handle for safe storage.
+    // The Global handle persists across HandleScope boundaries.
+    const global_data = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(v8_data)) orelse {
+        std.log.warn("Failed to convert JSON data to Global handle", .{});
+        return;
+    };
+    // Note: This Global handle will NOT be automatically disposed.
+    // Since MessageEvent is short-lived (only used for this dispatch), this is acceptable.
+    // The Global handle will be collected when the isolate is disposed.
+    // TODO: Properly track and dispose this Global handle when MessageEvent is destroyed.
+
     var event_state = message_event.getState(MessageEvent.State);
-    event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(v8_data));
+    event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(global_data));
 
     // Wrap the MessageEvent instance as a V8 Object
     const v8_event = template_registry.wrapInstanceAsV8Object(
@@ -686,8 +718,7 @@ fn invokeMessageListeners(
 ) void {
     std.log.debug("invokeMessageListeners: starting", .{});
 
-    // Import EventTarget impl to access event listener list
-    const EventTargetImpl = @import("EventTarget.zig");
+    // EventTargetImpl is imported at module level
     const CallbackWrapper = v8_engine.CallbackWrapper;
 
     // Step 1: Invoke registered "message" event listeners (from addEventListener)
@@ -697,11 +728,13 @@ fn invokeMessageListeners(
         for (listeners) |listener| {
             // Check if listener is for "message" events and not removed
             if (std.mem.eql(u8, listener.type.asSlice(), "message") and !listener.removed) {
-                std.log.debug("invokeMessageListeners: found message listener", .{});
+                std.log.debug("invokeMessageListeners: found message listener, callback={*}", .{listener.callback});
                 // listener.callback is actually a *CallbackWrapper
                 if (listener.callback) |callback_instance| {
                     const callback_wrapper: *CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                    _ = callback_wrapper.call1(v8_context, @ptrCast(v8_event));
+                    std.log.debug("invokeMessageListeners: calling callback_wrapper.call1, wrapper={*}", .{callback_wrapper});
+                    const result = callback_wrapper.call1(v8_context, @ptrCast(v8_event));
+                    std.log.debug("invokeMessageListeners: callback returned, result={?*}", .{result});
                 }
             }
         }

@@ -1543,7 +1543,15 @@ pub fn toV8Value(
                 }
                 break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.StringError);
             },
-            .handle => |h| @ptrCast(h.ptr),
+            .handle => |h| blk: {
+                // Global handles must be converted to Local handles for V8 to use them
+                if (h.handle_scope == .global) {
+                    const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
+                    break :blk if (local) |l| @ptrCast(l) else toV8Undefined(isolate);
+                } else {
+                    break :blk @ptrCast(h.ptr);
+                }
+            },
             .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),
         };
     }

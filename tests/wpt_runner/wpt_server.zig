@@ -237,11 +237,13 @@ pub const WptServer = struct {
             suffix = ".worker.html";
         }
 
-        return std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
+        const url = try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
             self.getBaseUrl(),
             url_path,
             suffix,
         });
+        std.log.debug("buildTestUrl: path={s} context={} -> url={s}", .{ test_path, context, url });
+        return url;
     }
 };
 

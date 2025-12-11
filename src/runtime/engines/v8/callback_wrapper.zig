@@ -64,6 +64,14 @@ pub const CallbackWrapper = struct {
     /// Allocator used to create this wrapper
     allocator: std.mem.Allocator,
 
+    /// V8 context Global handle where this callback was created
+    /// This is used to ensure we call the callback in the correct context
+    callback_context: ?*v8.Context = null,
+
+    /// Raw V8 context address (stable identity for comparison)
+    /// Unlike Global handle pointers, this is the actual V8 internal context address
+    callback_context_raw_addr: ?*anyopaque = null,
+
     /// Create a wrapper for a JavaScript function callback
     ///
     /// The function pointer is converted to a Global handle for persistent storage.
@@ -77,6 +85,13 @@ pub const CallbackWrapper = struct {
             return error.GlobalHandleCreationFailed;
         };
 
+        // Store the current context where this callback was created
+        const current_ctx = v8.v8_Isolate_GetCurrentContext(isolate);
+
+        // Get the raw V8 context address for stable identity comparison
+        // (Global handle pointers change each time GetCurrentContext is called)
+        const raw_addr = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+
         const wrapper = try allocator.create(CallbackWrapper);
         wrapper.* = .{
             .isolate = isolate,
@@ -85,7 +100,10 @@ pub const CallbackWrapper = struct {
             .method_name = null,
             .is_function = true,
             .allocator = allocator,
+            .callback_context = current_ctx,
+            .callback_context_raw_addr = raw_addr,
         };
+        std.log.debug("CallbackWrapper.initFunction: created wrapper with context={?*}, raw_addr={?*}", .{ current_ctx, raw_addr });
         return wrapper;
     }
 
@@ -165,19 +183,73 @@ pub const CallbackWrapper = struct {
     /// the active HandleScope context (e.g., wrapping a MessageEvent), we need to
     /// convert them to Global handles first.
     pub fn callN(self: *CallbackWrapper, context: *v8.Context, args: []const *v8.Value) ?*v8.Value {
+        std.log.debug("CallbackWrapper.callN: is_function={}, has_func_global={}, has_obj_global={}", .{ self.is_function, self.callback_function_global != null, self.callback_object_global != null });
+
+        // Check isolate and context consistency
+        const current_isolate = v8.v8_Isolate_GetCurrent();
+        const current_ctx = v8.v8_Isolate_GetCurrentContext(self.isolate);
+        std.log.debug("CallbackWrapper.callN: self.isolate={*}, current_isolate={?*}, match={}", .{ self.isolate, current_isolate, current_isolate == self.isolate });
+        std.log.debug("CallbackWrapper.callN: creation_context={?*}, call_context={*}, current_context={?*}", .{ self.callback_context, context, current_ctx });
+
+        // CRITICAL: Use the context where the callback was created, not the call-site context!
+        // This ensures closure variables are resolved correctly.
+        const effective_context = self.callback_context orelse context;
+        std.log.debug("CallbackWrapper.callN: using effective_context={*}", .{effective_context});
+
+        // Compare raw V8 context addresses (not Global handle pointers!) to determine
+        // if we need to switch contexts. Global handle pointers are different each time
+        // GetCurrentContext is called, even for the same underlying V8 context.
+        const current_raw_addr = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+        const need_context_switch = (current_raw_addr == null) or (current_raw_addr != self.callback_context_raw_addr);
+        std.log.debug("CallbackWrapper.callN: current_raw_addr={?*}, creation_raw_addr={?*}, need_switch={}", .{ current_raw_addr, self.callback_context_raw_addr, need_context_switch });
+
+        if (need_context_switch) {
+            std.log.debug("CallbackWrapper.callN: entering callback context (raw addr mismatch)", .{});
+            v8.v8_Context_Enter(effective_context);
+        }
+        defer if (need_context_switch) {
+            v8.v8_Context_Exit(effective_context);
+        };
+
         if (self.is_function) {
             // Direct function call - use Global handle directly (not .get() which gives Local)
-            const func_global = self.callback_function_global orelse return null;
-            const global_obj = v8.v8_Context_Global(context);
+            const func_global = self.callback_function_global orelse {
+                std.log.debug("CallbackWrapper.callN: no function global handle", .{});
+                return null;
+            };
+            std.log.debug("CallbackWrapper.callN: func_global.ptr={*}", .{func_global.ptr});
+
+            // Debug: Try to get a Local from the Global to verify it's still valid
+            const local_func = func_global.get(self.isolate);
+            std.log.debug("CallbackWrapper.callN: global.get() = {?*}", .{local_func});
+            if (local_func) |local_val| {
+                const is_func = v8.v8_Value_IsFunction(local_val);
+                std.log.debug("CallbackWrapper.callN: local is function = {}", .{is_func});
+            }
+
+            // Get receiver - use undefined since callbacks don't typically use 'this'
+            // Note: v8_Undefined already returns a Global<Value>*, so we don't need to wrap it again
+            const recv_global = v8.v8_Undefined(self.isolate);
+            // No defer needed - v8_Undefined returns a static Global that shouldn't be disposed
+
+            std.log.debug("CallbackWrapper.callN: using undefined as receiver={?*}", .{recv_global});
 
             // Convert args to Global handles for the FFI call
             // The args are Local values that need to be converted
             var global_args: [16]*v8.Value = undefined; // Max 16 args
             const arg_count = @min(args.len, 16);
+
+            // Use current isolate for arg conversion (same as what v8_Function_Call_Safe uses)
+            const current_isolate_for_args = v8.v8_Isolate_GetCurrent() orelse self.isolate;
+            std.log.debug("CallbackWrapper.callN: arg conversion isolate={*}", .{current_isolate_for_args});
+
             for (0..arg_count) |i| {
                 // Convert Local to Global for the FFI call
-                const global_arg = v8.v8_Value_ToGlobal(self.isolate, @ptrCast(args[i]));
-                if (global_arg == null) return null;
+                const global_arg = v8.v8_Value_ToGlobal(current_isolate_for_args, @ptrCast(args[i]));
+                if (global_arg == null) {
+                    std.log.debug("CallbackWrapper.callN: failed to convert arg {d} to global", .{i});
+                    return null;
+                }
                 global_args[i] = global_arg.?;
             }
             defer {
@@ -188,26 +260,47 @@ pub const CallbackWrapper = struct {
             }
 
             // Pass Global handles: func_global.ptr is the Global<Function>*
+            std.log.debug("CallbackWrapper.callN: calling v8_Function_Call_Safe with {d} args", .{arg_count});
+            std.log.debug("CallbackWrapper.callN: effective_context={*}, recv_global={?*}", .{ effective_context, recv_global });
             if (arg_count > 0) {
-                return v8.v8_Function_Call(
+                std.log.debug("CallbackWrapper.callN: global_args[0]={*}", .{global_args[0]});
+            }
+
+            // Use the safe version with TryCatch to capture any exceptions
+            const call_result = if (arg_count > 0)
+                v8.v8_Function_Call_Safe(
                     @ptrCast(func_global.ptr), // Global<Function>*
-                    context, // Global<Context>*
-                    @ptrCast(global_obj), // Global<Object>* - 'this' is global
+                    effective_context, // Global<Context>* - use creation context!
+                    @ptrCast(recv_global), // Global<Value>* - 'this' is undefined
                     @intCast(arg_count),
                     @ptrCast(&global_args),
-                );
-            } else {
+                )
+            else blk: {
                 // No args - use call0 pattern with undefined as placeholder
-                // The FFI requires a valid pointer even with argc=0
                 var empty_args: [1]*v8.Value = undefined;
-                return v8.v8_Function_Call(
+                break :blk v8.v8_Function_Call_Safe(
                     @ptrCast(func_global.ptr),
-                    context,
-                    @ptrCast(global_obj),
+                    effective_context, // Global<Context>* - use creation context!
+                    @ptrCast(recv_global),
                     0,
                     &empty_args,
                 );
+            };
+            defer v8.v8_FreeFunctionCallResult(call_result);
+
+            // Check for error
+            if (call_result.error_info) |err_info| {
+                if (err_info.getMessage()) |msg| {
+                    std.log.err("CallbackWrapper.callN: exception: {s}", .{msg});
+                }
+                if (err_info.getStackTrace()) |stack| {
+                    std.log.err("CallbackWrapper.callN: stack: {s}", .{stack});
+                }
+                return null;
             }
+
+            std.log.debug("CallbackWrapper.callN: call returned result={?*}", .{call_result.value});
+            return call_result.value;
         } else {
             // Object method call - get Local from Global handle for property access
             const obj = self.getCallbackObject() orelse return null;

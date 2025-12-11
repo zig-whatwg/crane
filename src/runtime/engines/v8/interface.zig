@@ -1111,6 +1111,15 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                                 // No callback or no function stored - return null
                                 break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                            } else if (PayloadType == runtime.JSValue) {
+                                // JSValue - use conv.toV8Value to convert to V8 Value
+                                // This handles all JSValue variants: undefined, null, boolean, number, string, handle, instance
+                                const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
+                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                };
+                                break :comptime_convert conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
+                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                };
                             } else {
                                 // For complex types (interfaces, objects, etc.), return undefined for now
                                 // TODO: Implement proper object/interface conversions
@@ -2143,7 +2152,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                         break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return null);
                     },
-                    .handle => |h| @ptrCast(h.ptr), // Return V8 handle directly
+                    .handle => |h| blk: {
+                        // h.ptr is a Global<Value>* - we need to get a Local for return
+                        // v8_Global_Get converts Global to Local
+                        if (h.handle_scope == .global) {
+                            const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
+                            break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate);
+                        } else {
+                            // Already a Local handle
+                            break :blk @ptrCast(h.ptr);
+                        }
+                    },
                     .instance => |i| blk: {
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk null;
                         const inst: *runtime.Instance = @ptrCast(@alignCast(i));

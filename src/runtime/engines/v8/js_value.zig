@@ -353,7 +353,11 @@ pub const JSValue = union(enum) {
                 };
                 break :blk @ptrCast(str);
             },
-            .global => |g| @ptrCast(g.ptr),
+            .global => |g| blk: {
+                // Global handles must be converted to Local handles for V8 to use them
+                const local = v8.v8_Global_Get(isolate, g.ptr);
+                break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate) orelse unreachable;
+            },
             .instance => |_| {
                 // Instance needs proper wrapping via template registry
                 // For now return undefined - caller should use instanceToV8()
