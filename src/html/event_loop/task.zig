@@ -105,7 +105,8 @@ pub const Task = struct {
 
     /// Document associated with the task, or null for non-window event loops.
     /// A task is "runnable" if its document is either null or fully active.
-    document: ?*anyopaque, // TODO: Replace with *Document when available
+    /// TODO: Replace with ?*runtime.Instance when html_core has runtime dependency
+    document: ?*anyopaque,
 
     /// The steps to execute when this task runs.
     steps: TaskSteps,
@@ -189,6 +190,7 @@ pub const Microtask = struct {
     context: ?*anyopaque,
 
     /// Document associated with the microtask.
+    /// TODO: Replace with ?*runtime.Instance when html_core has runtime dependency
     document: ?*anyopaque,
 
     /// Function pointer type for microtask steps.

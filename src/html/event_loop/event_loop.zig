@@ -204,6 +204,9 @@ pub const EventLoop = struct {
     /// 5. Set task's script evaluation environment settings object set to an empty set.
     /// 6. Let queue be the task queue to which source is associated on event loop.
     /// 7. Append task to queue.
+    /// Queue a task on a task source.
+    /// The document parameter should be a *runtime.Instance but is kept as
+    /// anyopaque due to module dependency constraints (html_core cannot depend on runtime).
     pub fn queueTask(
         self: *EventLoop,
         source: TaskSource,
@@ -232,6 +235,9 @@ pub const EventLoop = struct {
     ///
     /// HTML Standard §8.1.7.1 "Queuing tasks" lines 2945-2963:
     /// To queue a microtask which performs a series of steps steps:
+    /// Queue a microtask.
+    /// The document parameter should be a *runtime.Instance but is kept as
+    /// anyopaque due to module dependency constraints (html_core cannot depend on runtime).
     pub fn queueMicrotask(
         self: *EventLoop,
         steps: Microtask.MicrotaskSteps,

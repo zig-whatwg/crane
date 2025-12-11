@@ -83,6 +83,10 @@ pub const InternalState = struct {
     /// Cross-origin isolated
     cross_origin_isolated: bool = false,
 
+    /// Whether the worker is closing
+    /// Spec: HTML Standard § 10.1.5 "Terminating a worker"
+    closing: bool = false,
+
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
@@ -107,6 +111,20 @@ pub const InternalState = struct {
     /// Set the event loop reference (called after worker initialization)
     pub fn setEventLoop(self: *InternalState, loop: *EventLoop) void {
         self.event_loop = loop;
+    }
+
+    /// Mark the worker as closing
+    ///
+    /// Spec: HTML Standard § 10.1.5 "Terminating a worker"
+    pub fn setClosing(self: *InternalState, value: bool) void {
+        self.closing = value;
+    }
+
+    /// Check if the worker is closing
+    ///
+    /// Spec: HTML Standard § 10.1.5 "Terminating a worker"
+    pub fn isClosing(self: *const InternalState) bool {
+        return self.closing;
     }
 };
 
@@ -188,6 +206,51 @@ pub fn setEventLoop(instance: *runtime.Instance, loop: *EventLoop) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.setEventLoop(loop);
+    }
+}
+
+/// Close the worker global scope.
+///
+/// This marks the worker as closing and stops the event loop.
+/// After calling close(), the worker will not accept new tasks and
+/// will terminate once the current task completes.
+///
+/// Spec: HTML Standard § 10.1.5 "Terminating a worker"
+/// "Set worker global scope's closing flag to true."
+pub fn close(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.setClosing(true);
+        // Stop the event loop if running
+        if (internal.event_loop) |loop| {
+            loop.stop();
+        }
+    }
+}
+
+/// Check if the worker is closing.
+///
+/// Returns true if close() has been called on this worker.
+///
+/// Spec: HTML Standard § 10.1.5 "Terminating a worker"
+/// "If the worker global scope's closing flag is true, return."
+pub fn isClosing(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return internal.isClosing();
+    }
+    return false;
+}
+
+/// Run the event loop (convenience method for testing).
+///
+/// Spins the event loop to process pending tasks.
+pub fn runEventLoop(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |loop| {
+            loop.run() catch {};
+        }
     }
 }
 
