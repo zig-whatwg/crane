@@ -1098,6 +1098,8 @@ pub fn build(b: *std.Build) void {
     });
 
     // V8 Promise chaining utility for bridging V8 Promises to AsyncPromise
+    // Note: This module needs readable_stream_async_iterator for iterator callbacks
+    // The import is added after streams_readable_stream_async_iterator_mod is created (below)
     const streams_v8_promise_chaining_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/v8_promise_chaining.zig"),
         .target = target,
@@ -1172,6 +1174,11 @@ pub fn build(b: *std.Build) void {
             .{ .name = "v8", .module = v8_mod },
         },
     });
+
+    // Resolve circular dependency between v8_promise_chaining and readable_stream_async_iterator
+    // by using addImport after both modules are created
+    streams_v8_promise_chaining_mod.addImport("readable_stream_async_iterator", streams_readable_stream_async_iterator_mod);
+    streams_readable_stream_async_iterator_mod.addImport("v8_promise_chaining", streams_v8_promise_chaining_mod);
 
     const streams_view_construction_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/view_construction.zig"),

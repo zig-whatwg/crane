@@ -7,6 +7,25 @@
 //! - `for await (const chunk of stream) { ... }`
 //! - `stream.values({ preventCancel: true })`
 //! - `stream[Symbol.asyncIterator]()`
+//!
+//! ## Type Safety Design
+//!
+//! This module maintains strict separation between V8 Promises and Zig AsyncPromises:
+//!
+//! - **V8 Promise**: JavaScript Promise object managed by V8's garbage collector.
+//!   Returned by `ReadableStreamDefaultReader.read()` when called from JS.
+//!
+//! - **Zig AsyncPromise**: Zig-native promise type for async coordination.
+//!   Created here to return to the async iterator machinery.
+//!
+//! The `next()` function bridges these by:
+//! 1. Creating a Zig `AsyncPromise(IteratorResult)`
+//! 2. Calling `reader.read()` which returns a V8 Promise (as runtime.JSValue)
+//! 3. Using `v8_promise_chaining.chainToIteratorPromise()` to attach handlers
+//! 4. When V8 Promise settles, handlers resolve/reject the Zig AsyncPromise
+//!
+//! This avoids the unsafe pattern of casting V8 Promise pointers directly to
+//! AsyncPromise pointers, which causes type confusion and crashes.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -16,8 +35,7 @@ const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const reader_ops = @import("reader_ops");
-const v8_mod = @import("v8");
-const pointer_tag = v8_mod.pointer_tag;
+const v8_promise_chaining = @import("v8_promise_chaining");
 
 /// ReadableStreamAsyncIterator
 ///
@@ -105,9 +123,9 @@ pub fn create(
 /// 5. Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
 /// 6. Return promise
 ///
-/// **Implementation**: Uses reader.read() and returns the result directly.
-/// The ReadResult from reader.read() has the same structure as IteratorResult,
-/// so we can cast the promise type safely.
+/// **Implementation**: Creates a Zig AsyncPromise and bridges the V8 Promise
+/// from reader.read() to it using v8_promise_chaining. This maintains type
+/// safety by never casting V8 Promise pointers to AsyncPromise pointers.
 pub fn next(
     iterator: *ReadableStreamAsyncIterator,
 ) !*AsyncPromise(IteratorResult) {
@@ -117,24 +135,98 @@ pub fn next(
     // Step 2: Assert reader.[[stream]] is not undefined
     // (ensured by type system)
 
-    // Steps 3-5: Call reader.read() which implements the spec algorithm
+    // Step 3: Create a new Zig AsyncPromise for the iterator result
+    const event_loop = reader_ops.getReaderEventLoop(reader);
+    const iterator_promise = try AsyncPromise(IteratorResult).init(
+        iterator.allocator,
+        event_loop,
+    );
+    errdefer iterator_promise.deinit();
+
+    // Steps 4-5: Call reader.read() which returns a V8 Promise (as JSValue)
     // Use interface instead of impl (per Golden Rule #12)
     const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
     const read_result_js_value = try ReadableStreamDefaultReader.call_read(reader);
 
-    // ReadResult and IteratorResult have identical structure: { value, done }
-    // So we can safely cast the promise type
-    // Extract the handle pointer from JSValue and untag V8 pointer before casting (V8 uses pointer tagging)
-    const handle_ptr = switch (read_result_js_value) {
+    // Bridge the V8 Promise to our Zig AsyncPromise
+    // The V8 Promise will settle with { value, done } which we convert to IteratorResult
+    try bridgeReadResultToIteratorPromise(
+        iterator.allocator,
+        read_result_js_value,
+        iterator_promise,
+    );
+
+    // Step 6: Return promise
+    return iterator_promise;
+}
+
+/// Context for bridging read result V8 Promise to Zig AsyncPromise(IteratorResult)
+const ReadResultBridgeContext = struct {
+    /// The Zig AsyncPromise to settle when V8 Promise settles
+    promise: *AsyncPromise(IteratorResult),
+    /// Allocator for cleanup
+    allocator: std.mem.Allocator,
+};
+
+/// Bridge a V8 Promise (from reader.read()) to a Zig AsyncPromise(IteratorResult)
+///
+/// This sets up handlers on the V8 Promise that will resolve/reject the
+/// AsyncPromise when the V8 Promise settles.
+fn bridgeReadResultToIteratorPromise(
+    allocator: std.mem.Allocator,
+    read_result_js_value: runtime.JSValue,
+    iterator_promise: *AsyncPromise(IteratorResult),
+) !void {
+    // Extract the V8 Promise pointer from the JSValue
+    const v8_promise_ptr: *anyopaque = switch (read_result_js_value) {
         .handle => |h| h.ptr,
         .instance => |ptr| ptr,
         else => return error.TypeError,
     };
-    const untagged = pointer_tag.untagPointer(handle_ptr);
-    const iterator_promise: *AsyncPromise(IteratorResult) = @ptrCast(@alignCast(untagged.ptr));
 
-    // Step 6: Return promise
-    return iterator_promise;
+    // Create bridge context that will be passed to callbacks
+    const bridge_ctx = try allocator.create(ReadResultBridgeContext);
+    bridge_ctx.* = .{
+        .promise = iterator_promise,
+        .allocator = allocator,
+    };
+    errdefer allocator.destroy(bridge_ctx);
+
+    // Chain handlers onto the V8 Promise using the promise chaining utility
+    try v8_promise_chaining.chainToIteratorPromise(
+        v8_promise_ptr,
+        @ptrCast(bridge_ctx),
+        onReadFulfilled,
+        onReadRejected,
+    );
+}
+
+/// Callback when read() V8 Promise fulfills
+/// Resolves the Zig AsyncPromise with an IteratorResult
+fn onReadFulfilled(ctx: *anyopaque, value: ?runtime.JSValue, done: bool) void {
+    const bridge_ctx: *ReadResultBridgeContext = @ptrCast(@alignCast(ctx));
+    defer bridge_ctx.allocator.destroy(bridge_ctx);
+
+    // Fulfill the AsyncPromise with the iterator result
+    bridge_ctx.promise.fulfill(.{
+        .value = value,
+        .done = done,
+    });
+}
+
+/// Callback when read() V8 Promise rejects
+/// Rejects the Zig AsyncPromise with the error
+fn onReadRejected(ctx: *anyopaque, error_value: ?runtime.JSValue) void {
+    const bridge_ctx: *ReadResultBridgeContext = @ptrCast(@alignCast(ctx));
+    defer bridge_ctx.allocator.destroy(bridge_ctx);
+
+    // Reject the AsyncPromise with an error
+    // Convert the JS error to a WebIDL exception
+    _ = error_value; // TODO: Extract error message from JS error
+    bridge_ctx.promise.reject(webidl.errors.Exception{ .simple = .{
+        .type = .TypeError,
+        .message = "ReadableStream read failed",
+    } });
 }
 
 /// Async iterator return (early termination)

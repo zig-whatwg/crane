@@ -364,11 +364,21 @@ pub fn isPromise(value: *v8.Value) bool {
 // Iterator Promise Bridging
 // ============================================================================
 
+/// Callback type for iterator fulfillment
+pub const IteratorFulfillFn = *const fn (ctx: *anyopaque, value: ?runtime.JSValue, done: bool) void;
+
+/// Callback type for iterator rejection
+pub const IteratorRejectFn = *const fn (ctx: *anyopaque, error_value: ?runtime.JSValue) void;
+
 /// Context for bridging read result to iterator promise.
 /// This is specifically for ReadableStreamAsyncIterator.next()
-const IteratorBridgeContext = struct {
+pub const IteratorBridgeContext = struct {
     /// User context to pass to callbacks
     user_context: *anyopaque,
+    /// Callback to invoke on fulfillment
+    on_fulfill: IteratorFulfillFn,
+    /// Callback to invoke on rejection
+    on_reject: IteratorRejectFn,
     /// Allocator for cleanup
     allocator: Allocator,
 };
@@ -377,9 +387,6 @@ const IteratorBridgeContext = struct {
 fn iteratorFulfillCallback(ctx_opt: ?*anyopaque, value_opt: ?*anyopaque) callconv(.c) void {
     const ctx: *IteratorBridgeContext = @ptrCast(@alignCast(ctx_opt orelse return));
     defer ctx.allocator.destroy(ctx);
-
-    // Import the async iterator module to call its handler
-    const async_iterator = @import("readable_stream_async_iterator.zig");
 
     // Extract value and done from the read result
     // V8 returns a ReadableStreamReadResult object with { value, done } properties
@@ -400,8 +407,8 @@ fn iteratorFulfillCallback(ctx_opt: ?*anyopaque, value_opt: ?*anyopaque) callcon
         done = true;
     }
 
-    // Call the iterator's fulfillment handler
-    async_iterator.onReadFulfilled(ctx.user_context, js_value, done);
+    // Call the iterator's fulfillment handler via function pointer
+    ctx.on_fulfill(ctx.user_context, js_value, done);
 }
 
 /// Callback when read promise rejects - invokes the iterator's onReadRejected
@@ -409,25 +416,20 @@ fn iteratorRejectCallback(ctx_opt: ?*anyopaque, reason_opt: ?*anyopaque) callcon
     const ctx: *IteratorBridgeContext = @ptrCast(@alignCast(ctx_opt orelse return));
     defer ctx.allocator.destroy(ctx);
 
-    // Import the async iterator module to call its handler
-    const async_iterator = @import("readable_stream_async_iterator.zig");
-
     // Convert V8 error to JSValue
     var error_value: ?runtime.JSValue = null;
     if (reason_opt) |v8_reason| {
         const v8_value: *v8.Value = @ptrCast(v8_reason);
-        // Try to get string representation of error
-        if (v8.v8_Value_IsString(v8_value)) {
-            // Get the string value
-            const msg = v8.v8_String_Utf8Value(v8_value) orelse "Unknown error";
-            error_value = runtime.JSValue.fromString(msg);
-        } else {
-            error_value = runtime.JSValue.fromString("Promise rejected");
-        }
+        // Wrap the V8 value as a JSValue handle - we can't extract string from it
+        // without proper allocation, but we can pass the handle along
+        error_value = runtime.JSValue.fromHandle(@ptrCast(v8_value));
+    } else {
+        // No reason provided, use a descriptive string
+        error_value = runtime.JSValue.fromStringRef("Promise rejected");
     }
 
-    // Call the iterator's rejection handler
-    async_iterator.onReadRejected(ctx.user_context, error_value);
+    // Call the iterator's rejection handler via function pointer
+    ctx.on_reject(ctx.user_context, error_value);
 }
 
 /// Extract { value, done } properties from a V8 ReadableStreamReadResult object
@@ -448,17 +450,17 @@ fn extractReadResultProperties(
     const v8_object: *v8.Object = @ptrCast(v8_result);
 
     // Get 'done' property
-    const done_key = v8.v8_String_NewFromUtf8(isolate, "done") orelse return false;
+    const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return false;
     defer v8.v8_String_Dispose(done_key);
 
     if (v8.v8_Object_Get(v8_object, context, @ptrCast(done_key))) |done_value| {
         if (v8.v8_Value_IsBoolean(done_value)) {
-            out_done.* = v8.v8_Boolean_Value(done_value);
+            out_done.* = v8.v8_Value_BooleanValue(done_value, isolate);
         }
     }
 
     // Get 'value' property
-    const value_key = v8.v8_String_NewFromUtf8(isolate, "value") orelse return false;
+    const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return false;
     defer v8.v8_String_Dispose(value_key);
 
     if (v8.v8_Object_Get(v8_object, context, @ptrCast(value_key))) |chunk_value| {
@@ -471,14 +473,22 @@ fn extractReadResultProperties(
 
 /// Chain handlers for iterator promise bridging.
 ///
-/// This creates V8 handlers that will call the iterator's fulfillment/rejection
+/// This creates V8 handlers that will call the provided fulfillment/rejection
 /// callbacks when the reader's promise settles.
 ///
 /// Used by ReadableStreamAsyncIterator.next() to bridge the V8 Promise
 /// (from reader.read()) to the Zig AsyncPromise(IteratorResult).
+///
+/// ## Parameters
+/// - v8_promise_ptr: V8 Promise pointer from reader.read()
+/// - user_context: Context passed to callbacks (typically a ReadResultBridgeContext*)
+/// - on_fulfill: Function to call when promise fulfills
+/// - on_reject: Function to call when promise rejects
 pub fn chainToIteratorPromise(
     v8_promise_ptr: *anyopaque,
     user_context: *anyopaque,
+    on_fulfill: IteratorFulfillFn,
+    on_reject: IteratorRejectFn,
 ) !void {
     // Get V8 context
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
@@ -491,6 +501,8 @@ pub fn chainToIteratorPromise(
     const bridge_ctx = try allocator.create(IteratorBridgeContext);
     bridge_ctx.* = .{
         .user_context = user_context,
+        .on_fulfill = on_fulfill,
+        .on_reject = on_reject,
         .allocator = allocator,
     };
     errdefer allocator.destroy(bridge_ctx);
