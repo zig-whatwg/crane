@@ -2069,6 +2069,68 @@ void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* i
     info->GetReturnValue().Set(val);
 }
 
+/// Set return value from a Local<Value> pointer
+///
+/// This is used when we have a Local<Value> (from v8_Global_Get or other operations)
+/// instead of a Global<Value>*. The pointer is treated as the internal pointer
+/// from a Local<Value> and wrapped in a Local to pass to ReturnValue::Set.
+///
+/// @param info - FunctionCallbackInfo pointer
+/// @param local_ptr - Internal pointer from a Local<Value> (from v8_Global_Get, etc.)
+void v8_FunctionCallbackInfo_SetReturnValueLocal(const FunctionCallbackInfo<Value>* info, void* local_ptr) {
+    if (!local_ptr) {
+        // Null value - set undefined
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Sanity checks for corrupted pointers
+    uintptr_t ptr_val = reinterpret_cast<uintptr_t>(local_ptr);
+    
+    // Check 1: Pointer should be in a reasonable address range
+    if (ptr_val < 0x1000 || ptr_val > 0x0000FFFFFFFFFFFF) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Check 2: Should be aligned to at least 4 bytes
+    if ((ptr_val & 0x3) != 0) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    // Wrap the raw pointer in a Local<Value>
+    // This assumes the pointer came from a valid Local (like from v8_Global_Get)
+    Local<Value> local = *reinterpret_cast<Local<Value>*>(&local_ptr);
+    info->GetReturnValue().Set(local);
+}
+
+/// Set the return value from a Global handle.
+/// 
+/// This function properly converts a Global<Value> to a Local<Value> using the
+/// isolate's current context, then sets it as the return value.
+///
+/// Use this when the value comes from v8_String_NewFromUtf8, v8_Number_New, etc.
+/// which return Global<T>* handles.
+///
+/// @param info - FunctionCallbackInfo pointer
+/// @param global_ptr - Pointer to a Global<Value> (from v8_String_NewFromUtf8, etc.)
+void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Value>* info, void* global_ptr) {
+    if (!global_ptr) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Cast to Global<Value>* and get the Local from it
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
+    Local<Value> local = global->Get(isolate);
+    
+    info->GetReturnValue().Set(local);
+}
+
 void v8_Function_Dispose(Global<Function>* fn) {
     if (fn) {
         fn->Reset();
@@ -4327,14 +4389,22 @@ bool v8_Global_IsEmpty(Global<Value>* global) {
 /// @param isolate - Current V8 isolate
 /// @param global - Global handle to dereference
 /// @return Local value pointer (as void*) or nullptr if global is empty
+///
+/// IMPORTANT: This function uses EscapableHandleScope to ensure the returned
+/// Local handle is valid in the caller's HandleScope. The caller must have
+/// an active HandleScope.
 void* v8_Global_Get(Isolate* isolate, Global<Value>* global) {
     if (!isolate || !global || global->IsEmpty()) return nullptr;
     
-    HandleScope handle_scope(isolate);
+    // Use EscapableHandleScope so we can return the Local to the caller's scope
+    EscapableHandleScope handle_scope(isolate);
     Local<Value> local = global->Get(isolate);
     
-    // Return the internal pointer - caller must use within a HandleScope
-    return *reinterpret_cast<void**>(&local);
+    // Escape the local so it survives this function's HandleScope
+    Local<Value> escaped = handle_scope.Escape(local);
+    
+    // Return the internal pointer - now valid in caller's HandleScope
+    return *reinterpret_cast<void**>(&escaped);
 }
 
 /// Convert a Global<Value> to a Global<Function> if it contains a function

@@ -96,8 +96,18 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the holder object (the object on which the function is defined)
     pub extern fn v8_FunctionCallbackInfo_Holder(self: *const FunctionCallbackInfo) *Object;
 
-    /// Set the return value for the function
+    /// Set the return value for the function (takes Global<Value>* - DEPRECATED)
+    /// DEPRECATED: Use v8_FunctionCallbackInfo_SetReturnValueLocal for Local values
     pub extern fn v8_FunctionCallbackInfo_SetReturnValue(self: *const FunctionCallbackInfo, value: *Value) void;
+
+    /// Set the return value from a Local<Value> internal pointer
+    /// This accepts the raw pointer from Local values (from v8_Global_Get, v8_Number_New, etc.)
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueLocal(self: *const FunctionCallbackInfo, local_ptr: ?*anyopaque) void;
+
+    /// Set the return value from a Global<Value>* handle
+    /// This properly converts the Global to a Local before setting.
+    /// Use this for values from v8_String_NewFromUtf8, v8_Number_New, etc. which return Global handles.
+    pub extern fn v8_FunctionCallbackInfo_SetReturnValueGlobal(self: *const FunctionCallbackInfo, global_ptr: ?*anyopaque) void;
 
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
@@ -127,7 +137,10 @@ pub const FunctionCallbackInfo = opaque {
     }
 
     pub inline fn setReturnValue(self: *const FunctionCallbackInfo, value: *Value) void {
-        v8_FunctionCallbackInfo_SetReturnValue(self, value);
+        // Use the Global variant - our FFI functions (v8_String_NewFromUtf8, v8_Number_New, etc.)
+        // return Global<T>* handles, not Local<Value> internal pointers.
+        // The Global variant properly converts Global to Local before setting.
+        v8_FunctionCallbackInfo_SetReturnValueGlobal(self, @ptrCast(value));
     }
 
     pub inline fn getData(self: *const FunctionCallbackInfo) *Value {

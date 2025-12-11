@@ -524,6 +524,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                     }
                 }
+
+                // NOTE: toString() for stringifiers is handled by Meta.methods
+                // which maps "toString" -> "serialize" via MethodCallback.
+                // Do NOT add redundant toString registration here - it would
+                // overwrite the correct binding from createTemplate().
             }
 
             // Register static constants on constructor
@@ -2588,6 +2593,52 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             }
+        }
+
+        /// toString() callback for stringifier support
+        /// Calls the impl's serialize() function if available to get string representation
+        fn toStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            const isolate = info.getIsolate();
+
+            // Get 'this' object
+            const this_obj = info.getThis();
+
+            // Get the Zig instance from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr) |ptr| {
+                // Safety check for invalid pointers
+                const ptr_as_int = @intFromPtr(ptr);
+                if (ptr_as_int < 0x1000) {
+                    info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
+                    return;
+                }
+                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+
+                // Try to get the impl module to call serialize()
+                // Generated interfaces import their impl as <Name>Impl
+                const impl_name = interface_name ++ "Impl";
+                if (@hasDecl(Interface, impl_name)) {
+                    const ImplType = @field(Interface, impl_name);
+                    if (@hasDecl(ImplType, "serialize")) {
+                        const result = ImplType.serialize(instance) catch {
+                            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
+                            return;
+                        };
+
+                        const v8_str = v8.v8_String_NewFromUtf8(isolate, result.ptr, @intCast(result.len)) orelse {
+                            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return);
+                            return;
+                        };
+                        info.setReturnValue(@ptrCast(v8_str));
+                        return;
+                    }
+                }
+            }
+
+            // Fallback: return "[object InterfaceName]"
+            var buf: [128]u8 = undefined;
+            const fallback = std.fmt.bufPrint(&buf, "[object {s}]", .{interface_name}) catch interface_name;
+            info.setReturnValue(v8.v8_String_NewFromUtf8(isolate, fallback.ptr, @intCast(fallback.len)) orelse return);
         }
 
         const IteratorKind = enum { entries, keys, values };
