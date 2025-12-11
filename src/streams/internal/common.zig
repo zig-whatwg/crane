@@ -439,6 +439,267 @@ pub const ReadResult = struct {
     done: bool,
 };
 
+// ============================================================================
+// Type-Safe Generic Algorithm Infrastructure
+// ============================================================================
+//
+// These generics provide compile-time type safety for algorithm contexts.
+// Use them when the context type is known at compile time.
+// For runtime polymorphism (e.g., storing different algorithm types in a list),
+// use the type-erased versions below.
+
+/// Generic algorithm with compile-time known context type
+///
+/// Use this when you know the context type at compile time.
+/// The context type is preserved through the call chain.
+///
+/// Example:
+/// ```zig
+/// const MyAlgorithm = TypedAlgorithm(MyContext, void);
+/// const algo = MyAlgorithm.init(&my_ctx, myCallFn, myDeinitFn);
+/// algo.call(); // Type-safe: my_ctx is *MyContext, not *anyopaque
+/// ```
+pub fn TypedAlgorithm(comptime Context: type, comptime Result: type) type {
+    return struct {
+        context: *Context,
+        call_fn: *const fn (*Context) Result,
+        deinit_fn: ?*const fn (*Context) void,
+
+        const Self = @This();
+
+        /// Initialize a typed algorithm
+        pub fn init(
+            context: *Context,
+            call_fn: *const fn (*Context) Result,
+            deinit_fn: ?*const fn (*Context) void,
+        ) Self {
+            return .{
+                .context = context,
+                .call_fn = call_fn,
+                .deinit_fn = deinit_fn,
+            };
+        }
+
+        /// Call the algorithm with type-safe context
+        pub fn call(self: Self) Result {
+            return self.call_fn(self.context);
+        }
+
+        /// Cleanup resources
+        pub fn deinit(self: Self) void {
+            if (self.deinit_fn) |f| f(self.context);
+        }
+
+        /// Convert to type-erased version for runtime polymorphism
+        /// Use this when you need to store algorithms of different context types together
+        pub fn erase(self: Self) ErasedAlgorithm(Result) {
+            return ErasedAlgorithm(Result).init(
+                @ptrCast(self.context),
+                @ptrCast(self.call_fn),
+                if (self.deinit_fn) |f| @ptrCast(f) else null,
+            );
+        }
+    };
+}
+
+/// Generic algorithm with an argument (compile-time typed)
+///
+/// Use this for algorithms that take a parameter (e.g., cancel(reason), write(chunk)).
+pub fn TypedAlgorithmWithArg(comptime Context: type, comptime Arg: type, comptime Result: type) type {
+    return struct {
+        context: *Context,
+        call_fn: *const fn (*Context, Arg) Result,
+        deinit_fn: ?*const fn (*Context) void,
+
+        const Self = @This();
+
+        /// Initialize a typed algorithm with argument
+        pub fn init(
+            context: *Context,
+            call_fn: *const fn (*Context, Arg) Result,
+            deinit_fn: ?*const fn (*Context) void,
+        ) Self {
+            return .{
+                .context = context,
+                .call_fn = call_fn,
+                .deinit_fn = deinit_fn,
+            };
+        }
+
+        /// Call the algorithm with type-safe context and argument
+        pub fn call(self: Self, arg: Arg) Result {
+            return self.call_fn(self.context, arg);
+        }
+
+        /// Cleanup resources
+        pub fn deinit(self: Self) void {
+            if (self.deinit_fn) |f| f(self.context);
+        }
+
+        /// Convert to type-erased version
+        pub fn erase(self: Self) ErasedAlgorithmWithArg(Arg, Result) {
+            return ErasedAlgorithmWithArg(Arg, Result).init(
+                @ptrCast(self.context),
+                @ptrCast(self.call_fn),
+                if (self.deinit_fn) |f| @ptrCast(f) else null,
+            );
+        }
+    };
+}
+
+/// Type-erased algorithm for runtime polymorphism
+///
+/// Use this when you need to store algorithms with different context types
+/// in the same data structure (e.g., a list of callbacks).
+///
+/// The context type is erased to *anyopaque, but the call/deinit interface
+/// remains consistent.
+pub fn ErasedAlgorithm(comptime Result: type) type {
+    return struct {
+        ptr: *anyopaque,
+        call_fn: *const fn (*anyopaque) Result,
+        deinit_fn: ?*const fn (*anyopaque) void,
+
+        const Self = @This();
+
+        /// Initialize a type-erased algorithm
+        pub fn init(
+            ptr: *anyopaque,
+            call_fn: *const fn (*anyopaque) Result,
+            deinit_fn: ?*const fn (*anyopaque) void,
+        ) Self {
+            return .{
+                .ptr = ptr,
+                .call_fn = call_fn,
+                .deinit_fn = deinit_fn,
+            };
+        }
+
+        /// Call the algorithm
+        pub fn call(self: Self) Result {
+            return self.call_fn(self.ptr);
+        }
+
+        /// Cleanup resources
+        pub fn deinit(self: Self) void {
+            if (self.deinit_fn) |f| f(self.ptr);
+        }
+    };
+}
+
+/// Type-erased algorithm with argument for runtime polymorphism
+pub fn ErasedAlgorithmWithArg(comptime Arg: type, comptime Result: type) type {
+    return struct {
+        ptr: *anyopaque,
+        call_fn: *const fn (*anyopaque, Arg) Result,
+        deinit_fn: ?*const fn (*anyopaque) void,
+
+        const Self = @This();
+
+        /// Initialize a type-erased algorithm with argument
+        pub fn init(
+            ptr: *anyopaque,
+            call_fn: *const fn (*anyopaque, Arg) Result,
+            deinit_fn: ?*const fn (*anyopaque) void,
+        ) Self {
+            return .{
+                .ptr = ptr,
+                .call_fn = call_fn,
+                .deinit_fn = deinit_fn,
+            };
+        }
+
+        /// Call the algorithm with argument
+        pub fn call(self: Self, arg: Arg) Result {
+            return self.call_fn(self.ptr, arg);
+        }
+
+        /// Cleanup resources
+        pub fn deinit(self: Self) void {
+            if (self.deinit_fn) |f| f(self.ptr);
+        }
+    };
+}
+
+// ============================================================================
+// Type-Safe Callback Interface for Read Requests
+// ============================================================================
+
+/// Typed callback interface for read request operations
+///
+/// This provides compile-time type safety for ReadRequest callbacks.
+/// Use `TypedReadCallbacks(Context)` when you know the callback context type,
+/// or `ErasedReadCallbacks` when you need runtime polymorphism.
+pub fn TypedReadCallbacks(comptime Context: type) type {
+    return struct {
+        context: *Context,
+        chunk_steps: *const fn (*Context, JSValue) void,
+        close_steps: *const fn (*Context) void,
+        error_steps: *const fn (*Context, JSValue) void,
+
+        const Self = @This();
+
+        /// Execute chunk steps with type-safe context
+        pub fn executeChunkSteps(self: Self, chunk: JSValue) void {
+            self.chunk_steps(self.context, chunk);
+        }
+
+        /// Execute close steps with type-safe context
+        pub fn executeCloseSteps(self: Self) void {
+            self.close_steps(self.context);
+        }
+
+        /// Execute error steps with type-safe context
+        pub fn executeErrorSteps(self: Self, e: JSValue) void {
+            self.error_steps(self.context, e);
+        }
+
+        /// Convert to type-erased version for polymorphic storage
+        pub fn erase(self: Self) ErasedReadCallbacks {
+            return .{
+                .context = @ptrCast(self.context),
+                .chunk_steps = @ptrCast(self.chunk_steps),
+                .close_steps = @ptrCast(self.close_steps),
+                .error_steps = @ptrCast(self.error_steps),
+            };
+        }
+    };
+}
+
+/// Type-erased read callbacks for runtime polymorphism
+///
+/// Use this when storing callbacks of different context types together,
+/// such as in a read request queue.
+pub const ErasedReadCallbacks = struct {
+    context: *anyopaque,
+    chunk_steps: *const fn (*anyopaque, JSValue) void,
+    close_steps: *const fn (*anyopaque) void,
+    error_steps: *const fn (*anyopaque, JSValue) void,
+
+    /// Execute chunk steps
+    pub fn executeChunkSteps(self: ErasedReadCallbacks, chunk: JSValue) void {
+        self.chunk_steps(self.context, chunk);
+    }
+
+    /// Execute close steps
+    pub fn executeCloseSteps(self: ErasedReadCallbacks) void {
+        self.close_steps(self.context);
+    }
+
+    /// Execute error steps
+    pub fn executeErrorSteps(self: ErasedReadCallbacks, e: JSValue) void {
+        self.error_steps(self.context, e);
+    }
+};
+
+// ============================================================================
+// Legacy Algorithm Types (Type-Erased, for backward compatibility)
+// ============================================================================
+//
+// These are the original type-erased algorithm types. They remain for
+// backward compatibility with existing code. New code should prefer
+// the typed generics above when possible.
+
 /// Algorithm function types for stream operations
 ///
 /// These use a VTable pattern (like std.mem.Allocator) to support context passing.
@@ -1013,6 +1274,181 @@ pub fn wrapGenericTransformCallback(callback: webidl.GenericCallback) TransformA
 pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm {
     _ = callback;
     return defaultFlushAlgorithm();
+}
+
+// ============================================================================
+// Type-Safe Algorithm Creation Helpers for TransformStream
+// ============================================================================
+//
+// These helpers create type-erased algorithms from typed contexts,
+// providing compile-time type safety while maintaining runtime polymorphism.
+
+/// Create a TransformAlgorithm from a typed context and callback.
+///
+/// This provides compile-time type safety when creating transform algorithms
+/// from known context types. The callback receives the typed context directly.
+///
+/// Example:
+/// ```zig
+/// const MyTransformer = struct {
+///     multiplier: f64,
+///
+///     fn transform(self: *MyTransformer, chunk: JSValue) Promise(void) {
+///         // self.multiplier is available with proper type
+///         _ = self.multiplier;
+///         _ = chunk;
+///         return Promise(void).fulfilled({});
+///     }
+/// };
+///
+/// var transformer = MyTransformer{ .multiplier = 2.0 };
+/// const algo = createTypedTransformAlgorithm(MyTransformer, &transformer, MyTransformer.transform, null);
+/// ```
+pub fn createTypedTransformAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context, JSValue) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) TransformAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a FlushAlgorithm from a typed context and callback.
+///
+/// Similar to createTypedTransformAlgorithm but for flush operations.
+pub fn createTypedFlushAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) FlushAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a CancelAlgorithm from a typed context and callback.
+///
+/// Similar to createTypedTransformAlgorithm but for cancel operations.
+pub fn createTypedCancelAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context, ?JSValue) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) CancelAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a PullAlgorithm from a typed context and callback.
+pub fn createTypedPullAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) PullAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a WriteAlgorithm from a typed context and callback.
+pub fn createTypedWriteAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context, JSValue) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) WriteAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a CloseAlgorithm from a typed context and callback.
+pub fn createTypedCloseAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) CloseAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create an AbortAlgorithm from a typed context and callback.
+pub fn createTypedAbortAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context, ?JSValue) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) AbortAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a StartAlgorithm from a typed context and callback.
+pub fn createTypedStartAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context) Promise(void),
+    deinit_fn: ?*const fn (*Context) void,
+) StartAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
+}
+
+/// Create a SizeAlgorithm from a typed context and callback.
+pub fn createTypedSizeAlgorithm(
+    comptime Context: type,
+    context: *Context,
+    call_fn: *const fn (*Context, JSValue) f64,
+    deinit_fn: ?*const fn (*Context) void,
+) SizeAlgorithm {
+    return .{
+        .ptr = @ptrCast(context),
+        .vtable = &.{
+            .call = @ptrCast(call_fn),
+            .deinit = if (deinit_fn) |f| @ptrCast(f) else null,
+        },
+    };
 }
 
 // Tests

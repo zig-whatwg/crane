@@ -37,6 +37,39 @@ pub const ImplError = error{
 ///
 /// Spec: § 6.2.2 "Internal slots"
 ///
+/// ## Type Safety Design
+///
+/// This controller uses the type-erased algorithm pattern from `streams_common`:
+/// - `TransformAlgorithm`, `FlushAlgorithm`, `CancelAlgorithm` are type-erased vtable structs
+/// - For type-safe algorithm creation, use `streams_common.createTypedTransformAlgorithm()` etc.
+/// - The algorithms use `*anyopaque` internally for runtime polymorphism (required for spec compliance)
+///
+/// ### Creating Type-Safe Algorithms
+///
+/// ```zig
+/// const MyTransformer = struct {
+///     encoding: []const u8,
+///     fn transform(self: *MyTransformer, chunk: JSValue) Promise(void) {
+///         // Type-safe access to self.encoding
+///         _ = self.encoding;
+///         return Promise(void).fulfilled({});
+///     }
+/// };
+///
+/// var ctx = MyTransformer{ .encoding = "utf-8" };
+/// internal.transformAlgorithm = streams_common.createTypedTransformAlgorithm(
+///     MyTransformer, &ctx, MyTransformer.transform, null
+/// );
+/// ```
+///
+/// ## V8 FFI Boundary
+///
+/// The `v8_context` field is `?*anyopaque` because it crosses the C FFI boundary to V8.
+/// This is an INTENTIONAL type erasure at the FFI layer - V8 contexts must be passed
+/// as opaque pointers through the C++ wrapper. This is NOT a type safety issue to fix.
+///
+/// Similarly, `isolate` uses `*v8_engine.ffi.Isolate` which is the FFI-safe type.
+///
 /// ## V8 Handle Lifetime
 ///
 /// JavaScript callbacks (transform, flush, cancel) are stored as V8 Global handles
@@ -52,14 +85,20 @@ pub const InternalState = struct {
 
     /// [[transformAlgorithm]]: Algorithm to transform chunks
     /// Spec: § 6.2.2 Internal slots
+    ///
+    /// Use `streams_common.createTypedTransformAlgorithm()` for type-safe creation.
     transformAlgorithm: TransformAlgorithm,
 
     /// [[flushAlgorithm]]: Algorithm to flush remaining data
     /// Spec: § 6.2.2 Internal slots
+    ///
+    /// Use `streams_common.createTypedFlushAlgorithm()` for type-safe creation.
     flushAlgorithm: FlushAlgorithm,
 
     /// [[cancelAlgorithm]]: Algorithm to handle cancellation
     /// Spec: § 6.2.2 Internal slots
+    ///
+    /// Use `streams_common.createTypedCancelAlgorithm()` for type-safe creation.
     cancelAlgorithm: CancelAlgorithm,
 
     /// [[finishPromise]]: Promise that resolves on completion of flush or cancel
@@ -69,7 +108,11 @@ pub const InternalState = struct {
     /// V8 isolate for callback invocation
     isolate: ?*v8_engine.ffi.Isolate,
 
-    /// V8 context for callback invocation
+    /// V8 context for callback invocation.
+    ///
+    /// NOTE: This is `?*anyopaque` because it crosses the V8 C FFI boundary.
+    /// V8 contexts are passed as opaque pointers through the C++ wrapper layer.
+    /// This type erasure is INTENTIONAL and REQUIRED for FFI interop.
     v8_context: ?*anyopaque,
 
     /// V8 Global handle for flush algorithm callback
