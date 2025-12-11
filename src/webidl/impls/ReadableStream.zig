@@ -1263,10 +1263,12 @@ const TeeState = struct {
     canceled2: bool,
 
     /// Reason provided when branch1 was canceled
-    reason1: ?*anyopaque,
+    /// Per Streams spec, cancel reasons are typed as `any` which maps to runtime.JSValue
+    reason1: runtime.JSValue,
 
     /// Reason provided when branch2 was canceled
-    reason2: ?*anyopaque,
+    /// Per Streams spec, cancel reasons are typed as `any` which maps to runtime.JSValue
+    reason2: runtime.JSValue,
 
     /// Promise resolved when both branches are canceled (for composite cancellation)
     cancel_promise: *AsyncPromise(void),
@@ -1355,8 +1357,8 @@ fn readableStreamTee(
         .read_again = false,
         .canceled1 = false,
         .canceled2 = false,
-        .reason1 = null,
-        .reason2 = null,
+        .reason1 = runtime.JSValue.jsUndefined,
+        .reason2 = runtime.JSValue.jsUndefined,
         .cancel_promise = cancel_promise,
         .clone_for_branch2 = clone_for_branch2,
         .allocator = allocator,
@@ -1705,7 +1707,7 @@ fn teeCancel1Invoke(
     tee_state.canceled1 = true;
 
     // Step 14.2: Set reason1 to reason (no reason in this overload)
-    tee_state.reason1 = null;
+    tee_state.reason1 = runtime.JSValue.jsUndefined;
 
     // Step 14.3: If canceled2 is true, perform composite cancel
     if (tee_state.canceled2) {
@@ -1727,7 +1729,8 @@ fn teeCancel1InvokeWithArg(
     tee_state.canceled1 = true;
 
     // Step 14.2: Set reason1 to reason
-    tee_state.reason1 = @constCast(arg);
+    // Convert the anyopaque pointer (V8 handle) to JSValue for type-safe storage
+    tee_state.reason1 = runtime.JSValue.fromHandleNonOwning(@constCast(arg));
 
     // Step 14.3: If canceled2 is true, perform composite cancel
     if (tee_state.canceled2) {
@@ -1774,7 +1777,7 @@ fn teeCancel2Invoke(
     tee_state.canceled2 = true;
 
     // Step 15.2: Set reason2 to reason (no reason in this overload)
-    tee_state.reason2 = null;
+    tee_state.reason2 = runtime.JSValue.jsUndefined;
 
     // Step 15.3: If canceled1 is true, perform composite cancel
     if (tee_state.canceled1) {
@@ -1796,7 +1799,8 @@ fn teeCancel2InvokeWithArg(
     tee_state.canceled2 = true;
 
     // Step 15.2: Set reason2 to reason
-    tee_state.reason2 = @constCast(arg);
+    // Convert the anyopaque pointer (V8 handle) to JSValue for type-safe storage
+    tee_state.reason2 = runtime.JSValue.fromHandleNonOwning(@constCast(arg));
 
     // Step 15.3: If canceled1 is true, perform composite cancel
     if (tee_state.canceled1) {
@@ -1821,9 +1825,13 @@ fn teeCancelDestroy(context: ?*anyopaque, allocator: std.mem.Allocator) void {
 fn teePerformCompositeCancel(tee_state: *TeeState) !void {
     // Cancel the source stream with composite reason
     // For now, we use a simple approach - just cancel with reason1 or reason2
-    // If both are null, create a dummy reason
-    var dummy_reason: u8 = 0;
-    const reason: *anyopaque = tee_state.reason1 orelse tee_state.reason2 orelse &dummy_reason;
+    // If both are undefined, use undefined as the reason
+    const reason_jsvalue: runtime.JSValue = if (!tee_state.reason1.isUndefined())
+        tee_state.reason1
+    else if (!tee_state.reason2.isUndefined())
+        tee_state.reason2
+    else
+        runtime.JSValue.jsUndefined;
 
     // Get source stream's internal state
     const source_state = tee_state.source.getState(State);
@@ -1833,8 +1841,7 @@ fn teePerformCompositeCancel(tee_state: *TeeState) !void {
     const reader_impl = @import("ReadableStreamDefaultReader.zig");
     reader_impl.call_releaseLock(tee_state.reader) catch {};
 
-    // Cancel source stream - reason is a V8 handle passed from JS
-    const reason_jsvalue = runtime.JSValue.fromHandleNonOwning(reason);
+    // Cancel source stream with JSValue reason
     _ = call_cancel(tee_state.source, webidl.Opt(runtime.JSValue).passed(reason_jsvalue)) catch {};
 
     _ = source_internal;
@@ -3043,12 +3050,12 @@ fn pipeLoop(pipe_state: *PipeState) void {
     // Check source state
     if (pipe_state.source_internal.state == .errored) {
         // Error propagation forward
-        // Extract raw pointer from StoredError for legacy pipeShutdown API
-        const error_ptr = pipe_state.source_internal.stored_error.toRawPtr();
+        // Convert StoredError to runtime.JSValue for type-safe API
+        const error_jsvalue = pipe_state.source_internal.stored_error.toRuntimeJSValue();
         if (!pipe_state.prevent_abort) {
-            pipeShutdownWithAction(pipe_state, .abort_dest, error_ptr);
+            pipeShutdownWithAction(pipe_state, .abort_dest, error_jsvalue);
         } else {
-            pipeShutdown(pipe_state, error_ptr);
+            pipeShutdown(pipe_state, error_jsvalue);
         }
         return;
     }
@@ -3056,12 +3063,12 @@ fn pipeLoop(pipe_state: *PipeState) void {
     // Check destination state
     if (pipe_state.dest_internal.state == .errored) {
         // Error propagation backward
-        // Use type-safe StoredError API to get raw pointer for legacy functions
-        const error_ptr = pipe_state.dest_internal.stored_error.toRawPtr();
+        // Convert StoredError to runtime.JSValue for type-safe API
+        const error_jsvalue = pipe_state.dest_internal.stored_error.toRuntimeJSValue();
         if (!pipe_state.prevent_cancel) {
-            pipeShutdownWithAction(pipe_state, .cancel_source, error_ptr);
+            pipeShutdownWithAction(pipe_state, .cancel_source, error_jsvalue);
         } else {
-            pipeShutdown(pipe_state, error_ptr);
+            pipeShutdown(pipe_state, error_jsvalue);
         }
         return;
     }
@@ -3070,9 +3077,9 @@ fn pipeLoop(pipe_state: *PipeState) void {
     if (pipe_state.source_internal.state == .closed) {
         // Close propagation forward
         if (!pipe_state.prevent_close) {
-            pipeShutdownWithAction(pipe_state, .close_dest, null);
+            pipeShutdownWithAction(pipe_state, .close_dest, runtime.JSValue.jsUndefined);
         } else {
-            pipeShutdown(pipe_state, null);
+            pipeShutdown(pipe_state, runtime.JSValue.jsUndefined);
         }
         return;
     }
@@ -3082,9 +3089,9 @@ fn pipeLoop(pipe_state: *PipeState) void {
     if (WritableStreamImpl.writableStreamCloseQueuedOrInFlight(pipe_state.dest_internal)) {
         // Destination is closing - shutdown with error
         if (!pipe_state.prevent_cancel) {
-            pipeShutdownWithAction(pipe_state, .cancel_source, null);
+            pipeShutdownWithAction(pipe_state, .cancel_source, runtime.JSValue.jsUndefined);
         } else {
-            pipeShutdown(pipe_state, null);
+            pipeShutdown(pipe_state, runtime.JSValue.jsUndefined);
         }
         return;
     }
@@ -3096,7 +3103,7 @@ fn pipeLoop(pipe_state: *PipeState) void {
 
     // For a minimal working implementation, we immediately resolve
     // Future: Implement full async read/write loop with event loop integration
-    pipeFinalize(pipe_state, null);
+    pipeFinalize(pipe_state, runtime.JSValue.jsUndefined);
 }
 
 /// Shutdown action types
@@ -3107,26 +3114,20 @@ const ShutdownAction = enum {
 };
 
 /// Shutdown with an action (abort, cancel, or close)
-fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_reason: ?*anyopaque) void {
+/// Per Streams spec, error_reason is typed as `any` which maps to runtime.JSValue
+fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_reason: runtime.JSValue) void {
     if (pipe_state.shutting_down) return;
     pipe_state.shutting_down = true;
-
-    // error_reason is a V8 handle passed from JS (or null for no error)
-    // Use jsUndefined if no error reason provided
-    const err_jsvalue = if (error_reason) |e|
-        runtime.JSValue.fromHandleNonOwning(e)
-    else
-        runtime.JSValue.jsUndefined;
 
     // Perform the action (use interfaces per Golden Rule #13)
     switch (action) {
         .abort_dest => {
             // WritableStreamAbort
-            _ = interfaces.WritableStream.call_abort(pipe_state.dest, webidl.Opt(runtime.JSValue).passed(err_jsvalue)) catch {};
+            _ = interfaces.WritableStream.call_abort(pipe_state.dest, webidl.Opt(runtime.JSValue).passed(error_reason)) catch {};
         },
         .cancel_source => {
             // ReadableStreamCancel
-            _ = call_cancel(pipe_state.source, webidl.Opt(runtime.JSValue).passed(err_jsvalue)) catch {};
+            _ = call_cancel(pipe_state.source, webidl.Opt(runtime.JSValue).passed(error_reason)) catch {};
         },
         .close_dest => {
             // WritableStreamDefaultWriterCloseWithErrorPropagation
@@ -3139,7 +3140,8 @@ fn pipeShutdownWithAction(pipe_state: *PipeState, action: ShutdownAction, error_
 }
 
 /// Shutdown without action
-fn pipeShutdown(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
+/// Per Streams spec, error_reason is typed as `any` which maps to runtime.JSValue
+fn pipeShutdown(pipe_state: *PipeState, error_reason: runtime.JSValue) void {
     if (pipe_state.shutting_down) return;
     pipe_state.shutting_down = true;
 
@@ -3147,7 +3149,8 @@ fn pipeShutdown(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
 }
 
 /// Finalize pipe operation - release locks and settle promise
-fn pipeFinalize(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
+/// Per Streams spec, error_reason is typed as `any` which maps to runtime.JSValue
+fn pipeFinalize(pipe_state: *PipeState, error_reason: runtime.JSValue) void {
     // Step 1: Release writer (use interface per Golden Rule #13)
     interfaces.WritableStreamDefaultWriter.call_releaseLock(pipe_state.writer) catch {};
 
@@ -3155,16 +3158,15 @@ fn pipeFinalize(pipe_state: *PipeState, error_reason: ?*anyopaque) void {
     interfaces.ReadableStreamDefaultReader.call_releaseLock(pipe_state.reader) catch {};
 
     // Step 5-6: Settle promise
-    if (error_reason) |err| {
+    if (!error_reason.isUndefined()) {
         // Reject with error
-        // Convert anyopaque to Exception for rejection
+        // Convert JSValue to Exception for rejection
         const exception = webidl.errors.Exception.typeError(pipe_state.allocator, "Pipe failed") catch {
             // If we can't create exception, just fulfill with unit
             pipe_state.promise.fulfill({});
             pipe_state.allocator.destroy(pipe_state);
             return;
         };
-        _ = err;
         pipe_state.promise.reject(exception);
     } else {
         // Resolve with undefined

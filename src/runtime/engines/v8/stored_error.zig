@@ -253,6 +253,32 @@ pub const StoredError = union(enum) {
         };
     }
 
+    /// Convert to V8 JSValue for type-safe API usage
+    ///
+    /// Returns a JSValue representing the stored error, or jsUndefined if none.
+    pub fn toJSValue(self: StoredError) JSValue {
+        return switch (self) {
+            .none => JSValue.jsUndefined,
+            .js_exception => |g| JSValue.fromGlobal(g.ptr),
+            .zig_error => JSValue.jsUndefined, // TODO: Convert to Error object when needed
+            .message => |m| JSValue.fromStringRef(m),
+        };
+    }
+
+    /// Convert to runtime.JSValue (engine-agnostic) for type-safe API usage
+    ///
+    /// Returns an engine-agnostic JSValue representing the stored error, or jsUndefined if none.
+    /// Uses the runtime module's JSValue type.
+    pub fn toRuntimeJSValue(self: StoredError) @import("runtime").JSValue {
+        const RuntimeJSValue = @import("runtime").JSValue;
+        return switch (self) {
+            .none => RuntimeJSValue.jsUndefined,
+            .js_exception => |g| RuntimeJSValue.fromHandleNonOwning(g.ptr),
+            .zig_error => RuntimeJSValue.jsUndefined,
+            .message => |m| RuntimeJSValue.fromStringRef(m),
+        };
+    }
+
     // ========================================================================
     // Lifecycle Methods
     // ========================================================================
