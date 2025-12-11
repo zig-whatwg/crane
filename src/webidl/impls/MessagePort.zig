@@ -197,13 +197,15 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         // Convert runtime.JSValue to streams JSValue
-        const msg_value = switch (message) {
+        const msg_value: JSValue = switch (message) {
             .undefined => JSValue.undefined_value(),
             .null => JSValue{ .null = {} },
             .boolean => |b| JSValue{ .boolean = b },
             .number => |n| JSValue{ .number = n },
             .string => |s| JSValue{ .string = s.data },
-            .handle => |h| JSValue{ .v8_value = h.ptr },
+            .handle => |h| JSValue.fromEnginePtr(internal.allocator, h.ptr) catch {
+                return ImplError.OutOfMemory;
+            },
             .instance => JSValue{ .object = {} },
         };
 

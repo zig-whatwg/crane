@@ -279,7 +279,7 @@ fn enqueueInternal(internal: *InternalState, chunk: JSValue) !void {
         .number => |n| .{ .number = n },
         .string => |s| .{ .string = .{ .data = s, .owned = false } },
         .bytes => |b| .{ .string = .{ .data = b, .owned = false } },
-        .v8_value => |ptr| .{ .handle = .{ .ptr = ptr, .needs_disposal = false } },
+        .managed_handle => |h| .{ .handle = .{ .ptr = h.get(), .needs_disposal = false } },
         else => .{ .undefined = {} },
     };
     interfaces.ReadableStreamDefaultController.call_enqueue(controller_instance, webidl.Opt(runtime.JSValue).passed(runtime_chunk)) catch |err| {

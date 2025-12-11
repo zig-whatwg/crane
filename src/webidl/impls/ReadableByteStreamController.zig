@@ -563,9 +563,9 @@ pub fn callPullIfNeeded(instance: *runtime.Instance) void {
     if (internal.pull_algorithm) |algo| {
         // Invoke the pull algorithm with the controller instance
         const pull_promise = algo.invoke(instance) catch |err| {
-            // On error, error the controller
-            const err_value: *const anyopaque = @ptrCast(&err);
-            errorInternal(internal, JSValue{ .v8_value = @constCast(err_value) });
+            // On error, error the controller with a proper error message
+            const err_msg = @errorName(err);
+            errorInternal(internal, JSValue.createError(err_msg));
             return;
         };
 

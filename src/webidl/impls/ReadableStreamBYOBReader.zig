@@ -297,7 +297,8 @@ fn readInternal(
     };
 
     // Create readIntoRequest with callbacks that fulfill the promise
-    const readIntoRequest = ReadIntoRequest.init(
+    // Use initLegacy for backward compatibility with anyopaque context pattern
+    const readIntoRequest = ReadIntoRequest.initLegacy(
         internal.allocator,
         promiseChunkSteps,
         promiseCloseSteps,

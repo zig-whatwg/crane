@@ -187,6 +187,20 @@ test "ReadIntoRequest - callback execution" {
         chunk_flag: *bool,
         close_flag: *bool,
         error_flag: *bool,
+
+        const Self = @This();
+
+        pub fn onChunk(self: *Self, _: ReadIntoRequestModule.ArrayBufferView) void {
+            self.chunk_flag.* = true;
+        }
+
+        pub fn onClose(self: *Self) void {
+            self.close_flag.* = true;
+        }
+
+        pub fn onError(self: *Self, _: ReadIntoRequestModule.Value) void {
+            self.error_flag.* = true;
+        }
     };
 
     var ctx = TestContext{
@@ -195,34 +209,18 @@ test "ReadIntoRequest - callback execution" {
         .error_flag = &error_received,
     };
 
-    const chunkSteps = struct {
-        fn call(context: ?*anyopaque, _: ReadIntoRequestModule.ArrayBufferView) void {
-            const c: *TestContext = @ptrCast(@alignCast(context));
-            c.chunk_flag.* = true;
-        }
-    }.call;
-
-    const closeSteps = struct {
-        fn call(context: ?*anyopaque) void {
-            const c: *TestContext = @ptrCast(@alignCast(context));
-            c.close_flag.* = true;
-        }
-    }.call;
-
-    const errorSteps = struct {
-        fn call(context: ?*anyopaque, _: ReadIntoRequestModule.Value) void {
-            const c: *TestContext = @ptrCast(@alignCast(context));
-            c.error_flag.* = true;
-        }
-    }.call;
-
-    const request = ReadIntoRequest.init(
+    // Use the typed API for proper type safety
+    const TypedRequest = ReadIntoRequestModule.TypedReadIntoRequest(TestContext);
+    const typed_request = TypedRequest.init(
         allocator,
-        chunkSteps,
-        closeSteps,
-        errorSteps,
-        @ptrCast(&ctx),
+        &ctx,
+        TestContext.onChunk,
+        TestContext.onClose,
+        TestContext.onError,
     );
+
+    // Erase to type-erased version (simulates runtime usage)
+    const request = typed_request.erase();
 
     // Test chunk steps
     var test_data = [_]u8{ 1, 2, 3 };

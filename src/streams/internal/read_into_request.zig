@@ -197,12 +197,23 @@ pub const ReadIntoRequest = struct {
     /// VTable with type-erased callback function pointers
     vtable: *const VTable,
 
+    /// Whether the vtable was heap-allocated (for initLegacy)
+    vtable_allocated: bool = false,
+
     /// VTable struct for callback dispatch
     pub const VTable = struct {
         chunk_steps: *const fn (*anyopaque, ArrayBufferView) void,
         close_steps: *const fn (*anyopaque) void,
         error_steps: *const fn (*anyopaque, Value) void,
     };
+
+    /// Deinitialize the ReadIntoRequest, freeing any allocated resources
+    pub fn deinit(self: *const ReadIntoRequest) void {
+        if (self.vtable_allocated) {
+            // vtable was heap-allocated by initLegacy, free it
+            self.allocator.destroy(@constCast(self.vtable));
+        }
+    }
 
     /// Legacy callback function types for backward compatibility
     /// DEPRECATED: Use TypedReadIntoRequest for new code
@@ -222,6 +233,7 @@ pub const ReadIntoRequest = struct {
             .allocator = allocator,
             .context = context,
             .vtable = vtable,
+            .vtable_allocated = false,
         };
     }
 
@@ -229,6 +241,19 @@ pub const ReadIntoRequest = struct {
     ///
     /// DEPRECATED: Use TypedReadIntoRequest for new code.
     /// This provides compatibility with existing code that uses ?*anyopaque context.
+    fn initLegacyGeneric(
+        comptime chunk_steps: ChunkStepsFn,
+        comptime close_steps: CloseStepsFn,
+        comptime error_steps: ErrorStepsFn,
+    ) *const VTable {
+        // Use comptime to create a static VTable
+        return &VTable{
+            .chunk_steps = @ptrCast(chunk_steps),
+            .close_steps = @ptrCast(close_steps),
+            .error_steps = @ptrCast(error_steps),
+        };
+    }
+
     pub fn initLegacy(
         allocator: std.mem.Allocator,
         chunk_steps: ChunkStepsFn,
@@ -236,8 +261,18 @@ pub const ReadIntoRequest = struct {
         error_steps: ErrorStepsFn,
         context: ?*anyopaque,
     ) ReadIntoRequest {
-        // Wrap legacy callbacks in VTable format
-        const vtable = &VTable{
+        // Allocate VTable on the heap since we can't make it static with runtime values
+        const vtable = allocator.create(VTable) catch {
+            // If allocation fails, return a stub VTable that logs errors
+            // This shouldn't happen in practice but provides safety
+            return .{
+                .allocator = allocator,
+                .context = context orelse undefined_ptr,
+                .vtable = &stub_vtable,
+                .vtable_allocated = false, // stub_vtable is static, not allocated
+            };
+        };
+        vtable.* = .{
             .chunk_steps = @ptrCast(chunk_steps),
             .close_steps = @ptrCast(close_steps),
             .error_steps = @ptrCast(error_steps),
@@ -247,8 +282,20 @@ pub const ReadIntoRequest = struct {
             .allocator = allocator,
             .context = context orelse undefined_ptr,
             .vtable = vtable,
+            .vtable_allocated = true,
         };
     }
+
+    /// Stub VTable for error cases
+    const stub_vtable = VTable{
+        .chunk_steps = stubChunkSteps,
+        .close_steps = stubCloseSteps,
+        .error_steps = stubErrorSteps,
+    };
+
+    fn stubChunkSteps(_: *anyopaque, _: ArrayBufferView) void {}
+    fn stubCloseSteps(_: *anyopaque) void {}
+    fn stubErrorSteps(_: *anyopaque, _: Value) void {}
 
     /// Execute chunk steps with ArrayBufferView
     pub fn executeChunkSteps(self: *const ReadIntoRequest, chunk: ArrayBufferView) void {

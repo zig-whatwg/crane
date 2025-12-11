@@ -1061,6 +1061,43 @@ pub fn readableStreamError(internal: *InternalState, e: *const anyopaque) void {
     // This is correct per spec - stream just transitions state
 }
 
+/// ReadableStreamErrorWithValue - Type-safe version using streams_common.JSValue
+///
+/// This is the preferred version that uses the typed JSValue union instead of raw anyopaque.
+/// The error value is stored with proper type information preserved.
+///
+/// Steps:
+/// 1. Assert: stream.[[state]] is "readable"
+/// 2. Set stream.[[state]] to "errored"
+/// 3. Set stream.[[storedError]] to e
+pub fn readableStreamErrorWithValue(internal: *InternalState, e: streams_common.JSValue) void {
+    // Assert: stream.[[state]] is "readable"
+    std.debug.assert(internal.state == .readable);
+
+    // Set stream.[[state]] to "errored"
+    internal.state = .errored;
+
+    // Store the error using type-safe StoredError
+    // Convert streams_common.JSValue to StoredError based on the variant
+    switch (e) {
+        .managed_handle => |h| internal.stored_error.storeRawPtr(h.get()),
+        .string => |s| internal.stored_error.storeMessage(s),
+        .error_value => |err| {
+            // Store the error message with type info
+            // StoredError will create appropriate V8 error on retrieval
+            internal.stored_error.storeMessage(err.message);
+        },
+        else => {
+            // For other types, store a generic error message
+            internal.stored_error.storeMessage("Stream error");
+        },
+    }
+
+    // Note: Reader operations (reject closedPromise, reject pending reads)
+    // are handled by the reader when it detects stream state change
+    // This is correct per spec - stream just transitions state
+}
+
 /// Operation: getReader
 ///
 /// Spec: https://streams.spec.whatwg.org/#rs-get-reader

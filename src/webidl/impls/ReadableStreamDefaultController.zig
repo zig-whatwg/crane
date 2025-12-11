@@ -171,20 +171,66 @@ pub fn call_error(instance: *runtime.Instance, e: webidl.Opt(runtime.JSValue)) a
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Step 1: Perform error - use a static error value if not passed
-    const error_ptr: ?*const anyopaque = if (e.was_passed) e.value.toAnyopaque() else null;
-    if (error_ptr) |ptr| {
-        readableStreamDefaultControllerError(internal, ptr);
-    } else {
-        // Create a default error value for undefined
-        const default_error = "Error";
-        readableStreamDefaultControllerError(internal, @ptrCast(default_error.ptr));
-    }
+    // Step 1: Perform error
+    // Convert runtime.JSValue to internal streams_common.JSValue for type-safe error handling
+    const error_value: streams_common.JSValue = if (e.was_passed) blk: {
+        // Convert the passed error to an internal JSValue
+        // Use managed_handle with non-owning reference for V8 values
+        if (e.value.toAnyopaque()) |ptr| {
+            break :blk streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(ptr)) catch
+                streams_common.JSValue.createTypeError("Error");
+        }
+        break :blk streams_common.JSValue.createTypeError("Error");
+    } else blk: {
+        // No error passed - create a default TypeError
+        break :blk streams_common.JSValue.createTypeError("Error");
+    };
+
+    readableStreamDefaultControllerErrorWithValue(internal, error_value);
 }
 
-/// ReadableStreamDefaultControllerError(controller, e)
+/// ReadableStreamDefaultControllerErrorWithValue - Type-safe version using streams_common.JSValue
 ///
 /// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-error
+///
+/// This is the preferred version that uses the typed JSValue union instead of raw anyopaque.
+/// Use this when the error type is known at the call site.
+///
+/// Steps:
+/// 1. Let stream be controller.[[stream]]
+/// 2. If stream.[[state]] is not "readable", return
+/// 3. Perform ! ResetQueue(controller)
+/// 4. Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller)
+/// 5. Perform ! ReadableStreamError(stream, e)
+pub fn readableStreamDefaultControllerErrorWithValue(internal: *InternalState, e: streams_common.JSValue) void {
+    // Step 1: Get stream
+    const stream_instance = internal.stream orelse return;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return;
+
+    // Step 2: Check stream state
+    if (stream_internal.state != .readable) {
+        return;
+    }
+
+    // Step 3: Reset queue
+    internal.queue.resetQueue();
+    internal.queue_total_size = 0.0;
+
+    // Step 4: Clear algorithms
+    readableStreamDefaultControllerClearAlgorithms(internal);
+
+    // Step 5: Error the stream using type-safe error
+    const ReadableStreamImpl = @import("ReadableStream.zig");
+    ReadableStreamImpl.readableStreamErrorWithValue(stream_internal, e);
+}
+
+/// ReadableStreamDefaultControllerError(controller, e) - Legacy version with anyopaque
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-error
+///
+/// NOTE: This is the legacy version that accepts raw anyopaque pointers for FFI compatibility.
+/// Prefer readableStreamDefaultControllerErrorWithValue for new code.
 ///
 /// Steps:
 /// 1. Let stream be controller.[[stream]]
@@ -427,15 +473,23 @@ pub fn call_enqueue(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSVal
         return error.TypeError;
     }
 
-    // Step 2: Perform enqueue - use a default undefined chunk if not passed
-    const chunk_ptr: ?*const anyopaque = if (chunk.was_passed) chunk.value.toAnyopaque() else null;
-    if (chunk_ptr) |ptr| {
-        try readableStreamDefaultControllerEnqueue(internal, ptr);
-    } else {
-        // Create a default undefined chunk value
-        const undefined_chunk = "undefined";
-        try readableStreamDefaultControllerEnqueue(internal, @ptrCast(undefined_chunk.ptr));
-    }
+    // Step 2: Perform enqueue with type-safe JSValue
+    // Convert runtime.JSValue to internal streams_common.JSValue using managed handle
+    const chunk_value: streams_common.JSValue = if (chunk.was_passed) blk: {
+        // For V8 values, create a managed handle (non-owning)
+        if (chunk.value.toAnyopaque()) |ptr| {
+            break :blk streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(ptr)) catch {
+                break :blk streams_common.JSValue.undefined_value();
+            };
+        }
+        // No pointer available - use undefined
+        break :blk streams_common.JSValue.undefined_value();
+    } else blk: {
+        // No chunk passed - enqueue undefined
+        break :blk streams_common.JSValue.undefined_value();
+    };
+
+    try readableStreamDefaultControllerEnqueueValue(internal, chunk_value);
 }
 
 /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
@@ -450,9 +504,84 @@ pub fn canCloseOrEnqueue(internal: *InternalState) bool {
     return !internal.close_requested and stream_internal.state == .readable;
 }
 
-/// ReadableStreamDefaultControllerEnqueue(controller, chunk)
+/// ReadableStreamDefaultControllerEnqueueValue - Type-safe version using streams_common.JSValue
 ///
 /// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-enqueue
+///
+/// This is the preferred version that uses the typed JSValue union instead of raw anyopaque.
+/// Use this when the chunk type is known at the call site.
+///
+/// Steps:
+/// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return
+/// 2. Let stream be controller.[[stream]]
+/// 3. If ! IsReadableStreamLocked(stream) is true and ! ReadableStreamGetNumReadRequests(stream) > 0,
+///    perform ! ReadableStreamFulfillReadRequest(stream, chunk, false)
+/// 4. Otherwise, enqueue chunk in queue
+fn readableStreamDefaultControllerEnqueueValue(internal: *InternalState, chunk: streams_common.JSValue) !void {
+    // Step 1: Double-check we can enqueue
+    if (!canCloseOrEnqueue(internal)) {
+        return;
+    }
+
+    // Step 2: Get stream
+    const stream_instance = internal.stream orelse return error.InvalidState;
+    const stream_state = stream_instance.getState(interfaces.ReadableStream.State);
+    const stream_internal = stream_state.own._internal orelse return error.InvalidState;
+
+    // Step 3: If stream has reader with pending read requests, fulfill immediately
+    if (stream_internal.reader != .none) {
+        // Get reader's read requests
+        const reader_instance = switch (stream_internal.reader) {
+            .default => |r| r,
+            .byob => return error.InvalidState, // BYOB readers use ReadableByteStreamController, not DefaultController
+            .none => unreachable,
+        };
+
+        const reader_state = reader_instance.getState(interfaces.ReadableStreamDefaultReader.State);
+        const reader_internal = reader_state.own._internal orelse return error.InvalidState;
+
+        // If there are pending read requests, fulfill the first one
+        if (reader_internal.read_requests.items.len > 0) {
+            const read_request = reader_internal.read_requests.orderedRemove(0);
+
+            // Fulfill with chunk - convert streams_common.JSValue to runtime.JSValue
+            const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
+            const result_value: ?runtime.JSValue = switch (chunk) {
+                .managed_handle => |h| runtime.JSValue.fromHandle(h.get()),
+                .undefined => null, // Map undefined to null (represents JS undefined)
+                .null => runtime.JSValue.jsNull,
+                .boolean => |b| runtime.JSValue.fromBoolean(b),
+                .number => |n| runtime.JSValue.fromNumber(n),
+                .string => |s| runtime.JSValue.fromStringRef(s),
+                else => null, // Other types map to undefined for now
+            };
+
+            read_request.*.fulfill(ReadableStreamDefaultReaderImpl.ReadResult{
+                .value = result_value,
+                .done = false,
+            });
+            return;
+        }
+    }
+
+    // Step 4: Otherwise, enqueue in queue
+    // Calculate chunk size (for now, always 1)
+    const chunk_size: f64 = 1.0; // Future: Invoke strategySizeAlgorithm(chunk) for dynamic sizing
+
+    // The chunk is already a streams_common.JSValue, enqueue it directly
+    try internal.queue.enqueueValueWithSize(chunk, chunk_size);
+    internal.queue_total_size = internal.queue.queue_total_size;
+
+    // Call pull if needed
+    readableStreamDefaultControllerCallPullIfNeeded(internal);
+}
+
+/// ReadableStreamDefaultControllerEnqueue(controller, chunk) - Legacy version with anyopaque
+///
+/// Spec: https://streams.spec.whatwg.org/#readable-stream-default-controller-enqueue
+///
+/// NOTE: This is the legacy version that accepts raw anyopaque pointers for FFI compatibility.
+/// Prefer readableStreamDefaultControllerEnqueueValue for new code.
 ///
 /// Steps:
 /// 1. If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return
@@ -503,8 +632,12 @@ fn readableStreamDefaultControllerEnqueue(internal: *InternalState, chunk: *cons
 
     // Enqueue the chunk
     // The chunk is a V8 Global<Value>* pointer from JavaScript
-    // Store it directly as v8_value so it can be passed back unchanged
-    const value: streams_common.JSValue = .{ .v8_value = @constCast(chunk) };
+    // Wrap it in a managed handle for proper lifecycle management
+    const value = streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(chunk)) catch |err| {
+        // If we can't create the managed handle, report the error
+        _ = err;
+        return error.OutOfMemory;
+    };
 
     try internal.queue.enqueueValueWithSize(value, chunk_size);
     internal.queue_total_size = internal.queue.queue_total_size;
@@ -799,9 +932,9 @@ pub fn pullSteps(
         const ReadableStreamDefaultReaderImpl = @import("ReadableStreamDefaultReader.zig");
 
         // Convert the internal JSValue to runtime.JSValue for the ReadResult
-        // The chunk came from the queue and may contain a V8 handle
+        // The chunk came from the queue and may contain a managed handle
         const result_value: ?runtime.JSValue = switch (chunk) {
-            .v8_value => |v| runtime.JSValue.fromHandle(v),
+            .managed_handle => |h| runtime.JSValue.fromHandle(h.get()),
             .undefined => null, // Map undefined to null (represents JS undefined)
             .null => runtime.JSValue.jsNull,
             .boolean => |b| runtime.JSValue.fromBoolean(b),
