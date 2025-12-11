@@ -582,8 +582,6 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     // We store the JSON in a string field - the receiver will parse it
     const json_str = buffer_to_use[0..@intCast(written)];
 
-    std.log.debug("workerPostMessageCallback: JSON serialized ({d} bytes): {s}", .{ written, json_str[0..@min(@as(usize, @intCast(written)), 200)] });
-
     // Create JSValue with string type, pointing directly to the stack buffer
     // structuredSerialize will duplicate the string, so we don't need to allocate here
     var js_value = workers.message_channel.JSValue{ .string = json_str };
@@ -593,7 +591,6 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
         std.log.warn("postMessageFromWorker failed: {}", .{err});
     };
-    std.log.debug("workerPostMessageCallback: message posted successfully", .{});
 }
 
 /// V8 callback for close() - terminates the worker
@@ -641,7 +638,6 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     // Get number of arguments (URLs to import)
     const argc = info.v8_FunctionCallbackInfo_Length();
     if (argc < 1) {
-        std.log.debug("importScripts called with no arguments", .{});
         return;
     }
 
@@ -661,7 +657,6 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         if (actual_len <= 0) continue;
 
         const url = buf[0..@intCast(actual_len)];
-        std.log.debug("importScripts: loading '{s}'", .{url});
 
         // Fetch the script
         var fetched_script = script_fetch.fetchWorkerScript(self.allocator, url, .{
@@ -681,8 +676,6 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
             std.log.warn("importScripts: failed to execute '{s}': {}", .{ url, err });
             continue;
         };
-
-        std.log.debug("importScripts: loaded and executed '{s}'", .{url});
     }
 }
 

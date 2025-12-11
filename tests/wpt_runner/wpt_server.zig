@@ -242,7 +242,6 @@ pub const WptServer = struct {
             url_path,
             suffix,
         });
-        std.log.debug("buildTestUrl: path={s} context={} -> url={s}", .{ test_path, context, url });
         return url;
     }
 };

@@ -174,7 +174,6 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
 pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
-    std.log.debug("Worker.call_constructor: scriptURL={s}", .{scriptURL.asSlice()});
 
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
@@ -238,9 +237,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
 
     // Try to create the DedicatedWorker using the global timer backend
     // The timer backend is portable (uses std.time) and works on all platforms
-    std.log.debug("Worker.call_constructor: getting timer backend", .{});
     if (platform.getDefaultTimerBackend(ctx.allocator)) |timer_backend| {
-        std.log.debug("Worker.call_constructor: creating DedicatedWorker", .{});
         const dedicated_worker = DedicatedWorker.init(
             ctx.allocator,
             timer_backend,
@@ -255,7 +252,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             std.log.warn("Failed to create DedicatedWorker: {}", .{err});
             return instance;
         };
-        std.log.debug("Worker.call_constructor: DedicatedWorker created", .{});
         internal_state.dedicated_worker = dedicated_worker;
 
         // Store reference to Worker instance for message callbacks
@@ -341,7 +337,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // 3. The current script finishes
         // 4. The event loop runs the scheduled task
         if (ctx.timer) |timer| {
-            std.log.debug("Worker: scheduling message processing via setTimeout(0)", .{});
             _ = timer.setTimeout(0, processQueuedMessagesCallback, instance);
         } else {
             // No timer available - fall back to immediate processing
@@ -441,7 +436,6 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
-            std.log.debug("set_onmessage: processing queued messages", .{});
             dedicated_worker.processQueuedMessages();
         }
     }
@@ -466,20 +460,10 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 /// It runs after the current JavaScript (constructor call) returns, giving
 /// fetch_tests_from_worker() a chance to set up message handlers.
 fn processQueuedMessagesCallback(user_data: ?*anyopaque) void {
-    std.log.debug("processQueuedMessagesCallback: timer fired", .{});
-
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse {
-        std.log.warn("processQueuedMessagesCallback: no user_data", .{});
-        return;
-    }));
-
-    const internal = getInternal(instance) orelse {
-        std.log.warn("processQueuedMessagesCallback: no internal state", .{});
-        return;
-    };
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    const internal = getInternal(instance) orelse return;
 
     if (internal.dedicated_worker) |dedicated_worker| {
-        std.log.debug("processQueuedMessagesCallback: processing queued messages", .{});
         dedicated_worker.processQueuedMessages();
     }
 }
@@ -495,13 +479,8 @@ fn processQueuedMessagesCallback(user_data: ?*anyopaque) void {
 /// This is called by DedicatedWorker when a message arrives from the worker
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
-    std.log.debug("handleMessageFromWorkerCallback: received message from worker", .{});
-
     // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse {
-        std.log.debug("handleMessageFromWorkerCallback: no user_data", .{});
-        return;
-    };
+    const user_data = dedicated_worker.getUserData() orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
 
     // Dispatch the message event to onmessage handler
@@ -530,27 +509,13 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
 /// 2. Parses it using V8's JSON.parse in the main context
 /// 3. Creates MessageEvent with the parsed value as data
 fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
-    std.log.debug("dispatchMessageEvent: called", .{});
-
     // Get internal state with GlobalHandle and isolate
-    const internal = getInternal(instance) orelse {
-        std.log.debug("dispatchMessageEvent: no internal state", .{});
-        return;
-    };
+    const internal = getInternal(instance) orelse return;
 
     // Get isolate and V8 context
-    const isolate = internal.isolate orelse {
-        std.log.debug("dispatchMessageEvent: no isolate", .{});
-        return;
-    };
-    const ctx = internal.ctx orelse {
-        std.log.debug("dispatchMessageEvent: no ctx", .{});
-        return;
-    };
-    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
-        std.log.debug("dispatchMessageEvent: no v8_context", .{});
-        return;
-    };
+    const isolate = internal.isolate orelse return;
+    const ctx = internal.ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
 
     // Check current isolate state
     const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
@@ -574,10 +539,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
 
     // Verify we have a valid context, enter if needed
     const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
-    std.log.debug("dispatchMessageEvent: worker v8_context={*}, current_context={?*}", .{ v8_context, current_context });
     const need_enter_context = (current_context == null) or (current_context != v8_context);
     if (need_enter_context) {
-        std.log.debug("dispatchMessageEvent: entering context", .{});
         v8_engine.ffi.v8_Context_Enter(v8_context);
     }
     defer if (need_enter_context) {
@@ -588,14 +551,10 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // The worker sends JSON-serialized messages for cross-isolate safety
     var v8_data: ?*v8_engine.ffi.Value = null;
 
-    std.log.debug("dispatchMessageEvent: msg.data.type = {}", .{msg.data.type});
-
     // Check the serialized value type
     if (msg.data.type == .primitive) {
-        std.log.debug("dispatchMessageEvent: primitive type, checking for string", .{});
         switch (msg.data.data.primitive) {
             .string => |json_str| {
-                std.log.debug("dispatchMessageEvent: JSON string ({d} bytes): {s}", .{ json_str.len, json_str[0..@min(json_str.len, 200)] });
                 // JSON string from worker - parse it in main context
                 v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
                     v8_context,
@@ -604,16 +563,10 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
                 );
                 if (v8_data == null) {
                     std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed for: {s}", .{json_str});
-                } else {
-                    std.log.debug("dispatchMessageEvent: JSON.parse succeeded", .{});
                 }
             },
-            else => |other| {
-                std.log.debug("dispatchMessageEvent: primitive is not string, is {}", .{other});
-            },
+            else => {},
         }
-    } else {
-        std.log.debug("dispatchMessageEvent: not a primitive type", .{});
     }
 
     // If we couldn't get V8 data, try the old deserialization path
@@ -716,34 +669,25 @@ fn invokeMessageListeners(
     v8_event: *v8_engine.ffi.Object,
     internal: *InternalState,
 ) void {
-    std.log.debug("invokeMessageListeners: starting", .{});
-
     // EventTargetImpl is imported at module level
     const CallbackWrapper = v8_engine.CallbackWrapper;
 
     // Step 1: Invoke registered "message" event listeners (from addEventListener)
     if (EventTargetImpl.getInternalState(instance)) |et_internal| {
         const listeners = et_internal.getEventListenerList();
-        std.log.debug("invokeMessageListeners: found {d} event listeners", .{listeners.len});
         for (listeners) |listener| {
             // Check if listener is for "message" events and not removed
             if (std.mem.eql(u8, listener.type.asSlice(), "message") and !listener.removed) {
-                std.log.debug("invokeMessageListeners: found message listener, callback={*}", .{listener.callback});
                 // listener.callback is actually a *CallbackWrapper
                 if (listener.callback) |callback_instance| {
                     const callback_wrapper: *CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                    std.log.debug("invokeMessageListeners: calling callback_wrapper.call1, wrapper={*}", .{callback_wrapper});
-                    const result = callback_wrapper.call1(v8_context, @ptrCast(v8_event));
-                    std.log.debug("invokeMessageListeners: callback returned, result={?*}", .{result});
+                    _ = callback_wrapper.call1(v8_context, @ptrCast(v8_event));
                 }
             }
         }
-    } else {
-        std.log.debug("invokeMessageListeners: no EventTarget internal state", .{});
     }
 
     // Step 2: Invoke the onmessage handler if set
-    std.log.debug("invokeMessageListeners: checking onmessage_handle: {}", .{internal.onmessage_handle != null});
     if (internal.onmessage_handle) |onmessage_global| {
         // Retrieve Local handle from Global handle
         const local_value = onmessage_global.get(isolate) orelse {

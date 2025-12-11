@@ -363,13 +363,6 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Debug: Log the type and context
-    const v8_engine = @import("v8");
-    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
-    var current_ctx: ?*v8_engine.ffi.Context = null;
-    if (current_isolate) |iso| {
-        current_ctx = v8_engine.ffi.v8_Isolate_GetCurrentContext(iso);
-    }
-    std.log.debug("EventTarget.call_addEventListener: type={s}, current_ctx={?*}", .{ @"type".asSlice(), current_ctx });
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {

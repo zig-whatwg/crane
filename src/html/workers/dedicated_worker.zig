@@ -523,17 +523,11 @@ pub const DedicatedWorker = struct {
         // The outside port's on_message handler will invoke the Worker's onmessage
         const outside_port = self.port_pair.outside_port;
 
-        std.log.debug("processQueuedMessages: checking queue, {d} messages", .{outside_port.message_queue.items.len});
-
         while (outside_port.message_queue.items.len > 0) {
             const msg = outside_port.message_queue.orderedRemove(0);
-            std.log.debug("processQueuedMessages: processing message", .{});
 
             if (outside_port.on_message) |handler| {
-                std.log.debug("processQueuedMessages: calling handler", .{});
                 handler(outside_port, msg, outside_port.on_message_context);
-            } else {
-                std.log.debug("processQueuedMessages: no handler set", .{});
             }
             // Clean up message after handler returns
             msg.deinit();

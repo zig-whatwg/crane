@@ -348,7 +348,6 @@ pub const BrowserAdapter = struct {
         // Always parse HTML in window context - the URL determines the actual test context
         // (e.g., .any.worker.html will spawn a Worker internally)
         // Pass the full URL as base_url so relative script URLs can be resolved
-        std.log.debug("runTestFromUrl: parsing HTML ({d} bytes) from {s}", .{ fetch_result.body.len, test_url });
         return self.runHTMLTestWithBaseUrl(test_path, fetch_result.body, timeout, .window, test_url);
     }
 };
