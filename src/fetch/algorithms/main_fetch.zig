@@ -27,6 +27,7 @@ const InternalRequest = internal_request.InternalRequest;
 const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
+const http_fetch = @import("http_fetch.zig");
 
 /// Bad ports that should be blocked per Fetch spec.
 /// These are ports commonly associated with protocols that shouldn't
@@ -192,27 +193,40 @@ pub fn mainFetch(
     }
 
     // Step 12-13: Service worker interception and scheme fetch
-    // For now, skip service worker and go directly to scheme fetch
+    // For now, skip service worker and dispatch based on scheme
     var response: *InternalResponse = undefined;
 
     // Get scheme from current URL string
     const url_str = request.currentUrl();
     const scheme = extractScheme(url_str);
 
-    // Dispatch to scheme fetch
-    const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
-        switch (err) {
-            error.OutOfMemory => return MainFetchError.OutOfMemory,
-        }
-    };
+    // Dispatch based on scheme
+    if (scheme_fetch.isHttpScheme(scheme)) {
+        // HTTP(S) requests go through HTTP fetch
+        response = http_fetch.httpFetch(allocator, params, .{}) catch |err| switch (err) {
+            http_fetch.HttpFetchError.OutOfMemory => return MainFetchError.OutOfMemory,
+            http_fetch.HttpFetchError.NetworkError,
+            http_fetch.HttpFetchError.CorsError,
+            => {
+                return try internal_response.networkError(allocator);
+            },
+        };
+    } else {
+        // Non-HTTP schemes go through scheme fetch
+        const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
+            switch (err) {
+                error.OutOfMemory => return MainFetchError.OutOfMemory,
+            }
+        };
 
-    switch (scheme_result) {
-        .response => |resp| {
-            response = resp;
-        },
-        .network_error => {
-            response = try internal_response.networkError(allocator);
-        },
+        switch (scheme_result) {
+            .response => |resp| {
+                response = resp;
+            },
+            .network_error => {
+                response = try internal_response.networkError(allocator);
+            },
+        }
     }
 
     // Step 14: If recursive, return early

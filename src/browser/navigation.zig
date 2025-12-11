@@ -299,6 +299,7 @@ fn fetchHttpUrl(
     const response = result.response;
     defer response.deinit();
 
+
     // Extract body
     const body = if (response.body) |b| blk: {
         const data = b.getBytes();

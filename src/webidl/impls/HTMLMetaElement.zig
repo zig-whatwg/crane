@@ -1,4 +1,8 @@
 //! Implementation for HTMLMetaElement interface
+//!
+//! HTMLMetaElement represents a <meta> element in the DOM.
+//! All attributes are reflected content attributes per HTML spec.
+//! Spec: https://html.spec.whatwg.org/multipage/semantics.html#the-meta-element
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLMetaElement = interfaces.HTMLMetaElement;
+const Element = interfaces.Element;
 
 pub const State = HTMLMetaElement.State;
 
@@ -51,67 +56,58 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for name
+// =============================================================================
+// Reflected Content Attributes
+// =============================================================================
+// All HTMLMetaElement attributes are reflected content attributes.
+// Spec: https://html.spec.whatwg.org/multipage/semantics.html#the-meta-element
+
+/// Getter for name - reflects the "name" content attribute
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return (try Element.call_getAttribute(instance, runtime.DOMString.initInterned("name"))) orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for httpEquiv
+/// Getter for httpEquiv - reflects the "http-equiv" content attribute
 pub fn get_httpEquiv(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return (try Element.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv"))) orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for content
+/// Getter for content - reflects the "content" content attribute
 pub fn get_content(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return (try Element.call_getAttribute(instance, runtime.DOMString.initInterned("content"))) orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for media
+/// Getter for media - reflects the "media" content attribute
 pub fn get_media(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return (try Element.call_getAttribute(instance, runtime.DOMString.initInterned("media"))) orelse runtime.DOMString.initEmpty();
 }
 
-/// Getter for scheme
+/// Getter for scheme - reflects the "scheme" content attribute (obsolete but still in spec)
 pub fn get_scheme(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return (try Element.call_getAttribute(instance, runtime.DOMString.initInterned("scheme"))) orelse runtime.DOMString.initEmpty();
 }
 
-/// Setter for name
+/// Setter for name - sets the "name" content attribute
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("name"), value);
 }
 
-/// Setter for httpEquiv
+/// Setter for httpEquiv - sets the "http-equiv" content attribute
 pub fn set_httpEquiv(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("http-equiv"), value);
 }
 
-/// Setter for content
+/// Setter for content - sets the "content" content attribute
 pub fn set_content(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("content"), value);
 }
 
-/// Setter for media
+/// Setter for media - sets the "media" content attribute
 pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("media"), value);
 }
 
-/// Setter for scheme
+/// Setter for scheme - sets the "scheme" content attribute (obsolete but still in spec)
 pub fn set_scheme(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("scheme"), value);
 }
