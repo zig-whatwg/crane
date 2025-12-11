@@ -185,6 +185,7 @@ const OperationDedupeContext = struct {
 
 /// Deduplicate operations by name AND static status (keep first occurrence)
 /// Static and instance methods with the same name are NOT deduplicated against each other
+/// Operations without names (like stringifiers) are always kept
 fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types.Operation)) !void {
     if (ops.items.len <= 1) return;
 
@@ -195,7 +196,11 @@ fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types
     defer seen.deinit();
 
     for (ops.items) |op| {
-        const op_name = op.name orelse continue;
+        // Operations without names (like stringifiers, getters, setters) are always kept
+        const op_name = op.name orelse {
+            try unique.append(allocator, op);
+            continue;
+        };
         const key = OperationDedupeKey{ .name = op_name, .is_static = op.static };
         const entry = try seen.getOrPut(key);
         if (!entry.found_existing) {

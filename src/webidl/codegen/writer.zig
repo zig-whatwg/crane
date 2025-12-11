@@ -424,6 +424,17 @@ pub fn writeMetadata(
         try writer.writeAll("            .{ \"forEach\", \"call_forEach\", 1 },\n");
     }
 
+    // Add toString method for stringifier interfaces (per WebIDL spec)
+    // Bare stringifier declarations generate a toString() method
+    for (own_operations) |op| {
+        if (op.special) |special| {
+            if (special == .stringifier and op.name == null) {
+                try writer.writeAll("            .{ \"toString\", \"serialize\", 0 },\n");
+                break;
+            }
+        }
+    }
+
     try writer.writeAll("        };\n");
 
     // Generate static methods hints
@@ -496,6 +507,16 @@ pub fn writeMetadata(
 
             if (should_include) {
                 try writer.print("            \"{s}\",\n", .{name});
+            }
+        }
+    }
+
+    // Add toString for stringifier interfaces
+    for (own_operations) |op| {
+        if (op.special) |special| {
+            if (special == .stringifier and op.name == null) {
+                try writer.writeAll("            \"toString\",\n");
+                break;
             }
         }
     }
@@ -2620,6 +2641,22 @@ pub fn writeDelegateFunctions(
             // Static methods use call_static_<name>, instance methods use call_<name>
             // No collision detection needed - convention handles it
             try writeSingleOperation(writer, impl_name, op, type_registry, false);
+        }
+    }
+
+    // Write serialize delegate for stringifier interfaces
+    // Per WebIDL spec, bare stringifier declarations generate a toString() method
+    // that returns the result of the stringification behavior
+    for (own_operations) |op| {
+        if (op.special) |special| {
+            if (special == .stringifier and op.name == null) {
+                try writer.writeAll("    /// Stringifier delegate - toString() implementation\n");
+                try writer.writeAll("    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier\n");
+                try writer.print("    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {{\n", .{});
+                try writer.print("        return try {s}.serialize(instance);\n", .{impl_name});
+                try writer.writeAll("    }\n\n");
+                break;
+            }
         }
     }
 }
