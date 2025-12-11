@@ -27,9 +27,15 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// HTML mocks (Phase 1)
-const mocks = @import("../../mocks/root.zig");
-const WorkerGlobalScope = mocks.WorkerGlobalScope;
+// Real WebIDL interfaces
+const runtime = @import("runtime");
+const interfaces = @import("../../webidl/interfaces/root.zig");
+const WorkerGlobalScope = interfaces.WorkerGlobalScope;
+const WorkerGlobalScopeImpl = @import("../../webidl/impls/WorkerGlobalScope.zig");
+
+// HTML core for WorkerType used by WorkerGlobalScopeImpl
+const html_core = @import("html_core");
+const HtmlWorkerType = html_core.workers.WorkerType;
 
 // Internal types
 const internal_sw = @import("../service_worker.zig");
@@ -69,12 +75,16 @@ const Clients = clients_mod.Clients;
 pub const ServiceWorkerGlobalScope = struct {
     allocator: Allocator,
 
-    /// The base WorkerGlobalScope.
+    /// The base WorkerGlobalScope (real WebIDL implementation).
     /// Provides location, navigator, event loop, etc.
-    base: *WorkerGlobalScope,
+    /// This is a runtime.Instance wrapping the WorkerGlobalScope interface.
+    base: *runtime.Instance,
 
     /// Whether we own the base scope.
     owns_base: bool = false,
+
+    /// Runtime context data for the worker (owned if we created it).
+    ctx_data: ?*runtime.ContextData = null,
 
     /// The internal service worker.
     internal_service_worker: *InternalServiceWorker,
@@ -125,13 +135,32 @@ pub const ServiceWorkerGlobalScope = struct {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
-        // Create base WorkerGlobalScope
-        const worker_type: WorkerGlobalScope.WorkerType = switch (service_worker.worker_type) {
+        // Create runtime context for this worker
+        const ctx_data = try allocator.create(runtime.ContextData);
+        errdefer allocator.destroy(ctx_data);
+
+        ctx_data.* = try runtime.ContextData.init(allocator, .{
+            .realm_info = runtime.RealmInfo.forServiceWorker(),
+        });
+        errdefer ctx_data.deinit();
+
+        // Create base WorkerGlobalScope using real WebIDL implementation
+        // Convert service_worker WorkerType to html_core WorkerType
+        const worker_type: HtmlWorkerType = switch (service_worker.worker_type) {
             .classic => .classic,
             .module => .module,
         };
-        const base = try WorkerGlobalScope.init(allocator, service_worker.script_url, worker_type);
-        errdefer base.deinit();
+
+        // Use initWithUrl to properly set up the worker with URL and type
+        const base = try WorkerGlobalScopeImpl.initWithUrl(
+            allocator,
+            WorkerGlobalScope.State,
+            &WorkerGlobalScope.vtable,
+            ctx_data,
+            service_worker.script_url,
+            worker_type,
+        );
+        errdefer WorkerGlobalScope.deinit(base);
 
         // Create Clients API
         const clients_api = try Clients.init(allocator, registration.scope_url);
@@ -141,6 +170,7 @@ pub const ServiceWorkerGlobalScope = struct {
             .allocator = allocator,
             .base = base,
             .owns_base = true,
+            .ctx_data = ctx_data,
             .internal_service_worker = service_worker,
             .internal_registration = registration,
             .clients = clients_api,
@@ -167,9 +197,15 @@ pub const ServiceWorkerGlobalScope = struct {
         // Free Clients API
         self.clients.deinit();
 
-        // Free base if owned
+        // Free base if owned (using real WebIDL deinit)
         if (self.owns_base) {
-            self.base.deinit();
+            WorkerGlobalScope.deinit(self.base);
+        }
+
+        // Free context data if owned
+        if (self.ctx_data) |ctx_data| {
+            ctx_data.deinit();
+            self.allocator.destroy(ctx_data);
         }
 
         self.allocator.destroy(self);
@@ -314,23 +350,31 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Get location.
-    pub fn getLocation(self: *Self) *mocks.WorkerLocation {
-        return self.base.getLocation();
+    ///
+    /// Returns the WorkerLocation instance from the base WorkerGlobalScope.
+    pub fn getLocation(self: *Self) !*runtime.Instance {
+        return WorkerGlobalScope.get_location(self.base);
     }
 
     /// Get navigator.
-    pub fn getNavigator(self: *Self) *mocks.WorkerNavigator {
-        return self.base.getNavigator();
+    ///
+    /// Returns the WorkerNavigator instance from the base WorkerGlobalScope.
+    pub fn getNavigator(self: *Self) !*runtime.Instance {
+        return WorkerGlobalScope.get_navigator(self.base);
     }
 
     /// Get origin.
-    pub fn getOrigin(self: *const Self) []const u8 {
-        return self.base.getOrigin();
+    ///
+    /// Returns the origin string from the base WorkerGlobalScope.
+    pub fn getOrigin(self: *const Self) ![]const u8 {
+        return WorkerGlobalScope.get_origin(@constCast(self.base));
     }
 
     /// Get isSecureContext.
-    pub fn getIsSecureContext(self: *const Self) bool {
-        return self.base.getIsSecureContext();
+    ///
+    /// Returns whether this is a secure context.
+    pub fn getIsSecureContext(self: *const Self) !bool {
+        return WorkerGlobalScope.get_isSecureContext(@constCast(self.base));
     }
 
     // =========================================================================
@@ -385,18 +429,24 @@ pub const ServiceWorkerGlobalScope = struct {
     }
 
     /// Run the event loop.
+    ///
+    /// Spins the event loop to process pending tasks.
     pub fn runEventLoop(self: *Self) void {
-        self.base.runEventLoop();
+        WorkerGlobalScopeImpl.runEventLoop(self.base);
     }
 
     /// Close the worker.
+    ///
+    /// Marks the worker as closing and stops the event loop.
     pub fn close(self: *Self) void {
-        self.base.close();
+        WorkerGlobalScopeImpl.close(self.base);
     }
 
     /// Check if closing.
+    ///
+    /// Returns true if close() has been called on this worker.
     pub fn isClosing(self: *const Self) bool {
-        return self.base.isClosing();
+        return WorkerGlobalScopeImpl.isClosing(@constCast(self.base));
     }
 };
 
@@ -419,8 +469,8 @@ test "ServiceWorkerGlobalScope.init and deinit" {
     const scope = try ServiceWorkerGlobalScope.init(allocator, sw, reg);
     defer scope.deinit();
 
-    try std.testing.expectEqualStrings("https://example.com", scope.getOrigin());
-    try std.testing.expect(scope.getIsSecureContext());
+    try std.testing.expectEqualStrings("https://example.com", try scope.getOrigin());
+    try std.testing.expect(try scope.getIsSecureContext());
 }
 
 test "ServiceWorkerGlobalScope.getClients" {
