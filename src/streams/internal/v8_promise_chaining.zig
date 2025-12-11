@@ -49,11 +49,14 @@ const runtime = @import("runtime");
 /// V8 FFI bindings
 const v8 = @import("v8").ffi;
 
-/// Callback function types for promise settlement
+/// Callback function types for promise settlement (C FFI boundary - must use anyopaque)
 pub const FulfillCallback = *const fn (ctx: ?*anyopaque, value: ?*anyopaque) callconv(.c) void;
 pub const RejectCallback = *const fn (ctx: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void;
 
-/// Configuration for promise chaining
+/// Configuration for promise chaining (type-erased for C FFI boundary)
+///
+/// For type-safe usage, prefer TypedChainConfig(Context) which provides
+/// compile-time type checking and automatically converts to ChainConfig.
 pub const ChainConfig = struct {
     /// Called when the promise fulfills
     on_fulfill: FulfillCallback,
@@ -64,6 +67,87 @@ pub const ChainConfig = struct {
     /// Allocator for the callback context (if user_context needs to be freed by callbacks)
     allocator: ?Allocator = null,
 };
+
+/// Type-safe configuration for promise chaining.
+///
+/// This generic provides compile-time type safety for callback contexts while
+/// maintaining compatibility with the C FFI boundary. Use this instead of
+/// ChainConfig directly when working in pure Zig code.
+///
+/// ## Usage
+///
+/// ```zig
+/// const MyContext = struct {
+///     promise: *AsyncPromise(void),
+///     allocator: Allocator,
+/// };
+///
+/// const config = TypedChainConfig(MyContext){
+///     .on_fulfill = myFulfillFn,
+///     .on_reject = myRejectFn,
+///     .context = my_context_ptr,
+///     .allocator = allocator,
+/// };
+///
+/// // Pass to chainIfPromise via toErased()
+/// const result = chainIfPromise(context, value, config.toErased());
+///
+/// // Or use the typed helper directly
+/// const result = chainIfPromiseTyped(MyContext, context, value, config);
+/// ```
+///
+/// ## Type Safety Benefits
+///
+/// - Compile-time verification that callback signatures match context type
+/// - No manual @ptrCast/@alignCast needed in callback implementations
+/// - Clear documentation of expected context type at call site
+pub fn TypedChainConfig(comptime Context: type) type {
+    return struct {
+        /// Typed callback for promise fulfillment.
+        /// The context is guaranteed to be *Context at compile time.
+        on_fulfill: *const fn (ctx: *Context, value: ?*v8.Value) callconv(.c) void,
+
+        /// Typed callback for promise rejection.
+        /// The context is guaranteed to be *Context at compile time.
+        on_reject: *const fn (ctx: *Context, reason: ?*v8.Value) callconv(.c) void,
+
+        /// Typed context pointer - no need for optional since we require a context
+        context: *Context,
+
+        /// Allocator for cleanup (optional, same as ChainConfig)
+        allocator: ?Allocator = null,
+
+        const Self = @This();
+
+        /// Convert to type-erased ChainConfig for C FFI boundary.
+        ///
+        /// This performs the necessary pointer casts to create a ChainConfig
+        /// that can be passed to V8 FFI functions. The callback signatures
+        /// are compatible because the only difference is the context type.
+        pub fn toErased(self: Self) ChainConfig {
+            return .{
+                .on_fulfill = @ptrCast(self.on_fulfill),
+                .on_reject = @ptrCast(self.on_reject),
+                .user_context = self.context,
+                .allocator = self.allocator,
+            };
+        }
+    };
+}
+
+/// Type-safe version of chainIfPromise.
+///
+/// This is a convenience wrapper that accepts TypedChainConfig and handles
+/// the conversion to ChainConfig internally. Prefer this over chainIfPromise
+/// when you have a typed configuration.
+pub fn chainIfPromiseTyped(
+    comptime Context: type,
+    context: *v8.Context,
+    value: *v8.Value,
+    config: TypedChainConfig(Context),
+) ChainResult {
+    return chainIfPromise(context, value, config.toErased());
+}
 
 /// Result of attempting to chain handlers onto a V8 value
 pub const ChainResult = enum {
@@ -139,10 +223,24 @@ pub fn chainIfPromise(
     return .chained;
 }
 
-/// Context structure for bridging V8 Promise to AsyncPromise
-/// This is passed to the V8 promise handlers and freed after settlement
+/// Context structure for bridging V8 Promise to AsyncPromise.
+///
+/// This typed context is passed to the V8 promise handlers and automatically
+/// freed after settlement. It demonstrates the pattern for typed callback contexts:
+/// - Explicit field types (no anyopaque)
+/// - Clear ownership semantics (allocator for cleanup)
+/// - Self-documenting structure
+///
+/// ## Lifecycle
+///
+/// 1. Created by bridgeToAsyncPromise with allocator.create()
+/// 2. Passed to V8 as user_context (type-erased to *anyopaque at FFI boundary)
+/// 3. Recovered in callbacks via @ptrCast/@alignCast
+/// 4. Freed in callback via allocator.destroy()
 pub const PromiseBridgeContext = struct {
+    /// The AsyncPromise to settle when the V8 Promise settles
     promise: *AsyncPromise(void),
+    /// Allocator used to create this context (for cleanup in callbacks)
     allocator: Allocator,
 };
 
@@ -263,6 +361,154 @@ pub fn isPromise(value: *v8.Value) bool {
 }
 
 // ============================================================================
+// Iterator Promise Bridging
+// ============================================================================
+
+/// Context for bridging read result to iterator promise.
+/// This is specifically for ReadableStreamAsyncIterator.next()
+const IteratorBridgeContext = struct {
+    /// User context to pass to callbacks
+    user_context: *anyopaque,
+    /// Allocator for cleanup
+    allocator: Allocator,
+};
+
+/// Callback when read promise fulfills - invokes the iterator's onReadFulfilled
+fn iteratorFulfillCallback(ctx_opt: ?*anyopaque, value_opt: ?*anyopaque) callconv(.c) void {
+    const ctx: *IteratorBridgeContext = @ptrCast(@alignCast(ctx_opt orelse return));
+    defer ctx.allocator.destroy(ctx);
+
+    // Import the async iterator module to call its handler
+    const async_iterator = @import("readable_stream_async_iterator.zig");
+
+    // Extract value and done from the read result
+    // V8 returns a ReadableStreamReadResult object with { value, done } properties
+    var js_value: ?runtime.JSValue = null;
+    var done: bool = false;
+
+    if (value_opt) |v8_result| {
+        // Extract properties from the V8 object
+        const v8_value: *v8.Value = @ptrCast(v8_result);
+        if (extractReadResultProperties(v8_value, &js_value, &done)) {
+            // Successfully extracted
+        } else {
+            // Couldn't extract - treat as close (done=true)
+            done = true;
+        }
+    } else {
+        // No value - treat as close
+        done = true;
+    }
+
+    // Call the iterator's fulfillment handler
+    async_iterator.onReadFulfilled(ctx.user_context, js_value, done);
+}
+
+/// Callback when read promise rejects - invokes the iterator's onReadRejected
+fn iteratorRejectCallback(ctx_opt: ?*anyopaque, reason_opt: ?*anyopaque) callconv(.c) void {
+    const ctx: *IteratorBridgeContext = @ptrCast(@alignCast(ctx_opt orelse return));
+    defer ctx.allocator.destroy(ctx);
+
+    // Import the async iterator module to call its handler
+    const async_iterator = @import("readable_stream_async_iterator.zig");
+
+    // Convert V8 error to JSValue
+    var error_value: ?runtime.JSValue = null;
+    if (reason_opt) |v8_reason| {
+        const v8_value: *v8.Value = @ptrCast(v8_reason);
+        // Try to get string representation of error
+        if (v8.v8_Value_IsString(v8_value)) {
+            // Get the string value
+            const msg = v8.v8_String_Utf8Value(v8_value) orelse "Unknown error";
+            error_value = runtime.JSValue.fromString(msg);
+        } else {
+            error_value = runtime.JSValue.fromString("Promise rejected");
+        }
+    }
+
+    // Call the iterator's rejection handler
+    async_iterator.onReadRejected(ctx.user_context, error_value);
+}
+
+/// Extract { value, done } properties from a V8 ReadableStreamReadResult object
+fn extractReadResultProperties(
+    v8_result: *v8.Value,
+    out_value: *?runtime.JSValue,
+    out_done: *bool,
+) bool {
+    // Check if it's an object
+    if (!v8.v8_Value_IsObject(v8_result)) {
+        return false;
+    }
+
+    // Get isolate and context
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return false;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+
+    const v8_object: *v8.Object = @ptrCast(v8_result);
+
+    // Get 'done' property
+    const done_key = v8.v8_String_NewFromUtf8(isolate, "done") orelse return false;
+    defer v8.v8_String_Dispose(done_key);
+
+    if (v8.v8_Object_Get(v8_object, context, @ptrCast(done_key))) |done_value| {
+        if (v8.v8_Value_IsBoolean(done_value)) {
+            out_done.* = v8.v8_Boolean_Value(done_value);
+        }
+    }
+
+    // Get 'value' property
+    const value_key = v8.v8_String_NewFromUtf8(isolate, "value") orelse return false;
+    defer v8.v8_String_Dispose(value_key);
+
+    if (v8.v8_Object_Get(v8_object, context, @ptrCast(value_key))) |chunk_value| {
+        // Wrap the V8 value in a runtime.JSValue
+        out_value.* = runtime.JSValue.fromHandle(@ptrCast(chunk_value));
+    }
+
+    return true;
+}
+
+/// Chain handlers for iterator promise bridging.
+///
+/// This creates V8 handlers that will call the iterator's fulfillment/rejection
+/// callbacks when the reader's promise settles.
+///
+/// Used by ReadableStreamAsyncIterator.next() to bridge the V8 Promise
+/// (from reader.read()) to the Zig AsyncPromise(IteratorResult).
+pub fn chainToIteratorPromise(
+    v8_promise_ptr: *anyopaque,
+    user_context: *anyopaque,
+) !void {
+    // Get V8 context
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    // Get allocator
+    const allocator = std.heap.c_allocator;
+
+    // Create bridge context
+    const bridge_ctx = try allocator.create(IteratorBridgeContext);
+    bridge_ctx.* = .{
+        .user_context = user_context,
+        .allocator = allocator,
+    };
+    errdefer allocator.destroy(bridge_ctx);
+
+    // Chain handlers onto the V8 promise
+    const result = chainIfPromise(v8_context, @ptrCast(v8_promise_ptr), .{
+        .on_fulfill = iteratorFulfillCallback,
+        .on_reject = iteratorRejectCallback,
+        .user_context = bridge_ctx,
+    });
+
+    if (result != .chained) {
+        allocator.destroy(bridge_ctx);
+        return error.ChainFailed;
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -288,4 +534,117 @@ test "ChainResult enum values" {
     _ = ChainResult.chained;
     _ = ChainResult.chain_failed;
     _ = ChainResult.not_promise;
+}
+
+test "TypedChainConfig - creates type-safe configuration" {
+    // Define a typed context
+    const TestContext = struct {
+        value: u32,
+        fulfilled: bool = false,
+        rejected: bool = false,
+    };
+
+    // Define typed callbacks
+    const callbacks = struct {
+        fn onFulfill(ctx: *TestContext, _: ?*v8.Value) callconv(.c) void {
+            ctx.fulfilled = true;
+        }
+        fn onReject(ctx: *TestContext, _: ?*v8.Value) callconv(.c) void {
+            ctx.rejected = true;
+        }
+    };
+
+    var context = TestContext{ .value = 42 };
+
+    // Create typed configuration
+    const typed_config = TypedChainConfig(TestContext){
+        .on_fulfill = callbacks.onFulfill,
+        .on_reject = callbacks.onReject,
+        .context = &context,
+        .allocator = std.testing.allocator,
+    };
+
+    // Verify context pointer is correct
+    try std.testing.expectEqual(@as(u32, 42), typed_config.context.value);
+    try std.testing.expectEqual(std.testing.allocator, typed_config.allocator.?);
+}
+
+test "TypedChainConfig.toErased - converts to ChainConfig" {
+    const TestContext = struct {
+        data: []const u8,
+    };
+
+    const callbacks = struct {
+        fn onFulfill(_: *TestContext, _: ?*v8.Value) callconv(.c) void {}
+        fn onReject(_: *TestContext, _: ?*v8.Value) callconv(.c) void {}
+    };
+
+    var context = TestContext{ .data = "test" };
+
+    const typed_config = TypedChainConfig(TestContext){
+        .on_fulfill = callbacks.onFulfill,
+        .on_reject = callbacks.onReject,
+        .context = &context,
+        .allocator = std.testing.allocator,
+    };
+
+    // Convert to erased config
+    const erased = typed_config.toErased();
+
+    // Verify the conversion preserves the context pointer
+    try std.testing.expectEqual(@as(?*anyopaque, &context), erased.user_context);
+    try std.testing.expectEqual(std.testing.allocator, erased.allocator.?);
+
+    // Verify the callbacks are not null (they were cast from valid function pointers)
+    const null_fn: ?FulfillCallback = null;
+    try std.testing.expect(@as(?FulfillCallback, erased.on_fulfill) != null_fn);
+    const null_reject_fn: ?RejectCallback = null;
+    try std.testing.expect(@as(?RejectCallback, erased.on_reject) != null_reject_fn);
+}
+
+test "TypedChainConfig - callback invocation preserves type safety" {
+    const Counter = struct {
+        count: usize = 0,
+        last_value_was_null: bool = false,
+    };
+
+    const callbacks = struct {
+        fn onFulfill(ctx: *Counter, value: ?*v8.Value) callconv(.c) void {
+            ctx.count += 1;
+            ctx.last_value_was_null = (value == null);
+        }
+        fn onReject(ctx: *Counter, _: ?*v8.Value) callconv(.c) void {
+            ctx.count += 10;
+        }
+    };
+
+    var counter = Counter{};
+
+    const typed_config = TypedChainConfig(Counter){
+        .on_fulfill = callbacks.onFulfill,
+        .on_reject = callbacks.onReject,
+        .context = &counter,
+    };
+
+    // Directly call the typed callbacks to verify type safety
+    typed_config.on_fulfill(typed_config.context, null);
+    try std.testing.expectEqual(@as(usize, 1), counter.count);
+    try std.testing.expect(counter.last_value_was_null);
+
+    typed_config.on_reject(typed_config.context, null);
+    try std.testing.expectEqual(@as(usize, 11), counter.count);
+}
+
+test "PromiseBridgeContext - structure layout" {
+    const allocator = std.testing.allocator;
+
+    // Create a dummy AsyncPromise for testing structure
+    // Note: We can't fully test without V8, but we can verify the struct layout
+    const bridge_ctx = PromiseBridgeContext{
+        .promise = undefined, // Would be a real AsyncPromise in actual use
+        .allocator = allocator,
+    };
+
+    // Verify allocator is stored correctly
+    try std.testing.expectEqual(allocator, bridge_ctx.allocator);
 }
