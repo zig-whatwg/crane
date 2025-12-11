@@ -180,6 +180,36 @@ pub const JSValue = union(enum) {
         return .{ .handle = .{ .ptr = ptr, .needs_disposal = false, .handle_scope = .local } };
     }
 
+    /// Create a JSValue from a V8 Promise pointer.
+    ///
+    /// Use this when returning promises to JavaScript. The promise pointer
+    /// should be obtained from:
+    /// - `Promise(T).getPromise()` (from src/runtime/engines/v8/promise.zig)
+    /// - `asyncPromiseToV8()` (bridge from Zig AsyncPromise to V8 Promise)
+    /// - `createRejectedV8Promise()` or `createResolvedV8Promise()`
+    ///
+    /// ## IMPORTANT
+    ///
+    /// Do NOT use `fromAnyopaque(@ptrCast(zig_promise))` for Zig AsyncPromise!
+    /// Zig pointers are NOT V8 handles and will cause crashes.
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// // WRONG - Zig pointer is not a V8 handle!
+    /// const zig_promise = try AsyncPromise(void).init(allocator, event_loop);
+    /// return runtime.JSValue.fromAnyopaque(@ptrCast(zig_promise)); // CRASH!
+    ///
+    /// // CORRECT - Use the bridge to create a V8 Promise
+    /// const v8_promise = try asyncPromiseToV8(void, allocator, isolate, context, zig_promise);
+    /// return runtime.JSValue.fromPromise(v8_promise);
+    /// ```
+    pub fn fromPromise(promise_ptr: *anyopaque) JSValue {
+        // V8 Promises are V8 handles and should be treated as global handles
+        // that don't need disposal (V8's GC manages them once returned to JS)
+        return .{ .handle = .{ .ptr = promise_ptr, .needs_disposal = false, .handle_scope = .global } };
+    }
+
     /// Create a JSValue from a Zig runtime instance
     pub fn fromInstance(inst: *anyopaque) JSValue {
         return .{ .instance = inst };
