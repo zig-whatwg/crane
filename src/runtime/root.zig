@@ -186,6 +186,18 @@ pub const TypedTimerCallback = typed_callback.TypedTimerCallback;
 pub const TypedMicrotaskCallback = typed_callback.TypedMicrotaskCallback;
 pub const TypedGCCallback = typed_callback.TypedGCCallback;
 pub const SelfContainedCallback = typed_callback.SelfContainedCallback;
+// Work/completion callbacks for thread pool operations
+pub const TypedWorkCallback = typed_callback.TypedWorkCallback;
+pub const TypedCompletionCallback = typed_callback.TypedCompletionCallback;
+pub const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
+// Promise callback types
+pub const TypedPromiseFulfillCallback = typed_callback.TypedPromiseFulfillCallback;
+pub const TypedPromiseRejectCallback = typed_callback.TypedPromiseRejectCallback;
+pub const SelfContainedPromiseCallback = typed_callback.SelfContainedPromiseCallback;
+// Context callback (for DOM/parser patterns)
+pub const TypedContextCallback = typed_callback.TypedContextCallback;
+// Legacy interop
+pub const AnyopaqueCallback = typed_callback.AnyopaqueCallback;
 
 // Convenience re-exports
 pub const initRuntime = initializeRuntime;

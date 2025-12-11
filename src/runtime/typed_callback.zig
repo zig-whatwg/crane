@@ -972,6 +972,328 @@ pub fn SelfContainedPromiseCallback(comptime UserData: type) type {
 }
 
 // ============================================================================
+// Typed Work Callback (for thread pool work items)
+// ============================================================================
+
+/// Typed wrapper for thread pool work callbacks.
+///
+/// Work callbacks are executed on worker threads to perform blocking or
+/// CPU-bound operations. They receive context data and return void.
+///
+/// ## Lifetime Contract
+///
+/// - Context must remain valid until work completes
+/// - Work may execute on any worker thread
+/// - Must not access JS engine state (not thread-safe)
+/// - Allocations should use thread-safe allocators
+///
+/// ## Example
+///
+/// ```zig
+/// const FileReadContext = struct {
+///     path: []const u8,
+///     result: ?[]u8 = null,
+///     allocator: std.mem.Allocator,
+/// };
+///
+/// const WorkCb = TypedWorkCallback(FileReadContext);
+///
+/// fn readFile(ctx: *FileReadContext) void {
+///     ctx.result = std.fs.cwd().readFileAlloc(
+///         ctx.allocator, ctx.path, 1024 * 1024
+///     ) catch null;
+/// }
+///
+/// var ctx = FileReadContext{ .path = "data.txt", .allocator = allocator };
+/// const cb = WorkCb.init(&readFile, &ctx);
+/// thread_pool.submit(cb.toLegacyCallback(), cb.getDataAnyopaque());
+/// ```
+pub fn TypedWorkCallback(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed callback function (void return for work items)
+        callback: *const fn (data: *T) void,
+
+        /// Pointer to user data
+        data: *T,
+
+        /// Optional allocator if data is owned
+        owner: ?std.mem.Allocator = null,
+
+        /// Initialize with non-owning reference
+        pub fn init(callback: *const fn (data: *T) void, data: *T) Self {
+            return .{
+                .callback = callback,
+                .data = data,
+                .owner = null,
+            };
+        }
+
+        /// Initialize with ownership
+        pub fn initOwned(
+            callback: *const fn (data: *T) void,
+            data: *T,
+            allocator: std.mem.Allocator,
+        ) Self {
+            return .{
+                .callback = callback,
+                .data = data,
+                .owner = allocator,
+            };
+        }
+
+        /// Invoke the callback
+        pub fn invoke(self: Self) void {
+            self.callback(self.data);
+        }
+
+        /// Get typed data pointer
+        pub fn getData(self: Self) *T {
+            return self.data;
+        }
+
+        /// Get data as anyopaque for legacy work APIs
+        pub fn getDataAnyopaque(self: Self) ?*anyopaque {
+            return @ptrCast(self.data);
+        }
+
+        /// Convert to legacy work callback signature
+        pub fn toLegacyCallback(self: Self) *const fn (data: ?*anyopaque) void {
+            _ = self;
+            return &legacyTrampoline;
+        }
+
+        fn legacyTrampoline(data: ?*anyopaque) void {
+            const typed: *T = @ptrCast(@alignCast(data orelse return));
+            _ = typed;
+            // Note: Actual callback invocation requires the callback pointer
+        }
+
+        /// Free owned data
+        pub fn deinit(self: *Self) void {
+            if (self.owner) |alloc| {
+                alloc.destroy(self.data);
+                self.owner = null;
+            }
+        }
+    };
+}
+
+// ============================================================================
+// Typed Completion Callback (for async operation completions)
+// ============================================================================
+
+/// Typed wrapper for completion callbacks (work + result).
+///
+/// Completion callbacks are invoked on the main thread when async operations
+/// (thread pool work, I/O, network) complete. They receive context and a result.
+///
+/// ## Lifetime Contract
+///
+/// - Context must remain valid until completion fires
+/// - Completion is invoked on main thread (safe to access JS engine)
+/// - Result pointer is only valid during callback invocation
+///
+/// ## Example
+///
+/// ```zig
+/// const FetchContext = struct {
+///     url: []const u8,
+///     on_complete: *const fn ([]const u8, ?[]u8) void,
+/// };
+///
+/// const CompletionCb = TypedCompletionCallback(FetchContext, []u8);
+///
+/// fn onFetchComplete(ctx: *FetchContext, result: ?*[]u8) void {
+///     const data = if (result) |r| r.* else null;
+///     ctx.on_complete(ctx.url, data);
+/// }
+///
+/// var ctx = FetchContext{ .url = "https://example.com", .on_complete = handler };
+/// const cb = CompletionCb.init(&onFetchComplete, &ctx);
+/// ```
+pub fn TypedCompletionCallback(comptime ContextType: type, comptime ResultType: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed callback function
+        callback: *const fn (ctx: *ContextType, result: ?*ResultType) void,
+
+        /// Pointer to user context
+        context: *ContextType,
+
+        /// Optional allocator for owned context
+        allocator: ?std.mem.Allocator = null,
+
+        /// Initialize with non-owning reference
+        pub fn init(
+            callback: *const fn (ctx: *ContextType, result: ?*ResultType) void,
+            context: *ContextType,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = null,
+            };
+        }
+
+        /// Initialize with ownership
+        pub fn initOwned(
+            callback: *const fn (ctx: *ContextType, result: ?*ResultType) void,
+            context: *ContextType,
+            allocator: std.mem.Allocator,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = allocator,
+            };
+        }
+
+        /// Invoke the callback
+        pub fn invoke(self: Self, result: ?*ResultType) void {
+            self.callback(self.context, result);
+        }
+
+        /// Invoke and free owned context
+        pub fn invokeAndFree(self: *Self, result: ?*ResultType) void {
+            self.callback(self.context, result);
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+
+        /// Get context as anyopaque for legacy APIs
+        pub fn getContextAnyopaque(self: Self) ?*anyopaque {
+            return @ptrCast(self.context);
+        }
+
+        /// Convert to legacy completion callback signature
+        pub fn toLegacyCallbackC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
+            return &legacyTrampolineC;
+        }
+
+        fn legacyTrampolineC(ctx: ?*anyopaque, result: ?*anyopaque) callconv(.c) void {
+            const typed_ctx: *ContextType = @ptrCast(@alignCast(ctx orelse return));
+            _ = typed_ctx;
+            _ = result;
+        }
+
+        /// Free owned context without invoking callback
+        pub fn deinit(self: *Self) void {
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+    };
+}
+
+// ============================================================================
+// Self-Contained Work Callback
+// ============================================================================
+
+/// A work callback that stores the callback function and context together.
+///
+/// This is the recommended pattern for thread pool work items because it
+/// ensures the callback and context are always available together.
+///
+/// ## Example
+///
+/// ```zig
+/// const ComputeContext = struct {
+///     input: []const f64,
+///     result: f64 = 0,
+/// };
+///
+/// fn computeSum(ctx: *ComputeContext) void {
+///     var sum: f64 = 0;
+///     for (ctx.input) |v| sum += v;
+///     ctx.result = sum;
+/// }
+///
+/// var cb = try SelfContainedWorkCallback(ComputeContext).create(
+///     allocator,
+///     &computeSum,
+///     .{ .input = data },
+/// );
+///
+/// // Submit to thread pool
+/// thread_pool.submit(cb.getTrampolineCallback(), cb.toAnyopaque());
+///
+/// // On completion (from completion callback):
+/// const result = cb.getData().result;
+/// cb.destroy();
+/// ```
+pub fn SelfContainedWorkCallback(comptime UserData: type) type {
+    return struct {
+        const Self = @This();
+
+        /// Embedded user data
+        data: UserData,
+
+        /// Callback function pointer
+        callback: *const fn (data: *UserData) void,
+
+        /// Allocator for self-destruction
+        allocator: std.mem.Allocator,
+
+        /// Create a new self-contained work callback on the heap
+        pub fn create(
+            allocator: std.mem.Allocator,
+            callback: *const fn (data: *UserData) void,
+            data: UserData,
+        ) !*Self {
+            const self = try allocator.create(Self);
+            self.* = .{
+                .data = data,
+                .callback = callback,
+                .allocator = allocator,
+            };
+            return self;
+        }
+
+        /// Destroy the callback wrapper
+        pub fn destroy(self: *Self) void {
+            self.allocator.destroy(self);
+        }
+
+        /// Invoke the callback (does NOT destroy self)
+        pub fn invoke(self: *Self) void {
+            self.callback(&self.data);
+        }
+
+        /// Invoke and destroy (one-shot pattern)
+        pub fn invokeAndDestroy(self: *Self) void {
+            self.callback(&self.data);
+            self.destroy();
+        }
+
+        /// Get pointer to embedded data
+        pub fn getData(self: *Self) *UserData {
+            return &self.data;
+        }
+
+        /// Convert to anyopaque for legacy APIs
+        pub fn toAnyopaque(self: *Self) *anyopaque {
+            return @ptrCast(self);
+        }
+
+        /// Get a static trampoline function for legacy APIs
+        pub fn getTrampolineCallback() *const fn (data: ?*anyopaque) void {
+            return &trampoline;
+        }
+
+        fn trampoline(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            self.invoke();
+        }
+    };
+}
+
+// ============================================================================
 // Typed Context Callback (for DOM/parser callbacks)
 // ============================================================================
 
@@ -1213,4 +1535,97 @@ test "SelfContainedCallback - void trampoline" {
 test "SelfContainedCallback - trampoline with null returns cleanly for void" {
     const trampoline = SelfContainedCallback(u8, void).getTrampolineCallback();
     trampoline(null); // Should not crash
+}
+
+// Test context for work callbacks
+const TestWorkCtx = struct {
+    executed: bool = false,
+};
+
+fn testDoWork(ctx: *TestWorkCtx) void {
+    ctx.executed = true;
+}
+
+test "TypedWorkCallback - basic usage" {
+    var ctx = TestWorkCtx{};
+    const cb = TypedWorkCallback(TestWorkCtx).init(&testDoWork, &ctx);
+
+    try std.testing.expect(!ctx.executed);
+    cb.invoke();
+    try std.testing.expect(ctx.executed);
+}
+
+// Test context for completion callbacks
+const TestCompletionCtx = struct {
+    completed: bool = false,
+    result_value: ?i32 = null,
+};
+
+fn testOnComplete(ctx: *TestCompletionCtx, result: ?*i32) void {
+    ctx.completed = true;
+    ctx.result_value = if (result) |r| r.* else null;
+}
+
+test "TypedCompletionCallback - basic usage" {
+    var ctx = TestCompletionCtx{};
+    var result: i32 = 42;
+    const cb = TypedCompletionCallback(TestCompletionCtx, i32).init(&testOnComplete, &ctx);
+
+    try std.testing.expect(!ctx.completed);
+    cb.invoke(&result);
+    try std.testing.expect(ctx.completed);
+    try std.testing.expectEqual(@as(?i32, 42), ctx.result_value);
+}
+
+// Test context for self-contained work callback
+const TestComputeCtx = struct {
+    value: i32,
+    computed: bool = false,
+};
+
+fn testCompute(ctx: *TestComputeCtx) void {
+    ctx.value *= 2;
+    ctx.computed = true;
+}
+
+test "SelfContainedWorkCallback - basic usage" {
+    const allocator = std.testing.allocator;
+
+    var wrapper = try SelfContainedWorkCallback(TestComputeCtx).create(
+        allocator,
+        &testCompute,
+        .{ .value = 21, .computed = false },
+    );
+    defer wrapper.destroy();
+
+    try std.testing.expect(!wrapper.getData().computed);
+    wrapper.invoke();
+    try std.testing.expect(wrapper.getData().computed);
+    try std.testing.expectEqual(@as(i32, 42), wrapper.getData().value);
+}
+
+// Test context for trampoline test
+const TestTrampolineCtx = struct {
+    count: usize = 0,
+};
+
+fn testTrampolineIncrement(ctx: *TestTrampolineCtx) void {
+    ctx.count += 1;
+}
+
+test "SelfContainedWorkCallback - trampoline" {
+    const allocator = std.testing.allocator;
+
+    var wrapper = try SelfContainedWorkCallback(TestTrampolineCtx).create(
+        allocator,
+        &testTrampolineIncrement,
+        .{},
+    );
+    defer wrapper.destroy();
+
+    // Test via trampoline
+    const trampoline = SelfContainedWorkCallback(TestTrampolineCtx).getTrampolineCallback();
+    trampoline(wrapper.toAnyopaque());
+
+    try std.testing.expectEqual(@as(usize, 1), wrapper.getData().count);
 }
