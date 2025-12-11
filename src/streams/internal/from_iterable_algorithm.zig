@@ -76,9 +76,9 @@ fn pullInvoke(
     // Step 4.1: Let nextResult = IteratorNext(iteratorRecord)
     const next_result = iter_record.next() catch |err| {
         // Step 4.2: If nextResult is abrupt, error the controller
-        const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
+        // Create a proper JS error value from the Zig error name
+        const error_value = runtime.JSValue.fromStringRef(@errorName(err));
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         promise.fulfill({});
         return promise;
     };
@@ -88,10 +88,9 @@ fn pullInvoke(
 
     // Step 4.4.1: If iterResult is not Object, throw TypeError
     if (!v8.v8_Value_IsObject(next_result)) {
-        const err = error.TypeError;
-        const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
+        // Create a proper JS TypeError from the error message
+        const error_value = runtime.JSValue.fromStringRef("TypeError: Iterator result is not an object");
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         promise.fulfill({});
         return promise;
     }
@@ -102,8 +101,9 @@ fn pullInvoke(
         iter_record.context,
         iter_record.isolate,
     ) catch |err| {
-        const err_ptr: *const anyopaque = @ptrCast(&err);
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(*const anyopaque).passed(err_ptr)) catch {};
+        // Create a proper JS error value from the Zig error name
+        const error_value = runtime.JSValue.fromStringRef(@errorName(err));
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         promise.fulfill({});
         return promise;
     };
@@ -111,9 +111,9 @@ fn pullInvoke(
     if (done) {
         // Step 4.4.3: If done is true, close the stream
         ReadableStreamDefaultController.call_close(controller) catch |err| {
-            const err_ptr: *const anyopaque = @ptrCast(&err);
-            // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
-            ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
+            // Create a proper JS error value from the Zig error name
+            const error_value = runtime.JSValue.fromStringRef(@errorName(err));
+            ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         };
         promise.fulfill({});
         return promise;
@@ -125,9 +125,9 @@ fn pullInvoke(
         iter_record.context,
         iter_record.isolate,
     ) catch |err| {
-        const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
+        // Create a proper JS error value from the Zig error name
+        const error_value = runtime.JSValue.fromStringRef(@errorName(err));
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         promise.fulfill({});
         return promise;
     };
@@ -138,9 +138,9 @@ fn pullInvoke(
     const chunk_js_value = runtime.JSValue.fromHandle(@ptrCast(iter_value));
     ReadableStreamDefaultController.call_enqueue(controller, webidl.Opt(runtime.JSValue).passed(chunk_js_value)) catch |err| {
         v8.v8_Value_Dispose(iter_value);
-        const err_ptr: *const anyopaque = @ptrCast(&err);
-        // Wrap in Opt since call_error expects webidl.Opt(runtime.JSValue)
-        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromAnyopaque(err_ptr))) catch {};
+        // Create a proper JS error value from the Zig error name
+        const error_value = runtime.JSValue.fromStringRef(@errorName(err));
+        ReadableStreamDefaultController.call_error(controller, webidl.Opt(runtime.JSValue).passed(error_value)) catch {};
         promise.fulfill({});
         return promise;
     };
