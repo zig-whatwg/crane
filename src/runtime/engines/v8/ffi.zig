@@ -376,6 +376,12 @@ pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
+
+// Local-handle versions (take raw internal pointer from Local<Value>)
+pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_IsArray_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_IsNullOrUndefined_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsPromise(value: *Value) bool;
 pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
 pub extern fn v8_Value_NumberValue(value: *Value, context: *Context) f64;

@@ -932,6 +932,14 @@ bool v8_Value_IsBigInt(Global<Value>* value) {
     return val->IsBigInt();
 }
 
+// NOTE: These v8_Value_Is* functions now accept EITHER a Global<Value>* OR a raw V8 tagged pointer
+// (from a Local handle's internal slot). We use a heuristic to detect which:
+// - Global<Value>* pointers are heap-allocated and have specific alignment
+// - Raw V8 tagged pointers have the low bit set for SMIs or point to V8 heap objects
+//
+// Actually, this approach is fragile. Let's instead create separate functions for Local vs Global.
+// For now, we'll add new _Local variants that take void* representing the raw tagged pointer.
+
 bool v8_Value_IsObject(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -939,10 +947,26 @@ bool v8_Value_IsObject(Global<Value>* value) {
     return val->IsObject();
 }
 
+// Version for Local handle internal pointers
+bool v8_Value_IsObject_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    // Reconstruct Local from internal pointer
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    return val->IsObject();
+}
+
 bool v8_Value_IsFunction(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Value> val = value->Get(isolate);
+    return !val.IsEmpty() && val->IsFunction();
+}
+
+// Version for Local handle internal pointers
+bool v8_Value_IsFunction_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    // Reconstruct Local from internal pointer
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
     return val->IsFunction();
 }
 
@@ -950,6 +974,13 @@ bool v8_Value_IsArray(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Value> val = value->Get(isolate);
+    return val->IsArray();
+}
+
+// Version for Local handle internal pointers
+bool v8_Value_IsArray_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
     return val->IsArray();
 }
 
@@ -964,6 +995,13 @@ bool v8_Value_IsNullOrUndefined(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Value> val = value->Get(isolate);
+    return val->IsNullOrUndefined();
+}
+
+// Version for Local handle internal pointers
+bool v8_Value_IsNullOrUndefined_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
     return val->IsNullOrUndefined();
 }
 
