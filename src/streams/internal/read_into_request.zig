@@ -179,7 +179,7 @@ pub fn TypedReadIntoRequest(comptime Context: type) type {
 
 /// Type-erased read-into request for runtime polymorphism
 ///
-/// A read-into request is a struct with three items:
+/// KEEP: anyopaque required - A read-into request is a struct with three items:
 /// - chunk steps: algorithm accepting an ArrayBufferView
 /// - close steps: algorithm accepting no parameters
 /// - error steps: algorithm accepting a JavaScript value
@@ -191,16 +191,16 @@ pub fn TypedReadIntoRequest(comptime Context: type) type {
 pub const ReadIntoRequest = struct {
     allocator: std.mem.Allocator,
 
-    /// Type-erased context pointer
+    /// KEEP: anyopaque required - Type-erased context pointer for VTable pattern
     context: *anyopaque,
 
-    /// VTable with type-erased callback function pointers
+    /// KEEP: anyopaque required - VTable with type-erased callback function pointers
     vtable: *const VTable,
 
     /// Whether the vtable was heap-allocated (for initLegacy)
     vtable_allocated: bool = false,
 
-    /// VTable struct for callback dispatch
+    /// KEEP: anyopaque required - VTable struct for callback dispatch
     pub const VTable = struct {
         chunk_steps: *const fn (*anyopaque, ArrayBufferView) void,
         close_steps: *const fn (*anyopaque) void,

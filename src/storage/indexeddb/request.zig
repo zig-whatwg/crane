@@ -34,6 +34,7 @@
 const std = @import("std");
 const IDBError = @import("errors.zig").IDBError;
 const IDBKey = @import("key.zig").IDBKey;
+const IDBTransaction = @import("transaction.zig").IDBTransaction;
 
 // Forward declarations for types from other modules
 pub const IDBDatabase = @import("database.zig").IDBDatabase;
@@ -103,7 +104,8 @@ pub const IDBRequest = struct {
     source_type: ?RequestSourceType,
 
     /// The transaction this request belongs to (null for open requests)
-    transaction: ?*anyopaque, // *IDBTransaction
+    /// REFACTORED: Was `?*anyopaque` - now properly typed for IDBTransaction
+    transaction: ?*IDBTransaction,
 
     /// Done flag (internal)
     done_flag: bool,

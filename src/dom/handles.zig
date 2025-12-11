@@ -1,8 +1,12 @@
 //! DOM Handle Types
 //!
+//! KEEP: Opaque handle pattern - DO NOT refactor to anyopaque or runtime.Instance
+//!
 //! This module provides opaque handle types for breaking circular imports
 //! in the DOM layer. These handles allow type-safe references between
 //! DOM types that would otherwise create circular dependencies.
+//!
+//! See docs/patterns/opaque-handles.md for full documentation of this pattern.
 //!
 //! ## Problem Solved
 //!

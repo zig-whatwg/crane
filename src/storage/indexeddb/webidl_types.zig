@@ -198,7 +198,9 @@ pub const IDBIndexParameters = struct {
 /// IDBGetAllOptions dictionary
 /// https://w3c.github.io/IndexedDB/#dictdef-idbgetalloptions
 pub const IDBGetAllOptions = struct {
-    query: ?*anyopaque = null, // any - IDBKeyRange or key
+    /// KEEP: anyopaque represents WebIDL 'any' type per spec - can be
+    /// IDBKeyRange or any key value. Type erasure is spec-compliant here.
+    query: ?*anyopaque = null,
     count: ?u32 = null,
     direction: IDBCursorDirection = .next,
 };
@@ -229,6 +231,8 @@ pub const WebIDLIDBRequest = struct {
 
     // -- Attributes --
 
+    /// KEEP: Returns anyopaque because WebIDL 'any' type per spec - result
+    /// can be database, cursor, key, value, etc. Type erasure is spec-compliant.
     pub fn result(self: Self) !?*anyopaque {
         const res = try self.impl_ptr.getResult();
         // Convert to any - in real impl would convert to V8 value
@@ -240,6 +244,8 @@ pub const WebIDLIDBRequest = struct {
         return try self.impl_ptr.getError();
     }
 
+    /// KEEP: Returns anyopaque because source can be IDBObjectStore, IDBIndex,
+    /// or IDBCursor per WebIDL spec. Type erasure is spec-compliant.
     pub fn source(self: Self) ?*anyopaque {
         // Return source object (store, index, or cursor)
         _ = self;

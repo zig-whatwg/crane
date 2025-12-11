@@ -50,20 +50,26 @@ const std = @import("std");
 
 /// Microtask - High-priority work (promise reactions, etc.)
 ///
+/// KEEP: anyopaque required - Microtask callbacks need type erasure because the
+/// context type varies (promise reactions, mutation observers, etc.)
+///
 /// Microtasks are queued by promise resolution/rejection and must run
 /// before the next task. All pending microtasks are drained before
 /// processing the next task.
 ///
 /// Spec: https://html.spec.whatwg.org/#microtask
 pub const Microtask = struct {
-    /// Callback to execute
+    /// KEEP: anyopaque required - Callback with type-erased context
     callback: *const fn (context: ?*anyopaque) void,
 
-    /// Optional context pointer passed to callback
+    /// KEEP: anyopaque required - Type-erased context for callback
     context: ?*anyopaque,
 };
 
 /// Task - Normal-priority work (I/O callbacks, timers, etc.)
+///
+/// KEEP: anyopaque required - Task callbacks need type erasure because the
+/// context type varies (I/O completions, timers, etc.)
 ///
 /// Tasks represent normal asynchronous operations like I/O completion,
 /// timer callbacks, etc. Only one task is processed per event loop iteration,
@@ -71,35 +77,34 @@ pub const Microtask = struct {
 ///
 /// Spec: https://html.spec.whatwg.org/#concept-task
 pub const Task = struct {
-    /// Callback to execute
+    /// KEEP: anyopaque required - Callback with type-erased context
     callback: *const fn (context: ?*anyopaque) void,
 
-    /// Optional context pointer passed to callback
+    /// KEEP: anyopaque required - Type-erased context for callback
     context: ?*anyopaque,
 };
 
 /// Event Loop Interface
 ///
-/// This interface abstracts the event loop mechanism, allowing different
-/// implementations (test loops, platform loops, etc.) to be used with
-/// the Streams library.
+/// KEEP: anyopaque required - This interface uses vtable pattern for polymorphism.
+/// Different event loop implementations (test loops, platform loops, V8 integration)
+/// can be used without generics or compile-time knowledge of the concrete type.
 ///
 /// ## Vtable Pattern
 ///
 /// This uses a vtable (virtual table) pattern for polymorphism:
-/// - `ptr`: Pointer to the concrete implementation
+/// - `ptr`: Pointer to the concrete implementation (type-erased)
 /// - `vtable`: Pointer to function table for the implementation
-///
-/// This allows different event loop implementations without generics or
-/// compile-time knowledge of the concrete type.
 pub const EventLoop = struct {
-    /// Opaque pointer to concrete implementation
+    /// KEEP: anyopaque required - Opaque pointer to concrete implementation
+    /// (TestEventLoop, V8EventLoop, etc.)
     ptr: *anyopaque,
 
     /// Virtual function table
     vtable: *const VTable,
 
-    /// Virtual function table for EventLoop implementations
+    /// KEEP: anyopaque required - Virtual function table for EventLoop implementations
+    /// All function signatures use anyopaque for the self pointer
     pub const VTable = struct {
         /// Queue a microtask for execution
         ///

@@ -80,6 +80,7 @@ pub const CookieChangeEvent = struct {
     composed: bool,
 
     /// Event target (set during dispatch)
+    /// TODO: REFACTOR to *runtime.Instance when CookieChangeEvent is migrated to WebIDL codegen
     target: ?*anyopaque,
 
     /// Whether propagation should stop

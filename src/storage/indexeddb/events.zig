@@ -52,9 +52,13 @@ pub const IDBEvent = struct {
     event_phase: EventPhase,
 
     /// Target
+    /// KEEP: anyopaque is intentional - DOM events can target multiple types
+    /// (IDBRequest, IDBTransaction, IDBDatabase). Per DOM Events spec, target
+    /// is polymorphic and type erasure is appropriate here.
     target: ?*anyopaque,
 
     /// Current target
+    /// KEEP: anyopaque is intentional - same polymorphism as target field
     current_target: ?*anyopaque,
 
     /// Whether propagation was stopped
@@ -200,15 +204,14 @@ pub fn fireSuccessEvent(request: *IDBRequest) EventDispatchResult {
     // Step 2-3: Type, bubbles, cancelable already set by IDBEvent.success()
 
     // Step 4: Get transaction
-    const txn_ptr = request.transaction orelse {
+    // REFACTORED: request.transaction is now properly typed as ?*IDBTransaction
+    const txn = request.transaction orelse {
         // No transaction - just call handler and return
         if (request.onsuccess) |handler| {
             handler(request);
         }
         return .{ .listeners_threw = false, .canceled = false };
     };
-
-    const txn: *IDBTransaction = @ptrCast(@alignCast(txn_ptr));
 
     // Step 5: If transaction inactive, set to active
     var was_inactive = false;
@@ -280,15 +283,14 @@ pub fn fireErrorEvent(request: *IDBRequest) EventDispatchResult {
     // Step 2-3: Type, bubbles, cancelable already set
 
     // Step 4: Get transaction
-    const txn_ptr = request.transaction orelse {
+    // REFACTORED: request.transaction is now properly typed as ?*IDBTransaction
+    const txn = request.transaction orelse {
         // No transaction - just call handler
         if (request.onerror) |handler| {
             handler(request);
         }
         return .{ .listeners_threw = false, .canceled = false };
     };
-
-    const txn: *IDBTransaction = @ptrCast(@alignCast(txn_ptr));
 
     // Step 5: If transaction inactive, set to active
     if (txn.state == .inactive) {

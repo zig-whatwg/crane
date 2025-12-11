@@ -27,7 +27,11 @@ const MessagePort = message_port.MessagePort;
 pub const CrossRealmReadableState = struct {
     allocator: Allocator,
     port: *MessagePort,
-    /// Opaque pointer to ReadableStreamDefaultController (managed by caller)
+    /// KEEP: anyopaque required - Controller type is determined at runtime
+    /// (could be ReadableStreamDefaultController or ReadableByteStreamController)
+    /// and is managed by the caller layer. Using anyopaque avoids circular dependencies
+    /// while allowing the cross-realm module to remain controller-agnostic.
+    /// WebIDL: ReadableStreamController (union type)
     controller: ?*anyopaque,
     /// Flag indicating if stream has been closed
     closed: bool,
@@ -134,7 +138,10 @@ pub const CrossRealmReadableState = struct {
 pub const CrossRealmWritableState = struct {
     allocator: Allocator,
     port: *MessagePort,
-    /// Opaque pointer to WritableStreamDefaultController (managed by caller)
+    /// KEEP: anyopaque required - Controller is WritableStreamDefaultController
+    /// but is managed by the caller layer. Using anyopaque avoids circular dependencies
+    /// and keeps the cross-realm module controller-agnostic.
+    /// WebIDL: WritableStreamDefaultController
     controller: ?*anyopaque,
     /// Backpressure promise - resolved when "pull" message received
     backpressure_promise: ?*common.Promise(void),

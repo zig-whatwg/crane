@@ -169,7 +169,8 @@ pub fn TypedManagedHandle(comptime HandleType: type) type {
 
 /// ManagedHandle - Reference-counted wrapper for JS engine values (type-erased).
 ///
-/// This is the legacy type-erased version that uses `*anyopaque`.
+/// KEEP: anyopaque required - This is the legacy type-erased version for runtime
+/// polymorphism where the handle type is not known at compile time.
 /// For new code, prefer TypedManagedHandle(T) for type safety.
 ///
 /// This provides automatic lifecycle management for JavaScript engine handles
@@ -694,15 +695,18 @@ pub fn TypedAlgorithmWithArg(comptime Context: type, comptime Arg: type, comptim
 
 /// Type-erased algorithm for runtime polymorphism
 ///
-/// Use this when you need to store algorithms with different context types
-/// in the same data structure (e.g., a list of callbacks).
+/// KEEP: anyopaque required - Use this when you need to store algorithms with
+/// different context types in the same data structure (e.g., a list of callbacks).
 ///
 /// The context type is erased to *anyopaque, but the call/deinit interface
-/// remains consistent.
+/// remains consistent. This is the VTable pattern for type erasure.
 pub fn ErasedAlgorithm(comptime Result: type) type {
     return struct {
+        /// KEEP: anyopaque required - type-erased context pointer for VTable pattern
         ptr: *anyopaque,
+        /// KEEP: anyopaque required - VTable callback signature
         call_fn: *const fn (*anyopaque) Result,
+        /// KEEP: anyopaque required - VTable cleanup signature
         deinit_fn: ?*const fn (*anyopaque) void,
 
         const Self = @This();
@@ -733,10 +737,15 @@ pub fn ErasedAlgorithm(comptime Result: type) type {
 }
 
 /// Type-erased algorithm with argument for runtime polymorphism
+///
+/// KEEP: anyopaque required - VTable pattern for type erasure
 pub fn ErasedAlgorithmWithArg(comptime Arg: type, comptime Result: type) type {
     return struct {
+        /// KEEP: anyopaque required - type-erased context pointer
         ptr: *anyopaque,
+        /// KEEP: anyopaque required - VTable callback signature
         call_fn: *const fn (*anyopaque, Arg) Result,
+        /// KEEP: anyopaque required - VTable cleanup signature
         deinit_fn: ?*const fn (*anyopaque) void,
 
         const Self = @This();
@@ -813,12 +822,16 @@ pub fn TypedReadCallbacks(comptime Context: type) type {
 
 /// Type-erased read callbacks for runtime polymorphism
 ///
-/// Use this when storing callbacks of different context types together,
-/// such as in a read request queue.
+/// KEEP: anyopaque required - Use this when storing callbacks of different context
+/// types together, such as in a read request queue. This is the VTable pattern.
 pub const ErasedReadCallbacks = struct {
+    /// KEEP: anyopaque required - type-erased callback context
     context: *anyopaque,
+    /// KEEP: anyopaque required - VTable callback signature
     chunk_steps: *const fn (*anyopaque, JSValue) void,
+    /// KEEP: anyopaque required - VTable callback signature
     close_steps: *const fn (*anyopaque) void,
+    /// KEEP: anyopaque required - VTable callback signature
     error_steps: *const fn (*anyopaque, JSValue) void,
 
     /// Execute chunk steps
@@ -847,17 +860,20 @@ pub const ErasedReadCallbacks = struct {
 
 /// Algorithm function types for stream operations
 ///
-/// These use a VTable pattern (like std.mem.Allocator) to support context passing.
-/// This enables stateful algorithms (e.g., TeeState coordination, TransformStream transforms)
-/// while maintaining runtime polymorphism.
+/// KEEP: anyopaque required - These use a VTable pattern (like std.mem.Allocator)
+/// to support context passing. This enables stateful algorithms (e.g., TeeState
+/// coordination, TransformStream transforms) while maintaining runtime polymorphism.
+/// The context type varies based on usage (JS callbacks, native closures, etc.)
 ///
 /// Design: See ALGORITHM_CONTEXT_DESIGN.md
 /// Start algorithm - called once when stream is initialized
 /// Spec: Abstract operation passed to SetUpReadableStreamDefaultController/SetUpReadableByteStreamController
 pub const StartAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures for type erasure
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -876,10 +892,13 @@ pub const StartAlgorithm = struct {
 
 /// Pull algorithm - called when controller needs data
 /// Spec: Abstract operation passed to SetUpReadableStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const PullAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -900,10 +919,13 @@ pub const PullAlgorithm = struct {
 
 /// Cancel algorithm - called when stream is canceled
 /// Spec: Abstract operation passed to SetUpReadableStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const CancelAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, reason: ?JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -922,10 +944,13 @@ pub const CancelAlgorithm = struct {
 
 /// Size algorithm - calculates chunk size
 /// Spec: Abstract operation for queuing strategies
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const SizeAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, chunk: JSValue) f64,
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -944,10 +969,13 @@ pub const SizeAlgorithm = struct {
 
 /// Write algorithm - writes a chunk
 /// Spec: Abstract operation passed to SetUpWritableStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const WriteAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, chunk: JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -966,10 +994,13 @@ pub const WriteAlgorithm = struct {
 
 /// Close algorithm - closes the stream
 /// Spec: Abstract operation passed to SetUpWritableStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const CloseAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -988,10 +1019,13 @@ pub const CloseAlgorithm = struct {
 
 /// Abort algorithm - aborts the stream
 /// Spec: Abstract operation passed to SetUpWritableStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const AbortAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, reason: ?JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -1010,10 +1044,13 @@ pub const AbortAlgorithm = struct {
 
 /// Flush algorithm - flushes the transform stream
 /// Spec: Abstract operation passed to SetUpTransformStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const FlushAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -1032,10 +1069,13 @@ pub const FlushAlgorithm = struct {
 
 /// Transform algorithm - transforms a chunk
 /// Spec: Abstract operation passed to SetUpTransformStreamDefaultController
+/// KEEP: anyopaque required - VTable pattern for polymorphic algorithm contexts
 pub const TransformAlgorithm = struct {
+    /// KEEP: anyopaque required - VTable pattern
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, chunk: JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
@@ -1062,11 +1102,15 @@ pub const IteratorResult = struct {
 /// Async Iterator protocol interface
 /// Spec: ECMAScript Symbol.asyncIterator protocol
 ///
-/// This represents the minimal interface for async iteration needed for ReadableStream.from()
+/// KEEP: anyopaque required - This represents the minimal interface for async
+/// iteration needed for ReadableStream.from(). Uses VTable pattern because the
+/// iterator implementation varies (JS iterator, native iterator, etc.)
 pub const AsyncIterator = struct {
+    /// KEEP: anyopaque required - VTable pattern for polymorphic iterators
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// KEEP: anyopaque required - VTable function signatures
     pub const VTable = struct {
         /// next() method - returns a promise of IteratorResult
         /// Spec: IteratorNext abstract operation

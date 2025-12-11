@@ -11,6 +11,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 const common = @import("common");
 const dom = @import("dom");
+const runtime = @import("runtime");
 
 // ============================================================================
 // UnderlyingSource Dictionary (specs/streams.idl lines 47-53)
@@ -185,12 +186,18 @@ pub const StreamPipeOptions = struct {
 ///   required WritableStream writable;
 /// };
 /// ```
+///
+/// Note: Uses *runtime.Instance for the stream types which matches WebIDL's
+/// interface type semantics. Runtime.Instance is the spec-compliant representation
+/// of WebIDL interface instances in this codebase.
 pub const ReadableWritablePair = struct {
     /// The readable side of the pair
-    readable: *anyopaque, // *ReadableStream (avoid circular dependency)
+    /// WebIDL: required ReadableStream readable
+    readable: *runtime.Instance,
 
     /// The writable side of the pair
-    writable: *anyopaque, // *WritableStream (avoid circular dependency)
+    /// WebIDL: required WritableStream writable
+    writable: *runtime.Instance,
 };
 
 // ============================================================================

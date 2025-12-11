@@ -343,6 +343,12 @@ pub const MemoryBackend = struct {
     // ========================================================================
     // VTable Implementation
     // ========================================================================
+    //
+    // KEEP: All functions below use `*anyopaque` for ctx parameter because they
+    // implement the StorageBackend.VTable interface. This is the standard Zig
+    // pattern for runtime polymorphism - see backend.zig for documentation.
+    // The `ctx` is cast back to `*Self` at the start of each function.
+    // ========================================================================
 
     const vtable = StorageBackend.VTable{
         .open = open,

@@ -263,12 +263,14 @@ pub fn createTypedAlgorithm(
 
 /// Algorithm - Represents a stream operation (start/pull/cancel/etc.)
 ///
-/// Design: Uses vtable pattern for type erasure + context storage
-/// Supports both JavaScript callbacks and native closures
+/// KEEP: anyopaque required - Design uses vtable pattern for type erasure + context storage.
+/// Supports both JavaScript callbacks and native closures. The context type varies
+/// based on usage (GlobalCallbackContext for JS, ZigCallbackContext for native, etc.)
 pub const Algorithm = struct {
-    /// Type-erased context pointer
-    /// - For JS callbacks: NULL (callback is the context)
-    /// - For native closures: Pointer to captured state struct
+    /// KEEP: anyopaque required - Type-erased context pointer for VTable pattern
+    /// - For JS callbacks: GlobalCallbackContext (stores V8 Global handle + isolate)
+    /// - For native closures: ZigCallbackContext (stores function pointers + user context)
+    /// - For noop: NULL
     context: ?*anyopaque,
 
     /// Vtable for algorithm operations
@@ -277,9 +279,10 @@ pub const Algorithm = struct {
     /// Allocator for cleanup
     allocator: Allocator,
 
+    /// KEEP: anyopaque required - VTable function signatures for type erasure
     pub const VTable = struct {
         /// Invoke the algorithm
-        /// - controller: ReadableStreamDefaultController instance
+        /// - controller: ReadableStreamDefaultController instance (WebIDL interface)
         /// - context: Type-erased algorithm context
         /// Returns promise that resolves on completion
         invoke: *const fn (
@@ -288,6 +291,7 @@ pub const Algorithm = struct {
         ) anyerror!*AsyncPromise(void),
 
         /// Invoke with argument (for cancel algorithm with reason)
+        /// KEEP: arg is anyopaque because it can be JSValue, cancel reason, etc.
         invoke_with_arg: *const fn (
             controller: *runtime.Instance,
             context: ?*anyopaque,

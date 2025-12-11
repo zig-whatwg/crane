@@ -22,12 +22,19 @@ const V8Value = v8_mod.Value;
 
 /// V8 Resource Container
 /// Stores V8 Global<> handles and ensures proper disposal
+///
+/// KEEP: anyopaque required - V8 handles (Global<Object>, Global<Function>, etc.)
+/// need type erasure to be stored in a single list. The dispose_fn provides
+/// proper type-specific cleanup.
 pub const V8Resources = struct {
     resources: infra.List(Resource),
     allocator: Allocator,
 
     const Resource = struct {
-        handle: *anyopaque, // Global<T>* from V8
+        /// KEEP: anyopaque required - V8 Global<T>* handles have different types
+        /// (Object, Function, Value) but need to be stored together
+        handle: *anyopaque,
+        /// KEEP: anyopaque required - Type-erased disposal function signature
         dispose_fn: *const fn (*anyopaque) void,
     };
 

@@ -1,5 +1,9 @@
 //! Shadow DOM Algorithms (WHATWG DOM Standard §4.8.2)
 //!
+//! KEEP: Uses *anyopaque for polymorphic node handling in slot algorithms.
+//! These functions must work with Element, Text, and ShadowRoot nodes via
+//! duck-typed helpers (slot_helpers.zig) without knowing concrete types.
+//!
 //! Spec: https://dom.spec.whatwg.org/#shadow-trees
 //!
 //! This module implements the shadow DOM algorithms:

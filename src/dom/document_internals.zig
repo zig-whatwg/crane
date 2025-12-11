@@ -467,12 +467,15 @@ pub fn setScriptingEnabled(instance: *runtime.Instance, enabled: bool) void {
 
 /// Get a module from the module map by URL.
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-map
+/// KEEP: Module map stores JavaScript modules as *anyopaque because the
+/// actual module type is engine-specific (V8 Module, JSC Module, etc.)
 pub fn getModule(instance: *runtime.Instance, url: []const u8) ?*anyopaque {
     const internal = getInternal(instance) orelse return null;
     return internal.module_map.get(url);
 }
 
 /// Store a module in the module map.
+/// KEEP: Module is *anyopaque because it's an engine-specific JS module type
 pub fn setModule(instance: *runtime.Instance, url: []const u8, module: *anyopaque) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
@@ -496,6 +499,7 @@ pub fn hasModule(instance: *runtime.Instance, url: []const u8) bool {
 }
 
 /// Set the module disposal function for this document.
+/// KEEP: Dispose function uses *anyopaque to match engine-specific module types
 pub fn setModuleDisposeFunction(instance: *runtime.Instance, dispose_fn: ?*const fn (*anyopaque) void) void {
     if (getInternal(instance)) |internal| {
         internal.dispose_module_fn = dispose_fn;
@@ -795,6 +799,7 @@ pub fn getBlockingStylesheetCount(instance: *runtime.Instance) usize {
 }
 
 /// Set callback for when all blocking stylesheets are resolved.
+/// KEEP: context is *anyopaque for user-provided callback context (standard callback pattern)
 pub fn setStylesheetBlockingResolvedCallback(
     instance: *runtime.Instance,
     callback: StylesheetBlockingTracker.BlockingResolvedCallback,

@@ -93,6 +93,9 @@ pub const AsyncOperation = struct {
     execute: *const fn (*Self) void,
 
     /// Optional context for the callback
+    /// KEEP: anyopaque is intentional - async operations can carry arbitrary
+    /// user-defined context data. This is a generic callback pattern where
+    /// the executor function knows the concrete type via comptime dispatch.
     context: ?*anyopaque,
 
     /// Priority (lower = higher priority)
@@ -270,6 +273,9 @@ pub fn rejectRequest(request: *IDBRequest, err: IDBError) void {
 }
 
 /// Create operation executor for get
+/// KEEP: anyopaque in get_fn parameter is intentional - this is a generic
+/// executor factory that creates type-erased operation handlers. The actual
+/// type is known at comptime when the function is instantiated.
 pub fn createGetExecutor(comptime get_fn: fn (*anyopaque) IDBError!@import("request.zig").RequestResult) *const fn (*AsyncOperation) void {
     return struct {
         fn execute(op: *AsyncOperation) void {
@@ -299,6 +305,8 @@ pub const DatabaseTask = struct {
     callback: *const fn (*Self) void,
 
     /// Context
+    /// KEEP: anyopaque is intentional - database tasks can carry arbitrary
+    /// user-defined context data for async task processing.
     context: ?*anyopaque,
 
     /// Associated database (if any)

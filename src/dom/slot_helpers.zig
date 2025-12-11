@@ -1,5 +1,10 @@
 //! Slot Algorithm Helper Utilities
 //!
+//! KEEP: Uses *anyopaque for duck-typed polymorphism across node types.
+//! These utilities enable slot algorithms to work with Element, Text, and
+//! ShadowRoot without import cycles. The duck typing pattern uses @hasField
+//! to access common fields across different node types.
+//!
 //! This module provides type-safe utilities for slot algorithms to work with
 //! polymorphic node types. Uses duck typing to work with both interface and
 //! implementation types.

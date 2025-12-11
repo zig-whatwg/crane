@@ -243,6 +243,9 @@ pub const IDBTask = struct {
     /// Request ID (if applicable)
     request_id: ?u64,
     /// Additional data (event-specific)
+    /// KEEP: anyopaque is intentional - task data is polymorphic and varies
+    /// by task_type (e.g., request results, error info, etc.). Type erasure
+    /// allows the task queue to handle different task types uniformly.
     data: ?*anyopaque,
     /// Priority (lower = higher priority)
     priority: u8,

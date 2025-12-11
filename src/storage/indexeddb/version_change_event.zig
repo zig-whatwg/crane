@@ -63,9 +63,13 @@ pub const IDBVersionChangeEvent = struct {
     event_phase: EventPhase,
 
     /// Target
+    /// KEEP: anyopaque is intentional - DOM events can target multiple types
+    /// (IDBRequest, IDBOpenDBRequest, IDBDatabase). Per DOM Events spec, target
+    /// is polymorphic and type erasure is appropriate here.
     target: ?*anyopaque,
 
     /// Current target
+    /// KEEP: anyopaque is intentional - same polymorphism as target field
     current_target: ?*anyopaque,
 
     /// Whether propagation was stopped

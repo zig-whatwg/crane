@@ -1,5 +1,9 @@
 //! Registered Observer
 //!
+//! KEEP: Uses typed handles from handles.zig to avoid circular imports.
+//! The anyopaque conversions are legacy interop functions that convert
+//! between typed handles and anyopaque for code that hasn't migrated yet.
+//!
 //! Represents a registered mutation observer.
 //! Spec: https://dom.spec.whatwg.org/#registered-observer
 

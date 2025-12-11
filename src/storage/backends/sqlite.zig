@@ -549,6 +549,20 @@ pub const SQLiteBackend = struct {
         };
     }
 
+    // ========================================================================
+    // VTable Implementation
+    // ========================================================================
+    //
+    // KEEP: All vtable functions use `*anyopaque` for ctx parameter because they
+    // implement the StorageBackend.VTable interface. This is the standard Zig
+    // pattern for runtime polymorphism - see backend.zig for documentation.
+    // The `ctx` is cast back to `*Self` at the start of each function.
+    // ========================================================================
+    //
+    // KEEP: FFI extern functions above (sqlite3_*) use anyopaque for C callback
+    // signatures - required for SQLite C API interoperability.
+    // ========================================================================
+
     const vtable = StorageBackend.VTable{
         .open = open,
         .close = close,

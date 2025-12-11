@@ -1,5 +1,9 @@
 //! AttrWithBase - Temporary Attr implementation with NodeBase
 //!
+//! KEEP: Uses typed handles from handles.zig for owner_element reference.
+//! The anyopaque conversion functions (getOwnerElementPtr, setOwnerElementFromPtr)
+//! are legacy interop for code that hasn't migrated to typed handles yet.
+//!
 //! This is a temporary type that demonstrates the NodeBase pattern for Attr nodes.
 //! Attributes in XPath 1.0 are treated as nodes with special properties.
 //!

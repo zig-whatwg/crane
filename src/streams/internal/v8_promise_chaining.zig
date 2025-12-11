@@ -49,20 +49,23 @@ const runtime = @import("runtime");
 /// V8 FFI bindings
 const v8 = @import("v8").ffi;
 
-/// Callback function types for promise settlement (C FFI boundary - must use anyopaque)
+/// KEEP: anyopaque required - C FFI boundary callback signatures.
+/// These are passed to V8's Promise.then() which expects C-compatible function pointers.
+/// The ctx is user_context, value/reason are V8 Local<Value> pointers.
 pub const FulfillCallback = *const fn (ctx: ?*anyopaque, value: ?*anyopaque) callconv(.c) void;
 pub const RejectCallback = *const fn (ctx: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void;
 
 /// Configuration for promise chaining (type-erased for C FFI boundary)
 ///
-/// For type-safe usage, prefer TypedChainConfig(Context) which provides
-/// compile-time type checking and automatically converts to ChainConfig.
+/// KEEP: anyopaque required - For type-safe usage, prefer TypedChainConfig(Context)
+/// which provides compile-time type checking and automatically converts to ChainConfig.
+/// The anyopaque is required because this struct is passed to V8 C API functions.
 pub const ChainConfig = struct {
     /// Called when the promise fulfills
     on_fulfill: FulfillCallback,
     /// Called when the promise rejects
     on_reject: RejectCallback,
-    /// User context passed to both callbacks
+    /// KEEP: anyopaque required - User context passed to both callbacks (C FFI boundary)
     user_context: ?*anyopaque = null,
     /// Allocator for the callback context (if user_context needs to be freed by callbacks)
     allocator: ?Allocator = null,
