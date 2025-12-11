@@ -1420,11 +1420,16 @@ fn readableStreamTee(
         };
     }
 
-    // Step 20: Return array of branches
-    // TODO: Return proper V8 Array containing [branch1, branch2]
-    // For now return undefined - the branches are stored in tee_state and functional
-    // They will be used via tee_state.branch1 and tee_state.branch2
-    return runtime.JSValue.jsUndefined;
+    // Step 20: Return array of branches [branch1, branch2]
+    // Get V8 isolate and context for array creation
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+
+    // Create V8 Array containing [branch1, branch2] using the array utility
+    const v8_array = v8_engine.createPair(isolate, v8_context, branch1, branch2) catch {
+        return error.OutOfMemory;
+    };
+    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
 }
 
 /// Result type for tee operation

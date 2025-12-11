@@ -199,6 +199,15 @@ pub const OptionalJSValue = js_value.OptionalJSValue;
 pub const stored_error = @import("stored_error.zig");
 pub const StoredError = stored_error.StoredError;
 
+/// V8 Array Creation Utilities
+/// High-level functions for creating V8 Arrays from Zig data
+pub const array_utils = @import("array_utils.zig");
+pub const createInstanceArray = array_utils.createInstanceArray;
+pub const createStringArray = array_utils.createStringArray;
+pub const createDOMStringArray = array_utils.createDOMStringArray;
+pub const createPair = array_utils.createPair;
+pub const createEmptyArray = array_utils.createEmptyArray;
+
 /// Thread safety primitives for V8 isolate access
 pub const locker = @import("locker.zig");
 pub const IsolateLock = locker.IsolateLock;

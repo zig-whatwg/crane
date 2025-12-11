@@ -1852,10 +1852,19 @@ pub fn toV8Value(
         return toV8Undefined(isolate);
     }
 
+    // Handle *runtime.Instance pointers - these need to be wrapped as V8 objects
+    // This enables toV8Sequence to work with []const *runtime.Instance
+    if (T == *runtime.Instance) {
+        return instanceToV8(isolate, value);
+    }
+    if (T == *const runtime.Instance) {
+        return instanceToV8(isolate, @constCast(value));
+    }
+
     // Handle pointers - SAFETY: Cannot blindly cast Zig pointers to V8 Values
     // Zig heap pointers are NOT V8 Global<Value>* handles and will cause crashes
     // if passed to V8. Return undefined instead.
-    // Note: runtime.Instance* should be handled separately with proper wrapping.
+    // Note: runtime.Instance* is handled above with proper wrapping.
     if (type_info == .pointer) {
         // Return undefined for unknown pointer types to prevent crashes
         return toV8Undefined(isolate);

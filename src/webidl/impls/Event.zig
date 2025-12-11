@@ -12,6 +12,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const v8_engine = @import("v8");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Event = interfaces.Event;
 
@@ -386,11 +387,11 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 2: Let path be this's path
     const path = internal.path.toSlice();
 
-    // Step 3: If path is empty, then return composedPath
+    // Step 3: If path is empty, then return composedPath (empty array)
     if (path.len == 0) {
-        // TODO: Return proper V8 Array - need V8 array creation utility
-        // For now return empty array placeholder
-        return runtime.JSValue.jsUndefined;
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+        const v8_array = v8_engine.createEmptyArray(isolate);
+        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
@@ -399,8 +400,15 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {
         // Path is not empty but currentTarget is null - shouldn't happen during dispatch
-        // TODO: Return proper V8 Array - need V8 array creation utility
-        return runtime.JSValue.jsUndefined;
+        // Return the empty composedPath as a V8 array
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+        const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+        const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
+            composed_path.deinit();
+            return error.NotImplemented;
+        };
+        composed_path.deinit();
+        return runtime.JSValue.fromHandle(@ptrCast(v8_array));
     }
 
     // Step 6: Append currentTarget to composedPath
@@ -511,12 +519,24 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
         }
     }
 
-    // Step 17: Return composedPath
-    // TODO: Return proper V8 Array of EventTarget instances
-    // The composedPath ArrayList is built correctly above, but we need
-    // a V8 array creation utility to convert []const *runtime.Instance to V8 Array
-    composed_path.deinit(); // Clean up until V8 array creation is implemented
-    return runtime.JSValue.jsUndefined;
+    // Step 17: Return composedPath as a V8 Array of EventTarget instances
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        composed_path.deinit();
+        return error.NotImplemented;
+    };
+    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        composed_path.deinit();
+        return error.NotImplemented;
+    };
+
+    const v8_array = v8_engine.createInstanceArray(isolate, v8_context, composed_path.toSlice()) catch {
+        composed_path.deinit();
+        return error.NotImplemented;
+    };
+
+    // The V8 array now owns references to the instances; clean up our temporary list
+    composed_path.deinit();
+    return runtime.JSValue.fromHandle(@ptrCast(v8_array));
 }
 
 // ============================================================================
