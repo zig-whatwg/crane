@@ -265,14 +265,52 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         };
         internal_state.v8_context = v8_context;
 
-        // Wire up the V8 context to the WorkerAgent's WorkerContext
+        // IMPORTANT: Create the WorkerContext FIRST before wiring up engine context
+        // This calls agent.startWithContext() which creates the worker_context
+        dedicated_worker.startWithContext() catch |err| {
+            std.log.warn("Failed to start worker context: {}", .{err});
+            return instance;
+        };
+
+        // Now wire up the V8 context to the WorkerAgent's WorkerContext
         // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
         if (dedicated_worker.agent.worker_context) |worker_ctx| {
             worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
-            std.log.info("Worker V8 context created and wired to WorkerContext", .{});
+        } else {
+            std.log.warn("WorkerContext not created after startWithContext", .{});
+            return instance;
         }
 
-        // TODO: Fetch and execute the worker script (see whatwg-kaf0v)
+        // Set up DedicatedWorkerGlobalScope with proper globals
+        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
+        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
+            std.log.warn("Failed to set up worker global scope: {}", .{err});
+            return instance;
+        };
+
+        // Start the worker's message queue so messages can be dispatched
+        dedicated_worker.startWorkerMessageQueue();
+
+        // Fetch and execute the worker script
+        // This is the "run a worker" algorithm per HTML Standard § 10.2.5
+        // For WPT tests, scripts are fetched from the WPT server or resolved as data: URLs
+        const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
+            .worker_type = worker_type,
+            .origin = null,
+        }) catch |err| {
+            // Log error but don't fail construction - worker enters error state
+            // Per spec, errors during script fetch should fire an error event
+            std.log.warn("Failed to fetch worker script: {}", .{err});
+            return instance;
+        };
+        defer @constCast(&fetched_script).deinit();
+
+        // Execute the fetched script
+        dedicated_worker.executeScript(fetched_script.source) catch |err| {
+            std.log.warn("Failed to execute worker script: {}", .{err});
+            // TODO: Fire error event on Worker object
+        };
+        // Note: executeScript now handles enter/exit of worker isolate internally
     } else |_| {
         // Timer backend initialization failed - worker remains in "not started" state
         std.log.warn("TimerBackend not available, worker will not start", .{});
@@ -471,9 +509,6 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
     var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
     _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
-
-    // Log success for debugging
-    std.log.info("Worker.dispatchMessageEvent: Successfully invoked onmessage handler", .{});
     _ = state;
 }
 

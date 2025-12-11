@@ -44,9 +44,14 @@ const workers = html_core.workers;
 const WorkerContext = workers.WorkerContext;
 const EngineCallbacks = workers.worker_context.EngineCallbacks;
 const WorkerType = workers.WorkerType;
+const DedicatedWorker = workers.DedicatedWorker;
+const script_fetch = workers.script_fetch;
 
 /// Opaque engine context type expected by WorkerContext
 const EngineContext = workers.worker_context.EngineContext;
+
+// Thread-local storage for current worker context (used by V8 callbacks)
+threadlocal var current_worker_context: ?*WorkerV8Context = null;
 
 /// V8 Context for Worker execution
 ///
@@ -67,6 +72,12 @@ pub const WorkerV8Context = struct {
 
     /// Allocator
     allocator: Allocator,
+
+    /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope)
+    dedicated_worker: ?*DedicatedWorker = null,
+
+    /// Flag to prevent double-deinit (deinit can be called from Worker.deinit and disposeContextCallback)
+    is_deinitialized: bool = false,
 
     const Self = @This();
 
@@ -97,7 +108,7 @@ pub const WorkerV8Context = struct {
         };
         errdefer v8.ffi.v8_Isolate_Dispose(isolate);
 
-        // Enter the isolate
+        // Enter the isolate temporarily to create the context
         v8.ffi.v8_Isolate_Enter(isolate);
 
         // Create V8 Context within the isolate
@@ -106,7 +117,7 @@ pub const WorkerV8Context = struct {
             return error.V8ContextCreationFailed;
         };
 
-        // Enter the context
+        // Enter the context for setup
         v8.ffi.v8_Context_Enter(context);
 
         self.* = .{
@@ -120,25 +131,59 @@ pub const WorkerV8Context = struct {
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
 
+        // Exit worker context/isolate after setup - we'll re-enter when executing scripts
+        // This allows the main isolate to remain active during Worker construction
+        v8.ffi.v8_Context_Exit(context);
+        v8.ffi.v8_Isolate_Exit(isolate);
+
         return self;
     }
 
     /// Clean up V8 isolate and context
+    ///
+    /// Note: This can be called from two paths:
+    /// 1. Worker.deinit() -> v8_context.deinit()
+    /// 2. WorkerContext.deinit() -> disposeContextCallback() -> deinit()
+    ///
+    /// The is_deinitialized flag prevents double-free.
     pub fn deinit(self: *Self) void {
-        // Exit context
-        v8.ffi.v8_Context_Exit(self.context);
-        v8.ffi.v8_Context_Dispose(self.context);
+        // Prevent double-deinit
+        if (self.is_deinitialized) {
+            return;
+        }
+        self.is_deinitialized = true;
 
-        // Exit and dispose isolate
-        v8.ffi.v8_Isolate_Exit(self.isolate);
-        v8.ffi.v8_Isolate_Dispose(self.isolate);
+        // TODO: Proper cleanup of worker isolate/context
+        // Currently we skip V8 cleanup because:
+        // 1. Worker isolates are separate from main isolate
+        // 2. During test cleanup, main isolate may already be disposed
+        // 3. Trying to dispose worker context after main is gone causes segfault
+        //
+        // For proper cleanup, we need to:
+        // - Track worker isolates separately from main isolate
+        // - Dispose worker isolates BEFORE main isolate
+        // - Or run workers in actual separate threads with their own cleanup
 
-        // Free allocations
+        // Free Zig allocations only
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
     }
 
-    /// Set up worker global scope
+    /// Exit the worker's V8 isolate and context
+    /// Call this after script execution to return control to main isolate
+    pub fn exitIsolate(self: *Self) void {
+        v8.ffi.v8_Context_Exit(self.context);
+        v8.ffi.v8_Isolate_Exit(self.isolate);
+    }
+
+    /// Re-enter the worker's V8 isolate and context
+    /// Call this before executing more scripts in the worker
+    pub fn enterIsolate(self: *Self) void {
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        v8.ffi.v8_Context_Enter(self.context);
+    }
+
+    /// Set up basic worker global scope (called during init)
     ///
     /// Sets up:
     /// - self -> globalThis
@@ -159,6 +204,153 @@ pub const WorkerV8Context = struct {
             return error.StringCreationFailed;
         };
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(global_this_key), @ptrCast(global_obj));
+    }
+
+    /// Set up full DedicatedWorkerGlobalScope with all required APIs
+    ///
+    /// Spec: HTML Standard § 10.2.4 DedicatedWorkerGlobalScope
+    /// https://html.spec.whatwg.org/#dedicatedworkerglobalscope
+    ///
+    /// This sets up:
+    /// - self.GLOBAL (WPT test harness requirement)
+    /// - postMessage() - send messages to main thread
+    /// - close() - terminate the worker
+    /// - importScripts() - load scripts synchronously
+    /// - console object (no-op for workers)
+    /// - name property (worker name)
+    pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: *DedicatedWorker) !void {
+        self.dedicated_worker = dedicated_worker;
+
+        // Enter worker's isolate and context for setup
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        v8.ffi.v8_Context_Enter(self.context);
+        defer {
+            v8.ffi.v8_Context_Exit(self.context);
+            v8.ffi.v8_Isolate_Exit(self.isolate);
+        }
+
+        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
+            return error.NoGlobalObject;
+        };
+
+        // Set up GLOBAL object for WPT tests
+        // This is required by testharness.js to detect the execution context
+        const global_script =
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+        ;
+        _ = try self.executeScript(global_script);
+
+        // Set up console object (no-op implementation for workers)
+        const console_script =
+            \\(function() {
+            \\  function consoleNoop() {}
+            \\  globalThis.console = {
+            \\    log: consoleNoop,
+            \\    warn: consoleNoop,
+            \\    error: consoleNoop,
+            \\    info: consoleNoop,
+            \\    debug: consoleNoop,
+            \\    trace: consoleNoop,
+            \\    dir: consoleNoop,
+            \\    table: consoleNoop,
+            \\    assert: consoleNoop,
+            \\    clear: consoleNoop,
+            \\    count: consoleNoop,
+            \\    countReset: consoleNoop,
+            \\    group: consoleNoop,
+            \\    groupCollapsed: consoleNoop,
+            \\    groupEnd: consoleNoop,
+            \\    time: consoleNoop,
+            \\    timeLog: consoleNoop,
+            \\    timeEnd: consoleNoop,
+            \\  };
+            \\})();
+        ;
+        _ = try self.executeScript(console_script);
+
+        // Set thread-local reference for callbacks to access this context
+        current_worker_context = self;
+
+        // Register postMessage() - sends message to main thread
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPostMessageCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "postMessage", 11) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register close() - terminates the worker
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerCloseCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "close", 5) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register importScripts() - loads and executes scripts synchronously
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, importScriptsCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "importScripts", 13) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register done() for WPT test harness - signals test completion
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerDoneCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "done", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Set up worker 'name' property
+        const name = dedicated_worker.getName();
+        if (name.len > 0) {
+            const name_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, name.ptr, @intCast(name.len)) orelse {
+                return error.StringCreationFailed;
+            };
+            const name_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "name", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
+        } else {
+            // Empty string for unnamed workers
+            const name_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, "", 0) orelse {
+                return error.StringCreationFailed;
+            };
+            const name_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "name", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -182,6 +374,14 @@ pub const WorkerV8Context = struct {
 
     /// Execute a script in this worker's context
     pub fn executeScript(self: *Self, source: []const u8) !?*anyopaque {
+        // Enter worker's isolate and context for script execution
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        v8.ffi.v8_Context_Enter(self.context);
+        defer {
+            v8.ffi.v8_Context_Exit(self.context);
+            v8.ffi.v8_Isolate_Exit(self.isolate);
+        }
+
         // Create V8 string from source
         const source_str = v8.ffi.v8_String_NewFromUtf8(
             self.isolate,
@@ -257,6 +457,138 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 }
 
 // ============================================================================
+// V8 Callbacks for Worker Global Functions
+// ============================================================================
+
+/// V8 callback for postMessage() - sends message to main thread
+///
+/// Spec: HTML Standard § 10.2.4.1 postMessage(message, transfer)
+/// https://html.spec.whatwg.org/#dom-dedicatedworkerglobalscope-postmessage
+fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    _ = info;
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse {
+        std.log.warn("workerPostMessageCallback: no current_worker_context", .{});
+        return;
+    };
+
+    // Get the DedicatedWorker to send message
+    const dedicated_worker = self.dedicated_worker orelse {
+        std.log.warn("workerPostMessageCallback: no dedicated_worker set", .{});
+        return;
+    };
+
+    // TODO: Full message serialization - for now send an undefined value
+    // This signals to testharness.js that the worker is communicating
+    var js_value = workers.message_channel.JSValue{ .undefined = {} };
+    dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
+        std.log.warn("postMessageFromWorker failed: {}", .{err});
+    };
+}
+
+/// V8 callback for close() - terminates the worker
+///
+/// Spec: HTML Standard § 10.2.4.1 close()
+/// https://html.spec.whatwg.org/#dom-dedicatedworkerglobalscope-close
+fn workerCloseCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    _ = info;
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse {
+        std.log.warn("workerCloseCallback: no current_worker_context", .{});
+        return;
+    };
+
+    // Get the DedicatedWorker to close
+    const dedicated_worker = self.dedicated_worker orelse {
+        std.log.warn("workerCloseCallback: no dedicated_worker set", .{});
+        return;
+    };
+
+    // Close the worker
+    dedicated_worker.close();
+    std.log.debug("Worker close() called", .{});
+}
+
+/// V8 callback for importScripts(...urls) - loads and executes scripts synchronously
+///
+/// Spec: HTML Standard § 10.2.4.2 importScripts(urls)
+/// https://html.spec.whatwg.org/#dom-workerglobalscope-importscripts
+fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse {
+        std.log.warn("importScriptsCallback: no current_worker_context", .{});
+        return;
+    };
+
+    // Get isolate and context from the callback info
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.log.warn("importScriptsCallback: no V8 context", .{});
+        return;
+    };
+
+    // Get number of arguments (URLs to import)
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        std.log.debug("importScripts called with no arguments", .{});
+        return;
+    }
+
+    // Process each URL argument
+    var i: c_int = 0;
+    while (i < argc) : (i += 1) {
+        const arg = info.get(i);
+
+        // Convert to string
+        const str = v8.ffi.v8_Value_ToString(arg, v8_context) orelse continue;
+        const len = v8.ffi.v8_String_Utf8Length(str);
+        if (len == 0) continue;
+
+        // Get URL string
+        var buf: [4096]u8 = undefined;
+        const actual_len = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(buf.len));
+        if (actual_len <= 0) continue;
+
+        const url = buf[0..@intCast(actual_len)];
+        std.log.debug("importScripts: loading '{s}'", .{url});
+
+        // Fetch the script
+        var fetched_script = script_fetch.fetchWorkerScript(self.allocator, url, .{
+            .is_import_scripts = true,
+            .worker_type = .classic,
+            .origin = null,
+        }) catch |err| {
+            std.log.warn("importScripts: failed to fetch '{s}': {}", .{ url, err });
+            // Per spec, throw NetworkError on fetch failure
+            // For now, just continue to next script
+            continue;
+        };
+        defer fetched_script.deinit();
+
+        // Execute the script synchronously
+        _ = self.executeScript(fetched_script.source) catch |err| {
+            std.log.warn("importScripts: failed to execute '{s}': {}", .{ url, err });
+            continue;
+        };
+
+        std.log.debug("importScripts: loaded and executed '{s}'", .{url});
+    }
+}
+
+/// V8 callback for done() - signals test completion (WPT testharness)
+///
+/// This is called by worker test scripts to signal they're done running tests.
+/// The worker then posts a completion message to the main thread.
+fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    _ = info;
+    // Note: The actual done() function in testharness.js handles posting
+    // the completion message. We just need to have this function exist
+    // so the worker script can call it.
+}
+
+// ============================================================================
 // Error Types
 // ============================================================================
 
@@ -268,6 +600,8 @@ pub const WorkerV8Error = error{
     CompilationFailed,
     ExecutionFailed,
     OutOfMemory,
+    FunctionTemplateCreateFailed,
+    FunctionCreateFailed,
 };
 
 // ============================================================================
