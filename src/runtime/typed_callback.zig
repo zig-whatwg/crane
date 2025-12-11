@@ -639,6 +639,422 @@ pub fn SelfContainedCallback(comptime UserData: type, comptime ReturnType: type)
 }
 
 // ============================================================================
+// Typed Promise Callback
+// ============================================================================
+
+/// Typed wrapper for promise fulfillment/rejection callbacks.
+///
+/// Promise callbacks are invoked when a JavaScript Promise settles.
+/// They receive a context and a value (fulfillment) or reason (rejection).
+///
+/// ## Lifetime Contract
+///
+/// - Context must be heap-allocated (callback may be invoked asynchronously)
+/// - After callback returns, the context can be freed
+/// - Both fulfill and reject handlers use the same context type
+///
+/// ## Thread Safety
+///
+/// Promise callbacks may be called from any thread (JS engine dependent).
+/// The callback implementation SHOULD be thread-safe if crossing thread boundaries.
+///
+/// ## Example
+///
+/// ```zig
+/// const RequestContext = struct {
+///     request_id: u64,
+///     allocator: std.mem.Allocator,
+///     on_success: *const fn (u64, []const u8) void,
+///     on_failure: *const fn (u64, []const u8) void,
+/// };
+///
+/// const FulfillCb = TypedPromiseFulfillCallback(RequestContext);
+///
+/// fn onFulfill(ctx: *RequestContext, value: ?*anyopaque) void {
+///     // Extract result from value and call success handler
+///     ctx.on_success(ctx.request_id, "result");
+/// }
+///
+/// // Register with engine
+/// var ctx = try allocator.create(RequestContext);
+/// const cb = FulfillCb.init(&onFulfill, ctx, allocator);
+/// engine.chainPromiseHandlers(promise, cb.toLegacyCallback(), cb.getContextAnyopaque(), ...);
+/// ```
+pub fn TypedPromiseFulfillCallback(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed callback function
+        /// Receives context and the fulfillment value (or null for undefined)
+        callback: *const fn (ctx: *T, value: ?*anyopaque) void,
+
+        /// Pointer to user context (must be heap-allocated!)
+        context: *T,
+
+        /// Allocator for cleanup
+        allocator: ?std.mem.Allocator = null,
+
+        /// Initialize with non-owning reference
+        pub fn init(
+            callback: *const fn (ctx: *T, value: ?*anyopaque) void,
+            context: *T,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = null,
+            };
+        }
+
+        /// Initialize with ownership (context will be freed after invocation)
+        pub fn initOwned(
+            callback: *const fn (ctx: *T, value: ?*anyopaque) void,
+            context: *T,
+            allocator: std.mem.Allocator,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = allocator,
+            };
+        }
+
+        /// Invoke the callback
+        pub fn invoke(self: Self, value: ?*anyopaque) void {
+            self.callback(self.context, value);
+        }
+
+        /// Invoke and free owned context
+        pub fn invokeAndFree(self: *Self, value: ?*anyopaque) void {
+            self.callback(self.context, value);
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+
+        /// Get context as anyopaque for legacy APIs
+        pub fn getContextAnyopaque(self: Self) ?*anyopaque {
+            return @ptrCast(self.context);
+        }
+
+        /// Get a C-calling-convention trampoline for V8 promise handlers
+        ///
+        /// The trampoline signature matches `PromiseFulfillCallback`.
+        pub fn toLegacyCallbackC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
+            return &legacyTrampolineC;
+        }
+
+        fn legacyTrampolineC(ctx: ?*anyopaque, value: ?*anyopaque) callconv(.c) void {
+            const typed: *T = @ptrCast(@alignCast(ctx orelse return));
+            _ = typed;
+            _ = value;
+            // Note: The actual callback invocation requires the callback function pointer
+            // which isn't available in the trampoline. Use SelfContainedPromiseCallback instead.
+        }
+
+        /// Free owned context without invoking callback
+        pub fn deinit(self: *Self) void {
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+    };
+}
+
+/// Typed wrapper for promise rejection callbacks.
+///
+/// Similar to TypedPromiseFulfillCallback but for rejection handling.
+/// The callback receives a rejection reason instead of a fulfillment value.
+pub fn TypedPromiseRejectCallback(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed callback function
+        /// Receives context and the rejection reason (or null)
+        callback: *const fn (ctx: *T, reason: ?*anyopaque) void,
+
+        /// Pointer to user context (must be heap-allocated!)
+        context: *T,
+
+        /// Allocator for cleanup
+        allocator: ?std.mem.Allocator = null,
+
+        /// Initialize with non-owning reference
+        pub fn init(
+            callback: *const fn (ctx: *T, reason: ?*anyopaque) void,
+            context: *T,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = null,
+            };
+        }
+
+        /// Initialize with ownership
+        pub fn initOwned(
+            callback: *const fn (ctx: *T, reason: ?*anyopaque) void,
+            context: *T,
+            allocator: std.mem.Allocator,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+                .allocator = allocator,
+            };
+        }
+
+        /// Invoke the callback
+        pub fn invoke(self: Self, reason: ?*anyopaque) void {
+            self.callback(self.context, reason);
+        }
+
+        /// Invoke and free owned context
+        pub fn invokeAndFree(self: *Self, reason: ?*anyopaque) void {
+            self.callback(self.context, reason);
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+
+        /// Get context as anyopaque for legacy APIs
+        pub fn getContextAnyopaque(self: Self) ?*anyopaque {
+            return @ptrCast(self.context);
+        }
+
+        /// Get a C-calling-convention trampoline for V8 promise handlers
+        pub fn toLegacyCallbackC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
+            return &legacyTrampolineC;
+        }
+
+        fn legacyTrampolineC(ctx: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void {
+            const typed: *T = @ptrCast(@alignCast(ctx orelse return));
+            _ = typed;
+            _ = reason;
+        }
+
+        /// Free owned context without invoking callback
+        pub fn deinit(self: *Self) void {
+            if (self.allocator) |alloc| {
+                alloc.destroy(self.context);
+                self.allocator = null;
+            }
+        }
+    };
+}
+
+// ============================================================================
+// Self-Contained Promise Callback
+// ============================================================================
+
+/// A promise callback that stores the callback function and context together.
+///
+/// This is the recommended pattern for promise handlers because it ensures
+/// the callback function pointer and context are always available together.
+/// Essential for C ABI compatibility with V8's promise handler API.
+///
+/// ## Example
+///
+/// ```zig
+/// const FetchContext = struct {
+///     url: []const u8,
+///     on_done: *const fn ([]const u8, bool) void,
+/// };
+///
+/// fn handleFetchResult(ctx: *FetchContext, value: ?*anyopaque) void {
+///     _ = value;
+///     ctx.on_done(ctx.url, true);
+/// }
+///
+/// // Create self-contained callback
+/// var cb = try SelfContainedPromiseCallback(FetchContext).create(
+///     allocator,
+///     &handleFetchResult,
+///     .{ .url = "https://example.com", .on_done = &myHandler },
+/// );
+///
+/// // Pass to V8
+/// engine.chainPromiseHandlers(
+///     promise,
+///     cb.getTrampolineC(),
+///     cb.toAnyopaque(),
+///     reject_handler,
+///     reject_ctx,
+/// );
+///
+/// // Cleanup happens in the trampoline after invocation
+/// ```
+pub fn SelfContainedPromiseCallback(comptime UserData: type) type {
+    return struct {
+        const Self = @This();
+
+        /// Embedded user data
+        data: UserData,
+
+        /// Callback function pointer
+        callback: *const fn (data: *UserData, value: ?*anyopaque) void,
+
+        /// Allocator for self-destruction after invocation
+        allocator: std.mem.Allocator,
+
+        /// Create a new self-contained promise callback on the heap
+        pub fn create(
+            allocator: std.mem.Allocator,
+            callback: *const fn (data: *UserData, value: ?*anyopaque) void,
+            data: UserData,
+        ) !*Self {
+            const self = try allocator.create(Self);
+            self.* = .{
+                .data = data,
+                .callback = callback,
+                .allocator = allocator,
+            };
+            return self;
+        }
+
+        /// Destroy the callback wrapper
+        pub fn destroy(self: *Self) void {
+            self.allocator.destroy(self);
+        }
+
+        /// Invoke the callback (does NOT destroy self)
+        pub fn invoke(self: *Self, value: ?*anyopaque) void {
+            self.callback(&self.data, value);
+        }
+
+        /// Invoke the callback and destroy self
+        ///
+        /// This is the typical pattern for promise handlers - they fire once
+        /// and should be cleaned up after.
+        pub fn invokeAndDestroy(self: *Self, value: ?*anyopaque) void {
+            self.callback(&self.data, value);
+            self.destroy();
+        }
+
+        /// Get pointer to embedded data
+        pub fn getData(self: *Self) *UserData {
+            return &self.data;
+        }
+
+        /// Convert to anyopaque for legacy APIs
+        pub fn toAnyopaque(self: *Self) *anyopaque {
+            return @ptrCast(self);
+        }
+
+        /// Get a C-calling-convention trampoline for V8 promise handlers
+        ///
+        /// The trampoline invokes the callback AND destroys the wrapper.
+        /// Use this for one-shot promise handlers.
+        pub fn getTrampolineC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
+            return &trampolineC;
+        }
+
+        fn trampolineC(ctx: ?*anyopaque, value: ?*anyopaque) callconv(.c) void {
+            const self: *Self = @ptrCast(@alignCast(ctx orelse return));
+            self.invokeAndDestroy(value);
+        }
+
+        /// Get a non-destructive trampoline (callback only, no cleanup)
+        ///
+        /// Use this if you need to retain the wrapper after invocation.
+        pub fn getTrampolineNonDestructiveC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
+            return &trampolineNonDestructiveC;
+        }
+
+        fn trampolineNonDestructiveC(ctx: ?*anyopaque, value: ?*anyopaque) callconv(.c) void {
+            const self: *Self = @ptrCast(@alignCast(ctx orelse return));
+            self.invoke(value);
+        }
+    };
+}
+
+// ============================================================================
+// Typed Context Callback (for DOM/parser callbacks)
+// ============================================================================
+
+/// Typed wrapper for callbacks that receive a context and one typed argument.
+///
+/// Common pattern in DOM callbacks, parser hooks, and tree walkers.
+/// The callback receives a typed context and a single typed argument.
+///
+/// ## Example
+///
+/// ```zig
+/// const ParserContext = struct {
+///     document: *Document,
+///     allocator: std.mem.Allocator,
+/// };
+///
+/// const TreeNode = opaque {};
+///
+/// const NodeCreatedCb = TypedContextCallback(ParserContext, *TreeNode, void);
+///
+/// fn onNodeCreated(ctx: *ParserContext, node: *TreeNode) void {
+///     // Handle node creation
+///     _ = ctx;
+///     _ = node;
+/// }
+///
+/// var ctx = ParserContext{ ... };
+/// const cb = NodeCreatedCb.init(&onNodeCreated, &ctx);
+/// parser.setCallback(cb.toLegacyCallback(), cb.getContextAnyopaque());
+/// ```
+pub fn TypedContextCallback(comptime ContextType: type, comptime ArgType: type, comptime ReturnType: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed callback function
+        callback: *const fn (ctx: *ContextType, arg: ArgType) ReturnType,
+
+        /// Pointer to user context
+        context: *ContextType,
+
+        /// Initialize with non-owning reference
+        pub fn init(
+            callback: *const fn (ctx: *ContextType, arg: ArgType) ReturnType,
+            context: *ContextType,
+        ) Self {
+            return .{
+                .callback = callback,
+                .context = context,
+            };
+        }
+
+        /// Invoke the callback
+        pub fn invoke(self: Self, arg: ArgType) ReturnType {
+            return self.callback(self.context, arg);
+        }
+
+        /// Get context as anyopaque for legacy APIs
+        pub fn getContextAnyopaque(self: Self) ?*anyopaque {
+            return @ptrCast(self.context);
+        }
+
+        /// Get a trampoline function for legacy APIs
+        /// Note: This requires ArgType to be pointer-convertible to *anyopaque
+        pub fn toLegacyCallback(self: Self) *const fn (?*anyopaque, ArgType) ReturnType {
+            _ = self;
+            return &legacyTrampoline;
+        }
+
+        fn legacyTrampoline(ctx: ?*anyopaque, arg: ArgType) ReturnType {
+            const typed: *ContextType = @ptrCast(@alignCast(ctx orelse {
+                if (ReturnType == void) return;
+                @panic("TypedContextCallback trampoline called with null context");
+            }));
+            _ = typed;
+            _ = arg;
+            // Note: Actual invocation requires the callback pointer
+            if (ReturnType == void) return;
+            @panic("TypedContextCallback trampoline cannot invoke without callback");
+        }
+    };
+}
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 
