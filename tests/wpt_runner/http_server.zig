@@ -394,6 +394,20 @@ pub const HttpServer = struct {
             return try self.generateTestHtml(js_path[1..], "worker", response);
         }
 
+        // Check for .any.worker.js → generate worker wrapper script
+        // This is the script that gets executed in the Worker context
+        // It imports testharness.js first, then the actual test file
+        if (std.mem.endsWith(u8, path, ".any.worker.js")) {
+            const base_path = path[0 .. path.len - 14]; // Remove ".any.worker.js"
+            const original_js = try std.mem.concat(self.allocator, u8, &.{
+                base_path,
+                ".any.js",
+            });
+            defer self.allocator.free(original_js);
+
+            return try self.generateWorkerWrapper(original_js, response);
+        }
+
         // Check for .window.html → generate from .window.js
         if (std.mem.endsWith(u8, path, ".window.html")) {
             const js_path = try std.mem.concat(self.allocator, u8, &.{
@@ -434,9 +448,17 @@ pub const HttpServer = struct {
         try html.appendSlice(self.allocator, "<script src=\"/resources/testharnessreport.js\"></script>\n");
 
         if (std.mem.eql(u8, test_type, "worker")) {
-            // Worker test - use fetch_tests_from_worker
+            // Worker test - use fetch_tests_from_worker with the worker wrapper script
+            // The wrapper script (e.g., test.any.worker.js) loads testharness.js first,
+            // then the actual test file (test.any.js)
+            const worker_js_url = try std.mem.concat(self.allocator, u8, &.{
+                js_url[0 .. js_url.len - 3], // Remove ".js"
+                ".worker.js",
+            });
+            defer self.allocator.free(worker_js_url);
+
             try html.appendSlice(self.allocator, "<script>\nfetch_tests_from_worker(new Worker(\"");
-            try html.appendSlice(self.allocator, js_url);
+            try html.appendSlice(self.allocator, worker_js_url);
             try html.appendSlice(self.allocator, "\"));\n</script>\n");
         } else {
             // Window or any test - include script directly
@@ -451,6 +473,56 @@ pub const HttpServer = struct {
         response.status_text = "OK";
         try response.setHeader("Content-Type", "text/html;charset=utf-8");
         response.body = try html.toOwnedSlice(self.allocator);
+
+        return true;
+    }
+
+    /// Generate worker wrapper script for .any.worker.js requests
+    /// This script loads testharness.js first, then the actual test file
+    /// Per WPT: Workers need a wrapper that imports testharness.js before the test
+    fn generateWorkerWrapper(self: *Self, original_js_path: []const u8, response: *HttpResponse) !bool {
+        // Check if the original JS file exists
+        // The path is like "/console/test.any.js" - strip leading slash for file access
+        const file_path = if (original_js_path.len > 0 and original_js_path[0] == '/')
+            original_js_path[1..]
+        else
+            original_js_path;
+
+        const full_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, file_path });
+        defer self.allocator.free(full_path);
+
+        std.fs.cwd().access(full_path, .{}) catch return false;
+
+        // Generate worker wrapper script
+        var script = std.ArrayListUnmanaged(u8){};
+        errdefer script.deinit(self.allocator);
+
+        // Set up GLOBAL object for WPT worker context
+        try script.appendSlice(self.allocator,
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            \\
+        );
+
+        // Import testharness.js first
+        try script.appendSlice(self.allocator, "importScripts(\"/resources/testharness.js\");\n");
+
+        // Import the actual test file
+        try script.appendSlice(self.allocator, "importScripts(\"");
+        try script.appendSlice(self.allocator, original_js_path);
+        try script.appendSlice(self.allocator, "\");\n");
+
+        // Call done() to signal test completion
+        // Per testharness.js: in worker context, done() is called after all tests are defined
+        try script.appendSlice(self.allocator, "done();\n");
+
+        response.status_code = 200;
+        response.status_text = "OK";
+        try response.setHeader("Content-Type", "application/javascript;charset=utf-8");
+        response.body = try script.toOwnedSlice(self.allocator);
 
         return true;
     }
