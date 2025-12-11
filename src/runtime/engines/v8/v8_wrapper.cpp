@@ -1909,6 +1909,25 @@ Global<Value>* v8_Boolean_New(Isolate* isolate, bool value) {
     return trackHandle(new Global<Value>(isolate, bool_val));
 }
 
+/// Persist a Local value to a Global handle.
+/// Takes a Local<Value> internal pointer and creates a tracked Global<Value>*.
+/// Use this to safely store/return values that came from Local handles.
+///
+/// @param isolate - V8 Isolate
+/// @param local_ptr - Internal pointer from a Local<Value> (from v8_Global_Get, etc.)
+/// @return Global<Value>* that can be safely stored and used with setReturnValue
+Global<Value>* v8_Value_Persist(Isolate* isolate, void* local_ptr) {
+    if (!isolate || !local_ptr) return nullptr;
+    
+    HandleScope handle_scope(isolate);
+    
+    // Reconstruct Local from internal pointer
+    Local<Value> local = *reinterpret_cast<Local<Value>*>(&local_ptr);
+    
+    // Create and track a Global handle
+    return trackHandle(new Global<Value>(isolate, local));
+}
+
 // ============================================================================
 // FunctionTemplate & FunctionCallbackInfo (for namespace bindings)
 // ============================================================================

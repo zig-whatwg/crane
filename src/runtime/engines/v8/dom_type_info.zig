@@ -279,6 +279,30 @@ pub const CustomEvent_type_info = WrapperTypeInfo{
 };
 
 // ============================================================================
+// URL interfaces
+// ============================================================================
+
+pub const URL_type_info = WrapperTypeInfo{
+    .interface_name = "URL",
+    .parent = null,
+    .this_tag = 1200,
+    .max_subclass_tag = 1200, // Leaf node
+    .wrapper_class_id = .object,
+    .idl_definition_kind = .interface,
+    .install_template_fn = placeholderInstall,
+};
+
+pub const URLSearchParams_type_info = WrapperTypeInfo{
+    .interface_name = "URLSearchParams",
+    .parent = null,
+    .this_tag = 1210,
+    .max_subclass_tag = 1210, // Leaf node
+    .wrapper_class_id = .object,
+    .idl_definition_kind = .interface,
+    .install_template_fn = placeholderInstall,
+};
+
+// ============================================================================
 // Helper functions
 // ============================================================================
 
@@ -304,6 +328,8 @@ pub fn getTypeInfoByName(name: []const u8) ?*const WrapperTypeInfo {
         &XMLDocument_type_info,
         &Event_type_info,
         &CustomEvent_type_info,
+        &URL_type_info,
+        &URLSearchParams_type_info,
     };
 
     for (type_infos) |info| {

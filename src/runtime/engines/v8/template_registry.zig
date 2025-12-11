@@ -533,6 +533,15 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "ProgressEvent";
     }
 
+    // URL types
+    if (inst_vtable == &interfaces.URL.vtable) {
+        return "URL";
+    }
+
+    if (inst_vtable == &interfaces.URLSearchParams.vtable) {
+        return "URLSearchParams";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

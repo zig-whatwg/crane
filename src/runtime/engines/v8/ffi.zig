@@ -140,6 +140,11 @@ pub const FunctionCallbackInfo = opaque {
         // Use the Global variant - our FFI functions (v8_String_NewFromUtf8, v8_Number_New, etc.)
         // return Global<T>* handles, not Local<Value> internal pointers.
         // The Global variant properly converts Global to Local before setting.
+        //
+        // IMPORTANT: The value MUST be a Global<Value>* (from v8_String_NewFromUtf8, etc.)
+        // NOT a Local pointer (from v8_Global_Get). If you're getting crashes here,
+        // check that all code paths returning to setReturnValue go through proper
+        // Global handle creation.
         v8_FunctionCallbackInfo_SetReturnValueGlobal(self, @ptrCast(value));
     }
 
@@ -851,6 +856,12 @@ pub extern fn v8_Null(isolate: *Isolate) ?*Value;
 
 // Boolean creation
 pub extern fn v8_Boolean_New(isolate: *Isolate, value: bool) ?*Value;
+
+// Value persistence - convert Local to Global
+/// Persist a Local value to a Global handle.
+/// Takes a Local<Value> internal pointer and creates a tracked Global<Value>*.
+/// Use this to safely store/return values that came from Local handles.
+pub extern fn v8_Value_Persist(isolate: *Isolate, local_ptr: ?*anyopaque) ?*Value;
 
 // Number creation
 pub extern fn v8_Number_New(isolate: *Isolate, value: f64) *Number;

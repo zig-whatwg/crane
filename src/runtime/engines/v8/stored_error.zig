@@ -224,7 +224,7 @@ pub const StoredError = union(enum) {
     pub fn toV8(self: StoredError, isolate: *v8.Isolate) ?*v8.Value {
         return switch (self) {
             .none => null,
-            .js_exception => |g| v8.v8_Global_Get(isolate, g.ptr),
+            .js_exception => |g| @ptrCast(g.ptr), // Already a Global<Value>* - return directly
             .zig_error => |e| blk: {
                 // Create a V8 Error from the Zig error name
                 const err_name = @errorName(e);

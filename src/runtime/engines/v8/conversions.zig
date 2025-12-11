@@ -718,6 +718,56 @@ pub fn fromV8Value(
         return try convertAllowSharedBufferSource(allocator, value);
     }
 
+    // Handle engine-agnostic runtime.JSValue BEFORE generic union handling
+    // runtime.JSValue is a special type that wraps JS values for use in impl files
+    // We must convert V8 values to the appropriate runtime.JSValue variant
+    if (T == runtime.JSValue) {
+        // Check for undefined
+        if (v8.v8_Value_IsUndefined(value)) {
+            return runtime.JSValue{ .undefined = {} };
+        }
+
+        // Check for null
+        if (v8.v8_Value_IsNull(value)) {
+            return runtime.JSValue{ .null = {} };
+        }
+
+        // Check for boolean
+        if (v8.v8_Value_IsBoolean(value)) {
+            return runtime.JSValue{ .boolean = v8.v8_Value_BooleanValue(value, isolate) };
+        }
+
+        // Check for number
+        if (v8.v8_Value_IsNumber(value)) {
+            return runtime.JSValue{ .number = v8.v8_Value_NumberValue(value, context) };
+        }
+
+        // Check for string - extract and allocate copy
+        if (v8.v8_Value_IsString(value)) {
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            const length = v8.v8_String_Utf8Length(string);
+            if (length < 0) return ConversionError.StringError;
+            if (length == 0) {
+                return runtime.JSValue{ .string = .{ .data = "", .owned = false } };
+            }
+
+            const buffer = try allocator.alloc(u8, @intCast(length));
+            const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+            if (written != length) {
+                allocator.free(buffer);
+                return ConversionError.StringError;
+            }
+            return runtime.JSValue{ .string = .{ .data = buffer, .owned = true } };
+        }
+
+        // For objects/functions/etc., persist to global handle
+        const global = v8.v8_Value_Persist(isolate, value);
+        if (global) |g| {
+            return runtime.JSValue{ .handle = .{ .ptr = g } };
+        }
+        return runtime.JSValue{ .undefined = {} };
+    }
+
     // Handle unions (for constructor overloading and type unions)
     if (type_info == .@"union") {
         // Union types require runtime type discrimination per WebIDL specification.
@@ -1143,17 +1193,26 @@ pub fn fromV8Value(
     }
     if (T == runtime.Any) return fromV8Any(value);
 
-    // Handle JSValue (type-safe JavaScript value wrapper)
+    // Handle V8-specific JSValue (type-safe JavaScript value wrapper)
+    // Note: This is the V8-specific JSValue from engines/v8/js_value.zig
     if (T == JSValue) {
         return try fromV8ValueTyped(value, isolate, context);
     }
 
-    // Handle OptionalJSValue (for optional 'any' parameters)
+    // Handle V8-specific OptionalJSValue (for optional 'any' parameters)
     if (T == OptionalJSValue) {
         if (v8.v8_Value_IsNullOrUndefined(value)) {
             return OptionalJSValue.notPassed;
         }
         return OptionalJSValue.fromValue(try fromV8ValueTyped(value, isolate, context));
+    }
+
+    // Handle engine-agnostic runtime.OptionalJSValue
+    if (T == runtime.OptionalJSValue) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) {
+            return runtime.OptionalJSValue.notPassed;
+        }
+        return runtime.OptionalJSValue.fromValue(try fromV8Value(runtime.JSValue, allocator, isolate, context, value));
     }
 
     if (T == *const anyopaque) {
@@ -1544,12 +1603,29 @@ pub fn toV8Value(
                 break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.StringError);
             },
             .handle => |h| blk: {
-                // Global handles must be converted to Local handles for V8 to use them
+                // SAFETY CHECK: V8 Global handles must be 8-byte aligned.
+                // If the pointer is not aligned, it's likely a Zig pointer that was
+                // incorrectly stored via fromAnyopaque() - return undefined instead of crashing.
+                const ptr_addr = @intFromPtr(h.ptr);
+                if (ptr_addr % 8 != 0) {
+                    // Not a valid V8 handle - this is a bug in the calling code
+                    // but we handle it gracefully instead of crashing
+                    std.debug.print("WARNING: Misaligned handle in runtime.JSValue: 0x{x}\n", .{ptr_addr});
+                    break :blk toV8Undefined(isolate);
+                }
+
+                // Handle scope determines how to convert:
+                // - Global handles are already Global<Value>* and can be returned directly
+                //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
+                // - Local handles need to be persisted to Global for setReturnValue to work
                 if (h.handle_scope == .global) {
-                    const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
-                    break :blk if (local) |l| @ptrCast(l) else toV8Undefined(isolate);
-                } else {
+                    // Already a Global<Value>* - return directly
                     break :blk @ptrCast(h.ptr);
+                } else {
+                    // Local handle - need to persist to Global for safe return
+                    // Use v8_Value_Persist to convert Local to Global
+                    const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
+                    break :blk if (global) |g| @ptrCast(g) else toV8Undefined(isolate);
                 }
             },
             .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),
@@ -2523,22 +2599,13 @@ pub fn toV8(
                     // Check if v is a runtime.JSValue by checking if it has asEngineHandle
                     const V = @TypeOf(v);
                     if (@typeInfo(V) == .@"union") {
-                        // This is a runtime.JSValue - extract the engine handle
-                        if (v.asEngineHandle()) |handle| {
-                            break :blk @ptrCast(handle);
-                        } else {
-                            // Not a handle - convert based on type
-                            break :blk switch (v) {
-                                .undefined => v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory,
-                                .null => v8.v8_Null(isolate) orelse return ConversionError.OutOfMemory,
-                                .boolean => |b| @ptrCast(toV8Boolean(isolate, b)),
-                                .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
-                                .string => |s| @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.OutOfMemory),
-                                else => v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory,
-                            };
-                        }
+                        // This is a runtime.JSValue - convert using toV8Value which handles
+                        // Global/Local handle scopes correctly
+                        break :blk toV8Value(V, isolate, context, v) catch {
+                            break :blk v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;
+                        };
                     } else if (@typeInfo(V) == .pointer) {
-                        // Legacy *anyopaque case
+                        // Legacy *anyopaque case - assume it's already a Global handle
                         break :blk @ptrCast(v);
                     } else {
                         break :blk v8.v8_Undefined(isolate) orelse return ConversionError.OutOfMemory;

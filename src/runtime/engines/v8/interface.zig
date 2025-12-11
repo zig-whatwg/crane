@@ -2158,14 +2158,18 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return null);
                     },
                     .handle => |h| blk: {
-                        // h.ptr is a Global<Value>* - we need to get a Local for return
-                        // v8_Global_Get converts Global to Local
+                        // Handle scope determines how to convert:
+                        // - Global handles are already Global<Value>* and can be returned directly
+                        //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
+                        // - Local handles need to be persisted to Global for setReturnValue to work
                         if (h.handle_scope == .global) {
-                            const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
-                            break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate);
-                        } else {
-                            // Already a Local handle
+                            // Already a Global<Value>* - return directly
                             break :blk @ptrCast(h.ptr);
+                        } else {
+                            // Local handle - need to persist to Global for safe return
+                            // Use v8_Value_Persist to convert Local to Global
+                            const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
+                            break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate);
                         }
                     },
                     .instance => |i| blk: {

@@ -91,6 +91,7 @@ pub const V8EventLoop = event_loop_mod.V8EventLoop;
 pub const promise_mod = @import("promise.zig");
 pub const Promise = promise_mod.Promise;
 pub const invokeCallback = promise_mod.invokeCallback;
+pub const promise = promise_mod; // Full module access for bridge utilities
 
 /// Streams API Callback Helpers (Phase 3: Runtime Infrastructure)
 pub const streams_callbacks = @import("streams_callbacks.zig");

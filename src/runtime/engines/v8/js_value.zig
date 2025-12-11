@@ -354,16 +354,21 @@ pub const JSValue = union(enum) {
                 break :blk @ptrCast(str);
             },
             .global => |g| blk: {
-                // Global handles must be converted to Local handles for V8 to use them
-                const local = v8.v8_Global_Get(isolate, g.ptr);
-                break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate) orelse unreachable;
+                // Global handles are already Global<Value>* - return directly
+                // setReturnValue expects Global pointers
+                break :blk @ptrCast(g.ptr);
             },
             .instance => |_| {
                 // Instance needs proper wrapping via template registry
                 // For now return undefined - caller should use instanceToV8()
                 return v8.v8_Undefined(isolate) orelse unreachable;
             },
-            .local => |l| l.ptr,
+            .local => |l| blk: {
+                // Local handle - need to persist to Global for safe return
+                // Use v8_Value_Persist to convert Local to Global
+                const global = v8.v8_Value_Persist(isolate, l.ptr);
+                break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate) orelse unreachable;
+            },
         };
     }
 

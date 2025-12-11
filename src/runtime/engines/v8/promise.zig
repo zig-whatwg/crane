@@ -22,6 +22,8 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const webidl = @import("webidl");
+const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 
 /// V8 Promise wrapper for Zig
 ///
@@ -269,6 +271,168 @@ pub fn invokeCallback(
     defer v8.v8_Promise_Dispose(chained);
 
     return wrapper;
+}
+
+// ============================================================================
+// AsyncPromise to V8 Promise Bridge
+// ============================================================================
+
+/// Bridge for converting Zig AsyncPromise(T) to V8 Promise.
+///
+/// This is critical for correct promise handling: Zig AsyncPromise pointers
+/// are NOT V8 handles and cannot be passed to JavaScript directly. This bridge
+/// creates a proper V8 Promise and wires up callbacks so that when the Zig
+/// promise settles, the V8 Promise settles too.
+///
+/// ## Example
+///
+/// ```zig
+/// // WRONG - passing Zig pointer to JS!
+/// const zig_promise = try AsyncPromise(void).init(allocator, event_loop);
+/// return runtime.JSValue.fromAnyopaque(@ptrCast(zig_promise)); // CRASH!
+///
+/// // CORRECT - bridge to V8 Promise
+/// const zig_promise = try AsyncPromise(void).init(allocator, event_loop);
+/// const v8_promise = try asyncPromiseToV8(void, allocator, isolate, context, zig_promise);
+/// return runtime.JSValue.fromHandle(@ptrCast(v8_promise));
+/// ```
+pub fn AsyncPromiseBridge(comptime T: type) type {
+    return struct {
+        v8_promise: Promise(T),
+        allocator: std.mem.Allocator,
+        isolate: *v8.Isolate,
+        context: *v8.Context,
+
+        const Self = @This();
+
+        pub fn init(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context) !*Self {
+            const bridge = try allocator.create(Self);
+            errdefer allocator.destroy(bridge);
+
+            bridge.* = .{
+                .v8_promise = try Promise(T).init(isolate, context),
+                .allocator = allocator,
+                .isolate = isolate,
+                .context = context,
+            };
+
+            return bridge;
+        }
+
+        fn deinit(self: *Self) void {
+            // NOTE: Do NOT call self.v8_promise.deinit() here!
+            // The V8 Promise was returned to JavaScript via getPromise().
+            // JavaScript owns it now and V8's GC will manage its lifetime.
+            // Disposing here causes use-after-free when V8 tries to deliver
+            // the resolved value to JavaScript .then() handlers.
+            //
+            // We only free the bridge wrapper struct itself.
+            self.allocator.destroy(self);
+        }
+
+        pub fn onFulfilled(ctx: *anyopaque, value: T) anyerror!void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.v8_promise.resolve(value) catch {};
+            self.deinit();
+        }
+
+        pub fn onRejected(ctx: *anyopaque, err_value: webidl.errors.Exception) anyerror!void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.v8_promise.reject(err_value) catch {};
+            self.deinit();
+        }
+    };
+}
+
+/// Convert a Zig AsyncPromise(T) to a V8 Promise.
+///
+/// Creates a V8 Promise and registers callbacks on the Zig promise.
+/// When the Zig promise settles, the V8 promise is resolved/rejected
+/// with the same value/error.
+///
+/// The returned V8 Promise pointer can be safely returned to JavaScript.
+///
+/// ## Arguments
+/// - `T`: The type the AsyncPromise resolves to
+/// - `allocator`: Allocator for the bridge (use c_allocator for safety)
+/// - `isolate`: V8 isolate
+/// - `context`: V8 context
+/// - `zig_promise`: The Zig AsyncPromise to bridge
+///
+/// ## Returns
+/// A V8 Promise pointer that can be returned to JavaScript
+///
+/// ## Example
+///
+/// ```zig
+/// const zig_promise = try AsyncPromise(void).init(allocator, event_loop);
+/// zig_promise.reject(exception); // Will settle the V8 promise too
+/// const v8_promise = try asyncPromiseToV8(void, c_allocator, isolate, context, zig_promise);
+/// // Return v8_promise to JavaScript
+/// ```
+pub fn asyncPromiseToV8(
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    zig_promise: *AsyncPromise(T),
+) !*v8.Promise {
+    const Bridge = AsyncPromiseBridge(T);
+
+    // Create bridge that will resolve V8 promise when Zig promise settles
+    const bridge = try Bridge.init(allocator, isolate, context);
+    errdefer bridge.deinit();
+
+    // Register callbacks on Zig promise
+    // When it settles, bridge will settle the V8 promise
+    try zig_promise.onSettleCtx(
+        Bridge.onFulfilled,
+        Bridge.onRejected,
+        bridge,
+    );
+
+    // Return the V8 promise (bridge will be cleaned up when promise settles)
+    return bridge.v8_promise.getPromise();
+}
+
+/// Create a rejected V8 Promise with the given exception.
+///
+/// This is a convenience function for error paths where you need to
+/// return a rejected promise without creating an AsyncPromise first.
+///
+/// ## Example
+///
+/// ```zig
+/// if (stream_is_locked) {
+///     return createRejectedV8Promise(allocator, isolate, context,
+///         try webidl.errors.Exception.typeError(allocator, "Stream is locked"));
+/// }
+/// ```
+pub fn createRejectedV8Promise(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    exception: webidl.errors.Exception,
+) !*v8.Promise {
+    var promise = try Promise(void).init(isolate, context);
+    // Don't defer deinit - the promise is being returned to JS
+    try promise.reject(exception);
+    return promise.getPromise();
+}
+
+/// Create a resolved V8 Promise with the given value.
+///
+/// This is a convenience function for success paths where you need to
+/// return a resolved promise without creating an AsyncPromise first.
+pub fn createResolvedV8Promise(
+    comptime T: type,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: T,
+) !*v8.Promise {
+    var promise = try Promise(T).init(isolate, context);
+    // Don't defer deinit - the promise is being returned to JS
+    try promise.resolve(value);
+    return promise.getPromise();
 }
 
 // ============================================================================
