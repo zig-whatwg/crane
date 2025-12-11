@@ -132,6 +132,13 @@ pub const PromiseFulfillCallback = @import("engine_interface.zig").PromiseFulfil
 pub const PromiseRejectCallback = @import("engine_interface.zig").PromiseRejectCallback;
 pub const stub_engine = @import("engine_interface.zig").stub_engine;
 
+// Engine Context abstraction - type-safe wrapper for engine_ctx pointers
+// Replaces direct use of engine_ctx: *anyopaque with structured type
+pub const engine_context = @import("engine_context.zig");
+pub const EngineContext = engine_context.EngineContext;
+pub const EngineType = engine_context.EngineType;
+pub const OptionalEngineContext = engine_context.OptionalEngineContext;
+
 // Engine Binding abstraction (WebIDL binding generation)
 pub const engine_binding = @import("engine_binding.zig");
 pub const EngineBinding = engine_binding.EngineBinding;
