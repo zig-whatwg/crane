@@ -8,6 +8,22 @@
 //! This replaces the simple ?*const anyopaque function pointer approach
 //! with a vtable-based system supporting context and proper lifecycle.
 //!
+//! ## Type Safety
+//!
+//! This module provides both type-erased (Algorithm) and type-safe (TypedAlgorithm)
+//! variants. Use TypedAlgorithm when the context type is known at compile time,
+//! and convert to Algorithm when runtime polymorphism is needed.
+//!
+//! ```zig
+//! // Create a typed algorithm with compile-time type safety
+//! const MyContext = struct { data: i32 };
+//! var ctx = MyContext{ .data = 42 };
+//! const typed = TypedAlgorithm(MyContext, void).init(&ctx, myInvokeFn, myInvokeWithArgFn, myDestroyFn);
+//!
+//! // Convert to type-erased Algorithm for storage
+//! const erased = typed.erase(allocator);
+//! ```
+//!
 //! ## V8 Handle Lifetime
 //!
 //! JavaScript callbacks are stored as V8 Global handles to survive HandleScope
@@ -37,6 +53,213 @@ const callbacks = @import("callbacks");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const webidl = @import("webidl");
 const v8_engine = @import("v8");
+
+// ============================================================================
+// Type-Safe Generic Algorithm Infrastructure
+// ============================================================================
+//
+// These generics provide compile-time type safety for algorithm contexts.
+// Use them when the context type is known at compile time.
+// For runtime polymorphism (e.g., storing different algorithm types in a list),
+// use the type-erased Algorithm struct below.
+
+/// Generic algorithm with compile-time known context type
+///
+/// Use this when you know the context type at compile time.
+/// The context type is preserved through the call chain, providing type safety
+/// without runtime casts.
+///
+/// ## Type Parameters
+/// - `Context`: The type of the context struct (e.g., FromIterableContext, TeeState)
+/// - `ArgType`: The type of the optional argument passed to invoke_with_arg (use void if none)
+///
+/// ## Example
+/// ```zig
+/// const MyContext = struct {
+///     data: []const u8,
+///     allocator: Allocator,
+///
+///     pub fn deinit(self: *MyContext) void {
+///         self.allocator.free(self.data);
+///     }
+/// };
+///
+/// fn myInvoke(controller: *runtime.Instance, ctx: *MyContext) anyerror!*AsyncPromise(void) {
+///     // ctx is typed - no casting needed!
+///     _ = ctx.data;
+///     const promise = try AsyncPromise(void).init(ctx.allocator, ...);
+///     promise.fulfill({});
+///     return promise;
+/// }
+///
+/// fn myInvokeWithArg(controller: *runtime.Instance, ctx: *MyContext, arg: *const anyopaque) anyerror!*AsyncPromise(void) {
+///     return myInvoke(controller, ctx);
+/// }
+///
+/// fn myDestroy(ctx: *MyContext, allocator: Allocator) void {
+///     ctx.deinit();
+///     allocator.destroy(ctx);
+/// }
+///
+/// // Create typed algorithm
+/// const algo = TypedAlgorithm(MyContext, void).init(&ctx, myInvoke, myInvokeWithArg, myDestroy);
+/// ```
+pub fn TypedAlgorithm(comptime Context: type, comptime ArgType: type) type {
+    return struct {
+        context: *Context,
+        invoke_fn: *const fn (*runtime.Instance, *Context) anyerror!*AsyncPromise(void),
+        invoke_with_arg_fn: *const fn (*runtime.Instance, *Context, ArgType) anyerror!*AsyncPromise(void),
+        destroy_fn: *const fn (*Context, Allocator) void,
+
+        const Self = @This();
+
+        /// Initialize a typed algorithm
+        pub fn init(
+            context: *Context,
+            invoke_fn: *const fn (*runtime.Instance, *Context) anyerror!*AsyncPromise(void),
+            invoke_with_arg_fn: *const fn (*runtime.Instance, *Context, ArgType) anyerror!*AsyncPromise(void),
+            destroy_fn: *const fn (*Context, Allocator) void,
+        ) Self {
+            return .{
+                .context = context,
+                .invoke_fn = invoke_fn,
+                .invoke_with_arg_fn = invoke_with_arg_fn,
+                .destroy_fn = destroy_fn,
+            };
+        }
+
+        /// Call the algorithm with type-safe context
+        pub fn invoke(self: Self, controller: *runtime.Instance) anyerror!*AsyncPromise(void) {
+            return self.invoke_fn(controller, self.context);
+        }
+
+        /// Call the algorithm with type-safe context and argument
+        pub fn invokeWithArg(self: Self, controller: *runtime.Instance, arg: ArgType) anyerror!*AsyncPromise(void) {
+            return self.invoke_with_arg_fn(controller, self.context, arg);
+        }
+
+        /// Cleanup resources
+        pub fn deinit(self: Self, allocator: Allocator) void {
+            self.destroy_fn(self.context, allocator);
+        }
+
+        /// Convert to type-erased Algorithm for runtime polymorphism
+        ///
+        /// Use this when you need to store algorithms of different context types together
+        /// or when interfacing with code that expects the type-erased Algorithm.
+        ///
+        /// The returned Algorithm pointer must be freed with Algorithm.deinit() and
+        /// then allocator.destroy().
+        pub fn erase(self: Self, allocator: Allocator) !*Algorithm {
+            // Create wrapper functions that cast from anyopaque to typed context
+            const Wrapper = struct {
+                fn invokeWrapper(controller: *runtime.Instance, ctx: ?*anyopaque) anyerror!*AsyncPromise(void) {
+                    const typed_ctx: *Context = @ptrCast(@alignCast(ctx orelse return error.InvalidContext));
+                    return self.invoke_fn(controller, typed_ctx);
+                }
+
+                fn invokeWithArgWrapper(controller: *runtime.Instance, ctx: ?*anyopaque, arg: *const anyopaque) anyerror!*AsyncPromise(void) {
+                    const typed_ctx: *Context = @ptrCast(@alignCast(ctx orelse return error.InvalidContext));
+                    // For ArgType == *const anyopaque, pass directly
+                    // For other types, this needs compile-time handling
+                    if (@TypeOf(ArgType) == @TypeOf(*const anyopaque)) {
+                        return self.invoke_with_arg_fn(controller, typed_ctx, arg);
+                    } else {
+                        // For typed args, we'd need a way to pass typed arg through anyopaque
+                        // This branch handles the common case where ArgType is void or anyopaque
+                        return self.invoke_fn(controller, typed_ctx);
+                    }
+                }
+
+                fn destroyWrapper(ctx: ?*anyopaque, alloc: Allocator) void {
+                    if (ctx) |c| {
+                        const typed_ctx: *Context = @ptrCast(@alignCast(c));
+                        self.destroy_fn(typed_ctx, alloc);
+                    }
+                }
+            };
+
+            const algo = try allocator.create(Algorithm);
+            algo.* = .{
+                .context = self.context,
+                .vtable = &.{
+                    .invoke = Wrapper.invokeWrapper,
+                    .invoke_with_arg = Wrapper.invokeWithArgWrapper,
+                    .destroy = Wrapper.destroyWrapper,
+                },
+                .allocator = allocator,
+            };
+            return algo;
+        }
+    };
+}
+
+/// Create a type-erased Algorithm from a typed context and callbacks.
+///
+/// This is a convenience function that creates an Algorithm struct directly
+/// without needing to use TypedAlgorithm.erase(). It uses comptime to generate
+/// type-safe wrapper functions that cast from anyopaque to the typed context.
+///
+/// ## Example
+/// ```zig
+/// const MyContext = struct { value: i32 };
+/// var ctx = try allocator.create(MyContext);
+/// ctx.* = .{ .value = 42 };
+///
+/// const algo = try createTypedAlgorithm(
+///     MyContext,
+///     allocator,
+///     ctx,
+///     myInvokeFn,
+///     myInvokeWithArgFn,
+///     myDestroyFn,
+/// );
+/// defer {
+///     algo.deinit();
+///     allocator.destroy(algo);
+/// }
+/// ```
+pub fn createTypedAlgorithm(
+    comptime Context: type,
+    allocator: Allocator,
+    context: *Context,
+    comptime invoke_fn: *const fn (*runtime.Instance, *Context) anyerror!*AsyncPromise(void),
+    comptime invoke_with_arg_fn: *const fn (*runtime.Instance, *Context, *const anyopaque) anyerror!*AsyncPromise(void),
+    comptime destroy_fn: *const fn (*Context, Allocator) void,
+) !*Algorithm {
+    const Wrapper = struct {
+        fn invoke(controller: *runtime.Instance, ctx: ?*anyopaque) anyerror!*AsyncPromise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx orelse return error.InvalidContext));
+            return invoke_fn(controller, typed_ctx);
+        }
+
+        fn invokeWithArg(controller: *runtime.Instance, ctx: ?*anyopaque, arg: *const anyopaque) anyerror!*AsyncPromise(void) {
+            const typed_ctx: *Context = @ptrCast(@alignCast(ctx orelse return error.InvalidContext));
+            return invoke_with_arg_fn(controller, typed_ctx, arg);
+        }
+
+        fn destroy(ctx: ?*anyopaque, alloc: Allocator) void {
+            if (ctx) |c| {
+                const typed_ctx: *Context = @ptrCast(@alignCast(c));
+                destroy_fn(typed_ctx, alloc);
+            }
+        }
+    };
+
+    const vtable = comptime Algorithm.VTable{
+        .invoke = Wrapper.invoke,
+        .invoke_with_arg = Wrapper.invokeWithArg,
+        .destroy = Wrapper.destroy,
+    };
+
+    const algo = try allocator.create(Algorithm);
+    algo.* = .{
+        .context = context,
+        .vtable = &vtable,
+        .allocator = allocator,
+    };
+    return algo;
+}
 
 /// Algorithm - Represents a stream operation (start/pull/cancel/etc.)
 ///

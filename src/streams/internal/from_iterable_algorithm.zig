@@ -2,11 +2,18 @@
 //!
 //! Implements the pullAlgorithm from ReadableStreamFromIterable
 //! Spec: WHATWG Streams §4.2.1
+//!
+//! This module uses the typed algorithm pattern from algorithm.zig:
+//! - FromIterableContext is the typed context struct
+//! - Typed callback functions receive *FromIterableContext directly
+//! - createTypedAlgorithm() wraps these into the type-erased Algorithm
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
-const Algorithm = @import("algorithm").Algorithm;
+const algorithm_mod = @import("algorithm");
+const Algorithm = algorithm_mod.Algorithm;
+const createTypedAlgorithm = algorithm_mod.createTypedAlgorithm;
 const IteratorRecord = @import("iterator_record").IteratorRecord;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const v8_mod = @import("v8");
@@ -21,6 +28,10 @@ const ReadableStreamDefaultController = interfaces.ReadableStreamDefaultControll
 
 /// Context for from() pull algorithm
 /// Captured state: iterator record + stream reference
+///
+/// This is a typed context struct used with TypedAlgorithm/createTypedAlgorithm.
+/// The callback functions below receive *FromIterableContext directly without
+/// any anyopaque casts, providing compile-time type safety.
 pub const FromIterableContext = struct {
     iterator_record: *IteratorRecord,
     allocator: Allocator,
@@ -32,6 +43,9 @@ pub const FromIterableContext = struct {
 };
 
 /// Create pull algorithm for ReadableStream.from()
+///
+/// Uses createTypedAlgorithm to create a type-safe algorithm that
+/// wraps FromIterableContext with proper typed callbacks.
 pub fn createPullAlgorithm(
     allocator: Allocator,
     iterator_record: *IteratorRecord,
@@ -42,29 +56,32 @@ pub fn createPullAlgorithm(
         .allocator = allocator,
     };
 
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = context,
-        .vtable = &pull_vtable,
-        .allocator = allocator,
-    };
-
-    return algo;
+    // Use typed algorithm creation for type safety
+    return createTypedAlgorithm(
+        FromIterableContext,
+        allocator,
+        context,
+        pullInvokeTyped,
+        pullInvokeWithArgTyped,
+        pullDestroyTyped,
+    );
 }
 
-const pull_vtable = Algorithm.VTable{
-    .invoke = pullInvoke,
-    .invoke_with_arg = pullInvokeWithArg,
-    .destroy = pullDestroy,
-};
+// ============================================================================
+// Typed Pull Algorithm Callbacks
+// ============================================================================
+//
+// These callbacks receive *FromIterableContext directly, providing type safety.
+// They are wrapped by createTypedAlgorithm into the type-erased Algorithm.
 
-/// Pull algorithm implementation
+/// Pull algorithm implementation (typed version)
+/// Receives *FromIterableContext directly - no anyopaque casting needed.
+///
 /// Spec: ReadableStreamFromIterable, step 4 (pullAlgorithm)
-fn pullInvoke(
+fn pullInvokeTyped(
     controller: *runtime.Instance,
-    context_ptr: ?*anyopaque,
-) !*AsyncPromise(void) {
-    const context: *FromIterableContext = @ptrCast(@alignCast(context_ptr orelse return error.InvalidContext));
+    context: *FromIterableContext,
+) anyerror!*AsyncPromise(void) {
     const iter_record = context.iterator_record;
 
     // Create promise for this pull operation
@@ -149,24 +166,32 @@ fn pullInvoke(
     return promise;
 }
 
-fn pullInvokeWithArg(
+/// Pull with argument (typed version)
+/// Pull doesn't use the argument, so this delegates to pullInvokeTyped.
+fn pullInvokeWithArgTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    context: *FromIterableContext,
     _: *const anyopaque,
-) !*AsyncPromise(void) {
+) anyerror!*AsyncPromise(void) {
     // Pull doesn't take arguments
-    return pullInvoke(controller, context);
+    return pullInvokeTyped(controller, context);
 }
 
-fn pullDestroy(context_ptr: ?*anyopaque, allocator: Allocator) void {
-    if (context_ptr) |ptr| {
-        const context: *FromIterableContext = @ptrCast(@alignCast(ptr));
-        context.deinit();
-    }
+/// Destroy callback (typed version)
+/// Cleans up the FromIterableContext.
+fn pullDestroyTyped(context: *FromIterableContext, allocator: Allocator) void {
+    context.deinit();
     _ = allocator;
 }
 
+// ============================================================================
+// Typed Cancel Algorithm
+// ============================================================================
+
 /// Create cancel algorithm for ReadableStream.from()
+///
+/// Uses createTypedAlgorithm to create a type-safe algorithm that
+/// wraps FromIterableContext with proper typed callbacks.
 pub fn createCancelAlgorithm(
     allocator: Allocator,
     iterator_record: *IteratorRecord,
@@ -178,51 +203,62 @@ pub fn createCancelAlgorithm(
         .allocator = allocator,
     };
 
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = context,
-        .vtable = &cancel_vtable,
-        .allocator = allocator,
-    };
-
-    return algo;
+    // Use typed algorithm creation for type safety
+    return createTypedAlgorithm(
+        FromIterableContext,
+        allocator,
+        context,
+        cancelInvokeTyped,
+        cancelInvokeWithArgTyped,
+        cancelDestroyTyped,
+    );
 }
 
-const cancel_vtable = Algorithm.VTable{
-    .invoke = cancelInvoke,
-    .invoke_with_arg = cancelInvokeWithArg,
-    .destroy = cancelDestroy,
-};
+// ============================================================================
+// Typed Cancel Algorithm Callbacks
+// ============================================================================
 
-fn cancelInvoke(
+/// Cancel algorithm invoke (typed version)
+/// Cancel without reason - uses undefined.
+fn cancelInvokeTyped(
     controller: *runtime.Instance,
-    context_ptr: ?*anyopaque,
-) !*AsyncPromise(void) {
+    context: *FromIterableContext,
+) anyerror!*AsyncPromise(void) {
     // Cancel without reason (use undefined)
     const isolate = v8_engine.getIsolate(controller.ctx) orelse return error.NoV8Engine;
     const undef = v8.v8_Undefined(isolate) orelse return error.V8Error;
     defer v8.v8_Value_Dispose(undef);
 
-    return cancelInvokeWithArg(controller, context_ptr, undef);
+    return cancelInvokeWithArgTypedImpl(controller, context, undef);
 }
 
-/// Cancel algorithm implementation
+/// Cancel algorithm implementation (typed version)
+/// Receives *FromIterableContext directly - no anyopaque casting needed.
+///
 /// Spec: ReadableStreamFromIterable, step 5 (cancelAlgorithm)
-fn cancelInvokeWithArg(
+fn cancelInvokeWithArgTyped(
     controller: *runtime.Instance,
-    context_ptr: ?*anyopaque,
+    context: *FromIterableContext,
     reason: *const anyopaque,
-) !*AsyncPromise(void) {
-    const context: *FromIterableContext = @ptrCast(@alignCast(context_ptr orelse return error.InvalidContext));
+) anyerror!*AsyncPromise(void) {
+    // Cast reason to V8 Value - use pointer untagging for V8 tagged pointers
+    const untagged = pointer_tag.untagPointer(reason);
+    const reason_value: *v8.Value = @ptrCast(untagged.ptr);
+
+    return cancelInvokeWithArgTypedImpl(controller, context, reason_value);
+}
+
+/// Internal implementation for cancel with typed context and V8 value
+fn cancelInvokeWithArgTypedImpl(
+    controller: *runtime.Instance,
+    context: *FromIterableContext,
+    reason_value: *v8.Value,
+) anyerror!*AsyncPromise(void) {
     const iter_record = context.iterator_record;
 
     const allocator = controller.ctx.getAllocator();
     const event_loop = try controller.ctx.getEventLoop();
     const promise = try AsyncPromise(void).init(allocator, event_loop);
-
-    // Cast reason to V8 Value - use pointer untagging for V8 tagged pointers
-    const untagged = pointer_tag.untagPointer(reason);
-    const reason_value: *v8.Value = @ptrCast(untagged.ptr);
 
     // Call iterator.return(reason)
     // If close fails, just fulfill anyway (stream is canceling)
@@ -232,10 +268,8 @@ fn cancelInvokeWithArg(
     return promise;
 }
 
-fn cancelDestroy(context_ptr: ?*anyopaque, allocator: Allocator) void {
-    if (context_ptr) |ptr| {
-        const context: *FromIterableContext = @ptrCast(@alignCast(ptr));
-        context.deinit();
-    }
+/// Destroy callback for cancel algorithm (typed version)
+fn cancelDestroyTyped(context: *FromIterableContext, allocator: Allocator) void {
+    context.deinit();
     _ = allocator;
 }
