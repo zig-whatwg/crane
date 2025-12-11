@@ -663,13 +663,51 @@ pub const BrowserContext = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
 
-        // Register console object with log, warn, error methods via JavaScript
-        // This provides a no-op console by default for tests that use console.log
+        // Register console object with proper WebIDL namespace semantics
+        // Per WebIDL spec §3.8.1 "Namespace objects":
+        // - The prototype chain is: console -> empty object -> Object.prototype
+        // - The namespace has Symbol.toStringTag = "console" (non-writable, non-enumerable, configurable)
+        // - All console methods are own properties
+        //
+        // Per WHATWG Console Standard, methods that take a label (count, countReset,
+        // time, timeLog, timeEnd) must call toString() on the label if it's an object,
+        // and re-throw any exceptions from the toString() call.
         {
             const console_script =
                 \\(function() {
                 \\  function consoleNoop() {}
-                \\  globalThis.console = {
+                \\  
+                \\  // Helper to convert label to string per WHATWG Console Standard
+                \\  // If label is an object, calls its toString() method and re-throws exceptions
+                \\  function convertLabel(label) {
+                \\    if (label === undefined) {
+                \\      return "default";
+                \\    }
+                \\    // Per spec: If label is an object, call its toString()
+                \\    // This allows exceptions from toString() to propagate
+                \\    if (label !== null && typeof label === "object") {
+                \\      return label.toString();
+                \\    }
+                \\    return String(label);
+                \\  }
+                \\  
+                \\  // Internal state for count and time operations
+                \\  var countMap = {};
+                \\  var timerMap = {};
+                \\  
+                \\  // Create the empty prototype object (between console and Object.prototype)
+                \\  // Per WebIDL: "The [[Prototype]] internal slot of a namespace object is
+                \\  // an immutable prototype exotic object that has no own properties and
+                \\  // [[Prototype]] is %ObjectPrototype%"
+                \\  var consoleProto = Object.create(Object.prototype);
+                \\  Object.freeze(consoleProto);  // Make prototype immutable
+                \\  
+                \\  // Create console object with the proper prototype chain
+                \\  globalThis.console = Object.create(consoleProto);
+                \\  
+                \\  // Define all console methods as own properties
+                \\  // Methods that take a label parameter must call convertLabel()
+                \\  var methods = {
                 \\    log: consoleNoop,
                 \\    warn: consoleNoop,
                 \\    error: consoleNoop,
@@ -677,18 +715,69 @@ pub const BrowserContext = struct {
                 \\    debug: consoleNoop,
                 \\    trace: consoleNoop,
                 \\    dir: consoleNoop,
+                \\    dirxml: consoleNoop,
                 \\    table: consoleNoop,
                 \\    assert: consoleNoop,
                 \\    clear: consoleNoop,
-                \\    count: consoleNoop,
-                \\    countReset: consoleNoop,
                 \\    group: consoleNoop,
                 \\    groupCollapsed: consoleNoop,
                 \\    groupEnd: consoleNoop,
-                \\    time: consoleNoop,
-                \\    timeLog: consoleNoop,
-                \\    timeEnd: consoleNoop,
                 \\  };
+                \\  
+                \\  // Helper to create a function with a specific length property
+                \\  // Per WebIDL, when all parameters are optional, length should be 0
+                \\  function createLabelMethod(fn, length) {
+                \\    Object.defineProperty(fn, 'length', { value: length, configurable: true });
+                \\    return fn;
+                \\  }
+                \\  
+                \\  // count, countReset, time, timeLog, timeEnd must call toString() on label objects
+                \\  // Per WebIDL, these functions have length 0 because all params are optional
+                \\  methods.count = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    countMap[key] = (countMap[key] || 0) + 1;
+                \\  }, 0);
+                \\  
+                \\  methods.countReset = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete countMap[key];
+                \\  }, 0);
+                \\  
+                \\  methods.time = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    if (!(key in timerMap)) {
+                \\      timerMap[key] = Date.now();
+                \\    }
+                \\  }, 0);
+                \\  
+                \\  methods.timeLog = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    // No-op for output, but still convert the label
+                \\  }, 0);
+                \\  
+                \\  methods.timeEnd = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete timerMap[key];
+                \\  }, 0);
+                \\  
+                \\  for (var name in methods) {
+                \\    Object.defineProperty(globalThis.console, name, {
+                \\      value: methods[name],
+                \\      writable: true,
+                \\      enumerable: true,
+                \\      configurable: true
+                \\    });
+                \\  }
+                \\  
+                \\  // Add Symbol.toStringTag per WebIDL namespace semantics
+                \\  // Per WebIDL: "@@toStringTag is the namespace identifier with
+                \\  // writable: false, enumerable: false, configurable: true"
+                \\  Object.defineProperty(globalThis.console, Symbol.toStringTag, {
+                \\    value: "console",
+                \\    writable: false,
+                \\    enumerable: false,
+                \\    configurable: true
+                \\  });
                 \\})();
             ;
             self.executeScript(console_script) catch |err| {
