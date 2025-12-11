@@ -77,9 +77,25 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Takes union type: (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
 /// The init_data parameter is a type-erased pointer that we need to interpret
 pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // For now, treat as empty string
-    // Proper union type handling requires runtime type tags
-    _ = init_data;
+    // If no init data provided or undefined/null, create empty params
+    if (!init_data.was_passed) {
+        return initWithString(ctx.allocator, ctx, "");
+    }
+
+    const value = init_data.value;
+
+    // Check if it's undefined or null
+    if (value.isNullOrUndefined()) {
+        return initWithString(ctx.allocator, ctx, "");
+    }
+
+    // Check if it's a string
+    if (value.asString()) |str| {
+        return initWithString(ctx.allocator, ctx, str);
+    }
+
+    // TODO: Handle sequence<sequence<USVString>> and record<USVString, USVString>
+    // For now, fall back to empty if not a string
     return initWithString(ctx.allocator, ctx, "");
 }
 
@@ -327,7 +343,8 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 
 /// getAll method
 /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-getall (lines 2082-2091)
-pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
+/// Returns sequence<USVString> - all values for the given name
+pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror![]const []const u8 {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
@@ -342,6 +359,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
 
     // Allocate result array
     const result = try internal.allocator.alloc([]const u8, count);
+    errdefer internal.allocator.free(result);
 
     // Fill result array
     var idx: usize = 0;
@@ -353,8 +371,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         }
     }
 
-    // Return as JSValue (caller will interpret as sequence)
-    return runtime.JSValue.fromAnyopaque(@ptrCast(result.ptr));
+    return result;
 }
 
 /// has method

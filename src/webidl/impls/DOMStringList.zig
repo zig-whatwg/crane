@@ -49,7 +49,7 @@ pub const InternalState = struct {
         for (self.strings.items) |str| {
             self.allocator.free(str);
         }
-        self.strings.deinit();
+        self.strings.deinit(self.allocator);
     }
 };
 
