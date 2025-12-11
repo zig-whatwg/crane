@@ -1018,7 +1018,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/read_request.zig"),
         .target = target,
         .imports = &.{
-            .{ .name = "queue_with_sizes", .module = streams_queue_mod },
+            .{ .name = "common", .module = streams_common_mod },
         },
     });
 
