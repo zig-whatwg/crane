@@ -64,6 +64,12 @@ pub const TimerBackend = timer_backend.TimerBackend;
 pub const RealTimerBackend = timer_backend.RealTimerBackend;
 pub const MockTimerBackend = timer_backend.MockTimerBackend;
 
+// Global timer backend access (portable default with optional override)
+pub const getDefaultTimerBackend = timer_backend.getDefault;
+pub const getCurrentTimerBackend = timer_backend.getCurrent;
+pub const setCustomTimerBackend = timer_backend.setCustomBackend;
+pub const deinitDefaultTimerBackend = timer_backend.deinitDefault;
+
 // Timer Adapter (bridges old and new interfaces)
 pub const timer_adapter = @import("timer_adapter.zig");
 pub const TimerVTableAdapter = timer_adapter.TimerVTableAdapter;

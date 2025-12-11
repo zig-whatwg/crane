@@ -44,6 +44,9 @@ const webidl = @import("webidl");
 const dom = @import("dom");
 const html_full = @import("html_full");
 
+// Platform module for timer backend cleanup
+const platform = @import("platform");
+
 // V8 Event Loop with timer support (uses libuv under the hood)
 const V8EventLoop = v8.V8EventLoop;
 const TimerInterface = runtime.TimerInterface;
@@ -186,6 +189,10 @@ pub const BrowserContext = struct {
         // created during parsing but then removed by testharness.js or the test code.
         // Must be called BEFORE deinitializeRuntime() since it frees owned strings.
         impls.cleanup.cleanupAllDomRegistries();
+
+        // Clean up the global timer backend (if it was lazily initialized)
+        // This frees the RealTimerBackend that may have been created by Worker constructors
+        platform.deinitDefaultTimerBackend();
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();

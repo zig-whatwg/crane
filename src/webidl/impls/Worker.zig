@@ -31,6 +31,9 @@ const structured_clone = html_core.structured_clone;
 const message_port_internal = @import("streams_internal");
 const InternalMessagePort = message_port_internal.MessagePort;
 
+// Import platform for TimerBackend (used to create DedicatedWorker)
+const platform = @import("platform");
+
 pub const State = Worker.State;
 
 pub const ImplError = error{
@@ -146,13 +149,11 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     errdefer if (name_copy.len > 0) ctx.allocator.free(name_copy);
 
     // Create internal state
-    // Note: The actual DedicatedWorker will be created when platform is available
-    // For now, we store the configuration
     const internal_state = try ctx.allocator.create(InternalState);
     errdefer ctx.allocator.destroy(internal_state);
 
     internal_state.* = .{
-        .dedicated_worker = null, // Created when platform is set
+        .dedicated_worker = null,
         .script_url = url_copy,
         .name = name_copy,
         .worker_type = worker_type,
@@ -164,8 +165,31 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     var state = instance.getState(State);
     state.own._internal = internal_state;
 
-    // Note: Worker will be started when the platform provides a timer backend
-    // In a full implementation, this would use the environment's platform
+    // Try to create the DedicatedWorker using the global timer backend
+    // The timer backend is portable (uses std.time) and works on all platforms
+    if (platform.getDefaultTimerBackend(ctx.allocator)) |timer_backend| {
+        const dedicated_worker = DedicatedWorker.init(
+            ctx.allocator,
+            timer_backend,
+            url_copy,
+            .{
+                .name = name_copy,
+                .worker_type = worker_type,
+                .credentials = credentials,
+            },
+        ) catch |err| {
+            // Log error but don't fail - worker will be in "not started" state
+            std.log.warn("Failed to create DedicatedWorker: {}", .{err});
+            return instance;
+        };
+        internal_state.dedicated_worker = dedicated_worker;
+
+        // TODO: Start the worker (fetch script, create V8 context, execute)
+        // This requires additional infrastructure - see whatwg-snp7x epic
+    } else |_| {
+        // Timer backend initialization failed - worker remains in "not started" state
+        std.log.warn("TimerBackend not available, worker will not start", .{});
+    }
 
     return instance;
 }

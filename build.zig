@@ -1449,6 +1449,9 @@ pub fn build(b: *std.Build) void {
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
     impls_mod.addImport("html_core", html_core_mod);
 
+    // Add platform to impls for Worker to access TimerBackend
+    impls_mod.addImport("platform", platform_mod);
+
     // Add html_core and csp to dom for document_internals
     dom_mod.addImport("html_core", html_core_mod);
     dom_mod.addImport("csp", csp_mod);

@@ -414,3 +414,139 @@ test "MockTimerBackend - sleepUntilWakeup with timeout" {
     try std.testing.expectEqual(@as(i64, 300), slept);
     try std.testing.expectEqual(@as(i64, 1300), mock.current_time_ms);
 }
+
+// =============================================================================
+// Global Default Timer Backend
+// =============================================================================
+
+/// Thread-local default timer backend instance.
+/// Lazily initialized on first access via getDefault().
+threadlocal var default_backend_instance: ?*RealTimerBackend = null;
+
+/// Optional custom timer backend override.
+/// Embedders can set this to provide platform-specific timing.
+threadlocal var custom_backend: ?TimerBackend = null;
+
+/// Allocator used for the default backend (needed for cleanup).
+threadlocal var default_backend_allocator: ?std.mem.Allocator = null;
+
+/// Get the current timer backend.
+///
+/// Returns (in order of precedence):
+/// 1. Custom backend if set via setCustomBackend()
+/// 2. Default RealTimerBackend (lazily initialized)
+///
+/// The default backend uses std.time for portable timing that works
+/// on all platforms Zig supports.
+///
+/// For most uses, this just works without any setup. Embedders who need
+/// native platform integration (iOS RunLoop, Android Looper, etc.) can
+/// call setCustomBackend() to override.
+pub fn getDefault(allocator: std.mem.Allocator) !TimerBackend {
+    // Return custom backend if set
+    if (custom_backend) |backend| {
+        return backend;
+    }
+
+    // Lazily initialize default backend
+    if (default_backend_instance == null) {
+        default_backend_instance = try RealTimerBackend.init(allocator);
+        default_backend_allocator = allocator;
+    }
+
+    return default_backend_instance.?.backend();
+}
+
+/// Get the current timer backend if available, without initializing.
+///
+/// Returns null if no backend is available (neither custom nor default initialized).
+/// Use getDefault() if you want automatic initialization.
+pub fn getCurrent() ?TimerBackend {
+    if (custom_backend) |backend| {
+        return backend;
+    }
+    if (default_backend_instance) |instance| {
+        return instance.backend();
+    }
+    return null;
+}
+
+/// Set a custom timer backend.
+///
+/// This overrides the default RealTimerBackend. Use this when you need
+/// platform-specific timing integration (e.g., iOS RunLoop, Android Looper).
+///
+/// Pass null to clear the custom backend and revert to the default.
+pub fn setCustomBackend(backend: ?TimerBackend) void {
+    custom_backend = backend;
+}
+
+/// Cleanup the default timer backend.
+///
+/// Call this during shutdown to free resources. After calling this,
+/// getDefault() will create a new instance on next access.
+///
+/// Note: This does NOT cleanup custom backends - embedders are responsible
+/// for managing their own backend lifecycle.
+pub fn deinitDefault() void {
+    if (default_backend_instance) |instance| {
+        instance.allocator.destroy(instance);
+        default_backend_instance = null;
+        default_backend_allocator = null;
+    }
+}
+
+test "getDefault - returns RealTimerBackend" {
+    const allocator = std.testing.allocator;
+
+    // Get default backend
+    const backend = try getDefault(allocator);
+    defer deinitDefault();
+
+    // Should return current time (non-zero after epoch)
+    const time = backend.getCurrentTime();
+    try std.testing.expect(time > 0);
+}
+
+test "setCustomBackend - overrides default" {
+    const allocator = std.testing.allocator;
+
+    // Create a mock backend
+    const mock = try MockTimerBackend.init(allocator);
+    defer mock.allocator.destroy(mock);
+
+    mock.setCurrentTime(12345);
+
+    // Set as custom backend
+    setCustomBackend(mock.backend());
+    defer setCustomBackend(null);
+
+    // getDefault should return the custom backend
+    const backend = try getDefault(allocator);
+
+    // Should return mock's time, not real time
+    const time = backend.getCurrentTime();
+    try std.testing.expectEqual(@as(i64, 12345), time);
+}
+
+test "getCurrent - returns null when not initialized" {
+    // Clear any existing state
+    setCustomBackend(null);
+    deinitDefault();
+
+    // Should return null
+    const backend = getCurrent();
+    try std.testing.expect(backend == null);
+}
+
+test "getCurrent - returns backend after getDefault" {
+    const allocator = std.testing.allocator;
+
+    // Initialize via getDefault
+    _ = try getDefault(allocator);
+    defer deinitDefault();
+
+    // Now getCurrent should return it
+    const backend = getCurrent();
+    try std.testing.expect(backend != null);
+}
