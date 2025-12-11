@@ -43,24 +43,29 @@ pub const BufferSource = union(enum) {
 /// typedef (Blob or BufferSource or FormData or URLSearchParams or USVString) XMLHttpRequestBodyInit
 ///
 /// Spec: https://fetch.spec.whatwg.org/#bodyinit
+///
+/// ARCHITECTURAL NOTE: Several fields use *anyopaque because this module is designed
+/// for standalone testing without runtime dependency. When integrated with the full
+/// runtime, these should be *runtime.Instance (WebIDL interface instances).
+/// See: specs/idl/streams.idl (ReadableStream), specs/idl/FileAPI.idl (Blob),
+///      specs/idl/xhr.idl (FormData), specs/idl/url.idl (URLSearchParams)
 pub const BodyInit = union(enum) {
-    /// ReadableStream body source.
-    /// Note: Uses opaque pointer until full stream integration.
+    /// ReadableStream body source - should be *runtime.Instance when integrated.
+    /// WebIDL type: ReadableStream (https://streams.spec.whatwg.org/#rs-class)
     readable_stream: *anyopaque,
 
-    /// Blob body source.
-    /// Note: Uses opaque pointer until full Blob integration.
+    /// Blob body source (with metadata for extraction).
     blob: BlobInfo,
 
     /// BufferSource (ArrayBuffer, TypedArray, DataView).
     buffer_source: BufferSource,
 
-    /// FormData body source.
-    /// Note: Uses opaque pointer until full FormData integration.
+    /// FormData body source - should be *runtime.Instance when integrated.
+    /// WebIDL type: FormData (https://xhr.spec.whatwg.org/#interface-formdata)
     form_data: *anyopaque,
 
-    /// URLSearchParams body source.
-    /// Note: Uses opaque pointer until full URL integration.
+    /// URLSearchParams body source - should be *runtime.Instance when integrated.
+    /// WebIDL type: URLSearchParams (https://url.spec.whatwg.org/#urlsearchparams)
     url_search_params: *anyopaque,
 
     /// USVString body source (UTF-8 encoded).
@@ -68,7 +73,8 @@ pub const BodyInit = union(enum) {
 
     /// Blob info for extraction.
     pub const BlobInfo = struct {
-        /// Opaque pointer to Blob.
+        /// Blob WebIDL interface pointer - should be *runtime.Instance when integrated.
+        /// WebIDL type: Blob (https://w3c.github.io/FileAPI/#blob-section)
         ptr: *anyopaque,
         /// Blob size in bytes.
         size: u64,

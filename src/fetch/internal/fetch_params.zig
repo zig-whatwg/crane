@@ -50,10 +50,14 @@ pub const ParallelQueue = struct {
 /// Task destination for queuing fetch tasks.
 ///
 /// Spec: "A task destination is either null, a global object, or a parallel queue."
+/// KEEP: global_object uses *anyopaque because per the Fetch spec, "global object"
+/// is an abstract concept referring to any realm's global (Window, Worker, etc.).
+/// The actual type depends on the embedding environment and is not a single WebIDL interface.
 pub const TaskDestination = union(enum) {
     /// No destination (null).
     none,
     /// A global object (for task queuing in event loop).
+    /// KEEP: Abstract "global object" per HTML spec, not a specific WebIDL type.
     global_object: *anyopaque,
     /// A parallel queue (for parallel execution).
     parallel_queue: *ParallelQueue,

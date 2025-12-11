@@ -31,6 +31,8 @@ pub const FetchController = struct {
     /// Spec: "A fetch controller has an associated report timing steps
     /// which is an algorithm accepting a global object."
     report_timing_steps: ?ReportTimingStepsFn = null,
+    /// KEEP: Callback context uses *anyopaque as it's an internal Zig callback pattern
+    /// (user_data for callbacks), not a WebIDL type. Callers pass their own context.
     report_timing_context: ?*anyopaque = null,
 
     /// Serialized abort reason.
@@ -57,6 +59,7 @@ pub const FetchController = struct {
     };
 
     /// Report timing steps callback type.
+    /// KEEP: Uses *anyopaque for global (abstract global object) and context (callback user_data).
     pub const ReportTimingStepsFn = *const fn (global: *anyopaque, context: ?*anyopaque) void;
 
     /// Next manual redirect steps callback type.

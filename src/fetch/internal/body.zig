@@ -18,14 +18,22 @@ const StreamingSource = network.StreamingSource;
 
 /// Body source types for tracking the origin of body data.
 /// Per spec, source can be null, bytes, Blob, or FormData.
+///
+/// ARCHITECTURAL NOTE: The blob and form_data fields use *anyopaque because this
+/// module is designed for standalone testing without runtime dependency. When
+/// integrated with the full runtime, these should be *runtime.Instance (WebIDL
+/// Blob and FormData interface instances respectively).
+/// See: specs/idl/FileAPI.idl (Blob), specs/idl/xhr.idl (FormData)
 pub const BodySource = union(enum) {
     /// No source (e.g., network responses where source is unknown)
     none,
     /// Byte sequence source
     bytes: []const u8,
-    /// Blob source (placeholder - uses opaque pointer for now)
+    /// Blob source - should be *runtime.Instance when integrated with runtime.
+    /// WebIDL type: Blob (https://w3c.github.io/FileAPI/#blob-section)
     blob: *anyopaque,
-    /// FormData source (placeholder - uses opaque pointer for now)
+    /// FormData source - should be *runtime.Instance when integrated with runtime.
+    /// WebIDL type: FormData (https://xhr.spec.whatwg.org/#interface-formdata)
     form_data: *anyopaque,
 };
 
@@ -223,11 +231,16 @@ pub const Body = struct {
     // Since we store data directly (not via streams yet), these are simplified.
 
     /// Callback types for incremental reading.
+    /// KEEP: These use *anyopaque for ctx because they are internal Zig callback patterns
+    /// (classic user_data pattern), not WebIDL interface types. The ctx is type-erased
+    /// to allow any caller-defined context to be passed through the callback chain.
     pub const ProcessChunkFn = *const fn (ctx: *anyopaque, bytes: []const u8) void;
     pub const ProcessEndFn = *const fn (ctx: *anyopaque) void;
     pub const ProcessErrorFn = *const fn (ctx: *anyopaque, err: anyerror) void;
 
     /// Read context for callback-based reading.
+    /// KEEP: ctx is *anyopaque because this is an internal callback context pattern,
+    /// not a WebIDL type. Callers cast their own context type to pass through.
     pub const ReadContext = struct {
         ctx: *anyopaque,
         process_chunk: ProcessChunkFn,
@@ -263,9 +276,11 @@ pub const Body = struct {
     }
 
     /// Callback types for fully reading.
+    /// KEEP: *anyopaque for ctx is the internal Zig callback user_data pattern.
     pub const ProcessBodyFn = *const fn (ctx: *anyopaque, bytes: []const u8) void;
 
     /// Full read context.
+    /// KEEP: ctx is *anyopaque because this is an internal callback context pattern.
     pub const FullReadContext = struct {
         ctx: *anyopaque,
         process_body: ProcessBodyFn,

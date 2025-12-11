@@ -29,7 +29,9 @@ pub const RequestInit = struct {
     redirect: ?internal_request.RedirectMode = null,
     integrity: ?[]const u8 = null,
     keepalive: ?bool = null,
-    signal: ?*anyopaque = null, // AbortSignal
+    /// AbortSignal WebIDL interface instance - should be *runtime.Instance when integrated.
+    /// WebIDL type: AbortSignal (https://dom.spec.whatwg.org/#interface-abortsignal)
+    signal: ?*anyopaque = null,
 };
 
 /// Request class per WebIDL.
@@ -43,7 +45,8 @@ pub const Request = struct {
     headers_obj: *Headers,
     /// Whether body has been used
     body_used: bool,
-    /// Signal for abort
+    /// Signal for abort - should be *runtime.Instance when integrated with runtime.
+    /// WebIDL type: AbortSignal (https://dom.spec.whatwg.org/#interface-abortsignal)
     signal: ?*anyopaque,
 
     const Self = @This();

@@ -185,10 +185,13 @@ pub const RequestOrigin = union(enum) {
 };
 
 /// Policy container - either "client" sentinel or actual container.
+/// KEEP: container uses *anyopaque because this is an internal Fetch spec concept
+/// (policy container per HTML spec), not a WebIDL interface type. The actual
+/// policy container type is implementation-defined per the HTML spec.
 pub const RequestPolicyContainer = union(enum) {
     /// "client" - will be resolved during fetch
     client,
-    /// Actual policy container (opaque for now)
+    /// Actual policy container (internal HTML spec concept, not WebIDL)
     container: *anyopaque,
 };
 
@@ -200,9 +203,12 @@ pub const Referrer = union(enum) {
 };
 
 /// Traversable for user prompts.
+/// KEEP: traversable uses *anyopaque because this is an internal HTML spec concept
+/// (navigable/traversable per HTML spec), not a WebIDL interface type.
 pub const TraversableForUserPrompts = union(enum) {
     no_traversable,
     client,
+    /// Internal traversable reference (HTML spec concept, not WebIDL)
     traversable: *anyopaque,
 };
 
@@ -244,11 +250,14 @@ pub const InternalRequest = struct {
     body: ?RequestBody = null,
 
     // === Client/Context Fields ===
+    // KEEP: These client fields use *anyopaque because they represent internal
+    // HTML spec concepts (environment settings objects), not WebIDL interface types.
+    // The Fetch spec defines these as opaque to the fetch layer.
 
-    /// Client environment settings object (opaque for now)
+    /// Client environment settings object (internal HTML spec concept, not WebIDL)
     client: ?*anyopaque = null,
 
-    /// Reserved client for navigation/worker requests
+    /// Reserved client for navigation/worker requests (internal HTML spec concept)
     reserved_client: ?*anyopaque = null,
 
     /// ID of client being replaced (for navigations)
@@ -277,7 +286,9 @@ pub const InternalRequest = struct {
     /// Priority
     priority: Priority = .auto,
 
-    /// Internal priority (implementation-defined)
+    /// Internal priority (implementation-defined).
+    /// KEEP: Uses *anyopaque because this is explicitly "implementation-defined"
+    /// per the Fetch spec, allowing any internal priority representation.
     internal_priority: ?*anyopaque = null,
 
     // === Origin/Policy Fields ===
