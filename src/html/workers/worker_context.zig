@@ -43,7 +43,7 @@ const EventLoop = event_loop_mod.EventLoop;
 
 /// Opaque engine context pointer
 /// This is set by external code (html module) that has access to V8
-const EngineContext = opaque {};
+pub const EngineContext = opaque {};
 
 /// Engine callback interface
 /// These function pointers are set by the html module to provide V8 integration

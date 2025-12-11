@@ -78,6 +78,9 @@ pub const InternalState = struct {
     /// The underlying dedicated worker implementation (optional - created when platform is set)
     dedicated_worker: ?*DedicatedWorker = null,
 
+    /// V8 context for worker execution (created when DedicatedWorker starts)
+    v8_context: ?*WorkerV8Context = null,
+
     /// Outside MessagePort (exposed to the caller)
     outside_port: ?*runtime.Instance = null,
 
@@ -100,6 +103,10 @@ pub const InternalState = struct {
     ctx: ?runtime.Context = null,
 
     pub fn deinit(self: *InternalState) void {
+        // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
+        if (self.v8_context) |v8_ctx| {
+            v8_ctx.deinit();
+        }
         if (self.dedicated_worker) |worker| {
             worker.deinit();
         }
@@ -227,8 +234,26 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
 
-        // TODO: Start the worker (fetch script, create V8 context, execute)
-        // This requires additional infrastructure - see whatwg-snp7x epic
+        // Create V8 context for worker execution
+        // This creates a separate V8 isolate for the worker with its own context
+        const v8_context = WorkerV8Context.init(
+            ctx.allocator,
+            url_copy,
+            worker_type,
+        ) catch |err| {
+            std.log.warn("Failed to create WorkerV8Context: {}", .{err});
+            return instance;
+        };
+        internal_state.v8_context = v8_context;
+
+        // Wire up the V8 context to the WorkerAgent's WorkerContext
+        // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
+        if (dedicated_worker.agent.worker_context) |worker_ctx| {
+            worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
+            std.log.info("Worker V8 context created and wired to WorkerContext", .{});
+        }
+
+        // TODO: Fetch and execute the worker script (see whatwg-kaf0v)
     } else |_| {
         // Timer backend initialization failed - worker remains in "not started" state
         std.log.warn("TimerBackend not available, worker will not start", .{});

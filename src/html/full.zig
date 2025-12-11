@@ -198,6 +198,11 @@ pub const formatting_commands = @import("formatting_commands.zig");
 /// (Used by execCommand for list, paragraph, link, and media commands)
 pub const structure_commands = @import("structure_commands.zig");
 
+/// Worker V8 context creation and management
+/// Creates V8 isolates and contexts for worker execution
+pub const worker_v8_context = @import("worker_v8_context.zig");
+pub const WorkerV8Context = worker_v8_context.WorkerV8Context;
+
 // ============================================================================
 // Re-exports for Testing Convenience
 // ============================================================================
