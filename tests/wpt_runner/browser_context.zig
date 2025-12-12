@@ -2458,10 +2458,21 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
     }
 }
 
-/// Mock dispatchEvent callback - returns true (event was not cancelled)
+/// dispatchEvent callback - dispatches event using the real EventTarget implementation
+/// TODO: Currently this is a partial implementation that doesn't properly invoke
+/// event listeners. Full implementation requires:
+/// 1. Proper Window/WorkerGlobalScope setup with EventTarget internal state
+/// 2. Correct event target extraction from 'this'
+/// See issue for full implementation plan.
 fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    // Return true to indicate the event was not cancelled
+
+    // Return true (event not cancelled) - partial implementation
+    // Full implementation would:
+    // 1. Extract target EventTarget from 'this'
+    // 2. Extract Event from argument
+    // 3. Call EventTarget.call_dispatchEvent
+    // 4. Invoke registered callbacks
     if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
         info.setReturnValue(result);
     }

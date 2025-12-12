@@ -362,7 +362,6 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 /// Operation: addEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // Debug: Log the type and context
     // Get or create internal state
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {
@@ -480,8 +479,35 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
             if (std.mem.eql(u8, listener.type.asSlice(), @"type".asSlice()) and
                 !listener.removed)
             {
-                // TODO: Actually invoke the callback
-                // For now, just mark that we found listeners
+                // Actually invoke the callback
+                if (listener.callback) |callback_instance| {
+                    // Cast callback Instance to CallbackWrapper
+                    // (the callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper)
+                    const v8_engine = @import("v8");
+                    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+
+                    // Get the V8 context from the instance context
+                    if (instance.ctx.engine_ctx) |engine_ctx| {
+                        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+                        // Get the current V8 isolate
+                        const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse continue;
+
+                        // Wrap the event as a V8 object
+                        const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+                            event,
+                            "Event",
+                            v8_isolate,
+                            v8_context,
+                        ) catch {
+                            // If we can't wrap the event, skip this listener
+                            continue;
+                        };
+
+                        // Invoke the callback with the event as an argument
+                        _ = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
+                    }
+                }
 
                 // If listener.once is true, remove it
                 if (listener.once) {
