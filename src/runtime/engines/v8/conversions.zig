@@ -695,10 +695,15 @@ pub fn fromV8Value(
     }
 
     // Handle DOMString specially (it's a union type but should be treated as a string)
+    // Per WebIDL spec, DOMString uses ToString coercion on any value except Symbol
+    // https://webidl.spec.whatwg.org/#idl-DOMString
+    // This means null -> "null", undefined -> "undefined", 123 -> "123", etc.
     if (T == runtime.DOMString) {
-        if (!v8.v8_Value_IsString(value)) {
+        // Check for Symbol - throws TypeError per WebIDL spec
+        if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
+        // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
@@ -1092,12 +1097,37 @@ pub fn fromV8Value(
             @compileError("webidl.Opt type missing 'value' field");
         };
 
-        // Check for null/undefined - return notPassed
-        if (v8.v8_Value_IsNullOrUndefined(value)) {
+        // Per WebIDL spec, for optional parameters:
+        // - undefined means "not passed" (use default value)
+        // - null is a valid value for string types (stringified to "null")
+        // https://webidl.spec.whatwg.org/#idl-optional
+        const is_string_type = comptime blk: {
+            if (InnerType == runtime.DOMString or
+                InnerType == runtime.USVString or
+                InnerType == runtime.ByteString)
+            {
+                break :blk true;
+            }
+            // Check for []const u8 slice type
+            const inner_info = @typeInfo(InnerType);
+            if (inner_info == .pointer and inner_info.pointer.size == .slice and
+                inner_info.pointer.child == u8)
+            {
+                break :blk true;
+            }
+            break :blk false;
+        };
+
+        if (v8.v8_Value_IsUndefined(value)) {
             return T.notPassed();
         }
 
-        // Convert the inner value
+        // For non-string types, null also means "not passed"
+        if (!is_string_type and v8.v8_Value_IsNull(value)) {
+            return T.notPassed();
+        }
+
+        // Convert the inner value (for strings, null will be stringified to "null")
         const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
         return T.passed(inner_value);
     }
