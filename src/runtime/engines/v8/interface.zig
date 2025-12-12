@@ -404,6 +404,49 @@ pub fn V8Interface(comptime Interface: type) type {
                 _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(call_key));
             }
 
+            // CRITICAL: Skip ALL prototype setup for callback interfaces!
+            // Per WebIDL §3.12, callback interfaces do NOT have a .prototype property.
+            // Accessing or defining the prototype property would re-create it.
+            if (is_callback_interface) {
+                // Only register constants on the constructor itself for callback interfaces
+                if (@hasDecl(Meta, "constants")) {
+                    const constants = Meta.constants;
+                    inline for (constants) |constant| {
+                        const const_name: []const u8 = constant[0];
+                        const getter_name: []const u8 = constant[1];
+
+                        // Call the getter function at comptime
+                        const value = @field(Interface, getter_name)();
+
+                        // Convert to V8 value - all constants become numbers
+                        const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
+
+                        // Create string for constant name
+                        const name_str = v8.v8_String_NewFromUtf8(
+                            isolate,
+                            const_name.ptr,
+                            @intCast(const_name.len),
+                        );
+
+                        if (name_str) |const_name_v8| {
+                            // Set as property on constructor with correct descriptor
+                            // Constants: writable=false, enumerable=true, configurable=false
+                            _ = v8.v8_Object_DefineProperty(
+                                @ptrCast(constructor.?),
+                                context,
+                                @ptrCast(const_name_v8),
+                                @ptrCast(v8_value),
+                                false, // writable = false (constants are read-only)
+                                true, // enumerable = true (constants are enumerable)
+                                false, // configurable = false (constants are permanent)
+                            );
+                        }
+                    }
+                }
+                // Done - no prototype setup for callback interfaces
+                return;
+            }
+
             // Fix the "prototype" property to be non-writable (spec-compliant)
             // By default V8 makes constructor.prototype writable, but in browsers it's read-only
             const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9).?;
@@ -776,13 +819,31 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Remove the prototype property entirely for callback interfaces
                 // This makes Object.getOwnPropertyDescriptor(NodeFilter, 'prototype') return undefined
                 v8.v8_FunctionTemplate_RemovePrototype(template);
-            } else {
-                // Make the "prototype" property read-only for regular interfaces.
-                // Per WebIDL spec, Constructor.prototype should be non-writable.
-                // Note: This does NOT remove legacy "arguments"/"caller" properties -
-                // that's a V8 limitation we cannot work around without V8 internal APIs.
-                v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
+
+                // CRITICAL: Return immediately for callback interfaces!
+                // Do NOT call InstanceTemplate(), PrototypeTemplate(), or any other template
+                // operations - they may re-create the prototype that RemovePrototype() removed.
+                // Constants are registered separately in registerGlobal().
+
+                // Cache the template for callback interfaces too
+                if (!template_registry.snapshot_mode) {
+                    if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
+                        if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                            storage.put(interface_name, template) catch {};
+                        }
+                    }
+                    template_cache = template;
+                    template_cache_isolate = isolate;
+                    template_cache_generation = template_registry.cache_generation;
+                }
+                return template;
             }
+
+            // Make the "prototype" property read-only for regular interfaces.
+            // Per WebIDL spec, Constructor.prototype should be non-writable.
+            // Note: This does NOT remove legacy "arguments"/"caller" properties -
+            // that's a V8 limitation we cannot work around without V8 internal APIs.
+            v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
 
             // Get instance template and set internal field count
             // Field 0: pointer to Zig instance (*runtime.Instance)
