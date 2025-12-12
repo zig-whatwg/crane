@@ -2438,6 +2438,37 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     ));
 }
 
+// ObjectTemplate - set indexed property handler with full support (getter, query, enumerator, descriptor)
+// Uses V8's indexed property callback types with Intercepted return type
+// Our Zig callbacks return Intercepted (u8 enum) to match V8's expectations
+typedef Intercepted (*InterceptedIndexedQueryCallback)(uint32_t index, const PropertyCallbackInfo<Integer>&);
+typedef Intercepted (*InterceptedIndexedDescriptorCallback)(uint32_t index, const PropertyCallbackInfo<Value>&);
+
+void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+    Global<ObjectTemplate>* tpl,
+    IndexedPropertyGetterCallbackV2 getter,
+    InterceptedIndexedQueryCallback query,
+    IndexedPropertyEnumeratorCallbackV2 enumerator,
+    InterceptedIndexedDescriptorCallback descriptor
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    // Callbacks now match V8's expected Intercepted return type
+    local_tpl->SetHandler(IndexedPropertyHandlerConfiguration(
+        getter,
+        nullptr,  // setter callback (read-only for now)
+        query,    // query callback (returns Intercepted)
+        nullptr,  // deleter callback (not needed)
+        enumerator,  // enumerator callback for Reflect.ownKeys
+        nullptr,  // definer callback (not needed)
+        descriptor,  // descriptor callback (returns Intercepted)
+        Local<Value>(),  // data (not needed)
+        PropertyHandlerFlags::kNone
+    ));
+}
+
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -2625,6 +2656,42 @@ bool v8_Object_DefineProperty(Global<Object>* object, Global<Context>* context, 
     if (!configurable) attributes = static_cast<v8::PropertyAttribute>(attributes | v8::DontDelete);
     
     return obj->DefineOwnProperty(ctx, name, val, attributes).FromMaybe(false);
+}
+
+// Create a property descriptor object for Object.getOwnPropertyDescriptor callbacks
+// Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
+// Takes pointers that match Zig's FFI types (v8.Value* = Global<Value>*)
+Global<Object>* v8_CreateDataPropertyDescriptor(
+    Global<Context>* context,
+    Global<Value>* value,
+    bool writable,
+    bool enumerable,
+    bool configurable
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    
+    Local<Object> desc = Object::New(isolate);
+    
+    // Set value
+    Local<Value> val = value->Get(isolate);
+    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "value").ToLocalChecked(), val).Check();
+    
+    // Set writable
+    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "writable").ToLocalChecked(),
+              Boolean::New(isolate, writable)).Check();
+    
+    // Set enumerable
+    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "enumerable").ToLocalChecked(),
+              Boolean::New(isolate, enumerable)).Check();
+    
+    // Set configurable
+    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "configurable").ToLocalChecked(),
+              Boolean::New(isolate, configurable)).Check();
+    
+    return trackHandle(new Global<Object>(isolate, desc));
 }
 
 // ============================================================================

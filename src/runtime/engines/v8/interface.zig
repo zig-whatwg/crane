@@ -856,11 +856,14 @@ pub fn V8Interface(comptime Interface: type) type {
             const has_length = comptime @hasDecl(Interface, "get_length");
             if (has_indexed_item) {
                 if (has_length) {
-                    // Use indexed property handler with enumerator for Reflect.ownKeys support
-                    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
+                    // Use full indexed property handler with query and descriptor callbacks
+                    // This enables proper Object.getOwnPropertyDescriptor support
+                    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
                         instance_tmpl,
                         indexedPropertyGetter,
+                        indexedPropertyQuery,
                         indexedPropertyEnumerator,
+                        indexedPropertyDescriptor,
                     );
                 } else {
                     // No length property - just use getter without enumerator
@@ -2637,6 +2640,152 @@ pub fn V8Interface(comptime Interface: type) type {
                 _ = v8.v8_Array_Set(indices_arr, v8_context, i, @ptrCast(v8_idx));
             }
             info.setReturnValue(@ptrCast(indices_arr));
+        }
+
+        /// Indexed property query callback for Object.getOwnPropertyDescriptor attribute queries
+        /// Returns property attributes: None=0, ReadOnly=1, DontEnum=2, DontDelete=4
+        /// Returns Intercepted::kYes if property exists, Intercepted::kNo otherwise
+        fn indexedPropertyQuery(
+            index: u32,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            // Only compile if Interface has call_item and get_length
+            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Check if index is in range
+            const length = Interface.get_length(instance) catch return .kNo;
+            if (index >= length) {
+                // Property doesn't exist
+                return .kNo;
+            }
+
+            // Property exists - return attributes
+            // Indexed properties are: enumerable, configurable, NOT writable (read-only) for most collections
+            // Check if interface has an indexed setter
+            const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
+            const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
+            const v8_attrs = v8.v8_Integer_New(isolate, attributes);
+            info.setReturnValue(@ptrCast(v8_attrs));
+            return .kYes;
+        }
+
+        /// Indexed property descriptor callback for Object.getOwnPropertyDescriptor
+        /// Returns a property descriptor object: { value, writable, enumerable, configurable }
+        /// Returns Intercepted::kYes if property exists and descriptor was set, Intercepted::kNo otherwise
+        fn indexedPropertyDescriptor(
+            index: u32,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            // Only compile if Interface has call_item and get_length
+            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Check if index is in range
+            const length = Interface.get_length(instance) catch return .kNo;
+            if (index >= length) {
+                // Property doesn't exist
+                return .kNo;
+            }
+
+            // Get the value at this index
+            const result = Interface.call_item(instance, index) catch return .kNo;
+
+            // Convert result to V8 value
+            const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+
+            var v8_value: ?*v8.Value = null;
+            if (type_info == .optional) {
+                if (result) |unwrapped_result| {
+                    const ChildType = type_info.optional.child;
+                    if (ChildType == *runtime.Instance) {
+                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
+                        const wrapped = template_registry.wrapInstanceAsV8Object(
+                            unwrapped_result,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch return .kNo;
+                        v8_value = @ptrCast(wrapped);
+                    } else {
+                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
+                    }
+                } else {
+                    // null value - use undefined
+                    v8_value = v8.v8_Undefined(isolate);
+                }
+            } else {
+                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kNo;
+            }
+
+            if (v8_value == null) return .kNo;
+
+            // Check if interface has an indexed setter (makes it writable)
+            const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
+            const writable = has_setter;
+
+            // Create property descriptor object
+            const desc = v8.v8_CreateDataPropertyDescriptor(
+                v8_context,
+                v8_value.?,
+                writable,
+                true, // enumerable
+                true, // configurable
+            ) orelse return .kNo;
+
+            info.setReturnValue(@ptrCast(desc));
+            return .kYes;
         }
 
         /// Iterator callback for Symbol.iterator

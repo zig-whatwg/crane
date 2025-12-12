@@ -347,12 +347,51 @@ pub const IndexedPropertyEnumeratorCallback = *const fn (
     info: *const PropertyCallbackInfo,
 ) callconv(.c) void;
 
+/// V8 Intercepted enum - indicates whether a property interceptor handled the request
+/// kNo (0) = not intercepted, continue normal lookup
+/// kYes (1) = intercepted, use the return value
+pub const Intercepted = enum(u8) {
+    kNo = 0,
+    kYes = 1,
+};
+
+/// Indexed property query callback for Object.getOwnPropertyDescriptor attribute queries
+/// Should return property attributes (None=0, ReadOnly=1, DontEnum=2, DontDelete=4)
+/// Return value via info.GetReturnValue().Set(v8::Integer::New(isolate, attributes))
+/// Returns Intercepted::kYes if property exists, Intercepted::kNo otherwise
+pub const IndexedPropertyQueryCallback = *const fn (
+    index: u32,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
+
+/// Indexed property descriptor callback for Object.getOwnPropertyDescriptor
+/// Should set return value to a property descriptor object with value/writable/enumerable/configurable
+/// Returns Intercepted::kYes if property exists and descriptor was set, Intercepted::kNo otherwise
+pub const IndexedPropertyDescriptorCallback = *const fn (
+    index: u32,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
+
 /// Set an indexed property handler with enumerator support on the ObjectTemplate
 /// This intercepts indexed property access and enables Reflect.ownKeys enumeration
 pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     self: *ObjectTemplate,
     getter: IndexedPropertyGetterCallback,
     enumerator: IndexedPropertyEnumeratorCallback,
+) void;
+
+/// Set an indexed property handler with full support (getter, query, enumerator, descriptor)
+/// This enables proper behavior for:
+/// - obj[index] (getter)
+/// - Object.getOwnPropertyDescriptor(obj, index) (descriptor)
+/// - Reflect.ownKeys(obj) (enumerator)
+/// - 'index' in obj (query)
+pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+    self: *ObjectTemplate,
+    getter: IndexedPropertyGetterCallback,
+    query: ?IndexedPropertyQueryCallback,
+    enumerator: ?IndexedPropertyEnumeratorCallback,
+    descriptor: ?IndexedPropertyDescriptorCallback,
 ) void;
 
 // ============================================================================
@@ -473,6 +512,17 @@ pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
 pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;
+
+/// Create a property descriptor object for Object.getOwnPropertyDescriptor
+/// Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
+/// This is the format expected by V8 when returning from descriptor callbacks
+pub extern fn v8_CreateDataPropertyDescriptor(
+    context: *Context,
+    value: *Value,
+    writable: bool,
+    enumerable: bool,
+    configurable: bool,
+) ?*Object;
 
 // Array operations
 pub extern fn v8_Array_New(isolate: *Isolate, length: c_int) *Array;
