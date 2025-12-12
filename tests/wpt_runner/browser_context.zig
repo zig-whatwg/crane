@@ -285,11 +285,53 @@ pub const BrowserContext = struct {
     fn setupGlobalAliases(self: *BrowserContext) !void {
         // Context-specific setup based on context_type
         // Per HTML spec §7.2.2.4 "Accessing related windows" (window context only)
+        //
+        // Per WebIDL §3.8, global object properties must be accessor properties that:
+        // 1. Return globalThis when called with null/undefined this
+        // 2. Throw TypeError when called with incompatible this (e.g., Object.create(globalThis))
+        //
+        // The checkThis helper validates that 'this' is either null/undefined or the global.
         const setup_script = switch (self.context_type) {
             .window =>
-            \\// Assign self and window to globalThis
-            \\globalThis.self = globalThis;
-            \\globalThis.window = globalThis;
+            \\// Helper function to check 'this' for global object properties
+            \\// Per WebIDL §3.8:
+            \\// - If this is null/undefined, use globalThis
+            \\// - If this === globalThis, allow
+            \\// - Otherwise, throw TypeError
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface Window.");
+            \\}
+            \\
+            \\// Define 'self' as an accessor property with proper global object checks
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() {
+            \\    return __checkGlobalThis(this, 'self');
+            \\  },
+            \\  set: function(v) {
+            \\    __checkGlobalThis(this, 'self');
+            \\    // self is not actually settable per spec, but we allow it for compat
+            \\  },
+            \\  enumerable: true,
+            \\  configurable: true
+            \\});
+            \\
+            \\// Define 'window' as an accessor property with proper global object checks
+            \\Object.defineProperty(globalThis, 'window', {
+            \\  get: function() {
+            \\    return __checkGlobalThis(this, 'window');
+            \\  },
+            \\  set: function(v) {
+            \\    __checkGlobalThis(this, 'window');
+            \\  },
+            \\  enumerable: true,
+            \\  configurable: true
+            \\});
             \\
             \\// Window hierarchy properties (per HTML spec §7.2.2.4)
             \\// For a top-level browsing context:
@@ -298,14 +340,201 @@ pub const BrowserContext = struct {
             \\// - opener returns null (no opener)
             \\// - frames returns the window itself
             \\// - length returns 0 (no child navigables)
-            \\globalThis.parent = globalThis;
-            \\globalThis.top = globalThis;
+            \\Object.defineProperty(globalThis, 'parent', {
+            \\  get: function() { return __checkGlobalThis(this, 'parent'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'top', {
+            \\  get: function() { return __checkGlobalThis(this, 'top'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'frames', {
+            \\  get: function() { return __checkGlobalThis(this, 'frames'); },
+            \\  enumerable: true, configurable: true
+            \\});
             \\globalThis.opener = null;
-            \\globalThis.frames = globalThis;
             \\globalThis.length = 0;
             \\
+            \\// Internal storage for accessor properties
+            \\// These are set by registerWindowGlobals() and accessed via getters below
+            \\globalThis.__internal = {
+            \\  navigator: null,
+            \\  location: null,
+            \\  document: null,
+            \\  history: null,
+            \\  performance: null,
+            \\  origin: 'null',
+            \\  onerror: null,
+            \\  onoffline: null,
+            \\  ononline: null,
+            \\};
+            \\
+            \\// Define accessor properties for browser singletons with proper global object checks
+            \\// Per WebIDL §3.8, these must throw TypeError when called with incompatible this
+            \\Object.defineProperty(globalThis, 'navigator', {
+            \\  get: function() { __checkGlobalThis(this, 'navigator'); return globalThis.__internal.navigator; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'location', {
+            \\  get: function() { __checkGlobalThis(this, 'location'); return globalThis.__internal.location; },
+            \\  set: function(v) { __checkGlobalThis(this, 'location'); globalThis.__internal.location = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'document', {
+            \\  get: function() { __checkGlobalThis(this, 'document'); return globalThis.__internal.document; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'history', {
+            \\  get: function() { __checkGlobalThis(this, 'history'); return globalThis.__internal.history; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'performance', {
+            \\  get: function() { __checkGlobalThis(this, 'performance'); return globalThis.__internal.performance; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'origin', {
+            \\  get: function() { __checkGlobalThis(this, 'origin'); return globalThis.__internal.origin; },
+            \\  set: function(v) { __checkGlobalThis(this, 'origin'); globalThis.__internal.origin = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'onerror', {
+            \\  get: function() { __checkGlobalThis(this, 'onerror'); return globalThis.__internal.onerror; },
+            \\  set: function(v) { __checkGlobalThis(this, 'onerror'); globalThis.__internal.onerror = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'onoffline', {
+            \\  get: function() { __checkGlobalThis(this, 'onoffline'); return globalThis.__internal.onoffline; },
+            \\  set: function(v) { __checkGlobalThis(this, 'onoffline'); globalThis.__internal.onoffline = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'ononline', {
+            \\  get: function() { __checkGlobalThis(this, 'ononline'); return globalThis.__internal.ononline; },
+            \\  set: function(v) { __checkGlobalThis(this, 'ononline'); globalThis.__internal.ononline = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Helper function to check 'this' for global object operations (methods)
+            \\// For operations, we use __checkGlobalOp which validates then returns (not the global)
+            \\function __checkGlobalOp(thisArg, opName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return; // OK - use global implicitly
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return; // OK - called on global directly
+            \\  }
+            \\  throw new TypeError("'" + opName + "' called on an object that does not implement interface Window.");
+            \\}
+            \\
+            \\// Internal storage for original operation implementations
+            \\globalThis.__internalOps = {};
+            \\
+            \\// Wrap setInterval with global object check
+            \\// Store original before wrapping (will be set by registerCommonGlobals)
+            \\Object.defineProperty(globalThis, 'setInterval', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.setInterval;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'setInterval');
+            \\      return origOp.apply(globalThis, args);
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.setInterval = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap clearTimeout with global object check
+            \\Object.defineProperty(globalThis, 'clearTimeout', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.clearTimeout;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'clearTimeout');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.clearTimeout = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap btoa with global object check  
+            \\Object.defineProperty(globalThis, 'btoa', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.btoa;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'btoa');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.btoa = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap atob with global object check
+            \\Object.defineProperty(globalThis, 'atob', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.atob;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'atob');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.atob = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap focus with global object check
+            \\Object.defineProperty(globalThis, 'focus', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.focus;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'focus');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.focus = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap removeEventListener with global object check
+            \\Object.defineProperty(globalThis, 'removeEventListener', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.removeEventListener;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'removeEventListener');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.removeEventListener = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap addEventListener with global object check
+            \\Object.defineProperty(globalThis, 'addEventListener', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.addEventListener;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'addEventListener');
+            \\      return origOp ? origOp.apply(globalThis, args) : undefined;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.addEventListener = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Wrap dispatchEvent with global object check
+            \\Object.defineProperty(globalThis, 'dispatchEvent', {
+            \\  get: function() {
+            \\    const origOp = globalThis.__internalOps.dispatchEvent;
+            \\    return function(...args) {
+            \\      __checkGlobalOp(this, 'dispatchEvent');
+            \\      return origOp ? origOp.apply(globalThis, args) : false;
+            \\    };
+            \\  },
+            \\  set: function(v) { globalThis.__internalOps.dispatchEvent = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
             \\// Set up GLOBAL object for WPT tests - WINDOW context
-            \\self.GLOBAL = {
+            \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
             \\  isShadowRealm: function() { return false; },
@@ -313,10 +542,24 @@ pub const BrowserContext = struct {
             ,
             .worker =>
             \\// Worker context: only self, no window
-            \\globalThis.self = globalThis;
+            \\// Helper function to check 'this' for global object properties
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface WorkerGlobalScope.");
+            \\}
+            \\
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
             \\
             \\// Set up GLOBAL object for WPT tests - WORKER context
-            \\self.GLOBAL = {
+            \\globalThis.GLOBAL = {
             \\  isWindow: function() { return false; },
             \\  isWorker: function() { return true; },
             \\  isShadowRealm: function() { return false; },
@@ -324,10 +567,23 @@ pub const BrowserContext = struct {
             ,
             .shared_worker, .service_worker =>
             \\// Shared/Service worker context: only self, no window
-            \\globalThis.self = globalThis;
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface WorkerGlobalScope.");
+            \\}
+            \\
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
             \\
             \\// Set up GLOBAL object for WPT tests - WORKER context
-            \\self.GLOBAL = {
+            \\globalThis.GLOBAL = {
             \\  isWindow: function() { return false; },
             \\  isWorker: function() { return true; },
             \\  isShadowRealm: function() { return false; },
@@ -386,18 +642,20 @@ pub const BrowserContext = struct {
         //
         // Instead, we:
         // 1. Register needed globals (document, navigator, etc.) directly on global
-        // 2. Set window/self to point to the global object itself
+        // 2. Set window/self as accessor properties in setupGlobalAliases()
+        //
+        // NOTE: window/self are NOT set here - they're defined as accessor properties
+        // in setupGlobalAliases() with proper global object checks per WebIDL §3.8.
 
-        // Register 'window' and 'self' as references to the global object
-        {
-            const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(window_key), @ptrCast(global_obj));
+        // Get __internal object for storing singleton values
+        // The accessor properties defined in setupGlobalAliases() read from __internal
+        const internal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__internal", 10) orelse return error.StringCreateFailed;
+        const internal_obj = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(internal_key)) orelse {
+            std.debug.print("Warning: __internal object not found on global\n", .{});
+            return error.ObjectNotFound;
+        };
 
-            const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
-        }
-
-        // Register Document singleton
+        // Register Document singleton (stored in __internal.document)
         {
             const Document = interfaces.Document;
             const doc_instance = Document.init(self.allocator, runtime_ctx) catch |err| {
@@ -417,10 +675,10 @@ pub const BrowserContext = struct {
             };
 
             const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(doc_key), @ptrCast(v8_document));
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(doc_key), @ptrCast(v8_document));
         }
 
-        // Register Navigator singleton
+        // Register Navigator singleton (stored in __internal.navigator)
         {
             const Navigator = interfaces.Navigator;
             const nav_instance = Navigator.init(self.allocator, runtime_ctx) catch |err| {
@@ -440,10 +698,10 @@ pub const BrowserContext = struct {
             };
 
             const nav_key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(nav_key), @ptrCast(v8_navigator));
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(nav_key), @ptrCast(v8_navigator));
         }
 
-        // Register Location singleton
+        // Register Location singleton (stored in __internal.location)
         {
             const Location = interfaces.Location;
             const loc_instance = Location.init(self.allocator, runtime_ctx) catch |err| {
@@ -463,10 +721,10 @@ pub const BrowserContext = struct {
             };
 
             const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(loc_key), @ptrCast(v8_location));
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(loc_key), @ptrCast(v8_location));
         }
 
-        // Register History singleton
+        // Register History singleton (stored in __internal.history)
         {
             const History = interfaces.History;
             const hist_instance = History.init(self.allocator, runtime_ctx) catch |err| {
@@ -486,10 +744,10 @@ pub const BrowserContext = struct {
             };
 
             const hist_key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(hist_key), @ptrCast(v8_history));
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(hist_key), @ptrCast(v8_history));
         }
 
-        // Register Performance singleton
+        // Register Performance singleton (stored in __internal.performance)
         {
             const Performance = interfaces.Performance;
             const perf_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
@@ -509,7 +767,7 @@ pub const BrowserContext = struct {
             };
 
             const perf_key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(perf_key), @ptrCast(v8_performance));
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(perf_key), @ptrCast(v8_performance));
         }
     }
 
@@ -521,9 +779,8 @@ pub const BrowserContext = struct {
         global_obj: *v8.ffi.Object,
         runtime_ctx: runtime.Context,
     ) !void {
-        // Register 'self' as reference to global object (WorkerGlobalScope)
-        const self_key = v8.ffi.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreateFailed;
-        _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(self_key), @ptrCast(global_obj));
+        // NOTE: 'self' is set up as an accessor property in setupGlobalAliases()
+        // with proper global object checks per WebIDL §3.8.
 
         // Register WorkerNavigator singleton
         {
