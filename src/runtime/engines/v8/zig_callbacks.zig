@@ -56,11 +56,21 @@ const CallbackType = enum {
 ///
 /// This allows V8 callbacks to call back into Zig code with context.
 /// Also stores the allocator so we can free this struct when V8 GCs the Function.
+///
+/// Note on anyopaque usage:
+/// - fn_ptr: KEEP - Type-erased function pointer required because we support multiple
+///   callback signatures (void_no_args, one_arg_void, etc.) through a single struct.
+///   The callback_type field determines how to interpret and invoke this pointer.
+/// - user_data: KEEP - Type-erased closure context required because user callbacks can
+///   capture arbitrary state (controllers, streams, etc.). The callback function itself
+///   knows the concrete type and casts accordingly.
 const CallbackUserData = struct {
     /// Function pointer (type-erased)
+    /// KEEP: Type erasure required - multiple callback signatures share this struct
     fn_ptr: *const anyopaque,
 
     /// Optional user data for closure-like behavior
+    /// KEEP: Type erasure required - callbacks capture arbitrary user-defined state
     user_data: ?*anyopaque,
 
     /// Allocator used to create this struct (needed for cleanup)
@@ -411,7 +421,7 @@ pub fn createZigCallback(
     };
 
     // Register finalizer to clean up callback_data when Function is GC'd
-    // Cast function to anyopaque for v8_Global_SetWeak (it accepts any Global handle)
+    // KEEP: Cast function to anyopaque for v8_Global_SetWeak - V8 C ABI requires void*
     const function_handle: *anyopaque = @ptrCast(function);
     v8.v8_Global_SetWeak(function_handle, callback_data, callbackFinalizer);
 
@@ -443,12 +453,14 @@ pub fn createZigCallback(
 ///     allocator, isolate, v8_context, onWriteFulfilled, &write_ctx
 /// );
 /// ```
+/// KEEP: callback_fn uses *anyopaque because the caller's context type is unknown at compile time
+/// KEEP: user_ctx uses *anyopaque to pass through caller's arbitrary context data
 pub fn createContextCallback(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
-    callback_fn: *const fn (ctx: *anyopaque) void,
-    user_ctx: *anyopaque,
+    callback_fn: *const fn (ctx: *anyopaque) void, // KEEP: Type-erased callback for arbitrary contexts
+    user_ctx: *anyopaque, // KEEP: Caller's context passed through opaquely
 ) CallbackError!*v8.Function {
     // Allocate CallbackUserData on the heap
     const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;
@@ -503,12 +515,15 @@ pub fn createContextCallback(
 /// Create a context-aware V8 callback that receives both context and a V8 Value argument
 ///
 /// Useful for rejection handlers that need context and the error value.
+///
+/// KEEP: callback_fn uses *anyopaque because the caller's context type is unknown at compile time
+/// KEEP: user_ctx uses *anyopaque to pass through caller's arbitrary context data
 pub fn createContextCallbackWithArg(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
-    callback_fn: *const fn (ctx: *anyopaque, arg: *v8.Value) void,
-    user_ctx: *anyopaque,
+    callback_fn: *const fn (ctx: *anyopaque, arg: *v8.Value) void, // KEEP: Type-erased callback
+    user_ctx: *anyopaque, // KEEP: Caller's context passed through opaquely
 ) CallbackError!*v8.Function {
     // Allocate CallbackUserData on the heap
     const callback_data = allocator.create(CallbackUserData) catch return CallbackError.OutOfMemory;

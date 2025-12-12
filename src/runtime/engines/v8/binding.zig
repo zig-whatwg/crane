@@ -48,6 +48,11 @@ pub const EnumDescriptor = binding_types.EnumDescriptor;
 pub const CallbackDescriptor = binding_types.CallbackDescriptor;
 
 /// V8 implementation of the EngineBinding interface
+///
+/// Note: Many function parameters use `*anyopaque` because they interface with
+/// the EngineBinding trait which is engine-agnostic. The EngineBinding functions
+/// receive opaque pointers from engine-agnostic code and cast them to V8 types.
+/// This is the ONLY place where such casting should occur.
 pub const v8_engine_binding: EngineBinding = .{
     // Base EngineInterface (composition)
     .base = &engine_mod.v8_engine_interface,
@@ -97,8 +102,11 @@ pub const v8_engine_binding: EngineBinding = .{
 // =============================================================================
 
 /// Register a WebIDL interface with V8
+///
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface.
+/// The EngineBinding interface must be engine-agnostic, so it uses opaque pointers.
 fn v8RegisterInterface(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: C ABI boundary - EngineBinding trait
     descriptor: *const InterfaceDescriptor,
     config: *const InterfaceBindingConfig,
 ) (BindingError || EngineError)!TemplateHandle {
@@ -223,8 +231,9 @@ fn v8RegisterInterface(
 }
 
 /// Register a WebIDL dictionary type
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8RegisterDictionary(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     descriptor: *const DictionaryDescriptor,
 ) (BindingError || EngineError)!void {
     // Dictionaries in V8 are handled at runtime during type conversion
@@ -235,8 +244,9 @@ fn v8RegisterDictionary(
 }
 
 /// Register a WebIDL enumeration type
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8RegisterEnum(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     descriptor: *const EnumDescriptor,
 ) (BindingError || EngineError)!void {
     // Enums are validated at the boundary during type conversion
@@ -247,8 +257,9 @@ fn v8RegisterEnum(
 }
 
 /// Register a WebIDL callback type
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8RegisterCallback(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     descriptor: *const CallbackDescriptor,
 ) (BindingError || EngineError)!void {
     // Callbacks are handled at runtime during type conversion
@@ -262,8 +273,9 @@ fn v8RegisterCallback(
 // =============================================================================
 
 /// Get a previously registered interface template by name
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8GetInterfaceTemplate(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     name: [*:0]const u8,
 ) ?TemplateHandle {
     _ = engine_ctx;
@@ -275,11 +287,15 @@ fn v8GetInterfaceTemplate(
 }
 
 /// Create a new instance of a registered interface
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
+/// - engine_ctx: Engine-agnostic context pointer
+/// - zig_instance: Type-erased Zig instance (could be any WebIDL interface impl)
+/// - Returns *anyopaque: Type-erased V8 object (engine-agnostic return type)
 fn v8CreateInstance(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     template: TemplateHandle,
-    zig_instance: *anyopaque,
-) EngineError!*anyopaque {
+    zig_instance: *anyopaque, // KEEP: Type-erased WebIDL instance
+) EngineError!*anyopaque { // KEEP: Engine-agnostic return type
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const func_template: *ffi.FunctionTemplate = @ptrCast(@alignCast(template));
 
@@ -296,8 +312,9 @@ fn v8CreateInstance(
 }
 
 /// Set up the prototype chain for an interface
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8SetPrototype(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     child_template: TemplateHandle,
     parent_template: TemplateHandle,
 ) BindingError!void {
@@ -309,8 +326,9 @@ fn v8SetPrototype(
 }
 
 /// Include a mixin's members in an interface
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8IncludeMixin(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     interface_template: TemplateHandle,
     mixin_template: TemplateHandle,
 ) BindingError!void {
@@ -326,8 +344,9 @@ fn v8IncludeMixin(
 // =============================================================================
 
 /// Expose an interface constructor on the global object
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8ExposeOnGlobal(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     template: TemplateHandle,
     name: [*:0]const u8,
 ) EngineError!void {
@@ -351,11 +370,12 @@ fn v8ExposeOnGlobal(
 }
 
 /// Set up the global object (Window, WorkerGlobalScope, etc.)
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8SetupGlobalObject(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     template: TemplateHandle,
-    zig_instance: *anyopaque,
-) EngineError!*anyopaque {
+    zig_instance: *anyopaque, // KEEP: Type-erased WebIDL global instance
+) EngineError!*anyopaque { // KEEP: Engine-agnostic return type
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const func_template: *ffi.FunctionTemplate = @ptrCast(@alignCast(template));
 
@@ -380,11 +400,15 @@ fn v8SetupGlobalObject(
 // =============================================================================
 
 /// Convert a Zig value to a JavaScript value
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
+/// - engine_ctx: Engine-agnostic context
+/// - zig_value: Type-erased input (type described by type_desc)
+/// - Returns *anyopaque: Engine-agnostic JS value handle
 fn v8ToJSValue(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     type_desc: *const TypeDescriptor,
-    zig_value: *const anyopaque,
-) EngineError!*anyopaque {
+    zig_value: *const anyopaque, // KEEP: Type described by type_desc at runtime
+) EngineError!*anyopaque { // KEEP: Engine-agnostic return type
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
@@ -457,11 +481,14 @@ fn v8ToJSValue(
 }
 
 /// Convert a JavaScript value to a Zig value
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
+/// - js_value: Engine-agnostic JS value handle
+/// - out_value: Type-erased output (type described by type_desc)
 fn v8FromJSValue(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     type_desc: *const TypeDescriptor,
-    js_value: *const anyopaque,
-    out_value: *anyopaque,
+    js_value: *const anyopaque, // KEEP: Engine-agnostic JS value
+    out_value: *anyopaque, // KEEP: Type described by type_desc at runtime
 ) EngineError!void {
     _ = engine_ctx;
     const untagged = pointer_tag.untagPointer(js_value);
@@ -501,9 +528,10 @@ fn v8FromJSValue(
 }
 
 /// Check if a JS object is an instance of a registered interface
+/// KEEP: Parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8IsInstanceOf(
-    engine_ctx: *anyopaque,
-    js_value: *const anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    js_value: *const anyopaque, // KEEP: Engine-agnostic JS value
     interface_name: [*:0]const u8,
 ) bool {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
@@ -522,10 +550,12 @@ fn v8IsInstanceOf(
 }
 
 /// Extract the Zig instance from a JS wrapper object
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
+/// - Returns the Zig instance that was stored in the V8 object's internal field
 fn v8UnwrapInstance(
-    engine_ctx: *anyopaque,
-    js_value: *const anyopaque,
-) ?*anyopaque {
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    js_value: *const anyopaque, // KEEP: Engine-agnostic JS value
+) ?*anyopaque { // KEEP: Returns type-erased Zig instance
     _ = engine_ctx;
     const untagged = pointer_tag.untagPointer(js_value);
     const value: *ffi.Value = @ptrCast(untagged.ptr);
@@ -543,8 +573,9 @@ fn v8UnwrapInstance(
 // =============================================================================
 
 /// Throw a JavaScript TypeError
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8ThrowTypeError(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     message: [*:0]const u8,
 ) void {
     _ = engine_ctx;
@@ -562,8 +593,9 @@ fn v8ThrowTypeError(
 }
 
 /// Throw a JavaScript RangeError
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8ThrowRangeError(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     message: [*:0]const u8,
 ) void {
     _ = engine_ctx;
@@ -586,8 +618,9 @@ fn v8ThrowRangeError(
 /// - e.name === <name>
 /// - e.message === <message>
 /// - e.code === <legacy code> (for known error names)
+/// KEEP: engine_ctx is *anyopaque - Required for EngineBinding trait interface
 fn v8ThrowDOMException(
-    engine_ctx: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
     name: [*:0]const u8,
     message: [*:0]const u8,
 ) void {
@@ -691,21 +724,23 @@ fn fallbackToError(
 // =============================================================================
 
 /// Create an async iterator wrapper for Symbol.asyncIterator
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8CreateAsyncIterator(
-    engine_ctx: *anyopaque,
-    zig_iterator: *anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    zig_iterator: *anyopaque, // KEEP: Type-erased Zig iterator
     descriptor: *const TypeDescriptor,
-) EngineError!*anyopaque {
+) EngineError!*anyopaque { // KEEP: Engine-agnostic return type
     _ = descriptor;
     // Delegate to the base engine interface
     return engine_mod.v8_engine_interface.wrapAsyncIterator(engine_ctx, zig_iterator);
 }
 
 /// Create a ReadableStream wrapper
+/// KEEP: All parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8CreateReadableStream(
-    engine_ctx: *anyopaque,
-    zig_stream: *anyopaque,
-) EngineError!*anyopaque {
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    zig_stream: *anyopaque, // KEEP: Type-erased ReadableStream instance
+) EngineError!*anyopaque { // KEEP: Engine-agnostic return type
     // Wrap the ReadableStream using the existing template registry
     _ = engine_ctx;
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
@@ -731,9 +766,10 @@ fn v8CreateReadableStream(
 // =============================================================================
 
 /// Check if a value is serializable (for structured clone)
+/// KEEP: Parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8IsSerializable(
-    engine_ctx: *anyopaque,
-    js_value: *const anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    js_value: *const anyopaque, // KEEP: Engine-agnostic JS value
 ) bool {
     _ = engine_ctx;
     const untagged = pointer_tag.untagPointer(js_value);
@@ -767,9 +803,10 @@ fn v8IsSerializable(
 }
 
 /// Check if a value is transferable (for structured clone)
+/// KEEP: Parameters use *anyopaque - Required for EngineBinding trait interface
 fn v8IsTransferable(
-    engine_ctx: *anyopaque,
-    js_value: *const anyopaque,
+    engine_ctx: *anyopaque, // KEEP: EngineBinding trait interface
+    js_value: *const anyopaque, // KEEP: Engine-agnostic JS value
 ) bool {
     _ = engine_ctx;
     const untagged = pointer_tag.untagPointer(js_value);
