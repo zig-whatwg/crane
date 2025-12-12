@@ -337,6 +337,45 @@ pub fn registerNamespacesGeneric(
     }
 }
 
+/// Set up DOMException prototype inheritance from Error per WebIDL spec.
+///
+/// Per https://webidl.spec.whatwg.org/#idl-DOMException:
+/// - DOMException.prototype must have Error.prototype in its prototype chain
+///   (so `new DOMException() instanceof Error === true`)
+/// - DOMException constructor itself should NOT inherit from Error
+///   (so `Object.getPrototypeOf(DOMException) === Function.prototype`)
+///
+/// Only the prototype-side inherits from Error, not the class-side.
+fn setupDOMExceptionInheritance(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    global: *v8.Object,
+    comptime getConstructor: fn (*v8.Isolate, *v8.Object, *v8.Context, []const u8) ?*v8.Object,
+    comptime getPrototype: fn (*v8.Isolate, *v8.Object, *v8.Context) ?*v8.Object,
+    comptime setProto: fn (*v8.Object, *v8.Object, *v8.Context) void,
+) void {
+    // Get DOMException constructor
+    const dom_exception_ctor = getConstructor(isolate, global, context, "DOMException") orelse return;
+
+    // Get Error constructor
+    const error_ctor = getConstructor(isolate, global, context, "Error") orelse return;
+
+    // Get DOMException.prototype
+    const dom_exception_proto = getPrototype(isolate, dom_exception_ctor, context) orelse return;
+
+    // Get Error.prototype
+    const error_proto = getPrototype(isolate, error_ctor, context) orelse return;
+
+    // Set DOMException.prototype.__proto__ = Error.prototype
+    // This makes: new DOMException() instanceof Error === true
+    setProto(dom_exception_proto, error_proto, context);
+
+    // NOTE: We do NOT set DOMException.__proto__ = Error
+    // Per WebIDL spec and WPT tests, the class-side inheritance should remain Function.prototype
+    // See: DOMException-custom-bindings.any.js "does not inherit from Error: class-side"
+    // The test expects: Object.getPrototypeOf(DOMException) === Function.prototype
+}
+
 /// Set up constructor inheritance chain after all constructors are registered
 ///
 /// This automatically sets the __proto__ of child constructors to parent constructors
@@ -346,6 +385,8 @@ pub fn registerNamespacesGeneric(
 /// - Element.__proto__ = Node (because Element.Meta.BaseType = Node)
 /// - Node.__proto__ = EventTarget (because Node.Meta.BaseType = EventTarget)
 /// - HTMLElement.__proto__ = Element (because HTMLElement.Meta.BaseType = Element)
+///
+/// Special case: DOMException inherits from Error per WebIDL spec.
 ///
 /// This matches browser behavior where constructors inherit from each other.
 pub fn setupConstructorInheritance(
@@ -371,6 +412,16 @@ pub fn setupConstructorInheritance(
         }
     };
 
+    // Helper to get `prototype` property of a constructor
+    const GetPrototype = struct {
+        fn call(iso: *v8.Isolate, ctor: *v8.Object, ctx: *v8.Context) ?*v8.Object {
+            const key = v8.v8_String_NewFromUtf8(iso, "prototype", 9) orelse return null;
+            const value = v8.v8_Object_Get(ctor, ctx, @ptrCast(key));
+            if (value == null) return null;
+            return @ptrCast(@alignCast(value));
+        }
+    };
+
     // Helper to set __proto__ on an object
     const setProto = struct {
         fn set(child: *v8.Object, parent: *v8.Object, ctx: *v8.Context) void {
@@ -379,6 +430,11 @@ pub fn setupConstructorInheritance(
             _ = v8.v8_Object_SetPrototype(child, ctx, @ptrCast(parent));
         }
     }.set;
+
+    // Special case: DOMException must inherit from Error per WebIDL spec
+    // https://webidl.spec.whatwg.org/#idl-DOMException
+    // "The prototype of DOMException should be Error.prototype"
+    setupDOMExceptionInheritance(isolate, context, global.?, GetConstructor.call, GetPrototype.call, setProto);
 
     // Automatically set up inheritance chain for all interfaces
     // Iterate over all interface declarations and set Constructor.__proto__ based on Meta.BaseType

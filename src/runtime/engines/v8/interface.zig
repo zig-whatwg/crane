@@ -1001,6 +1001,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Static strings (empty string "") have len=0 and won't be freed.
                         // NOTE: We use cleanup_allocator captured before the getter call to avoid
                         // use-after-free if V8 operations during conversion trigger GC.
+                        //
+                        // IMPORTANT: Getters that return internal references (not newly allocated)
+                        // MUST be updated to dupe the string first, or the cleanup will double-free.
                         const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
                         defer if (needs_cleanup) {
                             // Re-validate allocator before cleanup - it could have been invalidated
@@ -1409,12 +1412,39 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Determine the payload type (unwrap error union if needed) for cleanup
+            // Determine the payload type (unwrap error union and optional if needed) for cleanup
             const PayloadType = comptime blk: {
-                const type_info = @typeInfo(ReturnType);
+                var T = ReturnType;
+                const type_info = @typeInfo(T);
                 if (type_info == .error_union) {
-                    break :blk type_info.error_union.payload;
+                    T = type_info.error_union.payload;
+                }
+                break :blk T;
+            };
+
+            // Get the innermost type for cleanup (unwrap optional)
+            const InnerType = comptime blk: {
+                const type_info = @typeInfo(PayloadType);
+                if (type_info == .optional) {
+                    break :blk type_info.optional.child;
                 } else {
-                    break :blk ReturnType;
+                    break :blk PayloadType;
+                }
+            };
+
+            // Check if InnerType is an array/slice type (for sequence cleanup)
+            const is_sequence = comptime blk: {
+                const type_info = @typeInfo(InnerType);
+                break :blk type_info == .pointer and type_info.pointer.size == .slice;
+            };
+
+            // Get the element type if it's a sequence
+            const ElementType = comptime blk: {
+                if (is_sequence) {
+                    const ptr_info = @typeInfo(InnerType).pointer;
+                    break :blk ptr_info.child;
+                } else {
+                    break :blk void;
                 }
             };
 
@@ -1422,17 +1452,47 @@ pub fn V8Interface(comptime Interface: type) type {
             // IMPORTANT: Impls MUST use instance.ctx.allocator for returned strings,
             // not internal.allocator, so this cleanup uses the correct allocator.
             // Static strings (empty string "") have len=0 and won't be freed.
-            const needs_cleanup = comptime (PayloadType == runtime.USVString or
-                PayloadType == []const u8 or
-                PayloadType == runtime.DOMString);
-            defer if (needs_cleanup) {
-                if (PayloadType == runtime.DOMString) {
-                    var mutable = zig_result;
-                    mutable.deinit(instance.ctx.allocator);
-                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
-                    if (zig_result.len > 0) {
-                        instance.ctx.allocator.free(zig_result);
+            // Handles both optional and non-optional string types.
+            // Also handles sequences (arrays) of strings.
+            const needs_string_cleanup = comptime (InnerType == runtime.USVString or
+                InnerType == []const u8 or
+                InnerType == runtime.DOMString);
+            const needs_sequence_cleanup = comptime (is_sequence and
+                (ElementType == []const u8 or ElementType == runtime.USVString));
+            const is_optional = comptime (@typeInfo(PayloadType) == .optional);
+
+            defer if (needs_string_cleanup) {
+                if (InnerType == runtime.DOMString) {
+                    if (is_optional) {
+                        if (zig_result) |value| {
+                            var mutable = value;
+                            mutable.deinit(instance.ctx.allocator);
+                        }
+                    } else {
+                        var mutable = zig_result;
+                        mutable.deinit(instance.ctx.allocator);
                     }
+                } else if (InnerType == runtime.USVString or InnerType == []const u8) {
+                    if (is_optional) {
+                        if (zig_result) |value| {
+                            if (value.len > 0) {
+                                instance.ctx.allocator.free(value);
+                            }
+                        }
+                    } else {
+                        if (zig_result.len > 0) {
+                            instance.ctx.allocator.free(zig_result);
+                        }
+                    }
+                }
+            };
+
+            // Cleanup for sequences (arrays) - free the array itself
+            // Note: Individual strings in the array are NOT freed here because
+            // they should reference internal data, not be separately allocated
+            defer if (needs_sequence_cleanup) {
+                if (zig_result.len > 0) {
+                    instance.ctx.allocator.free(zig_result);
                 }
             };
 
@@ -1692,6 +1752,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // For WritableStream: invoke pending start callback now that V8 wrappers exist
             if (comptime std.mem.eql(u8, interface_name, "WritableStream")) {
                 invokeWritableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
+            }
+
+            // For DOMException: add stack property per WebIDL spec
+            // If the implementation has a stack property on normal errors, DOMException must too
+            if (comptime std.mem.eql(u8, interface_name, "DOMException")) {
+                captureDOMExceptionStack(this_obj, isolate, v8_context);
             }
 
             // Return 'this' (V8 does this automatically for constructors)
@@ -3680,6 +3746,50 @@ fn invokeWritableStreamStartCallback(
         @ptrCast(isolate),
         @ptrCast(v8_context),
     );
+}
+
+/// Capture stack trace for DOMException instances
+///
+/// Per WebIDL spec and WPT tests (DOMException-custom-bindings.any.js):
+/// "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
+///
+/// This function compiles and runs a small JS snippet that uses Error.captureStackTrace
+/// (V8-specific) to capture the current stack trace and assign it to the DOMException.
+fn captureDOMExceptionStack(
+    this_obj: *v8.Object,
+    isolate: *v8.Isolate,
+    v8_context: *v8.Context,
+) void {
+    // Use Error.captureStackTrace if available (V8/Node.js specific)
+    // This creates a proper stack trace on the target object
+    //
+    // We pass 'this_obj' as a temporary global variable for the script to use
+    const global = v8.v8_Context_Global(v8_context) orelse return;
+
+    // Store the DOMException object as a temporary global for the script to access
+    const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
+    _ = v8.v8_Object_Set(global, v8_context, @ptrCast(temp_key), @ptrCast(this_obj));
+
+    // Compile and run a script that captures the stack trace
+    // This handles the case where Error.captureStackTrace may not exist
+    const script_src =
+        \\(function() {
+        \\  if (typeof Error.captureStackTrace === 'function') {
+        \\    Error.captureStackTrace(__domex_stack_target__, DOMException);
+        \\  } else {
+        \\    // Fallback: create an Error and copy its stack
+        \\    var e = new Error();
+        \\    if (e.stack !== undefined) {
+        \\      __domex_stack_target__.stack = e.stack;
+        \\    }
+        \\  }
+        \\  // Clean up temporary global
+        \\  delete __domex_stack_target__;
+        \\})();
+    ;
+    const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
+    const script = v8.v8_Script_Compile(v8_context, source) orelse return;
+    _ = v8.v8_Script_Run(v8_context, script);
 }
 
 // ============================================================================
