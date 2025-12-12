@@ -3017,6 +3017,12 @@ pub fn V8Interface(comptime Interface: type) type {
             const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
             _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
 
+            // Store interface type marker for brand checking in next()
+            // This ensures next() can only be called with iterators of the same interface type
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return null;
+            const type_val = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return null;
+            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(type_key), @ptrCast(type_val));
+
             if (is_pair_iterator) {
                 // This is a pair iterable (like Headers, URLSearchParams, FormData)
                 // Collect entries by calling forEach and building an array
@@ -3164,6 +3170,28 @@ pub fn V8Interface(comptime Interface: type) type {
             // Get the iterator object (this)
             const iterator_obj = info.getThis();
 
+            // Check that the iterator's type matches this interface (brand check)
+            // This prevents calling URLSearchParams iterator's next() with a Headers iterator
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
+            const has_correct_type = blk: {
+                const tv = type_val orelse break :blk false;
+                if (v8.v8_Value_IsUndefined(@ptrCast(tv))) break :blk false;
+                // Get the stored type string and compare with interface_name
+                const type_str = v8.v8_Value_ToString(@ptrCast(tv), v8_context) orelse break :blk false;
+                var buf: [256]u8 = undefined;
+                const len = v8.v8_String_WriteUtf8(type_str, &buf, @intCast(buf.len));
+                if (len <= 0) break :blk false;
+                const stored_type = buf[0..@intCast(len)];
+                break :blk std.mem.eql(u8, stored_type, interface_name);
+            };
+
+            if (!has_correct_type) {
+                // Throw TypeError: iterator from different interface type
+                conv.throwTypeError(isolate, "Illegal invocation");
+                return;
+            }
+
             // Get stored state
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
@@ -3242,16 +3270,56 @@ pub fn V8Interface(comptime Interface: type) type {
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
 
-            const target = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key)) orelse return;
-            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
-            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
+            // Validate that this is an actual iterator object, not the prototype
+            // Per WebIDL spec: next() must throw TypeError when called on ineligible receiver
+            const target = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key));
+            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key));
+            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key));
 
-            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
+            // Check if any of the iterator state properties are missing or undefined
+            // This indicates the receiver is not a valid iterator (e.g., it's the prototype)
+            const has_valid_target = if (target) |t| !v8.v8_Value_IsUndefined(@ptrCast(t)) else false;
+            const has_valid_index = if (index_val) |i| !v8.v8_Value_IsUndefined(@ptrCast(i)) else false;
+            const has_valid_kind = if (kind_val) |k| !v8.v8_Value_IsUndefined(@ptrCast(k)) else false;
+
+            if (!has_valid_target or !has_valid_index or !has_valid_kind) {
+                // Throw TypeError: next() called on ineligible receiver
+                conv.throwTypeError(isolate, "Illegal invocation");
+                return;
+            }
+
+            // Check that the iterator's type matches this interface (brand check)
+            // This prevents calling URLSearchParams iterator's next() with a Headers iterator
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
+            const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
+            const has_correct_type = blk: {
+                const tv = type_val orelse break :blk false;
+                if (v8.v8_Value_IsUndefined(@ptrCast(tv))) break :blk false;
+                // Get the stored type string and compare with interface_name
+                const type_str = v8.v8_Value_ToString(@ptrCast(tv), v8_context) orelse break :blk false;
+                var buf: [256]u8 = undefined;
+                const len = v8.v8_String_WriteUtf8(type_str, &buf, @intCast(buf.len));
+                if (len <= 0) break :blk false;
+                const stored_type = buf[0..@intCast(len)];
+                break :blk std.mem.eql(u8, stored_type, interface_name);
+            };
+
+            if (!has_correct_type) {
+                // Throw TypeError: iterator from different interface type
+                conv.throwTypeError(isolate, "Illegal invocation");
+                return;
+            }
+
+            const target_obj = target.?;
+            const index_value = index_val.?;
+            const kind_value = kind_val.?;
+
+            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_value), v8_context));
+            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_value), v8_context))));
 
             // Get length from target
             const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
-            const length_val = v8.v8_Object_Get(@ptrCast(target), v8_context, @ptrCast(length_key));
+            const length_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(length_key));
             const length: u32 = if (length_val) |lv| @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(lv), v8_context)) else 0;
 
             // Create result object { value: ..., done: ... }
@@ -3268,7 +3336,7 @@ pub fn V8Interface(comptime Interface: type) type {
             } else {
                 // Get value at index using item() method or indexed access
                 const index_str = v8.v8_Number_New(isolate, @floatFromInt(index));
-                const item_val = v8.v8_Object_Get(@ptrCast(target), v8_context, @ptrCast(index_str));
+                const item_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(index_str));
 
                 const result_value: *v8.Value = switch (kind) {
                     .keys => @ptrCast(index_str),
