@@ -554,7 +554,7 @@ pub const LocaleData = struct {
     /// Era names
     eras: EraNames,
 
-    /// Default English locale data
+    /// Default English (en-US) locale data
     pub const english = LocaleData{
         .months = .{
             .wide = .{
@@ -592,6 +592,170 @@ pub const LocaleData = struct {
             .wide = .{ "Before Christ", "Anno Domini" },
             .abbreviated = .{ "BC", "AD" },
             .narrow = .{ "B", "A" },
+        },
+    };
+
+    /// German (de-DE) locale data
+    pub const german = LocaleData{
+        .months = .{
+            .wide = .{
+                "Januar", "Februar", "März",     "April",   "Mai",      "Juni",
+                "Juli",   "August",  "September", "Oktober", "November", "Dezember",
+            },
+            .abbreviated = .{
+                "Jan.", "Feb.", "März", "Apr.", "Mai",  "Juni",
+                "Juli", "Aug.", "Sep.",  "Okt.", "Nov.", "Dez.",
+            },
+            .narrow = .{
+                "J", "F", "M", "A", "M", "J",
+                "J", "A", "S", "O", "N", "D",
+            },
+        },
+        .weekdays = .{
+            .wide = .{
+                "Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag",
+            },
+            .abbreviated = .{
+                "So.", "Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.",
+            },
+            .narrow = .{
+                "S", "M", "D", "M", "D", "F", "S",
+            },
+            .short = .{
+                "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa",
+            },
+        },
+        .day_periods = .{
+            .am = "AM",
+            .pm = "PM",
+        },
+        .eras = .{
+            .wide = .{ "v. Chr.", "n. Chr." },
+            .abbreviated = .{ "v. Chr.", "n. Chr." },
+            .narrow = .{ "v", "n" },
+        },
+    };
+
+    /// Japanese (ja-JP) locale data
+    pub const japanese = LocaleData{
+        .months = .{
+            .wide = .{
+                "1月", "2月", "3月", "4月",  "5月",  "6月",
+                "7月", "8月", "9月", "10月", "11月", "12月",
+            },
+            .abbreviated = .{
+                "1月", "2月", "3月", "4月",  "5月",  "6月",
+                "7月", "8月", "9月", "10月", "11月", "12月",
+            },
+            .narrow = .{
+                "1", "2", "3", "4",  "5",  "6",
+                "7", "8", "9", "10", "11", "12",
+            },
+        },
+        .weekdays = .{
+            .wide = .{
+                "日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日",
+            },
+            .abbreviated = .{
+                "日", "月", "火", "水", "木", "金", "土",
+            },
+            .narrow = .{
+                "日", "月", "火", "水", "木", "金", "土",
+            },
+            .short = .{
+                "日", "月", "火", "水", "木", "金", "土",
+            },
+        },
+        .day_periods = .{
+            .am = "午前",
+            .pm = "午後",
+        },
+        .eras = .{
+            .wide = .{ "紀元前", "西暦" },
+            .abbreviated = .{ "BC", "AD" },
+            .narrow = .{ "B", "A" },
+        },
+    };
+
+    /// French (fr-FR) locale data
+    pub const french = LocaleData{
+        .months = .{
+            .wide = .{
+                "janvier", "février", "mars",      "avril",   "mai",      "juin",
+                "juillet", "août",    "septembre", "octobre", "novembre", "décembre",
+            },
+            .abbreviated = .{
+                "janv.", "févr.", "mars",  "avr.", "mai",  "juin",
+                "juil.", "août",  "sept.", "oct.", "nov.", "déc.",
+            },
+            .narrow = .{
+                "J", "F", "M", "A", "M", "J",
+                "J", "A", "S", "O", "N", "D",
+            },
+        },
+        .weekdays = .{
+            .wide = .{
+                "dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi",
+            },
+            .abbreviated = .{
+                "dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam.",
+            },
+            .narrow = .{
+                "D", "L", "M", "M", "J", "V", "S",
+            },
+            .short = .{
+                "di", "lu", "ma", "me", "je", "ve", "sa",
+            },
+        },
+        .day_periods = .{
+            .am = "AM",
+            .pm = "PM",
+        },
+        .eras = .{
+            .wide = .{ "avant Jésus-Christ", "après Jésus-Christ" },
+            .abbreviated = .{ "av. J.-C.", "ap. J.-C." },
+            .narrow = .{ "av.", "ap." },
+        },
+    };
+
+    /// Spanish (es-ES) locale data
+    pub const spanish = LocaleData{
+        .months = .{
+            .wide = .{
+                "enero", "febrero", "marzo",      "abril",   "mayo",      "junio",
+                "julio", "agosto",  "septiembre", "octubre", "noviembre", "diciembre",
+            },
+            .abbreviated = .{
+                "ene", "feb", "mar", "abr", "may", "jun",
+                "jul", "ago", "sep", "oct", "nov", "dic",
+            },
+            .narrow = .{
+                "E", "F", "M", "A", "M", "J",
+                "J", "A", "S", "O", "N", "D",
+            },
+        },
+        .weekdays = .{
+            .wide = .{
+                "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado",
+            },
+            .abbreviated = .{
+                "dom", "lun", "mar", "mié", "jue", "vie", "sáb",
+            },
+            .narrow = .{
+                "D", "L", "M", "X", "J", "V", "S",
+            },
+            .short = .{
+                "do", "lu", "ma", "mi", "ju", "vi", "sá",
+            },
+        },
+        .day_periods = .{
+            .am = "a. m.",
+            .pm = "p. m.",
+        },
+        .eras = .{
+            .wide = .{ "antes de Cristo", "después de Cristo" },
+            .abbreviated = .{ "a. C.", "d. C." },
+            .narrow = .{ "a", "d" },
         },
     };
 };
@@ -1320,4 +1484,244 @@ test "formatDateTime - noon 12-hour" {
     const result = try formatDateTime(allocator, tokens, noon, &LocaleData.english);
     defer allocator.free(result);
     try std.testing.expectEqualStrings("12:00 PM", result);
+}
+
+test "formatDateTime - German locale" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "EEEE, d. MMMM yyyy");
+    defer freeTokens(allocator, tokens);
+
+    // 2023-11-14 is a Tuesday (Dienstag in German)
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 11,
+        .day = 14,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.german);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("Dienstag, 14. November 2023", result);
+}
+
+test "formatDateTime - Japanese locale" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "yyyy年M月d日 EEEE");
+    defer freeTokens(allocator, tokens);
+
+    // 2023-11-14 is a Tuesday (火曜日 in Japanese)
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 11,
+        .day = 14,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.japanese);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("2023年11月14日 火曜日", result);
+}
+
+test "formatDateTime - Japanese AM/PM" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "a h:mm");
+    defer freeTokens(allocator, tokens);
+
+    const morning = DateTime{
+        .year = 2023,
+        .month = 1,
+        .day = 1,
+        .hour = 9,
+        .minute = 30,
+        .second = 0,
+        .nanosecond = 0,
+    };
+    const morning_result = try formatDateTime(allocator, tokens, morning, &LocaleData.japanese);
+    defer allocator.free(morning_result);
+    try std.testing.expectEqualStrings("午前 9:30", morning_result);
+
+    const afternoon = DateTime{
+        .year = 2023,
+        .month = 1,
+        .day = 1,
+        .hour = 14,
+        .minute = 30,
+        .second = 0,
+        .nanosecond = 0,
+    };
+    const afternoon_result = try formatDateTime(allocator, tokens, afternoon, &LocaleData.japanese);
+    defer allocator.free(afternoon_result);
+    try std.testing.expectEqualStrings("午後 2:30", afternoon_result);
+}
+
+test "formatDateTime - French locale" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "EEEE d MMMM yyyy");
+    defer freeTokens(allocator, tokens);
+
+    // 2023-11-14 is a Tuesday (mardi in French)
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 11,
+        .day = 14,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.french);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("mardi 14 novembre 2023", result);
+}
+
+test "formatDateTime - Spanish locale with era" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "d 'de' MMMM 'de' yyyy G");
+    defer freeTokens(allocator, tokens);
+
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 3,
+        .day = 15,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.spanish);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("15 de marzo de 2023 d. C.", result);
+}
+
+test "formatDateTime - complex pattern with literals" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "'Date:' yyyy-MM-dd 'Time:' HH:mm:ss");
+    defer freeTokens(allocator, tokens);
+
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 6,
+        .day = 15,
+        .hour = 14,
+        .minute = 30,
+        .second = 45,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.english);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("Date: 2023-06-15 Time: 14:30:45", result);
+}
+
+test "formatToParts - with weekday and month names" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "EEEE, MMMM d");
+    defer freeTokens(allocator, tokens);
+
+    const datetime = DateTime{
+        .year = 2023,
+        .month = 11,
+        .day = 14,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const parts = try formatToParts(allocator, tokens, datetime, &LocaleData.english);
+    defer freeParts(allocator, parts);
+
+    try std.testing.expectEqual(@as(usize, 5), parts.len);
+
+    try std.testing.expectEqual(PartType.weekday, parts[0].type);
+    try std.testing.expectEqualStrings("Tuesday", parts[0].value);
+
+    try std.testing.expectEqual(PartType.literal, parts[1].type);
+    try std.testing.expectEqualStrings(", ", parts[1].value);
+
+    try std.testing.expectEqual(PartType.month, parts[2].type);
+    try std.testing.expectEqualStrings("November", parts[2].value);
+
+    try std.testing.expectEqual(PartType.literal, parts[3].type);
+    try std.testing.expectEqualStrings(" ", parts[3].value);
+
+    try std.testing.expectEqual(PartType.day, parts[4].type);
+    try std.testing.expectEqualStrings("14", parts[4].value);
+}
+
+test "parsePattern - standalone L month format" {
+    const allocator = std.testing.allocator;
+
+    // L is standalone month (same handling as M for now)
+    const tokens = try parsePattern(allocator, "LLLL yyyy");
+    defer freeTokens(allocator, tokens);
+
+    try std.testing.expectEqual(@as(usize, 3), tokens.len);
+    try std.testing.expectEqual(MonthFormat.wide, tokens[0].month);
+}
+
+test "parsePattern - hour cycles" {
+    const allocator = std.testing.allocator;
+
+    // H = 0-23
+    const tokens_h23 = try parsePattern(allocator, "HH");
+    defer freeTokens(allocator, tokens_h23);
+    try std.testing.expectEqual(HourFormat.HourCycle.h23, tokens_h23[0].hour.cycle);
+
+    // h = 1-12
+    const tokens_h12 = try parsePattern(allocator, "hh");
+    defer freeTokens(allocator, tokens_h12);
+    try std.testing.expectEqual(HourFormat.HourCycle.h12, tokens_h12[0].hour.cycle);
+
+    // K = 0-11
+    const tokens_h11 = try parsePattern(allocator, "KK");
+    defer freeTokens(allocator, tokens_h11);
+    try std.testing.expectEqual(HourFormat.HourCycle.h11, tokens_h11[0].hour.cycle);
+
+    // k = 1-24
+    const tokens_h24 = try parsePattern(allocator, "kk");
+    defer freeTokens(allocator, tokens_h24);
+    try std.testing.expectEqual(HourFormat.HourCycle.h24, tokens_h24[0].hour.cycle);
+}
+
+test "formatDateTime - negative year (BCE)" {
+    const allocator = std.testing.allocator;
+
+    const tokens = try parsePattern(allocator, "y GGGG");
+    defer freeTokens(allocator, tokens);
+
+    const datetime = DateTime{
+        .year = -44, // 44 BCE (Julius Caesar's assassination)
+        .month = 3,
+        .day = 15,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+    };
+
+    const result = try formatDateTime(allocator, tokens, datetime, &LocaleData.english);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("44 Before Christ", result);
 }
