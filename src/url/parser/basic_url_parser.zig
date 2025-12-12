@@ -1159,20 +1159,19 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
             if (!should_append_empty) {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
-        } else if (ctx.buffer.items().len > 0) {
+        } else {
             // Handle Windows drive letter normalization
-            if (std.mem.eql(u8, ctx.scheme.items(), "file") and
+            if (ctx.buffer.items().len > 0 and
+                std.mem.eql(u8, ctx.scheme.items(), "file") and
                 ctx.path_segments.items().len == 0 and
                 windows_drive.isWindowsDriveLetter(ctx.buffer.items()))
             {
                 // Normalize: replace second char with ':'
                 ctx.buffer.toSliceMut()[1] = ':';
             }
+            // Always append buffer to path (spec step 4: "Append buffer to url's path")
+            // This includes empty buffer for cases like "/" or "/?query" paths
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, ctx.buffer.items()));
-        } else if (c == null and ctx.buffer.items().len == 0) {
-            // EOF with empty buffer - append empty segment to represent trailing slash
-            // This happens when URL ends with / like "http://example.com/"
-            try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
         }
 
         ctx.buffer.clear();
