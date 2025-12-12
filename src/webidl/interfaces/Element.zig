@@ -184,6 +184,13 @@ pub const Element = struct {
             .{ "assignedSlot", "get_assignedSlot", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "classList", "value" },
+            .{ "part", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "hasAttributes", "call_hasAttributes", 0 },
@@ -860,6 +867,17 @@ pub const Element = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [PutForwards=value]
+    pub fn set_classList(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'classList' forwards to 'value' on the attribute's value
+        const target = try get_classList(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
+    }
+
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn get_slot(instance: *runtime.Instance) anyerror!DOMString {
         return try ElementImpl.get_slot(instance);
@@ -934,6 +952,17 @@ pub const Element = struct {
         const value = try ElementImpl.get_part(instance);
         state.own.cached_part = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value]
+    pub fn set_part(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'part' forwards to 'value' on the attribute's value
+        const target = try get_part(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {

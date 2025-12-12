@@ -103,6 +103,12 @@ pub const HTMLStyleElement = struct {
             .{ "sheet", "get_sheet", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "blocking", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -315,6 +321,17 @@ pub const HTMLStyleElement = struct {
         const value = try HTMLStyleElementImpl.get_blocking(instance);
         state.own.cached_blocking = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
+    pub fn set_blocking(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'blocking' forwards to 'value' on the attribute's value
+        const target = try get_blocking(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

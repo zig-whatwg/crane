@@ -44,6 +44,7 @@ pub const Location = struct {
             .{ "assign", "call_assign", 1 },
             .{ "replace", "call_replace", 1 },
             .{ "reload", "call_reload", 0 },
+            .{ "toString", "get_href", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -51,6 +52,7 @@ pub const Location = struct {
             "assign",
             "replace",
             "reload",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -148,12 +150,12 @@ pub const Location = struct {
         LocationImpl.deinit(instance);
     }
 
-    /// Extended attributes: [LegacyUnforgeable]
+    /// Extended attributes: [LegacyUnforgeable], [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_href(instance);
     }
 
-    /// Extended attributes: [LegacyUnforgeable]
+    /// Extended attributes: [LegacyUnforgeable], [Stringifier]
     pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         try LocationImpl.set_href(instance, value);
     }

@@ -41,6 +41,7 @@ pub const DOMTokenList = struct {
             .{ "supports", "call_supports", 1 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
+            .{ "toString", "get_value", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -53,6 +54,7 @@ pub const DOMTokenList = struct {
             "replace",
             "supports",
             "forEach",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -133,12 +135,12 @@ pub const DOMTokenList = struct {
         return try DOMTokenListImpl.get_length(instance);
     }
 
-    /// Extended attributes: [CEReactions]
+    /// Extended attributes: [CEReactions], [Stringifier]
     pub fn get_value(instance: *runtime.Instance) anyerror!DOMString {
         return try DOMTokenListImpl.get_value(instance);
     }
 
-    /// Extended attributes: [CEReactions]
+    /// Extended attributes: [CEReactions], [Stringifier]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();

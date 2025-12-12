@@ -34,6 +34,12 @@ pub const CSSNestedDeclarations = struct {
             .{ "style", "get_style", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "style", "cssText" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -107,6 +113,17 @@ pub const CSSNestedDeclarations = struct {
         const value = try CSSNestedDeclarationsImpl.get_style(instance);
         state.own.cached_style = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=cssText]
+    pub fn set_style(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
+        const target = try get_style(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 
 };

@@ -36,10 +36,12 @@ pub const HTMLHyperlinkElementUtils = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toString", "get_href", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -137,12 +139,12 @@ pub const HTMLHyperlinkElementUtils = struct {
         HTMLHyperlinkElementUtilsImpl.deinit(instance);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectSetter]
+    /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLHyperlinkElementUtilsImpl.get_href(instance);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectSetter]
+    /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();

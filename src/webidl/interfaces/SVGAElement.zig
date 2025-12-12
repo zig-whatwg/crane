@@ -121,12 +121,20 @@ pub const SVGAElement = struct {
             .{ "hash", "get_hash", "set_hash" },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "relList", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toString", "get_href", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -393,6 +401,17 @@ pub const SVGAElement = struct {
         const value = try SVGAElementImpl.get_relList(instance);
         state.own.cached_relList = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value]
+    pub fn set_relList(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
+        const target = try get_relList(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     pub fn get_hreflang(instance: *runtime.Instance) anyerror!DOMString {

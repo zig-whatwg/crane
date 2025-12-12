@@ -122,6 +122,12 @@ pub const HTMLIFrameElement = struct {
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "sandbox", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getSVGDocument", "call_getSVGDocument", 0 },
@@ -439,6 +445,17 @@ pub const HTMLIFrameElement = struct {
         const value = try HTMLIFrameElementImpl.get_sandbox(instance);
         state.own.cached_sandbox = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
+    pub fn set_sandbox(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'sandbox' forwards to 'value' on the attribute's value
+        const target = try get_sandbox(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

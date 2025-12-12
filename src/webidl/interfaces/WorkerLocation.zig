@@ -39,10 +39,12 @@ pub const WorkerLocation = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toString", "get_href", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -123,6 +125,7 @@ pub const WorkerLocation = struct {
         WorkerLocationImpl.deinit(instance);
     }
 
+    /// Extended attributes: [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try WorkerLocationImpl.get_href(instance);
     }

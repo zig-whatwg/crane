@@ -109,6 +109,12 @@ pub const HTMLFormElement = struct {
             .{ "length", "get_length", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "relList", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "submit", "call_submit", 0 },
@@ -486,6 +492,17 @@ pub const HTMLFormElement = struct {
         const value = try HTMLFormElementImpl.get_relList(instance);
         state.own.cached_relList = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
+    pub fn set_relList(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
+        const target = try get_relList(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     /// Extended attributes: [SameObject]

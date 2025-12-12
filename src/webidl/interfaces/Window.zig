@@ -312,6 +312,12 @@ pub const Window = struct {
             .{ "localStorage", "get_localStorage", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "location", "href" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
@@ -1286,6 +1292,17 @@ pub const Window = struct {
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
     pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_location(instance);
+    }
+
+    /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
+    pub fn set_location(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'location' forwards to 'href' on the attribute's value
+        const target = try get_location(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "href", value);
     }
 
     pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {

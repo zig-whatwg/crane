@@ -104,6 +104,12 @@ pub const HTMLOutputElement = struct {
             .{ "labels", "get_labels", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "htmlFor", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "checkValidity", "call_checkValidity", 0 },
@@ -318,6 +324,17 @@ pub const HTMLOutputElement = struct {
         const value = try HTMLOutputElementImpl.get_htmlFor(instance);
         state.own.cached_htmlFor = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="for"]
+    pub fn set_htmlFor(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'htmlFor' forwards to 'value' on the attribute's value
+        const target = try get_htmlFor(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {

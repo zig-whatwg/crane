@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const URLImpl = @import("impls").URL;
 const mixins = @import("mixins");
-const USVString = @import("interfaces").USVString;
 const URLSearchParams = @import("interfaces").URLSearchParams;
+const Blob = @import("interfaces").Blob;
+const USVString = @import("interfaces").USVString;
+const DOMString = @import("typedefs").DOMString;
+const MediaSource = @import("interfaces").MediaSource;
 
 pub const URL = struct {
     pub const Meta = struct {
@@ -19,12 +22,16 @@ pub const URL = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier = "*" } },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "webkitURL" } },
         };
         
         /// Global contexts where this interface is exposed
-        pub const exposed_in_all_contexts = true;
+        pub const exposed_in = .{
+            .Window = true,
+            .DedicatedWorker = true,
+            .SharedWorker = true,
+        };
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
@@ -52,6 +59,8 @@ pub const URL = struct {
         pub const static_methods = .{
             .{ "parse", "call_static_parse", 1 },
             .{ "canParse", "call_static_canParse", 1 },
+            .{ "createObjectURL", "call_static_createObjectURL", 1 },
+            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -59,6 +68,8 @@ pub const URL = struct {
             "parse",
             "canParse",
             "toJSON",
+            "createObjectURL",
+            "revokeObjectURL",
             "toString",
         };
         
@@ -278,9 +289,19 @@ pub const URL = struct {
         return try URLImpl.call_static_canParse(instance, url, base);
     }
 
+    pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!DOMString {
+        
+        return try URLImpl.call_static_createObjectURL(instance, obj);
+    }
+
     pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {
         
         return try URLImpl.call_static_parse(instance, url, base);
+    }
+
+    pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: DOMString) anyerror!void {
+        
+        return try URLImpl.call_static_revokeObjectURL(instance, url);
     }
 
 };

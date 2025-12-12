@@ -41,6 +41,7 @@ pub const MediaList = struct {
             .{ "item", "call_item", 1 },
             .{ "deleteMedium", "call_deleteMedium", 1 },
             .{ "appendMedium", "call_appendMedium", 1 },
+            .{ "toString", "get_mediaText", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -51,6 +52,7 @@ pub const MediaList = struct {
             "item",
             "deleteMedium",
             "appendMedium",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -118,12 +120,12 @@ pub const MediaList = struct {
         MediaListImpl.deinit(instance);
     }
 
-    /// Extended attributes: [LegacyNullToEmptyString]
+    /// Extended attributes: [Stringifier], [LegacyNullToEmptyString]
     pub fn get_mediaText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaListImpl.get_mediaText(instance);
     }
 
-    /// Extended attributes: [LegacyNullToEmptyString]
+    /// Extended attributes: [Stringifier], [LegacyNullToEmptyString]
     pub fn set_mediaText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         try MediaListImpl.set_mediaText(instance, value);
     }

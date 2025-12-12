@@ -118,6 +118,14 @@ pub const HTMLLinkElement = struct {
             .{ "sheet", "get_sheet", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "relList", "value" },
+            .{ "sizes", "value" },
+            .{ "blocking", "value" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -426,6 +434,17 @@ pub const HTMLLinkElement = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect="rel"]
+    pub fn set_relList(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'relList' forwards to 'value' on the attribute's value
+        const target = try get_relList(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
+    }
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_media(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLLinkElementImpl.get_media(instance);
@@ -494,6 +513,17 @@ pub const HTMLLinkElement = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
+    pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'sizes' forwards to 'value' on the attribute's value
+        const target = try get_sizes(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
+    }
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_imageSrcset(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLLinkElementImpl.get_imageSrcset(instance);
@@ -546,6 +576,17 @@ pub const HTMLLinkElement = struct {
         const value = try HTMLLinkElementImpl.get_blocking(instance);
         state.own.cached_blocking = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=value], [Reflect]
+    pub fn set_blocking(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'blocking' forwards to 'value' on the attribute's value
+        const target = try get_blocking(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "value", value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

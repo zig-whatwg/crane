@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const record = @import("interfaces").record;
 const sequence = @import("interfaces").sequence;
 const USVString = @import("interfaces").USVString;
-const DOMString = @import("interfaces").DOMString;
+const DOMString = @import("typedefs").DOMString;
 
 pub const URLSearchParams = struct {
     pub const Meta = struct {

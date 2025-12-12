@@ -39,6 +39,12 @@ pub const CSSMediaRule = struct {
             .{ "cssRules", "get_cssRules", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "media", "mediaText" },
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertRule", "call_insertRule", 2 },
@@ -126,6 +132,17 @@ pub const CSSMediaRule = struct {
         const value = try CSSMediaRuleImpl.get_media(instance);
         state.own.cached_media = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [PutForwards=mediaText]
+    pub fn set_media(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+        // [PutForwards] - Get target object and set the forwarded property
+        // Per WebIDL spec: setting 'media' forwards to 'mediaText' on the attribute's value
+        const target = try get_media(instance);
+        
+        // Use JavaScript [[Set]] semantics to set the forwarded property
+        // This respects prototype chain and user-defined setters
+        try runtime.setPropertyOnInstance(target, "mediaText", value);
     }
 
     pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
