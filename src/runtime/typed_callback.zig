@@ -168,24 +168,8 @@ pub fn TypedCallback(comptime UserData: type, comptime ReturnType: type) type {
             }
         }
 
-        /// Convert to a legacy anyopaque callback for APIs that require it
-        ///
-        /// WARNING: This loses type safety. Use only for interop with legacy code.
-        pub fn toAnyopaque(self: Self) AnyopaqueCallback(ReturnType) {
-            return .{
-                .callback = @ptrCast(&trampolineCallback),
-                .data = @ptrCast(self.data),
-            };
-        }
-
-        /// Trampoline for anyopaque conversion
-        fn trampolineCallback(data: ?*anyopaque) ReturnType {
-            const typed_data: *UserData = @ptrCast(@alignCast(data.?));
-            // Note: We can't access `self` here, so this only works if the
-            // callback is stored elsewhere. This is a limitation of the pattern.
-            _ = typed_data;
-            @panic("trampolineCallback requires callback stored separately");
-        }
+        // NOTE: toAnyopaque() was removed - it was broken (trampoline panics).
+        // For FFI boundaries, use SelfContainedCallback which stores callback and data together.
     };
 }
 
@@ -574,7 +558,7 @@ pub fn TypedGCCallback(comptime T: type) type {
 /// defer wrapper.destroy(allocator);
 ///
 /// // Pass single pointer to legacy API
-/// legacyApi(wrapper.toAnyopaque(), wrapper.getTrampolineCallback());
+/// legacyApi(wrapper.eraseForFFI(), wrapper.getTrampolineCallback());
 /// ```
 pub fn SelfContainedCallback(comptime UserData: type, comptime ReturnType: type) type {
     return struct {
@@ -615,8 +599,12 @@ pub fn SelfContainedCallback(comptime UserData: type, comptime ReturnType: type)
             return &self.data;
         }
 
-        /// Convert to anyopaque for legacy APIs
-        pub fn toAnyopaque(self: *Self) *anyopaque {
+        /// Erase type for FFI boundaries (legacy APIs that require *anyopaque).
+        ///
+        /// KEEP: anyopaque required - legacy API interop at FFI boundary.
+        /// Use with getTrampolineCallback() to pass to C-style callback APIs.
+        /// The trampoline will cast back to *Self and invoke the callback.
+        pub fn eraseForFFI(self: *Self) *anyopaque {
             return @ptrCast(self);
         }
 
@@ -880,7 +868,7 @@ pub fn TypedPromiseRejectCallback(comptime T: type) type {
 /// engine.chainPromiseHandlers(
 ///     promise,
 ///     cb.getTrampolineC(),
-///     cb.toAnyopaque(),
+///     cb.eraseForFFI(),
 ///     reject_handler,
 ///     reject_ctx,
 /// );
@@ -939,13 +927,18 @@ pub fn SelfContainedPromiseCallback(comptime UserData: type) type {
             return &self.data;
         }
 
-        /// Convert to anyopaque for legacy APIs
-        pub fn toAnyopaque(self: *Self) *anyopaque {
+        /// Erase type for FFI boundaries (V8 promise handlers require *anyopaque).
+        ///
+        /// KEEP: anyopaque required - extern "C" callback for V8 promise API.
+        /// Use with getTrampolineC() to pass to V8's promise handler registration.
+        /// The trampoline will cast back to *Self and invoke the callback.
+        pub fn eraseForFFI(self: *Self) *anyopaque {
             return @ptrCast(self);
         }
 
         /// Get a C-calling-convention trampoline for V8 promise handlers
         ///
+        /// KEEP: extern "C" callback - V8 promise API requires C calling convention.
         /// The trampoline invokes the callback AND destroys the wrapper.
         /// Use this for one-shot promise handlers.
         pub fn getTrampolineC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
@@ -959,6 +952,7 @@ pub fn SelfContainedPromiseCallback(comptime UserData: type) type {
 
         /// Get a non-destructive trampoline (callback only, no cleanup)
         ///
+        /// KEEP: extern "C" callback - V8 promise API requires C calling convention.
         /// Use this if you need to retain the wrapper after invocation.
         pub fn getTrampolineNonDestructiveC() *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void {
             return &trampolineNonDestructiveC;
@@ -1221,7 +1215,7 @@ pub fn TypedCompletionCallback(comptime ContextType: type, comptime ResultType: 
 /// );
 ///
 /// // Submit to thread pool
-/// thread_pool.submit(cb.getTrampolineCallback(), cb.toAnyopaque());
+/// thread_pool.submit(cb.getTrampolineCallback(), cb.eraseForFFI());
 ///
 /// // On completion (from completion callback):
 /// const result = cb.getData().result;
@@ -1276,8 +1270,12 @@ pub fn SelfContainedWorkCallback(comptime UserData: type) type {
             return &self.data;
         }
 
-        /// Convert to anyopaque for legacy APIs
-        pub fn toAnyopaque(self: *Self) *anyopaque {
+        /// Erase type for FFI boundaries (thread pool APIs require *anyopaque).
+        ///
+        /// KEEP: anyopaque required - thread pool API interop at FFI boundary.
+        /// Use with getTrampolineCallback() to pass to C-style work queue APIs.
+        /// The trampoline will cast back to *Self and invoke the callback.
+        pub fn eraseForFFI(self: *Self) *anyopaque {
             return @ptrCast(self);
         }
 
@@ -1527,7 +1525,7 @@ test "SelfContainedCallback - void trampoline" {
 
     // Test via trampoline
     const trampoline = SelfContainedCallback(TestCalledCtx, void).getTrampolineCallback();
-    trampoline(wrapper.toAnyopaque());
+    trampoline(wrapper.eraseForFFI());
 
     try std.testing.expect(wrapper.getData().called);
 }
@@ -1625,7 +1623,7 @@ test "SelfContainedWorkCallback - trampoline" {
 
     // Test via trampoline
     const trampoline = SelfContainedWorkCallback(TestTrampolineCtx).getTrampolineCallback();
-    trampoline(wrapper.toAnyopaque());
+    trampoline(wrapper.eraseForFFI());
 
     try std.testing.expectEqual(@as(usize, 1), wrapper.getData().count);
 }

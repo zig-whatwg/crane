@@ -1156,7 +1156,7 @@ pub fn invokePendingStartCallback(
         const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
             context,
             WritableStartFulfillCallback.getTrampolineC(),
-            fulfill_cb.toAnyopaque(),
+            fulfill_cb.eraseForFFI(),
         ) orelse {
             // Failed to create handler - clean up and fall back
             fulfill_cb.destroy();
@@ -1169,7 +1169,7 @@ pub fn invokePendingStartCallback(
         const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
             context,
             WritableStartRejectCallback.getTrampolineC(),
-            reject_cb.toAnyopaque(),
+            reject_cb.eraseForFFI(),
         ) orelse {
             // Failed to create handler - clean up and fall back
             v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);

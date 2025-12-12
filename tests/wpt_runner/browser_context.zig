@@ -1884,7 +1884,7 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
             const new_timer_id = timer.setTimeout(
                 data.interval_delay_ms,
                 V8TimerCallback.getTrampolineCallback(),
-                wrapper.toAnyopaque(),
+                wrapper.eraseForFFI(),
             );
             if (new_timer_id != 0) {
                 // Update the timer ID for potential clearInterval calls
@@ -1999,7 +1999,7 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
-        timer_wrapper.toAnyopaque(),
+        timer_wrapper.eraseForFFI(),
     );
     if (timer_id == 0) {
         timer_wrapper.destroy();
@@ -2138,7 +2138,7 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
-        timer_wrapper.toAnyopaque(),
+        timer_wrapper.eraseForFFI(),
     );
     if (timer_id == 0) {
         timer_wrapper.destroy();
