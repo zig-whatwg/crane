@@ -535,6 +535,57 @@ pub fn V8Interface(comptime Interface: type) type {
                 // which maps "toString" -> "serialize" via MethodCallback.
                 // Do NOT add redundant toString registration here - it would
                 // overwrite the correct binding from createTemplate().
+
+                // Set Symbol.unscopables on prototype if interface has [Unscopable] members
+                // Per WebIDL spec §3.7.6, the @@unscopables property is:
+                // - An object with null prototype
+                // - Contains properties for each [Unscopable] member with value true
+                // - writable=false, enumerable=false, configurable=true
+                if (@hasDecl(Meta, "unscopables")) {
+                    const unscopables = Meta.unscopables;
+                    if (unscopables.len > 0) {
+                        const symbol_unscopables = v8.v8_Symbol_GetUnscopables(isolate);
+                        if (symbol_unscopables) |symbol| {
+                            // Create an object with null prototype for @@unscopables
+                            const unscopables_obj = v8.v8_Object_NewWithNullPrototype(context);
+                            if (unscopables_obj) |obj| {
+                                // Add each unscopable member as a property with value true
+                                inline for (unscopables) |member_name| {
+                                    const name_str = v8.v8_String_NewFromUtf8(
+                                        isolate,
+                                        member_name.ptr,
+                                        @intCast(member_name.len),
+                                    );
+                                    if (name_str) |key| {
+                                        const true_val = v8.v8_Boolean_New(isolate, true);
+                                        // Per spec: writable=true, enumerable=true, configurable=true
+                                        _ = v8.v8_Object_DefineProperty(
+                                            @ptrCast(obj),
+                                            context,
+                                            @ptrCast(key),
+                                            @ptrCast(true_val),
+                                            true, // writable = true
+                                            true, // enumerable = true
+                                            true, // configurable = true
+                                        );
+                                    }
+                                }
+
+                                // Set @@unscopables on prototype
+                                // Per spec: writable=false, enumerable=false, configurable=true
+                                _ = v8.v8_Object_DefineProperty(
+                                    @ptrCast(proto),
+                                    context,
+                                    @ptrCast(symbol),
+                                    @ptrCast(obj),
+                                    false, // writable = false
+                                    false, // enumerable = false
+                                    true, // configurable = true
+                                );
+                            }
+                        }
+                    }
+                }
             }
 
             // Register static constants on constructor

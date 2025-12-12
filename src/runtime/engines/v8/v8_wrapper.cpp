@@ -1114,6 +1114,17 @@ Global<Object>* v8_Object_New(Isolate* isolate) {
     return trackHandle(new Global<Object>(isolate, obj));
 }
 
+Global<Object>* v8_Object_NewWithNullPrototype(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    
+    // Create an object with null prototype using Object.create(null)
+    Local<Object> obj = Object::New(isolate, v8::Null(isolate), nullptr, nullptr, 0);
+    return trackHandle(new Global<Object>(isolate, obj));
+}
+
 bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Value>* key, Global<Value>* value) {
     CHECK_ALIGNMENT_LOG(object, Global<Object>, "v8_Object_Set");
     CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Set");
@@ -2262,6 +2273,17 @@ void v8_ObjectTemplate_SetInternalFieldCount(Global<ObjectTemplate>* tpl, int co
     local_tpl->SetInternalFieldCount(count);
 }
 
+// ObjectTemplate - mark prototype as immutable
+// This makes Object.setPrototypeOf(obj, newProto) throw TypeError
+// when newProto !== Object.getPrototypeOf(obj)
+// Required for WebIDL global objects (Window, WorkerGlobalScope)
+void v8_ObjectTemplate_SetImmutableProto(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->SetImmutableProto();
+}
+
 // Callback types for accessors (using Name instead of String for modern V8 API)
 typedef void (*AccessorNameGetterCallback)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
 typedef void (*AccessorNameSetterCallback)(Local<Name> property, Local<Value> value, const PropertyCallbackInfo<void>& info);
@@ -2634,6 +2656,12 @@ Global<Symbol>* v8_Symbol_GetIterator(Isolate* isolate) {
 Global<Symbol>* v8_Symbol_GetAsyncIterator(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Symbol> symbol = Symbol::GetAsyncIterator(isolate);
+    return trackHandle(new Global<Symbol>(isolate, symbol));
+}
+
+Global<Symbol>* v8_Symbol_GetUnscopables(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<Symbol> symbol = Symbol::GetUnscopables(isolate);
     return trackHandle(new Global<Symbol>(isolate, symbol));
 }
 

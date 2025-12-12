@@ -281,6 +281,13 @@ pub const IndexedPropertyGetterCallback = *const fn (
 pub extern fn v8_ObjectTemplate_New(isolate: *Isolate) *ObjectTemplate;
 pub extern fn v8_ObjectTemplate_NewInstance(self: *ObjectTemplate, context: *Context) ?*Object;
 pub extern fn v8_ObjectTemplate_SetInternalFieldCount(self: *ObjectTemplate, count: c_int) void;
+
+/// Mark the object template's prototype as immutable.
+/// This makes Object.setPrototypeOf(obj, newProto) throw TypeError
+/// when newProto !== Object.getPrototypeOf(obj).
+/// Required for WebIDL global objects (Window, WorkerGlobalScope).
+pub extern fn v8_ObjectTemplate_SetImmutableProto(self: *ObjectTemplate) void;
+
 pub extern fn v8_ObjectTemplate_Set(
     self: *ObjectTemplate,
     name: *String,
@@ -394,6 +401,7 @@ pub extern fn v8_Value_IsBigInt(value: *Value) bool;
 pub extern fn v8_Symbol_GetToStringTag(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_GetIterator(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_GetAsyncIterator(isolate: *Isolate) ?*Symbol;
+pub extern fn v8_Symbol_GetUnscopables(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
@@ -432,6 +440,7 @@ pub extern fn v8_Value_StringWriteUtf8_Raw(value: *const anyopaque, buffer: [*]u
 
 // Object operations
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
+pub extern fn v8_Object_NewWithNullPrototype(context: *Context) ?*Object;
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;

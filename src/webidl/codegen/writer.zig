@@ -657,6 +657,53 @@ pub fn writeMetadata(
         try writer.writeAll("        };\n");
     }
 
+    // Generate unscopables list for [Unscopable] extended attribute
+    // Check attributes and operations for [Unscopable] and collect their names
+    const extattr = @import("extattr.zig");
+    var has_unscopables = false;
+
+    // Check own_attributes for [Unscopable]
+    for (own_attributes) |attr| {
+        if (extattr.isUnscopable(attr.extAttrs)) {
+            has_unscopables = true;
+            break;
+        }
+    }
+
+    // Check own_operations for [Unscopable]
+    if (!has_unscopables) {
+        for (own_operations) |op| {
+            if (extattr.isUnscopable(op.extAttrs)) {
+                has_unscopables = true;
+                break;
+            }
+        }
+    }
+
+    if (has_unscopables) {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// Members marked with [Unscopable] extended attribute\n");
+        try writer.writeAll("        pub const unscopables = .{\n");
+
+        // Output unscopable attribute names
+        for (own_attributes) |attr| {
+            if (extattr.isUnscopable(attr.extAttrs)) {
+                try writer.print("            \"{s}\",\n", .{attr.name});
+            }
+        }
+
+        // Output unscopable operation names
+        for (own_operations) |op| {
+            if (op.name) |name| {
+                if (extattr.isUnscopable(op.extAttrs)) {
+                    try writer.print("            \"{s}\",\n", .{name});
+                }
+            }
+        }
+
+        try writer.writeAll("        };\n");
+    }
+
     try writer.writeAll("    };\n\n");
 }
 
