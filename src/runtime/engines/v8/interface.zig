@@ -871,9 +871,27 @@ pub fn V8Interface(comptime Interface: type) type {
                 // This is now a named function that can be registered for V8 snapshots
                 const getter_cb: v8.FunctionCallback = PropertyGetterCallback(getter_name).callback;
 
-                // Generate setter callback that calls the actual Zig function
-                // Uses FunctionCallback signature - setter receives new value as info[0]
-                const setter_cb: ?v8.FunctionCallback = if (setter_name) |s_name| makeSetterCallback(s_name) else null;
+                // Check if this property has [PutForwards] extended attribute
+                // Per WebIDL spec §4.3.10: setting the attribute forwards to a property on the value
+                const put_forwards_target: ?[]const u8 = comptime blk: {
+                    if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
+                    for (Meta.put_forwards_attributes) |pf| {
+                        if (std.mem.eql(u8, pf[0], prop_name)) {
+                            break :blk pf[1]; // The forwarded property name
+                        }
+                    }
+                    break :blk null;
+                };
+
+                // Generate setter callback - use PutForwards setter if applicable
+                const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
+                    // Use PutForwards setter that uses JavaScript [[Get]]/[[Set]] semantics
+                    PutForwardsSetterCallback(prop_name, forward_prop).callback
+                else if (setter_name) |s_name|
+                    // Normal setter - call Zig function directly
+                    makeSetterCallback(s_name)
+                else
+                    null;
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
@@ -3931,6 +3949,84 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             }.callback;
+        }
+
+        /// [PutForwards] setter callback generator
+        ///
+        /// Per WebIDL spec §4.3.10: When a [PutForwards=X] attribute is set,
+        /// the assignment is performed by:
+        /// 1. Invoking [[Get]] on the object to get the attribute's value
+        /// 2. Invoking [[Set]] on that value with property name X and the assigned value
+        ///
+        /// This ensures JavaScript getter/setter overrides are respected.
+        fn PutForwardsSetterCallback(comptime attr_name: []const u8, comptime forward_prop: []const u8) type {
+            return struct {
+                pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    const isolate_inner = info.getIsolate();
+                    const context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
+                        conv.throwError(isolate_inner, "No context available");
+                        return;
+                    };
+
+                    // Get the new value from info[0]
+                    const new_value_v8 = info.get(0);
+
+                    // Get 'this' object
+                    const this_obj = info.getThis();
+
+                    // Step 1: Use JavaScript [[Get]] to get the attribute's value
+                    // This respects any user-defined getters on the object
+                    const attr_name_v8 = v8.v8_String_NewFromUtf8(
+                        isolate_inner,
+                        attr_name.ptr,
+                        @intCast(attr_name.len),
+                    ) orelse {
+                        conv.throwError(isolate_inner, "Failed to create property name");
+                        return;
+                    };
+
+                    const target_value = v8.v8_Object_Get(this_obj, context, @ptrCast(attr_name_v8)) orelse {
+                        // [[Get]] returned empty/exception
+                        // The exception is already set on the context, just return
+                        return;
+                    };
+
+                    // Step 2: Check if the target is an object (not null/undefined)
+                    // Per WebIDL spec: "if the result is not an object, throw a TypeError"
+                    if (v8.v8_Value_IsNull(target_value) or v8.v8_Value_IsUndefined(target_value)) {
+                        conv.throwTypeError(isolate_inner, "Cannot set property on null or undefined");
+                        return;
+                    }
+
+                    if (!v8.v8_Value_IsObject(target_value)) {
+                        conv.throwTypeError(isolate_inner, "Cannot set property on non-object");
+                        return;
+                    }
+
+                    // Step 3: Use JavaScript [[Set]] to set the forwarded property
+                    // This respects any user-defined setters on the target object
+                    const forward_prop_v8 = v8.v8_String_NewFromUtf8(
+                        isolate_inner,
+                        forward_prop.ptr,
+                        @intCast(forward_prop.len),
+                    ) orelse {
+                        conv.throwError(isolate_inner, "Failed to create forward property name");
+                        return;
+                    };
+
+                    const target_obj: *v8.Object = @ptrCast(target_value);
+                    const set_result = v8.v8_Object_Set(target_obj, context, @ptrCast(forward_prop_v8), new_value_v8);
+
+                    // Per WebIDL spec: "if [[Set]] returns false, this is NOT an error"
+                    // The setter should NOT throw even if [[Set]] returns false
+                    _ = set_result;
+
+                    // Return undefined
+                    if (v8.v8_Undefined(isolate_inner)) |undef| {
+                        info.setReturnValue(undef);
+                    }
+                }
+            };
         }
 
         /// Convert V8 value to Zig type based on comptime type information

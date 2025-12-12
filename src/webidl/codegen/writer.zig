@@ -387,6 +387,35 @@ pub fn writeMetadata(
     }
     try writer.writeAll("        };\n");
 
+    // Generate [PutForwards] metadata for attributes with setter forwarding
+    // Per WebIDL spec §4.3.10: [PutForwards=X] means setting the attribute
+    // actually sets property X on the current value of the attribute
+    {
+        const extattr_mod = @import("extattr.zig");
+        var has_put_forwards = false;
+
+        // Check if any attributes have [PutForwards]
+        for (own_attributes) |attr| {
+            if (extattr_mod.getPutForwards(attr.extAttrs)) |_| {
+                has_put_forwards = true;
+                break;
+            }
+        }
+
+        if (has_put_forwards) {
+            try writer.writeAll("        \n");
+            try writer.writeAll("        /// [PutForwards] attributes: setting the attribute forwards to a property on the value\n");
+            try writer.writeAll("        /// Format: { \"attrName\", \"forwardedProperty\" }\n");
+            try writer.writeAll("        pub const put_forwards_attributes = .{\n");
+            for (own_attributes) |attr| {
+                if (extattr_mod.getPutForwards(attr.extAttrs)) |forwarded| {
+                    try writer.print("            .{{ \"{s}\", \"{s}\" }},\n", .{ attr.name, forwarded });
+                }
+            }
+            try writer.writeAll("        };\n");
+        }
+    }
+
     // Generate method hints - ONLY for own operations (not inherited)
     // Separate static methods from instance methods
     try writer.writeAll("        \n");
@@ -2677,8 +2706,39 @@ pub fn writeDelegateFunctions(
 
         try writer.writeAll("    }\n\n");
 
-        // Write setter if not readonly
-        if (!attr.readonly) {
+        // Check for [PutForwards] extended attribute
+        // Per WebIDL §4.3.10: [PutForwards=X] creates a setter that forwards to property X
+        // on the current value of the attribute, even if the attribute is readonly
+        const extattr_mod = @import("extattr.zig");
+        const put_forwards = extattr_mod.getPutForwards(attr.extAttrs);
+
+        // Write setter: either forwarding setter for [PutForwards] or regular setter for non-readonly
+        if (put_forwards) |forwarded_property| {
+            // [PutForwards] setter - forwards assignment to property on the attribute's value
+            const has_ce_reactions = hasExtendedAttribute(attr.extAttrs, "CEReactions");
+
+            try writeExtendedAttributesComment(writer, attr.extAttrs);
+
+            // The setter takes a string value (per WebIDL spec, the forwarded property is typically a DOMString)
+            try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {{\n", .{sanitized_name});
+
+            if (has_ce_reactions) {
+                try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
+                try writer.writeAll("        runtime.CEReactions.begin();\n");
+                try writer.writeAll("        defer runtime.CEReactions.end();\n");
+                try writer.writeAll("        \n");
+            }
+
+            try writer.writeAll("        // [PutForwards] - Get target object and set the forwarded property\n");
+            try writer.print("        // Per WebIDL spec: setting '{s}' forwards to '{s}' on the attribute's value\n", .{ attr.name, forwarded_property });
+            try writer.print("        const target = try get_{s}(instance);\n", .{sanitized_name});
+            try writer.writeAll("        \n");
+            try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
+            try writer.writeAll("        // This respects prototype chain and user-defined setters\n");
+            try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            try writer.writeAll("    }\n\n");
+        } else if (!attr.readonly) {
+            // Regular setter for non-readonly attributes (no [PutForwards])
             const has_ce_reactions = hasExtendedAttribute(attr.extAttrs, "CEReactions");
 
             // Extended attributes apply to setter too

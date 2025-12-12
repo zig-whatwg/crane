@@ -293,6 +293,32 @@ pub const EngineInterface = struct {
         allocator: std.mem.Allocator,
     ) EngineError![]const u8,
 
+    /// Set a property on a JavaScript object using [[Set]] semantics
+    ///
+    /// Per WebIDL [PutForwards] extended attribute: the assignment is performed
+    /// by invoking the [[Set]] internal method of the object with the property
+    /// name as the key and the assigned value.
+    ///
+    /// This respects the JavaScript prototype chain, getters/setters, and
+    /// user-defined property descriptors.
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - target: Opaque pointer to JS object to set property on
+    ///   - property_name: Name of the property to set
+    ///   - value: String value to set (for [PutForwards], this is always a string)
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError.TypeError if target is not an object
+    ///   - EngineError.OperationFailed if [[Set]] returns false
+    setPropertyOnObject: ?*const fn (
+        engine_ctx: *anyopaque,
+        target: *anyopaque,
+        property_name: []const u8,
+        value: []const u8,
+    ) EngineError!void,
+
     /// Create a JavaScript array from a slice of strings
     ///
     /// Arguments:
@@ -822,6 +848,7 @@ pub const stub_engine: EngineInterface = .{
     .wrapInstance = null,
     .isString = null,
     .extractString = null,
+    .setPropertyOnObject = stubSetPropertyOnObject,
     .createStringArray = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
@@ -1029,6 +1056,16 @@ fn stubGetCollectionElement(
 ) ?*anyopaque {
     // Stub: No collection access without engine
     return null;
+}
+
+fn stubSetPropertyOnObject(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: []const u8,
+    _: []const u8,
+) EngineError!void {
+    // Stub: No JS engine available for property setting
+    return EngineError.NoEngine;
 }
 
 // ============================================================================

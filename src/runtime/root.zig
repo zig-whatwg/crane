@@ -330,6 +330,55 @@ pub fn registerCleanupHook(hook: CleanupHookFn) void {
     runtime_cleanup_hook = hook;
 }
 
+/// Set a property on a runtime.Instance target using JavaScript [[Set]] semantics
+///
+/// This is used by [PutForwards] extended attribute to forward property assignments.
+/// Per WebIDL spec §4.3.10: the assignment is performed by invoking the [[Set]]
+/// internal method of the object with the forwarded property name.
+///
+/// Arguments:
+///   - target: The target runtime.Instance (e.g., CSSStyleDeclaration)
+///   - property_name: Name of the property to set (e.g., "cssText")
+///   - value: String value to assign
+///
+/// Errors:
+///   - error.NoEngine if no JS engine is configured
+///   - error.TypeError if target cannot have properties set
+///   - error.OperationFailed if [[Set]] returns false
+pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value: DOMString) !void {
+    const ctx = target.ctx;
+
+    // Get context data
+    const ctx_data = ctx.data orelse return error.NoEngine;
+
+    // Get the engine interface
+    const engine = ctx_data.getEngine() orelse return error.NoEngine;
+
+    // Get the engine context
+    const engine_ctx = ctx_data.getEngineContext() orelse return error.NoEngine;
+
+    // Get the JS wrapper cache from context
+    const wrapper_cache = ctx_data.getV8WrapperCacheStorage() orelse return error.NoEngine;
+
+    // Get the getWrapperForInstance function
+    const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
+
+    // Get the JS wrapper for the target
+    const target_wrapper = getWrapper(
+        engine_ctx,
+        wrapper_cache,
+        target,
+    ) orelse {
+        // If no wrapper exists, the target hasn't been exposed to JS yet
+        // This shouldn't happen in normal [PutForwards] usage
+        return error.TypeError;
+    };
+
+    // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
+    const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
+    try setProperty(engine_ctx, target_wrapper, property_name, value);
+}
+
 // Standard library dependency
 
 // Unit tests

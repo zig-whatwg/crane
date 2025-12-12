@@ -92,6 +92,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .wrapInstance = v8WrapInstance,
     .isString = v8IsString,
     .extractString = v8ExtractString,
+    .setPropertyOnObject = v8SetPropertyOnObject,
     .createStringArray = v8CreateStringArray,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
@@ -462,6 +463,37 @@ fn v8ExtractString(
         return EngineError.OutOfMemory;
 
     return owned_slice;
+}
+
+/// Set a property on a V8 object using [[Set]] semantics
+///
+/// Per WebIDL [PutForwards] extended attribute: the assignment is performed
+/// by invoking the [[Set]] internal method with the property name and value.
+fn v8SetPropertyOnObject(
+    engine_ctx: *anyopaque,
+    target: *anyopaque,
+    property_name: []const u8,
+    value: []const u8,
+) EngineError!void {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Cast target to V8 Object
+    const target_obj: *ffi.Object = @ptrCast(@alignCast(target));
+
+    // Create V8 String for property name
+    const v8_key = ffi.v8_String_NewFromUtf8(isolate, property_name.ptr, @intCast(property_name.len)) orelse
+        return EngineError.OperationFailed;
+
+    // Create V8 String for value
+    const v8_value = ffi.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse
+        return EngineError.OperationFailed;
+
+    // Use v8_Object_Set to set the property (this uses [[Set]] semantics)
+    if (!ffi.v8_Object_Set(target_obj, context, @ptrCast(v8_key), @ptrCast(v8_value))) {
+        return EngineError.OperationFailed;
+    }
 }
 
 /// Create a V8 array from a slice of strings
