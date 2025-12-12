@@ -2,6 +2,25 @@
 //!
 //! Defines engine-agnostic binding descriptor types that describe how to
 //! expose WebIDL interfaces and namespaces to JavaScript engines.
+//!
+//! ## Type Safety Note
+//!
+//! This module uses `*const anyopaque` for function pointers and values in binding
+//! descriptors. This is **intentional and legitimate** because:
+//!
+//! 1. **Comptime reflection limitation**: At comptime, we extract metadata from
+//!    arbitrary WebIDL interfaces/namespaces. The exact function signatures are
+//!    unknown until reflection runs - we can't parameterize descriptors by each
+//!    unique function type.
+//!
+//! 2. **Heterogeneous registry pattern**: A single registry holds bindings for
+//!    many different interfaces with different method signatures. Type erasure
+//!    via `*const anyopaque` is the standard Zig pattern (see std.mem.Allocator).
+//!
+//! 3. **JS engine boundary**: These pointers are cast back to concrete types at
+//!    the V8/JSC binding layer where the actual dispatch occurs.
+//!
+//! See: docs/legitimate-anyopaque.md for full documentation of legitimate uses.
 
 const std = @import("std");
 
@@ -51,6 +70,9 @@ pub const ConstructorDescriptor = struct {
 
     /// Zig function pointer to call for construction
     /// fn(allocator: Allocator, args: anytype) !*InstanceType
+    ///
+    /// KEEP: anyopaque required - Constructor signatures vary per interface.
+    /// Type is erased at comptime extraction, restored at JS engine binding layer.
     impl: *const anyopaque,
 };
 
@@ -68,6 +90,10 @@ pub const MethodDescriptor = struct {
     /// Zig function pointer to call
     /// For namespace: fn(args: anytype) ReturnType
     /// For instance method: fn(self: *T, args: anytype) ReturnType
+    ///
+    /// KEEP: anyopaque required - Method signatures vary per interface/namespace.
+    /// Each method has unique parameter/return types discovered at comptime.
+    /// Type is erased here, restored at JS engine binding layer via TypeDescriptor.
     impl: *const anyopaque,
 };
 
@@ -84,10 +110,16 @@ pub const AttributeDescriptor = struct {
 
     /// Zig getter function pointer
     /// fn(self: *T) ReturnType
+    ///
+    /// KEEP: anyopaque required - Getter signatures vary per attribute type.
+    /// Type is erased at comptime extraction, restored at JS engine binding layer.
     getter: *const anyopaque,
 
     /// Zig setter function pointer (null if readonly)
     /// fn(self: *T, value: ValueType) void
+    ///
+    /// KEEP: anyopaque required - Setter signatures vary per attribute type.
+    /// Type is erased at comptime extraction, restored at JS engine binding layer.
     setter: ?*const anyopaque = null,
 };
 
@@ -100,6 +132,9 @@ pub const ConstantDescriptor = struct {
     type: TypeDescriptor,
 
     /// Constant value (stored as anyopaque pointer)
+    ///
+    /// KEEP: anyopaque required - Constants can be any primitive type (u16, f64, etc.).
+    /// Pointer to comptime-known value; actual type recovered via TypeDescriptor.kind.
     value: *const anyopaque,
 };
 
@@ -115,6 +150,9 @@ pub const ParameterDescriptor = struct {
     optional: bool = false,
 
     /// Default value (null if no default)
+    ///
+    /// KEEP: anyopaque required - Default values can be any type matching parameter type.
+    /// Pointer to comptime-known value; actual type recovered via self.type.kind.
     default_value: ?*const anyopaque = null,
 };
 
