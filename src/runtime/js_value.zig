@@ -443,13 +443,13 @@ pub const JSValue = union(enum) {
     /// - `asInstance()` for anyopaque instance extraction
     ///
     /// WARNING: This loses type information! Use only for transitional code.
-    pub fn toAnyopaque(self: JSValue) ?*const anyopaque {
+    pub fn toAnyopaque(self: JSValue) ?*anyopaque {
         return switch (self) {
             .undefined, .null => null,
             .boolean => null, // Booleans can't be represented as pointers
             .number => null, // Numbers can't be represented as pointers
             .string => null, // Strings need special handling
-            .handle => |h| @ptrCast(h.ptr),
+            .handle => |h| h.ptr,
             .instance => |i| @ptrCast(i),
         };
     }
