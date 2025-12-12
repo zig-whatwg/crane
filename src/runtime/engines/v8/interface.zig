@@ -1321,6 +1321,48 @@ pub fn V8Interface(comptime Interface: type) type {
             };
         }
 
+        /// Check if a type is a variadic parameter (slice type but NOT []const u8)
+        /// Variadic parameters collect all remaining JS arguments into a slice.
+        fn isVariadicParam(comptime T: type) bool {
+            const type_info = @typeInfo(T);
+            if (type_info != .pointer) return false;
+            if (type_info.pointer.size != .slice) return false;
+            // []const u8 is a string type, not variadic
+            if (type_info.pointer.child == u8) return false;
+            return true;
+        }
+
+        /// Convert multiple JS arguments into a slice for variadic parameters
+        fn collectVariadicArgs(
+            comptime ElemType: type,
+            allocator_inner: std.mem.Allocator,
+            isolate_inner: *v8.Isolate,
+            context_inner: *v8.Context,
+            info_inner: *const v8.FunctionCallbackInfo,
+            start_idx: usize,
+        ) ![]const ElemType {
+            const arg_count: usize = @intCast(info_inner.length());
+            const variadic_count = if (arg_count > start_idx) arg_count - start_idx else 0;
+
+            if (variadic_count == 0) {
+                // Return empty slice for no variadic args
+                return &[_]ElemType{};
+            }
+
+            // Allocate slice for variadic arguments
+            var result = try allocator_inner.alloc(ElemType, variadic_count);
+            errdefer allocator_inner.free(result);
+
+            // Convert each JS argument to the element type
+            var i: usize = 0;
+            while (i < variadic_count) : (i += 1) {
+                const v8_arg = info_inner.get(@intCast(start_idx + i));
+                result[i] = try conv.fromV8Value(ElemType, allocator_inner, isolate_inner, context_inner, v8_arg);
+            }
+
+            return result;
+        }
+
         /// Call method with arguments parsed using comptime reflection
         fn callMethodWithArgs(
             comptime method_fn: anytype,
@@ -1341,6 +1383,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     break :blk try method_fn(instance);
                 } else if (webidl_param_count == 1) {
                     const Param1Type = params[1].type.?;
+
+                    // Check if this is a variadic parameter (slice type, not []const u8)
+                    if (comptime isVariadicParam(Param1Type)) {
+                        // Collect all JS arguments into a slice
+                        const ElemType = @typeInfo(Param1Type).pointer.child;
+                        const arg1 = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info, 0);
+                        // Note: The slice is allocated and will be freed after method call
+                        defer if (arg1.len > 0) allocator.free(arg1);
+                        break :blk try method_fn(instance, arg1);
+                    }
+
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
                         break :arg_blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
